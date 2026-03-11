@@ -454,14 +454,6 @@ function createRoadTexture(rng: () => number): THREE.CanvasTexture {
   ctx.fillStyle = '#3a3a42';
   ctx.fillRect(0, 0, 256, 256);
 
-  for (let i = 0; i < 3000; i++) {
-    const x = rng() * 256;
-    const y = rng() * 256;
-    const b = 50 + rng() * 30;
-    ctx.fillStyle = `rgb(${b},${b},${b + 5})`;
-    ctx.fillRect(x, y, 1, 1);
-  }
-
   ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 3;
   ctx.setLineDash([20, 20]);
   ctx.beginPath(); ctx.moveTo(128, 0); ctx.lineTo(128, 256); ctx.stroke();
