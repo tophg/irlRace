@@ -34,27 +34,27 @@ export interface EnvironmentPreset {
 export const ENVIRONMENTS: EnvironmentPreset[] = [
   {
     name: 'Urban Night',
-    fogColor: 0x1a1a2e, fogDensity: 0.0025,
+    fogColor: 0x1a1a2e, fogDensity: 0.0008,
     skyTop: 0x0d0d1a, skyBottom: 0x1a1a3a, skyHorizon: 0x2a1a30,
-    hemiSky: 0x88aacc, hemiGround: 0x444422, hemiIntensity: 1.0,
-    dirColor: 0xffeedd, dirIntensity: 2.0, dirPosition: [50, 80, 30],
-    groundColor: 0x222228, exposure: 1.2,
+    hemiSky: 0x88aacc, hemiGround: 0x444422, hemiIntensity: 1.2,
+    dirColor: 0xffeedd, dirIntensity: 2.5, dirPosition: [50, 80, 30],
+    groundColor: 0x222228, exposure: 1.4,
   },
   {
     name: 'Desert Dawn',
-    fogColor: 0x8b6914, fogDensity: 0.0015,
+    fogColor: 0xccaa66, fogDensity: 0.0006,
     skyTop: 0x1a0a2e, skyBottom: 0xff6633, skyHorizon: 0xffaa44,
-    hemiSky: 0xffddaa, hemiGround: 0x886633, hemiIntensity: 1.4,
-    dirColor: 0xffcc88, dirIntensity: 2.8, dirPosition: [80, 30, 50],
-    groundColor: 0x8b7355, exposure: 1.5,
+    hemiSky: 0xffddaa, hemiGround: 0x886633, hemiIntensity: 1.6,
+    dirColor: 0xffcc88, dirIntensity: 3.0, dirPosition: [80, 30, 50],
+    groundColor: 0x8b7355, exposure: 1.6,
   },
   {
     name: 'Coastal Sunset',
-    fogColor: 0x334466, fogDensity: 0.002,
+    fogColor: 0x445577, fogDensity: 0.0007,
     skyTop: 0x0a1628, skyBottom: 0x2244aa, skyHorizon: 0xff6644,
-    hemiSky: 0xaabbdd, hemiGround: 0x445566, hemiIntensity: 1.2,
-    dirColor: 0xffaa77, dirIntensity: 2.5, dirPosition: [-60, 25, 60],
-    groundColor: 0x2a3040, exposure: 1.3,
+    hemiSky: 0xaabbdd, hemiGround: 0x445566, hemiIntensity: 1.4,
+    dirColor: 0xffaa77, dirIntensity: 3.0, dirPosition: [-60, 25, 60],
+    groundColor: 0x2a3040, exposure: 1.5,
   },
 ];
 
@@ -63,13 +63,13 @@ export function initScene(container: HTMLElement) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
+  renderer.toneMappingExposure = 1.4;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x1a1a2e, 0.0025);
+  scene.fog = new THREE.FogExp2(0x1a1a2e, 0.0008);
 
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
   camera.position.set(0, 10, 20);
@@ -79,10 +79,10 @@ export function initScene(container: HTMLElement) {
   scene.environment = envMap;
   pmremGenerator.dispose();
 
-  hemiLight = new THREE.HemisphereLight(0x88aacc, 0x444422, 1.0);
+  hemiLight = new THREE.HemisphereLight(0x88aacc, 0x444422, 1.2);
   scene.add(hemiLight);
 
-  dirLight = new THREE.DirectionalLight(0xffeedd, 2.0);
+  dirLight = new THREE.DirectionalLight(0xffeedd, 2.5);
   dirLight.position.set(50, 80, 30);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.set(2048, 2048);
@@ -105,6 +105,7 @@ export function initScene(container: HTMLElement) {
   const skyGeo = new THREE.SphereGeometry(800, 32, 16);
   skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
+    fog: false,
     uniforms: {
       topColor: { value: new THREE.Color(0x0d0d1a) },
       bottomColor: { value: new THREE.Color(0x1a1a3a) },

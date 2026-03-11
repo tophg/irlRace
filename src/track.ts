@@ -438,7 +438,7 @@ function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[], rng
     map: roadTex,
     roughness: 0.7,
     metalness: 0.0,
-    color: 0x444450,
+    color: 0x555560,
   });
 
   const mesh = new THREE.Mesh(geo, mat);
