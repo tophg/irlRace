@@ -229,7 +229,19 @@ export function updateGarage() {
 
 export function destroyGarage() {
   if (uiEl) { uiEl.remove(); uiEl = null; }
-  if (currentModel) garageScene.remove(currentModel);
+  if (currentModel) {
+    garageScene.remove(currentModel);
+    currentModel.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        mesh.geometry?.dispose();
+        const mat = mesh.material;
+        if (Array.isArray(mat)) mat.forEach(m => m.dispose());
+        else if (mat) (mat as THREE.Material).dispose();
+      }
+    });
+    currentModel = null;
+  }
 }
 
 export function getSelectedCar(): CarDef {
