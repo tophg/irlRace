@@ -252,10 +252,16 @@ function showRaceConfig(onStart: (laps: number, ai: number, seed: string) => voi
       </label>
       <div style="display:flex;gap:12px;justify-content:center;margin-top:16px;">
         <button class="select-btn" id="cfg-go">START RACE</button>
+        <button class="menu-btn" id="cfg-back" style="padding:10px 24px;">BACK</button>
       </div>
     </div>
   `;
   uiOverlay.appendChild(el);
+
+  document.getElementById('cfg-back')!.addEventListener('click', () => {
+    el.remove();
+    showTitleScreen();
+  });
 
   document.getElementById('cfg-go')!.addEventListener('click', () => {
     const laps = parseInt((el.querySelector('#cfg-laps') as HTMLSelectElement).value);
@@ -271,6 +277,7 @@ function showRaceConfig(onStart: (laps: number, ai: number, seed: string) => voi
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function showControlsRef() {
+  if (uiOverlay.querySelector('.controls-overlay')) return;
   const el = document.createElement('div');
   el.className = 'controls-overlay';
   el.innerHTML = `
@@ -354,7 +361,10 @@ function enterGarage(mode: 'singleplayer' | 'multiplayer') {
       showRaceConfig((laps, ai, seed) => {
         totalLaps = laps;
         aiCount = ai;
-        if (seed) trackSeed = parseInt(seed, 10) || Math.floor(Math.random() * 99999);
+        if (seed.length > 0) {
+          const parsed = parseInt(seed, 10);
+          trackSeed = Number.isNaN(parsed) ? Math.floor(Math.random() * 99999) : parsed;
+        }
         startRace();
       });
     } else {
@@ -392,6 +402,7 @@ function enterMultiplayerLobby() {
         onJoin: () => {},
         onStart: () => {
           destroyLobby();
+          raceReadyCount = 0;
           trackSeed = Math.floor(Math.random() * 99999);
           const players = [{ id: netPeer!.getLocalId(), name: localPlayerName, carId: selectedCar.id }];
           for (const rp of netPeer!.getRemotePlayers()) players.push({ id: rp.id, name: rp.name, carId: rp.carId });
@@ -556,9 +567,10 @@ function wireNetworkCallbacks() {
       showToast(uiOverlay, `${name} disconnected`);
     }
 
-    // Clean up remote mesh
+    // Clean up remote mesh and tracking data
     const mesh = remoteMeshes.get(id);
     if (mesh) { scene.remove(mesh); remoteMeshes.delete(id); }
+    remotePrevPos.delete(id);
 
     const tag = remoteNameTags.get(id);
     if (tag) { scene.remove(tag); remoteNameTags.delete(id); };
@@ -643,17 +655,19 @@ async function startRace() {
     // ── Synchronized start (multiplayer ready barrier) ──
     if (netPeer) {
       if (netPeer.getIsHost()) {
-        // Host: wait for all guests to send RACE_READY
-        raceReadyCount = 0;
+        // Host: wait for all guests to send RACE_READY (count was reset before COUNTDOWN_START)
         const guestCount = netPeer.getConnectionCount();
-        if (guestCount > 0) {
+        if (guestCount > 0 && raceReadyCount < guestCount) {
           await Promise.race([
-            new Promise<void>(resolve => { raceGoResolve = resolve; }),
+            new Promise<void>(resolve => {
+              raceGoResolve = resolve;
+              // Re-check in case RACE_READY arrived during loading
+              if (raceReadyCount >= guestCount) resolve();
+            }),
             new Promise<void>(resolve => setTimeout(resolve, 10000)),
           ]);
           raceGoResolve = null;
         }
-        // Broadcast GO to all guests
         netPeer.broadcastEvent(EventType.RACE_GO, {});
       } else {
         // Guest: signal ready, then wait for RACE_GO
@@ -745,6 +759,14 @@ function disposeMesh(obj: THREE.Object3D) {
 }
 
 function clearRaceObjects() {
+  // Stop network broadcasting before nulling vehicles
+  netPeer?.stopBroadcasting();
+  netPeer?.stopPinging();
+
+  // Stop replay recorder
+  replayRecorder?.stop();
+  replayRecorder = null;
+
   // Remove and dispose old track
   if (trackData) {
     scene.remove(trackData.roadMesh);
@@ -805,6 +827,14 @@ function clearRaceObjects() {
   stopAudio();
 
   destroyHUD();
+  destroyLeaderboard();
+
+  // Clean up debug overlay
+  if (debugEl) { debugEl.remove(); debugEl = null; }
+
+  // Reset cooldowns
+  driftSfxCooldown = 0;
+  lbLastUpdate = 0;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1018,12 +1048,17 @@ function gameLoop(timestamp: number) {
   }
 
   // ── Replay playback ──
-  if (replayPlayer?.isPlaying()) {
-    replayPlayer.update(dt);
-    const bar = document.getElementById('replay-bar');
-    if (bar) bar.style.width = `${Math.round(replayPlayer.getProgress() * 100)}%`;
-    renderer.render(scene, camera);
-    return;
+  if (replayPlayer) {
+    if (replayPlayer.isPlaying()) {
+      replayPlayer.update(dt);
+      const bar = document.getElementById('replay-bar');
+      if (bar) bar.style.width = `${Math.round(replayPlayer.getProgress() * 100)}%`;
+      renderer.render(scene, camera);
+      return;
+    } else {
+      // Replay ended — auto-cleanup
+      stopReplayPlayback();
+    }
   }
 
   // ── Paused: render but don't update physics ──

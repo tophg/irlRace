@@ -519,10 +519,14 @@ function buildKerbs(spline: THREE.CatmullRomCurve3, curvatures: number[]): THREE
     const colors: number[] = [];
     const indices: number[] = [];
     let vertCount = 0;
+    let prevWasKerb = false;
 
     for (let i = 0; i < points.length; i++) {
       const kappa = Math.abs(curvatures[Math.min(i, curvatures.length - 1)] || 0);
-      if (kappa < kerbThreshold) continue;
+      if (kappa < kerbThreshold) {
+        prevWasKerb = false;
+        continue;
+      }
 
       const t = i / (points.length - 1);
       const tangent = spline.getTangentAt(t).normalize();
@@ -530,29 +534,28 @@ function buildKerbs(spline: THREE.CatmullRomCurve3, curvatures: number[]): THREE
       const p = points[i];
       const edgeOffset = ROAD_WIDTH / 2;
 
-      // Inner edge (road side)
       const ix = p.x + rx * edgeOffset * side;
       const iz = p.z + rz * edgeOffset * side;
-      // Outer edge
       const ox = p.x + rx * (edgeOffset + kerbWidth) * side;
       const oz = p.z + rz * (edgeOffset + kerbWidth) * side;
 
       vertices.push(ix, p.y + 0.03, iz);
       vertices.push(ox, p.y + 0.06, oz);
 
-      // Alternating red/white based on spline distance
       const isRed = Math.floor(t * 60) % 2 === 0;
       const r = isRed ? 0.85 : 0.95;
       const g = isRed ? 0.1 : 0.95;
       const b = isRed ? 0.1 : 0.95;
       colors.push(r, g, b, r, g, b);
 
-      if (vertCount >= 2) {
+      // Only connect to previous pair if it was also a kerb (no gap stretching)
+      if (prevWasKerb && vertCount >= 2) {
         const base = vertCount - 2;
         indices.push(base, base + 1, base + 2);
         indices.push(base + 1, base + 3, base + 2);
       }
       vertCount += 2;
+      prevWasKerb = true;
     }
 
     if (vertCount < 4) continue;
@@ -656,7 +659,7 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
       _m.makeScale(b.bw!, b.bh!, b.bd!);
       _m.setPosition(b.x, b.y + b.bh! / 2, b.z);
       blockIM.setMatrixAt(i, _m);
-      const grey = 0.3 + Math.random() * 0.3;
+      const grey = 0.3 + (i / Math.max(blocks.length, 1)) * 0.3;
       _c.setRGB(grey, grey, grey);
       blockIM.setColorAt(i, _c);
     }

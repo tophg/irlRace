@@ -63,8 +63,9 @@ export class AIRacer {
   constructor(id: string, def: CarDef, personalityIndex?: number) {
     this.id = id;
     this.vehicle = new Vehicle(def);
+    const pidx = personalityIndex ?? (parseInt(id.replace('ai_', ''), 10) || 0);
     this.personality = { ...DEFAULT_PERSONALITIES[
-      (personalityIndex ?? parseInt(id.replace('ai_', ''), 10)) % DEFAULT_PERSONALITIES.length
+      Math.abs(pidx) % DEFAULT_PERSONALITIES.length
     ] };
   }
 
@@ -137,7 +138,7 @@ export class AIRacer {
     if (this.speedProfile) {
       // Look ahead for braking — check speed at current pos AND at brake lookahead
       const currentOptimal = getSpeedProfileAt(this.speedProfile, this.currentT);
-      const brakeT = (this.currentT + LA_BRAKE * (1 + p.aggression * 0.5)) % 1;
+      const brakeT = (this.currentT + LA_BRAKE * (1.3 - p.aggression * 0.5)) % 1;
       const brakeOptimal = getSpeedProfileAt(this.speedProfile, brakeT);
 
       // Aggressive drivers brake later (use less of the upcoming corner's speed limit)

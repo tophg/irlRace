@@ -393,7 +393,8 @@ export class NetPeer {
 
     if (!s0 || !s1) return buf[buf.length - 1];
 
-    const t = (renderTime - s0.time) / (s1.time - s0.time);
+    const dt = s1.time - s0.time;
+    const t = dt > 0 ? (renderTime - s0.time) / dt : 0;
     return {
       x: s0.x + (s1.x - s0.x) * t,
       z: s0.z + (s1.z - s0.z) * t,
