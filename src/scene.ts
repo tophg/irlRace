@@ -46,7 +46,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     skyTop: 0x1a0a2e, skyBottom: 0xff6633, skyHorizon: 0xffaa44,
     hemiSky: 0xffddaa, hemiGround: 0x886633, hemiIntensity: 1.6,
     dirColor: 0xffcc88, dirIntensity: 3.0, dirPosition: [80, 30, 50],
-    groundColor: 0x8b7355, exposure: 1.6,
+    groundColor: 0x3a3530, exposure: 1.6,
   },
   {
     name: 'Coastal Sunset',
@@ -54,7 +54,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     skyTop: 0x0a1628, skyBottom: 0x2244aa, skyHorizon: 0xff6644,
     hemiSky: 0xaabbdd, hemiGround: 0x445566, hemiIntensity: 1.4,
     dirColor: 0xffaa77, dirIntensity: 3.0, dirPosition: [-60, 25, 60],
-    groundColor: 0x2a3040, exposure: 1.5,
+    groundColor: 0x1a2030, exposure: 1.5,
   },
 ];
 

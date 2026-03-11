@@ -529,7 +529,7 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
     const x = p.x + right.x * offset * side;
     const z = p.z + right.z * offset * side;
 
-    if (rng() > 0.3) {
+    if (rng() > 0.1) {
       const tree = createTree(rng);
       tree.position.set(x, p.y, z);
       group.add(tree);
