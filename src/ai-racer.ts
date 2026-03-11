@@ -181,6 +181,7 @@ export class AIRacer {
       left: steerInput < -0.12,
       right: steerInput > 0.12,
       boost: false,
+      steerAnalog: steerInput,
     };
 
     this.vehicle.update(dt, input, this.spline, this.bvh ?? undefined);

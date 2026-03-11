@@ -143,4 +143,5 @@ export interface InputState {
   left: boolean;
   right: boolean;
   boost: boolean;
+  steerAnalog: number; // -1..1 proportional steering (touch/tilt), 0 = center
 }

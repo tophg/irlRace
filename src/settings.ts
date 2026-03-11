@@ -8,6 +8,9 @@ export interface GameSettings {
   particles: number;       // 0.25–1.0 (multiplier on pool sizes)
   steerSensitivity: number; // 0.5–2.0
   playerName: string;
+  controlScheme: 'buttons' | 'tilt';
+  touchOpacity: number;    // 0.3–1.0
+  touchScale: number;      // 0.6–1.2
 }
 
 const STORAGE_KEY = 'hr-settings';
@@ -20,6 +23,9 @@ const DEFAULT_SETTINGS: GameSettings = {
   particles: 1.0,
   steerSensitivity: 1.0,
   playerName: '',
+  controlScheme: 'buttons',
+  touchOpacity: 0.8,
+  touchScale: 1.0,
 };
 
 let current: GameSettings = { ...DEFAULT_SETTINGS };
@@ -103,6 +109,23 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
         <input type="range" min="50" max="200" value="${Math.round(s.steerSensitivity * 100)}" id="set-steer">
         <span class="set-val" id="set-steer-val">${Math.round(s.steerSensitivity * 100)}%</span>
       </label>
+      <label class="settings-row">
+        <span>Control Scheme</span>
+        <select id="set-control-scheme">
+          <option value="buttons" ${s.controlScheme === 'buttons' ? 'selected' : ''}>Touch Buttons</option>
+          <option value="tilt" ${s.controlScheme === 'tilt' ? 'selected' : ''}>Tilt Steering</option>
+        </select>
+      </label>
+      <label class="settings-row">
+        <span>Touch Opacity</span>
+        <input type="range" min="30" max="100" value="${Math.round(s.touchOpacity * 100)}" id="set-touch-opacity">
+        <span class="set-val" id="set-touch-opacity-val">${Math.round(s.touchOpacity * 100)}%</span>
+      </label>
+      <label class="settings-row">
+        <span>Touch Size</span>
+        <input type="range" min="60" max="120" value="${Math.round(s.touchScale * 100)}" id="set-touch-scale">
+        <span class="set-val" id="set-touch-scale-val">${Math.round(s.touchScale * 100)}%</span>
+      </label>
 
       <div class="settings-section">PLAYER</div>
       <label class="settings-row">
@@ -131,6 +154,8 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
   wireSlider('set-sfx');
   wireSlider('set-particles');
   wireSlider('set-steer');
+  wireSlider('set-touch-opacity');
+  wireSlider('set-touch-scale');
 
   settingsEl.querySelector('#set-save')!.addEventListener('click', () => {
     const get = (id: string) => parseInt((settingsEl!.querySelector(`#${id}`) as HTMLInputElement).value);
@@ -142,6 +167,9 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
       particles: get('set-particles') / 100,
       steerSensitivity: get('set-steer') / 100,
       playerName: ((settingsEl!.querySelector('#set-name') as HTMLInputElement).value || '').trim().toUpperCase(),
+      controlScheme: (settingsEl!.querySelector('#set-control-scheme') as HTMLSelectElement).value as 'buttons' | 'tilt',
+      touchOpacity: get('set-touch-opacity') / 100,
+      touchScale: get('set-touch-scale') / 100,
     });
     destroySettings();
   });

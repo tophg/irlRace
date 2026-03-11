@@ -174,7 +174,9 @@ export class Vehicle {
     // ── Input mapping ──
     this.throttle = input.up ? 1 : 0;
     this.brake = input.down ? 1 : 0;
-    this.steerTarget = (input.left ? 1 : 0) + (input.right ? -1 : 0);
+    this.steerTarget = input.steerAnalog !== 0
+      ? input.steerAnalog
+      : (input.left ? 1 : 0) + (input.right ? -1 : 0);
 
     // Smooth steer interpolation (steerSpeed controls responsiveness)
     this.steer += (this.steerTarget - this.steer) * Math.min(1, def.steerSpeed * dt);
