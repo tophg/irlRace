@@ -119,7 +119,16 @@ export function initGarage(
 
   // UI
   buildGarageUI(overlay);
+
+  // Preload all car models in background for instant switching
+  preloadAllModels();
+
   showCar(0);
+}
+
+async function preloadAllModels() {
+  const promises = CAR_ROSTER.map(car => loadCarModel(car.file).catch(() => null));
+  await Promise.all(promises);
 }
 
 function buildGarageUI(overlay: HTMLElement) {
@@ -154,14 +163,15 @@ function buildGarageUI(overlay: HTMLElement) {
   });
 }
 
+let showCarRequestId = 0;
+
 async function showCar(index: number) {
   const car = CAR_ROSTER[index];
+  const requestId = ++showCarRequestId;
 
-  // Update name
   const nameEl = document.getElementById('garage-car-name');
   if (nameEl) nameEl.textContent = car.name;
 
-  // Update stat bars
   const statsEl = document.getElementById('garage-stats');
   if (statsEl) {
     const maxStat = { speed: 80, accel: 36, handling: 3, drift: 0.5 };
@@ -185,19 +195,26 @@ async function showCar(index: number) {
     `;
   }
 
-  // Load 3D model
   if (currentModel) {
     garageScene.remove(currentModel);
     currentModel = null;
   }
 
+  // Show loading state
+  if (nameEl) nameEl.textContent = `${car.name}  LOADING...`;
+
   try {
     const model = await loadCarModel(car.file);
+    // Guard against rapid navigation — only apply if this is still the current request
+    if (requestId !== showCarRequestId) return;
     model.position.y = 0.25;
     garageScene.add(model);
     currentModel = model;
+    if (nameEl) nameEl.textContent = car.name;
   } catch (err) {
-    console.warn('Failed to load car model:', car.file, err);
+    if (requestId === showCarRequestId && nameEl) {
+      nameEl.textContent = `${car.name}  (load failed)`;
+    }
   }
 }
 
