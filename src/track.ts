@@ -59,7 +59,7 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   const { curvatures, speedProfile } = computeProfiles(finalSpline);
 
   // ── 7. Build meshes ──
-  const roadMesh = buildRoadMesh(finalSpline, curvatures);
+  const roadMesh = buildRoadMesh(finalSpline, curvatures, rng);
   const barrierLeft = buildBarrierMesh(finalSpline, -1);
   const barrierRight = buildBarrierMesh(finalSpline, 1);
 
@@ -376,7 +376,7 @@ const _meshBankQuat = new THREE.Quaternion();
 const _meshBankedRight = new THREE.Vector3();
 const _meshBankedUp = new THREE.Vector3();
 
-function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[]): THREE.Mesh {
+function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[], rng: () => number): THREE.Mesh {
   const points = spline.getSpacedPoints(SPLINE_SAMPLES);
   const vertices: number[] = [];
   const indices: number[] = [];
@@ -433,7 +433,7 @@ function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[]): TH
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geo.setIndex(indices);
 
-  const roadTex = createRoadTexture();
+  const roadTex = createRoadTexture(rng);
   const mat = new THREE.MeshStandardMaterial({
     map: roadTex,
     roughness: 0.7,
@@ -446,7 +446,7 @@ function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[]): TH
   return mesh;
 }
 
-function createRoadTexture(): THREE.CanvasTexture {
+function createRoadTexture(rng: () => number): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = 256; canvas.height = 256;
   const ctx = canvas.getContext('2d')!;
@@ -455,9 +455,9 @@ function createRoadTexture(): THREE.CanvasTexture {
   ctx.fillRect(0, 0, 256, 256);
 
   for (let i = 0; i < 3000; i++) {
-    const x = Math.random() * 256;
-    const y = Math.random() * 256;
-    const b = 50 + Math.random() * 30;
+    const x = rng() * 256;
+    const y = rng() * 256;
+    const b = 50 + rng() * 30;
     ctx.fillStyle = `rgb(${b},${b},${b + 5})`;
     ctx.fillRect(x, y, 1, 1);
   }

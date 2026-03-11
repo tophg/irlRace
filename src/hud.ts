@@ -1,6 +1,7 @@
 /* ── Hood Racer — HUD ── */
 
 import * as THREE from 'three';
+import type { DamageState } from './types';
 
 let hudEl: HTMLElement;
 let speedEl: HTMLElement;
@@ -9,6 +10,11 @@ let positionEl: HTMLElement;
 let wrongWayEl: HTMLElement;
 let minimapCanvas: HTMLCanvasElement;
 let minimapCtx: CanvasRenderingContext2D;
+
+// Cached minimap data (computed once per track)
+let cachedMinimapPoints: THREE.Vector3[] | null = null;
+let cachedMinimapSpline: THREE.CatmullRomCurve3 | null = null;
+let cachedMinX = 0, cachedMaxX = 0, cachedMinZ = 0, cachedMaxZ = 0;
 
 export function createHUD(overlay: HTMLElement): HTMLElement {
   hudEl = document.createElement('div');
@@ -19,6 +25,13 @@ export function createHUD(overlay: HTMLElement): HTMLElement {
     <div class="hud-position" id="hud-position">1<sup>st</sup></div>
     <div class="hud-wrong-way" id="hud-wrong-way">⚠ WRONG WAY</div>
     <canvas class="hud-minimap" id="hud-minimap" width="160" height="160"></canvas>
+    <div class="hud-damage" id="hud-damage">
+      <div class="dmg-zone dmg-front" id="dmg-front"></div>
+      <div class="dmg-zone dmg-rear" id="dmg-rear"></div>
+      <div class="dmg-zone dmg-left" id="dmg-left"></div>
+      <div class="dmg-zone dmg-right" id="dmg-right"></div>
+      <div class="dmg-body"></div>
+    </div>
   `;
   overlay.appendChild(hudEl);
 
@@ -60,6 +73,21 @@ export function updateMinimap(
 ) {
   if (!minimapCtx) return;
 
+  // Cache spline points and bounds (recompute only when spline changes)
+  if (cachedMinimapSpline !== spline) {
+    cachedMinimapSpline = spline;
+    cachedMinimapPoints = spline.getSpacedPoints(100);
+    cachedMinX = Infinity; cachedMaxX = -Infinity;
+    cachedMinZ = Infinity; cachedMaxZ = -Infinity;
+    for (const p of cachedMinimapPoints) {
+      cachedMinX = Math.min(cachedMinX, p.x);
+      cachedMaxX = Math.max(cachedMaxX, p.x);
+      cachedMinZ = Math.min(cachedMinZ, p.z);
+      cachedMaxZ = Math.max(cachedMaxZ, p.z);
+    }
+  }
+
+  const points = cachedMinimapPoints!;
   const w = minimapCanvas.width;
   const h = minimapCanvas.height;
   minimapCtx.clearRect(0, 0, w, h);
@@ -68,21 +96,15 @@ export function updateMinimap(
   minimapCtx.fillStyle = 'rgba(10,10,15,0.7)';
   minimapCtx.fillRect(0, 0, w, h);
 
-  // Find bounds from spline
-  const points = spline.getSpacedPoints(100);
-  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-  for (const p of points) {
-    minX = Math.min(minX, p.x);
-    maxX = Math.max(maxX, p.x);
-    minZ = Math.min(minZ, p.z);
-    maxZ = Math.max(maxZ, p.z);
-  }
-  const rangeX = maxX - minX || 1;
-  const rangeZ = maxZ - minZ || 1;
+  const rangeX = cachedMaxX - cachedMinX || 1;
+  const rangeZ = cachedMaxZ - cachedMinZ || 1;
   const margin = 12;
   const scaleX = (w - margin * 2) / rangeX;
   const scaleZ = (h - margin * 2) / rangeZ;
   const scale = Math.min(scaleX, scaleZ);
+
+  const minX = cachedMinX;
+  const minZ = cachedMinZ;
 
   const toMap = (p: THREE.Vector3) => ({
     x: margin + (p.x - minX) * scale,
@@ -123,10 +145,30 @@ export function updateMinimap(
   minimapCtx.stroke();
 }
 
+function dmgColor(hp: number): string {
+  if (hp > 70) return '#4caf50';
+  if (hp > 40) return '#ffcc00';
+  if (hp > 15) return '#ff6600';
+  return '#ff1744';
+}
+
+export function updateDamageHUD(damage: DamageState) {
+  const set = (id: string, hp: number) => {
+    const el = document.getElementById(id);
+    if (el) el.style.backgroundColor = dmgColor(hp);
+  };
+  set('dmg-front', damage.front.hp);
+  set('dmg-rear', damage.rear.hp);
+  set('dmg-left', damage.left.hp);
+  set('dmg-right', damage.right.hp);
+}
+
 export function showHUD(visible: boolean) {
   if (hudEl) hudEl.style.display = visible ? 'block' : 'none';
 }
 
 export function destroyHUD() {
   if (hudEl) hudEl.remove();
+  cachedMinimapPoints = null;
+  cachedMinimapSpline = null;
 }

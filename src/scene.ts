@@ -49,7 +49,7 @@ export function initScene(container: HTMLElement) {
   scene.add(dirLight);
 
   // Ground plane (asphalt)
-  const groundGeo = new THREE.PlaneGeometry(600, 600);
+  const groundGeo = new THREE.PlaneGeometry(1200, 1200);
   const groundMat = new THREE.MeshStandardMaterial({
     color: 0x222228,
     roughness: 0.85,

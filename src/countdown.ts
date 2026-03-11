@@ -1,17 +1,23 @@
 /* ── Hood Racer — Countdown Overlay ── */
 
 let overlayEl: HTMLElement | null = null;
+let countdownTimers: number[] = [];
+let countdownAudioCtx: AudioContext | null = null;
 
 /** Run the 3-2-1-GO countdown sequence. Returns a promise that resolves on GO. */
 export function runCountdown(uiOverlay: HTMLElement): Promise<void> {
   return new Promise((resolve) => {
+    forceStopCountdown();
+
     overlayEl = document.createElement('div');
     overlayEl.className = 'countdown-overlay';
     uiOverlay.appendChild(overlayEl);
 
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    countdownAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const audioCtx = countdownAudioCtx;
 
     const playBeep = (freq: number, duration: number) => {
+      if (!audioCtx || audioCtx.state === 'closed') return;
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = 'sine';
@@ -31,8 +37,10 @@ export function runCountdown(uiOverlay: HTMLElement): Promise<void> {
       { text: 'GO!', css: 'countdown-go', delay: 2700 },
     ];
 
+    countdownTimers = [];
+
     sequence.forEach(({ text, css, delay }) => {
-      setTimeout(() => {
+      const id = window.setTimeout(() => {
         if (!overlayEl) return;
         overlayEl.innerHTML = `<div class="${css}">${text}</div>`;
 
@@ -42,22 +50,30 @@ export function runCountdown(uiOverlay: HTMLElement): Promise<void> {
           playBeep(880, 0.15);
         }
       }, delay);
+      countdownTimers.push(id);
     });
 
-    // Auto-remove and resolve after sequence
-    setTimeout(() => {
-      if (overlayEl) {
-        overlayEl.remove();
-        overlayEl = null;
-      }
+    const finishId = window.setTimeout(() => {
+      cleanupCountdown();
       resolve();
     }, 3400);
+    countdownTimers.push(finishId);
   });
 }
 
-export function forceStopCountdown() {
+function cleanupCountdown() {
   if (overlayEl) {
     overlayEl.remove();
     overlayEl = null;
   }
+  if (countdownAudioCtx) {
+    try { countdownAudioCtx.close(); } catch {}
+    countdownAudioCtx = null;
+  }
+}
+
+export function forceStopCountdown() {
+  for (const id of countdownTimers) clearTimeout(id);
+  countdownTimers = [];
+  cleanupCountdown();
 }

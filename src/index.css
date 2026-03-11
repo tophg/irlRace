@@ -448,7 +448,7 @@ canvas { display: block; }
   display: flex; flex-direction: column; gap: 8px;
   padding: 12px;
 }
-.touch-gas, .touch-brake {
+.touch-gas, .touch-brake, .touch-boost {
   flex: 1;
   border-radius: var(--radius);
   display: flex; align-items: center; justify-content: center;
@@ -458,5 +458,33 @@ canvas { display: block; }
 }
 .touch-gas { background: rgba(57,255,20,0.15); border: 2px solid rgba(57,255,20,0.3); color: var(--col-green); }
 .touch-brake { background: rgba(255,23,68,0.15); border: 2px solid rgba(255,23,68,0.3); color: var(--col-red); }
+.touch-boost { background: rgba(0,229,255,0.15); border: 2px solid rgba(0,229,255,0.3); color: var(--col-cyan); }
 .touch-gas:active { background: rgba(57,255,20,0.3); }
 .touch-brake:active { background: rgba(255,23,68,0.3); }
+.touch-boost:active { background: rgba(0,229,255,0.3); }
+
+/* ── Damage Indicator ── */
+.hud-damage {
+  position: absolute;
+  bottom: 120px; right: 24px;
+  width: 40px; height: 64px;
+  pointer-events: none;
+}
+.dmg-body {
+  position: absolute;
+  top: 12px; left: 10px;
+  width: 20px; height: 40px;
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 4px;
+  background: rgba(10,10,15,0.5);
+}
+.dmg-zone {
+  position: absolute;
+  border-radius: 2px;
+  transition: background-color 0.3s;
+  background: #4caf50;
+}
+.dmg-front { top: 2px; left: 12px; width: 16px; height: 8px; border-radius: 4px 4px 2px 2px; }
+.dmg-rear  { bottom: 2px; left: 12px; width: 16px; height: 8px; border-radius: 2px 2px 4px 4px; }
+.dmg-left  { top: 16px; left: 2px; width: 6px; height: 32px; }
+.dmg-right { top: 16px; right: 2px; width: 6px; height: 32px; }

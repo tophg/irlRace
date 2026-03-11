@@ -11,6 +11,7 @@ export function initAudio() {
   if (audioCtx) { try { audioCtx.close(); } catch {} audioCtx = null; }
 
   audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
 
   // Engine drone
   engineOsc = audioCtx.createOscillator();
@@ -117,13 +118,52 @@ export function playDriftSFX(intensity: number) {
   source.start();
 }
 
+let collisionSfxCooldown = 0;
+
+/** Play metallic collision impact sound. intensity 0–1. */
+export function playCollisionSFX(intensity: number) {
+  if (!audioCtx || intensity < 0.1) return;
+  const now = audioCtx.currentTime;
+  if (now - collisionSfxCooldown < 0.08) return;
+  collisionSfxCooldown = now;
+
+  // Metallic clang: short burst of white noise + resonant filter
+  const bufferSize = Math.floor(audioCtx.sampleRate * (0.08 + intensity * 0.12));
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    const env = Math.exp(-i / (bufferSize * 0.3));
+    data[i] = (Math.random() * 2 - 1) * env;
+  }
+
+  const source = audioCtx.createBufferSource();
+  source.buffer = buffer;
+
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.value = 800 + intensity * 600;
+  filter.Q.value = 3;
+
+  const hiFilter = audioCtx.createBiquadFilter();
+  hiFilter.type = 'highshelf';
+  hiFilter.frequency.value = 2000;
+  hiFilter.gain.value = intensity * 8;
+
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.1 + intensity * 0.15, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15 + intensity * 0.1);
+
+  source.connect(filter);
+  filter.connect(hiFilter);
+  hiFilter.connect(gain);
+  gain.connect(audioCtx.destination);
+  source.start();
+  source.stop(audioCtx.currentTime + 0.25);
+}
+
 export function stopAudio() {
-  if (engineOsc) {
-    engineOsc.stop();
-    engineOsc = null;
-  }
-  if (audioCtx) {
-    audioCtx.close();
-    audioCtx = null;
-  }
+  if (engineOsc) { try { engineOsc.stop(); } catch {} engineOsc = null; }
+  engineGain = null;
+  collisionSfxCooldown = 0;
+  if (audioCtx) { try { audioCtx.close(); } catch {} audioCtx = null; }
 }

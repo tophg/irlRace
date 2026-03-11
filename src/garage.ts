@@ -1,6 +1,7 @@
 /* ── Hood Racer — Garage / Car Selection Scene ── */
 
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { CAR_ROSTER, CarDef } from './types';
 import { loadCarModel } from './loaders';
 
@@ -76,15 +77,12 @@ export function initGarage(
   garageScene.add(underglow);
 
   // Environment map for reflections
-  if (THREE.PMREMGenerator) {
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    try {
-      const RoomEnvCtor = (THREE as any).RoomEnvironment;
-        const env = pmrem.fromScene(RoomEnvCtor ? new RoomEnvCtor() : new THREE.Scene()).texture;
-      garageScene.environment = env;
-    } catch { /* fallback: no envmap */ }
-    pmrem.dispose();
-  }
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  try {
+    const env = pmrem.fromScene(new RoomEnvironment()).texture;
+    garageScene.environment = env;
+  } catch { /* fallback: no envmap */ }
+  pmrem.dispose();
 
   // Turntable platform — polished dark surface
   const platGeo = new THREE.CylinderGeometry(3.5, 3.8, 0.12, 64);

@@ -95,6 +95,7 @@ export class RaceEngine {
       // DNF always last
       if (a.dnf && !b.dnf) return 1;
       if (!a.dnf && b.dnf) return -1;
+      if (a.dnf && b.dnf) return 0;
 
       if (a.finished && !b.finished) return -1;
       if (!a.finished && b.finished) return 1;

@@ -35,7 +35,11 @@ export class AIRacer {
 
   /** Set rubber-banding speed multiplier based on distance to player. */
   setRubberBand(playerT: number) {
-    const diff = playerT - this.currentT;
+    // Wrap-aware signed distance on the circular [0,1) track parameter
+    let diff = playerT - this.currentT;
+    if (diff > 0.5) diff -= 1.0;
+    else if (diff < -0.5) diff += 1.0;
+
     if (diff > 0.1) {
       // Player is ahead — speed up
       this.rubberBandTarget = 1.0 + Math.min(diff * 2, 0.6);

@@ -1,7 +1,7 @@
-/* ── Hood Racer — Arcade Vehicle Physics (v2 — Friction Circle) ── */
+/* ── Hood Racer — Arcade Vehicle Physics (v3 — Pacejka + Bicycle Model) ── */
 
 import * as THREE from 'three';
-import { CarDef, InputState, VehicleState } from './types';
+import { CarDef, InputState, VehicleState, DamageState, createDamageState } from './types';
 import { getClosestSplinePoint } from './track';
 import type { SplineBVH } from './bvh';
 
@@ -10,6 +10,23 @@ const _carForward = new THREE.Vector3();
 const _carRight = new THREE.Vector3();
 const _temp = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
+const _rayOrigin = new THREE.Vector3();
+const _rayDown = new THREE.Vector3(0, -1, 0);
+
+// Wheel attachment geometry (local frame)
+const WHEEL_SIDE_X = 0.85;
+const WHEEL_FRONT_Z = -1.3;
+const WHEEL_REAR_Z = 1.3;
+const WHEELBASE = 2.6;    // |frontZ - rearZ|
+const TRACK_WIDTH = 1.7;  // sideX * 2
+const AXLE_FRONT = 1.3;   // CG to front axle
+const AXLE_REAR = 1.3;    // CG to rear axle
+
+/** Simplified Pacejka Magic Formula (E=0): D·sin(C·atan(B·x)) */
+function pacejka(slip: number, B: number, C: number, D: number): number {
+  const Bx = B * slip;
+  return D * Math.sin(C * Math.atan(Bx));
+}
 
 export class Vehicle {
   readonly group: THREE.Group;
@@ -46,9 +63,19 @@ export class Vehicle {
   private wheelRR: THREE.Mesh | null = null;
   private wheelSpin = 0;
 
+  // Road-mesh raycast state
+  private roadMesh: THREE.Mesh | null = null;
+  private raycaster = new THREE.Raycaster();
+  private _roadPitch = 0;
+  private _roadRoll = 0;
+
+  // Damage
+  damage: DamageState = createDamageState();
+
   constructor(def: CarDef) {
     this.def = def;
     this.group = new THREE.Group();
+    this.group.rotation.order = 'YXZ';
     this.bodyGroup = new THREE.Group();
     this.group.add(this.bodyGroup);
   }
@@ -58,6 +85,23 @@ export class Vehicle {
     this.model = model;
     this.bodyGroup.add(model);
     this.buildWheels();
+  }
+
+  /** Set the road mesh used for per-wheel raycasting. */
+  setRoadMesh(mesh: THREE.Mesh) {
+    this.roadMesh = mesh;
+  }
+
+  /** Cast a single ray downward from a wheel's world position and return the hit Y, or null. */
+  private castWheelRay(sinH: number, cosH: number, localX: number, localZ: number): number | null {
+    if (!this.roadMesh) return null;
+    const wx = this.group.position.x + cosH * localX + sinH * localZ;
+    const wz = this.group.position.z - sinH * localX + cosH * localZ;
+    _rayOrigin.set(wx, this.group.position.y + 15, wz);
+    this.raycaster.set(_rayOrigin, _rayDown);
+    this.raycaster.far = 30;
+    const hits = this.raycaster.intersectObject(this.roadMesh, false);
+    return hits.length > 0 ? hits[0].point.y : null;
   }
 
   private buildWheels() {
@@ -135,79 +179,94 @@ export class Vehicle {
     const vForward = this._velX * sinH + this._velZ * cosH;
     const vLateral = this._velX * cosH - this._velZ * sinH;
 
-    // ── Longitudinal forces ──
-    let longForce = 0;
-    if (this.throttle > 0) {
-      longForce += def.acceleration * this.throttle;
-    }
-    if (this.brake > 0) {
-      longForce -= def.braking * this.brake;
-    }
-
-    // Air drag (proportional to v²)
-    const dragCoeff = 0.002;
-    longForce -= vForward * Math.abs(vForward) * dragCoeff;
-
-    // Rolling resistance
-    longForce -= vForward * 0.8;
-
-    // ── Lateral force (slip-angle lite) ──
-    // lateralForce pulls the car sideways velocity back toward zero
-    const latForce = -vLateral * def.latFriction;
-
-    // ── FRICTION CIRCLE ──
-    // Total grip available = gripCoeff × "weight" (simplified as constant)
-    const frictionBudget = def.gripCoeff * 50; // normalised force units
-    const combinedForce = Math.sqrt(longForce * longForce + latForce * latForce);
-
-    let appliedLong = longForce;
-    let appliedLat = latForce;
-
-    if (combinedForce > frictionBudget) {
-      // Exceeds grip budget — scale both forces down proportionally
-      const scale = frictionBudget / combinedForce;
-      appliedLong *= scale;
-      appliedLat *= scale;
-    }
-
-    // ── Apply forces in car-local space, then convert back to world ──
-    const newVForward = vForward + appliedLong * dt;
-    const newVLateral = vLateral + appliedLat * dt;
-
-    // Boost
-    const boostedMax = input.boost ? def.maxSpeed * 1.4 : def.maxSpeed;
-
-    // Clamp forward speed
-    const clampedForward = Math.max(-def.maxSpeed * 0.3, Math.min(newVForward, boostedMax));
-
-    // Convert back to world XZ
-    this._velX = clampedForward * sinH + newVLateral * cosH;
-    this._velZ = clampedForward * cosH - newVLateral * sinH;
-
-    // ── Speed-sensitive steering ──
+    // ── Speed metrics ──
     const absSpeed = Math.abs(vForward);
     const speedRatio = Math.min(absSpeed / def.maxSpeed, 1);
 
-    // Max steer angle decreases with speed
-    const steerMax = def.handling / (1 + absSpeed * 0.04);
-    const headingDelta = this.steer * steerMax * dt;
+    // ── Damage penalties ──
+    const dmg = this.damage;
+    const accelMult  = 1 - (1 - dmg.front.hp / 100) * 0.4;
+    const maxSpdMult = 1 - (1 - dmg.rear.hp / 100) * 0.2;
+    const steerBias  = ((1 - dmg.right.hp / 100) - (1 - dmg.left.hp / 100)) * 0.15;
+    const severeAny  = Math.min(dmg.front.hp, dmg.rear.hp, dmg.left.hp, dmg.right.hp) < 30;
+    const globalMult = severeAny ? 0.5 : 1;
 
+    // ── Longitudinal forces ──
+    // Tyre forces (throttle/brake) — used for friction circle
+    let tyreForce = 0;
+    if (this.throttle > 0) tyreForce += def.acceleration * this.throttle * accelMult * globalMult;
+    if (this.brake > 0)    tyreForce -= def.braking * this.brake;
+    // Aero/rolling resistance added separately (not part of tyre budget)
+    const dragForce = vForward * Math.abs(vForward) * 0.002 + vForward * 0.8;
+    const longForce = tyreForce - dragForce;
+
+    // ── Per-axle slip angles (bicycle model) ──
+    const vLatFront = vLateral + this.angularVel * AXLE_FRONT;
+    const vLatRear  = vLateral - this.angularVel * AXLE_REAR;
+    const vFwdClamped = Math.max(absSpeed, 1.5);
+
+    const maxSteerAngle = 0.35;
+    const steerAngle = (this.steer + steerBias) * maxSteerAngle / (1 + absSpeed * 0.025);
+    const signFwd = vForward >= 0 ? 1 : -1;
+
+    const alphaFront = Math.atan2(vLatFront, vFwdClamped) - steerAngle * signFwd;
+    const alphaRear  = Math.atan2(vLatRear, vFwdClamped);
+
+    // ── Weight transfer ──
+    const totalGrip = Math.max(def.gripCoeff * 50, 1);
+    // Only tyre forces count for friction circle, not drag
+    const longUsage = Math.min(Math.abs(tyreForce) / totalGrip, 0.9);
+    const weightShift = (tyreForce / totalGrip) * def.cgHeight;
+    const frontGrip = Math.max(0.15, def.frontBias - weightShift);
+    const rearGrip  = Math.max(0.15, (1 - def.frontBias) + weightShift);
+
+    // Friction circle: lateral budget shrinks when longitudinal tyre force is saturated
+    const latBudget = Math.sqrt(Math.max(0, 1 - longUsage * longUsage));
+
+    // ── Pacejka lateral forces per axle ──
+    const B = def.latFriction * 1.4;
+    const C = 1.4;
+    const frontPeak = totalGrip * frontGrip * 2 * latBudget * globalMult;
+    const rearPeak  = totalGrip * rearGrip  * 2 * latBudget * globalMult;
+
+    const frontLatF = -pacejka(alphaFront, B, C, frontPeak);
+    const rearLatF  = -pacejka(alphaRear,  B, C, rearPeak);
+
+    // ── Yaw torque from tyre forces ──
+    const yawTorque = frontLatF * AXLE_FRONT - rearLatF * AXLE_REAR;
+    const yawInertia = def.mass * 0.004;
+
+    // ── Integrate velocity ──
+    const newVForward = vForward + longForce * dt;
+    const boostedMax = input.boost ? def.maxSpeed * 1.4 * maxSpdMult : def.maxSpeed * maxSpdMult;
+    const clampedFwd = Math.max(-def.maxSpeed * 0.3, Math.min(newVForward, boostedMax));
+
+    const totalLatAccel = frontLatF + rearLatF;
+    const newVLateral = vLateral + totalLatAccel * dt;
+
+    this._velX = clampedFwd * sinH + newVLateral * cosH;
+    this._velZ = clampedFwd * cosH - newVLateral * sinH;
+
+    // ── Steering: blend kinematic (snappy arcade) + physics (natural limits) ──
+    const kinBlend = 1 / (1 + absSpeed * 0.06);
+    const kinSteer = this.steer * def.handling * dt / (1 + absSpeed * 0.04);
     if (absSpeed > 0.5) {
-      this.angularVel += headingDelta * Math.sign(vForward);
+      this.angularVel += kinSteer * signFwd * kinBlend;
+      this.angularVel += (yawTorque / yawInertia) * dt * (1 - kinBlend * 0.5);
     }
 
-    // ── Auto-countersteer ──
-    // When sliding, apply partial angular correction (reduced when drift button held)
+    // ── Auto-countersteer (reduced — tyre forces now provide natural correction) ──
     const slideAngle = Math.atan2(Math.abs(vLateral), Math.max(absSpeed, 0.5));
-    const driftHeld = input.boost ? 0.15 : 1.0;
-    const autoCorrect = -this.angularVel * 0.3 * driftHeld * slideAngle;
-    this.angularVel += autoCorrect * dt;
+    const driftHeld = input.boost ? 0.1 : 0.5;
+    this.angularVel *= 1 - Math.min(1, 3.0 * driftHeld * slideAngle * dt);
 
-    // Angular damping
-    this.angularVel *= (1 - 2.5 * dt);
+    // Angular damping (frame-rate independent)
+    this.angularVel *= Math.exp(-2.5 * dt);
 
     // Apply angular velocity to heading
     this.heading += this.angularVel * dt;
+    // Keep heading in [0, 2π) to prevent accumulation overflow in network encoding
+    this.heading = ((this.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
     // ── Drift angle (for VFX / audio / visuals) ──
     this.driftAngle = Math.atan2(-vLateral, Math.max(absSpeed, 1)) * def.driftFactor * 5;
@@ -227,50 +286,110 @@ export class Vehicle {
     this.group.position.x += this._velX * dt;
     this.group.position.z += this._velZ * dt;
 
-    // ── Keep on road surface ──
-    if (spline) {
-      const nearest = bvh
+    // ── Keep on road surface (per-wheel raycast with spline fallback) ──
+    let nearestSpline: { t: number; point: THREE.Vector3; distance: number } | null = null;
+    let usedRaycast = false;
+
+    if (this.roadMesh) {
+      const flY = this.castWheelRay(sinH, cosH, -WHEEL_SIDE_X, WHEEL_FRONT_Z);
+      const frY = this.castWheelRay(sinH, cosH, WHEEL_SIDE_X, WHEEL_FRONT_Z);
+      const rlY = this.castWheelRay(sinH, cosH, -WHEEL_SIDE_X, WHEEL_REAR_Z);
+      const rrY = this.castWheelRay(sinH, cosH, WHEEL_SIDE_X, WHEEL_REAR_Z);
+
+      const hitCount = (flY !== null ? 1 : 0) + (frY !== null ? 1 : 0) +
+                       (rlY !== null ? 1 : 0) + (rrY !== null ? 1 : 0);
+
+      if (hitCount >= 3) {
+        usedRaycast = true;
+        // Approximate any single missing wheel from its neighbor
+        const fl = flY ?? frY!;
+        const fr = frY ?? flY!;
+        const rl = rlY ?? rrY!;
+        const rr = rrY ?? rlY!;
+
+        // Car body height from 4 contact points
+        this.group.position.y = (fl + fr + rl + rr) / 4;
+
+        // Road surface pitch (positive = nose up)
+        const frontAvgY = (fl + fr) / 2;
+        const rearAvgY = (rl + rr) / 2;
+        const targetPitchRoad = Math.atan2(frontAvgY - rearAvgY, WHEELBASE);
+
+        // Road surface roll (positive = tilted right)
+        const leftAvgY = (fl + rl) / 2;
+        const rightAvgY = (fr + rr) / 2;
+        const targetRollRoad = Math.atan2(rightAvgY - leftAvgY, TRACK_WIDTH);
+
+        // Smooth alignment (frame-rate independent)
+        const alignFactor = 1 - Math.exp(-10 * dt);
+        this._roadPitch += (targetPitchRoad - this._roadPitch) * alignFactor;
+        this._roadRoll += (targetRollRoad - this._roadRoll) * alignFactor;
+      }
+    }
+
+    if (!usedRaycast && spline) {
+      nearestSpline = bvh
         ? getClosestSplinePoint(spline, this.group.position, bvh)
         : getClosestSplinePoint(spline, this.group.position, 200);
-      this.group.position.y = nearest.point.y;
+      this.group.position.y = nearestSpline.point.y;
 
-      // Soft barrier — push car back if too far from road
+      // Decay road alignment toward neutral when off road mesh
+      const decayFactor = 1 - Math.exp(-5 * dt);
+      this._roadPitch *= (1 - decayFactor);
+      this._roadRoll *= (1 - decayFactor);
+    }
+
+    // Soft barrier (uses spline centerline distance)
+    if (spline) {
+      if (!nearestSpline) {
+        nearestSpline = bvh
+          ? getClosestSplinePoint(spline, this.group.position, bvh)
+          : getClosestSplinePoint(spline, this.group.position, 200);
+      }
       const roadHalfWidth = 7;
-      if (nearest.distance > roadHalfWidth) {
-        const pushStrength = (nearest.distance - roadHalfWidth) * 0.5;
-        _temp.subVectors(nearest.point, this.group.position).normalize();
-        this.group.position.x += _temp.x * pushStrength;
-        this.group.position.z += _temp.z * pushStrength;
-        // Friction penalty on velocity
+      // Use XZ-only distance so road banking doesn't trigger the barrier
+      _temp.set(
+        this.group.position.x - nearestSpline.point.x,
+        0,
+        this.group.position.z - nearestSpline.point.z,
+      );
+      const xzDist = _temp.length();
+      if (xzDist > roadHalfWidth) {
+        const pushStrength = (xzDist - roadHalfWidth) * 0.5;
+        _temp.normalize();
+        this.group.position.x -= _temp.x * pushStrength;
+        this.group.position.z -= _temp.z * pushStrength;
         this._velX *= 0.92;
         this._velZ *= 0.92;
       }
     }
 
-    // ── Visual rotation ──
+    // ── Visual rotation (heading + road surface alignment) ──
     this.group.rotation.y = this.heading;
+    this.group.rotation.x = this._roadPitch;
+    this.group.rotation.z = this._roadRoll;
 
-    // Body pitch & roll (uses suspStiffness for intensity)
+    // Cosmetic body pitch & roll (throttle squat, brake dive, drift lean)
     const targetPitch = -this.throttle * speedRatio * 0.04 + this.brake * speedRatio * 0.06;
     const targetRoll = this.driftAngle * def.suspStiffness * 3;
-    this.bodyGroup.rotation.x += (targetPitch - this.bodyGroup.rotation.x) * 0.12;
-    this.bodyGroup.rotation.z += (targetRoll - this.bodyGroup.rotation.z) * 0.12;
+    const bodyLerp = 1 - Math.exp(-8 * dt);
+    this.bodyGroup.rotation.x += (targetPitch - this.bodyGroup.rotation.x) * bodyLerp;
+    this.bodyGroup.rotation.z += (targetRoll - this.bodyGroup.rotation.z) * bodyLerp;
 
     // Drift visual yaw offset
     this.bodyGroup.rotation.y = this.driftAngle * 0.03;
 
     // ── Wheel animation ──
-    this.wheelSpin += this.speed * dt * 3;
+    this.wheelSpin = (this.wheelSpin + this.speed * dt * 3) % (Math.PI * 2);
     if (this.wheelFL) {
       const steerRot = this.steer * 0.35;
-      if (this.wheelFL) this.wheelFL.rotation.y = steerRot;
+      this.wheelFL.rotation.y = steerRot;
       if (this.wheelFR) this.wheelFR.rotation.y = steerRot;
 
-      [this.wheelFL, this.wheelFR, this.wheelRL, this.wheelRR].forEach(w => {
-        if (w && w.children[0]) {
-          w.children[0].rotation.x = this.wheelSpin;
-        }
-      });
+      if (this.wheelFL.children[0]) this.wheelFL.children[0].rotation.x = this.wheelSpin;
+      if (this.wheelFR?.children[0]) this.wheelFR.children[0].rotation.x = this.wheelSpin;
+      if (this.wheelRL?.children[0]) this.wheelRL.children[0].rotation.x = this.wheelSpin;
+      if (this.wheelRR?.children[0]) this.wheelRR.children[0].rotation.x = this.wheelSpin;
     }
   }
 
@@ -292,6 +411,12 @@ export class Vehicle {
     this.group.position.copy(state.position);
     this.heading = state.heading;
     this.speed = state.speed;
+    this.steer = state.steer;
+    this.driftAngle = state.driftAngle;
+    const sinH = Math.sin(this.heading);
+    const cosH = Math.cos(this.heading);
+    this._velX = state.speed * sinH;
+    this._velZ = state.speed * cosH;
     this.group.rotation.y = this.heading;
   }
 
@@ -311,11 +436,89 @@ export class Vehicle {
 
     this.heading = Math.atan2(tangent.x, tangent.z);
     this.group.rotation.y = this.heading;
+    this.group.rotation.x = 0;
+    this.group.rotation.z = 0;
     this.speed = 0;
     this._velX = 0;
     this._velZ = 0;
     this.angularVel = 0;
     this.steer = 0;
     this.driftAngle = 0;
+    this._roadPitch = 0;
+    this._roadRoll = 0;
+    this.damage = createDamageState();
+  }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // DAMAGE
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  /**
+   * Apply collision damage. Determines the hit zone from the impact direction
+   * relative to the car's heading, reduces zone HP, and deforms the mesh.
+   */
+  applyDamage(impactDir: THREE.Vector3, impactForce: number) {
+    if (impactForce < 3) return;
+
+    const localDirX = impactDir.x * Math.cos(this.heading) - impactDir.z * Math.sin(this.heading);
+    const localDirZ = impactDir.x * Math.sin(this.heading) + impactDir.z * Math.cos(this.heading);
+
+    let zone: 'front' | 'rear' | 'left' | 'right';
+    if (Math.abs(localDirZ) > Math.abs(localDirX)) {
+      zone = localDirZ > 0 ? 'front' : 'rear';
+    } else {
+      zone = localDirX > 0 ? 'left' : 'right';
+    }
+
+    const dmgAmount = Math.min(impactForce * 1.5, 40);
+    this.damage[zone].hp = Math.max(0, this.damage[zone].hp - dmgAmount);
+    this.damage[zone].deformAmount += dmgAmount;
+
+    this.deformMesh(impactDir, impactForce);
+  }
+
+  /** Displace mesh vertices near the impact for visual crumple. */
+  private deformMesh(impactDir: THREE.Vector3, force: number) {
+    if (!this.model) return;
+
+    const radius = 1.5;
+    const strength = force * 0.008;
+    const worldImpactPoint = this.group.position.clone().add(impactDir.clone().multiplyScalar(2));
+
+    this.model.traverse((child) => {
+      if (!(child as THREE.Mesh).isMesh) return;
+      const mesh = child as THREE.Mesh;
+      const posAttr = mesh.geometry?.attributes?.position;
+      if (!posAttr) return;
+
+      const positions = posAttr.array as Float32Array;
+      const invMat = new THREE.Matrix4().copy(mesh.matrixWorld).invert();
+      const localImpact = worldImpactPoint.clone().applyMatrix4(invMat);
+      const localDir = impactDir.clone().transformDirection(invMat);
+
+      let changed = false;
+      const maxVerts = Math.min(positions.length / 3, 200);
+      for (let i = 0; i < maxVerts; i++) {
+        const idx = i * 3;
+        const dx = positions[idx] - localImpact.x;
+        const dy = positions[idx + 1] - localImpact.y;
+        const dz = positions[idx + 2] - localImpact.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        if (dist < radius) {
+          const falloff = (1 - dist / radius) * (1 - dist / radius);
+          const deform = strength * falloff;
+          positions[idx]     += localDir.x * deform + (Math.random() - 0.5) * deform * 0.3;
+          positions[idx + 1] += localDir.y * deform + (Math.random() - 0.5) * deform * 0.2;
+          positions[idx + 2] += localDir.z * deform + (Math.random() - 0.5) * deform * 0.3;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        posAttr.needsUpdate = true;
+        mesh.geometry.computeVertexNormals();
+      }
+    });
   }
 }

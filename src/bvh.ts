@@ -402,20 +402,25 @@ export function carAABB(car: CarCollider): AABB {
   };
 }
 
+/** Collision event reported back to the game loop for damage processing. */
+export interface CollisionEvent {
+  idA: string;
+  idB: string;
+  normalX: number;  // A→B direction
+  normalZ: number;
+  impactForce: number;
+}
+
 /**
  * Detect and resolve car-to-car overlaps using AABB broadphase,
- * then OBB-lite narrow phase (XZ projected capsule), with
- * minimum-translation-vector push-apart.
- *
- * Runs in O(N²) which is fine for N ≤ 10 cars.
- *
- * @param colliders Array of car colliders (positions are mutated on push-apart)
- * @param velocities Optional parallel array of velocity vectors to apply friction penalty
+ * circle narrow phase, and minimum-translation-vector push-apart.
+ * Returns collision events for damage/VFX processing.
  */
 export function resolveCarCollisions(
   colliders: CarCollider[],
   velocities?: { velX: number; velZ: number }[],
-) {
+): CollisionEvent[] {
+  const events: CollisionEvent[] = [];
   const n = colliders.length;
 
   for (let i = 0; i < n; i++) {
@@ -426,11 +431,8 @@ export function resolveCarCollisions(
       const b = colliders[j];
       const bBox = carAABB(b);
 
-      // Broadphase: AABB overlap test
       if (!aabbOverlaps(aBox, bBox)) continue;
 
-      // Narrow phase: simple circle overlap in XZ plane
-      // (good enough for arcade cars — avoids OBB complexity)
       const dx = b.position.x - a.position.x;
       const dz = b.position.z - a.position.z;
       const distSq = dx * dx + dz * dz;
@@ -440,7 +442,6 @@ export function resolveCarCollisions(
 
       if (distSq >= minDist * minDist) continue;
 
-      // Near-zero distance: nudge apart along a fixed direction to unstick
       if (distSq < 0.001) {
         a.position.x -= 0.5;
         b.position.x += 0.5;
@@ -449,8 +450,6 @@ export function resolveCarCollisions(
 
       const dist = Math.sqrt(distSq);
       const overlap = minDist - dist;
-
-      // Push-apart: move each car half the overlap distance
       const nx = dx / dist;
       const nz = dz / dist;
       const pushAmount = overlap * 0.5;
@@ -460,9 +459,17 @@ export function resolveCarCollisions(
       b.position.x += nx * pushAmount;
       b.position.z += nz * pushAmount;
 
-      // Apply velocity friction penalty (bounce damping)
+      // Compute impact force from relative velocity along collision normal
+      let impactForce = overlap * 2;
       if (velocities) {
         const frictionFactor = 0.85;
+        const vaX = velocities[i]?.velX ?? 0;
+        const vaZ = velocities[i]?.velZ ?? 0;
+        const vbX = velocities[j]?.velX ?? 0;
+        const vbZ = velocities[j]?.velZ ?? 0;
+        const relVelN = (vbX - vaX) * nx + (vbZ - vaZ) * nz;
+        impactForce = Math.max(impactForce, Math.abs(relVelN));
+
         if (velocities[i]) {
           velocities[i].velX *= frictionFactor;
           velocities[i].velZ *= frictionFactor;
@@ -472,6 +479,10 @@ export function resolveCarCollisions(
           velocities[j].velZ *= frictionFactor;
         }
       }
+
+      events.push({ idA: a.id, idB: b.id, normalX: nx, normalZ: nz, impactForce });
     }
   }
+
+  return events;
 }

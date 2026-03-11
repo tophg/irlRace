@@ -37,12 +37,12 @@ export class NetPeer {
   onState: StateCallback = () => {};
   onEvent: EventCallback = () => {};
   onPlayerJoin: (id: string, name: string) => void = () => {};
-  onPlayerLeave: (id: string) => void = () => {};
+  onPlayerLeave: (id: string, name?: string) => void = () => {};
 
   private broadcastInterval: number | null = null;
   private pingInterval: number | null = null;
   latencyMs = 0;
-  private statePacketBuffer = new ArrayBuffer(13);
+  private statePacketBuffer = new ArrayBuffer(15);
   private stateView = new DataView(this.statePacketBuffer);
 
   /** Create a room (host). Returns the room code. */
@@ -89,7 +89,10 @@ export class NetPeer {
     });
 
     return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => reject(new Error('Connection timeout')), 10000);
+
       conn.on('open', () => {
+        clearTimeout(timeoutId);
         const remote: RemotePlayer = {
           id: conn.peer,
           conn,
@@ -106,8 +109,7 @@ export class NetPeer {
         resolve();
       });
 
-      conn.on('error', (err) => reject(err));
-      setTimeout(() => reject(new Error('Connection timeout')), 10000);
+      conn.on('error', (err) => { clearTimeout(timeoutId); reject(err); });
     });
   }
 
@@ -139,14 +141,15 @@ export class NetPeer {
     }
   }
 
-  /** Send compact 13-byte state packet. */
+  /** Send compact 15-byte state packet. */
   private broadcastState(state: { x: number; z: number; heading: number; speed: number }) {
     const view = this.stateView;
     view.setUint8(0, PacketType.STATE);
     view.setFloat32(1, state.x, true);
     view.setFloat32(5, state.z, true);
-    view.setInt16(9, Math.round(state.heading * 1000), true);
-    view.setUint16(11, Math.round(Math.abs(state.speed) * 1000), true);
+    const normHeading = ((state.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    view.setUint16(9, Math.round(normHeading * 10000), true);
+    view.setFloat32(11, state.speed, true);
 
     for (const remote of this.connections.values()) {
       try {
@@ -163,7 +166,7 @@ export class NetPeer {
   /** Host: relay a guest's state to all other guests. */
   private relayState(fromId: string, state: { x: number; z: number; heading: number; speed: number }) {
     const idBytes = _encoder.encode(fromId);
-    const buf = new ArrayBuffer(1 + 1 + idBytes.length + 12);
+    const buf = new ArrayBuffer(1 + 1 + idBytes.length + 14);
     const view = new DataView(buf);
     view.setUint8(0, PacketType.STATE_RELAY);
     view.setUint8(1, idBytes.length);
@@ -172,8 +175,9 @@ export class NetPeer {
     const offset = 2 + idBytes.length;
     view.setFloat32(offset, state.x, true);
     view.setFloat32(offset + 4, state.z, true);
-    view.setInt16(offset + 8, Math.round(state.heading * 1000), true);
-    view.setUint16(offset + 10, Math.round(Math.abs(state.speed) * 1000), true);
+    const normHeading = ((state.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    view.setUint16(offset + 8, Math.round(normHeading * 10000), true);
+    view.setFloat32(offset + 10, state.speed, true);
 
     for (const [id, remote] of this.connections) {
       if (id !== fromId) {
@@ -206,8 +210,8 @@ export class NetPeer {
         const snap: StateSnapshot = {
           x: view.getFloat32(1, true),
           z: view.getFloat32(5, true),
-          heading: view.getInt16(9, true) / 1000,
-          speed: view.getUint16(11, true) / 1000,
+          heading: view.getUint16(9, true) / 10000,
+          speed: view.getFloat32(11, true),
           time: performance.now(),
         };
         this.onState(fromId, snap);
@@ -248,8 +252,8 @@ export class NetPeer {
         const snap: StateSnapshot = {
           x: view.getFloat32(offset, true),
           z: view.getFloat32(offset + 4, true),
-          heading: view.getInt16(offset + 8, true) / 1000,
-          speed: view.getUint16(offset + 10, true) / 1000,
+          heading: view.getUint16(offset + 8, true) / 10000,
+          speed: view.getFloat32(offset + 10, true),
           time: performance.now(),
         };
         this.onState(actualFromId, snap);
@@ -276,8 +280,9 @@ export class NetPeer {
   }
 
   private handleDisconnect(peerId: string) {
+    const name = this.connections.get(peerId)?.name;
     this.connections.delete(peerId);
-    this.onPlayerLeave(peerId);
+    this.onPlayerLeave(peerId, name);
   }
 
   /** Get interpolated state for a remote player. */

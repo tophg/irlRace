@@ -49,22 +49,24 @@ function setupTouchControls() {
     <div class="touch-pedals">
       <div class="touch-gas" id="touch-gas">GAS</div>
       <div class="touch-brake" id="touch-brake">BRAKE</div>
+      <div class="touch-boost" id="touch-boost">BOOST</div>
     </div>
   `;
   document.body.appendChild(container);
 
-  const bind = (id: string, startKey: keyof InputState, endKey?: keyof InputState) => {
+  const bind = (id: string, key: keyof InputState) => {
     const el = document.getElementById(id);
     if (!el) return;
-    const key = endKey ?? startKey;
-    el.addEventListener('touchstart', (e) => { e.preventDefault(); state[startKey] = true; }, { passive: false });
-    el.addEventListener('touchend', () => { state[startKey] = false; });
+    el.addEventListener('touchstart', (e) => { e.preventDefault(); state[key] = true; }, { passive: false });
+    el.addEventListener('touchend', () => { state[key] = false; });
+    el.addEventListener('touchcancel', () => { state[key] = false; });
   };
 
   bind('touch-left', 'left');
   bind('touch-right', 'right');
   bind('touch-gas', 'up');
   bind('touch-brake', 'down');
+  bind('touch-boost', 'boost');
 }
 
 export function showTouchControls(visible: boolean) {

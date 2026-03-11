@@ -14,6 +14,7 @@ export function showLobby(
     onJoin: (code: string) => void;
     onStart: () => void;
     onBack: () => void;
+    onNameChange?: (name: string) => void;
   }
 ) {
   destroyLobby();
@@ -72,7 +73,7 @@ export function showLobby(
     if (nameInput) {
       const name = nameInput.value.trim().toUpperCase() || `RACER_${Math.floor(Math.random() * 9999)}`;
       localStorage.setItem('hr-player-name', name);
-      if ((opts as any).onNameChange) (opts as any).onNameChange(name);
+      opts.onNameChange?.(name);
     }
   };
 
