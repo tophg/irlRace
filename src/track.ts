@@ -62,6 +62,7 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   const roadMesh = buildRoadMesh(finalSpline, curvatures, rng);
   const barrierLeft = buildBarrierMesh(finalSpline, -1);
   const barrierRight = buildBarrierMesh(finalSpline, 1);
+  const kerbGroup = buildKerbs(finalSpline, curvatures);
 
   // ── 8. Place checkpoints ──
   const numCheckpoints = 10;
@@ -82,7 +83,7 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   // ── 11. Quality score ──
   const qualityScore = scoreTrack(curvatures, totalLength, speedProfile);
 
-  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures };
+  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures };
   return { data, qualityScore };
 }
 
@@ -513,103 +514,201 @@ function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number): THREE.M
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// SCENERY
+// KERBS (colored strips at tight corners)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THREE.Group {
+function buildKerbs(spline: THREE.CatmullRomCurve3, curvatures: number[]): THREE.Group {
   const group = new THREE.Group();
+  const kerbWidth = 1.2;
+  const kerbThreshold = 0.03; // curvature above which kerbs appear
+  const points = spline.getSpacedPoints(SPLINE_SAMPLES);
 
-  for (let i = 0; i < 80; i++) {
-    const t = rng();
-    const p = spline.getPointAt(t);
-    const tangent = spline.getTangentAt(t).normalize();
-    const right = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
-    const side = rng() > 0.5 ? 1 : -1;
-    const offset = ROAD_WIDTH / 2 + 5 + rng() * 30;
-    const x = p.x + right.x * offset * side;
-    const z = p.z + right.z * offset * side;
+  // Build separate kerb strip meshes for left and right sides
+  for (const side of [-1, 1]) {
+    const vertices: number[] = [];
+    const colors: number[] = [];
+    const indices: number[] = [];
+    let vertCount = 0;
 
-    if (rng() > 0.1) {
-      const tree = createTree(rng);
-      tree.position.set(x, p.y, z);
-      group.add(tree);
-    } else {
-      const block = createBlock(rng);
-      block.position.set(x, p.y, z);
-      group.add(block);
+    for (let i = 0; i < points.length; i++) {
+      const kappa = Math.abs(curvatures[Math.min(i, curvatures.length - 1)] || 0);
+      if (kappa < kerbThreshold) continue;
+
+      const t = i / (points.length - 1);
+      const tangent = spline.getTangentAt(t).normalize();
+      const rx = tangent.z, rz = -tangent.x;
+      const p = points[i];
+      const edgeOffset = ROAD_WIDTH / 2;
+
+      // Inner edge (road side)
+      const ix = p.x + rx * edgeOffset * side;
+      const iz = p.z + rz * edgeOffset * side;
+      // Outer edge
+      const ox = p.x + rx * (edgeOffset + kerbWidth) * side;
+      const oz = p.z + rz * (edgeOffset + kerbWidth) * side;
+
+      vertices.push(ix, p.y + 0.03, iz);
+      vertices.push(ox, p.y + 0.06, oz);
+
+      // Alternating red/white based on spline distance
+      const isRed = Math.floor(t * 60) % 2 === 0;
+      const r = isRed ? 0.85 : 0.95;
+      const g = isRed ? 0.1 : 0.95;
+      const b = isRed ? 0.1 : 0.95;
+      colors.push(r, g, b, r, g, b);
+
+      if (vertCount >= 2) {
+        const base = vertCount - 2;
+        indices.push(base, base + 1, base + 2);
+        indices.push(base + 1, base + 3, base + 2);
+      }
+      vertCount += 2;
     }
-  }
 
-  for (let i = 0; i < 30; i++) {
-    const t = i / 30;
-    const p = spline.getPointAt(t);
-    const tangent = spline.getTangentAt(t).normalize();
-    const right = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
-    const side = i % 2 === 0 ? 1 : -1;
-    const offset = ROAD_WIDTH / 2 + 2;
-    const x = p.x + right.x * offset * side;
-    const z = p.z + right.z * offset * side;
+    if (vertCount < 4) continue;
 
-    const light = createStreetLight();
-    light.position.set(x, p.y, z);
-    group.add(light);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+
+    const mat = new THREE.MeshBasicMaterial({ vertexColors: true });
+    const mesh = new THREE.Mesh(geo, mat);
+    group.add(mesh);
   }
 
   return group;
 }
 
-function createTree(rng: () => number): THREE.Group {
-  const tree = new THREE.Group();
-  const trunkHeight = 2 + rng() * 3;
-  const trunkGeo = new THREE.CylinderGeometry(0.2, 0.3, trunkHeight, 6);
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.9 });
-  const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-  trunk.position.y = trunkHeight / 2;
-  trunk.castShadow = true;
-  tree.add(trunk);
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SCENERY
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  const crownRadius = 1.5 + rng() * 2;
-  const crownGeo = new THREE.SphereGeometry(crownRadius, 8, 6);
-  const green = 0x1a4d1a + Math.floor(rng() * 0x1a3300);
-  const crownMat = new THREE.MeshStandardMaterial({ color: green, roughness: 0.8 });
-  const crown = new THREE.Mesh(crownGeo, crownMat);
-  crown.position.y = trunkHeight + crownRadius * 0.6;
-  crown.castShadow = true;
-  tree.add(crown);
-
-  return tree;
-}
-
-function createBlock(rng: () => number): THREE.Mesh {
-  const w = 0.8 + rng() * 1.5;
-  const h = 0.6 + rng() * 1.2;
-  const d = 0.8 + rng() * 1.5;
-  const geo = new THREE.BoxGeometry(w, h, d);
-  const grey = 0x555555 + Math.floor(rng() * 0x333333);
-  const mat = new THREE.MeshStandardMaterial({ color: grey, roughness: 0.7 });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.y = h / 2;
-  mesh.castShadow = true;
-  return mesh;
-}
-
-function createStreetLight(): THREE.Group {
+/**
+ * Generate scenery using InstancedMesh for performance.
+ * Collapses ~212 individual draw calls into ~5 instanced draws.
+ * Street lights use emissive-only materials (no PointLights).
+ */
+function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THREE.Group {
   const group = new THREE.Group();
+
+  // Pre-compute all scenery positions
+  interface SceneryItem { x: number; y: number; z: number; type: 'tree' | 'block'; trunkH?: number; crownR?: number; green?: number; bw?: number; bh?: number; bd?: number; }
+  const items: SceneryItem[] = [];
+  for (let i = 0; i < 80; i++) {
+    const t = rng();
+    const p = spline.getPointAt(t);
+    const tangent = spline.getTangentAt(t).normalize();
+    const rx = tangent.z, rz = -tangent.x; // perpendicular (right vector XZ)
+    const side = rng() > 0.5 ? 1 : -1;
+    const offset = ROAD_WIDTH / 2 + 5 + rng() * 30;
+    const x = p.x + rx * offset * side;
+    const z = p.z + rz * offset * side;
+
+    if (rng() > 0.1) {
+      items.push({ x, y: p.y, z, type: 'tree', trunkH: 2 + rng() * 3, crownR: 1.5 + rng() * 2, green: Math.floor(rng() * 255) });
+    } else {
+      items.push({ x, y: p.y, z, type: 'block', bw: 0.8 + rng() * 1.5, bh: 0.6 + rng() * 1.2, bd: 0.8 + rng() * 1.5 });
+    }
+  }
+
+  const trees = items.filter(i => i.type === 'tree');
+  const blocks = items.filter(i => i.type === 'block');
+  const _m = new THREE.Matrix4();
+  const _c = new THREE.Color();
+
+  // ── Tree trunks (InstancedMesh) ──
+  if (trees.length > 0) {
+    const trunkGeo = new THREE.CylinderGeometry(0.25, 0.3, 3.5, 6);
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.9 });
+    const trunkIM = new THREE.InstancedMesh(trunkGeo, trunkMat, trees.length);
+    trunkIM.castShadow = true;
+    for (let i = 0; i < trees.length; i++) {
+      const t = trees[i];
+      const h = t.trunkH!;
+      _m.makeScale(1, h / 3.5, 1);
+      _m.setPosition(t.x, t.y + h / 2, t.z);
+      trunkIM.setMatrixAt(i, _m);
+    }
+    trunkIM.instanceMatrix.needsUpdate = true;
+    group.add(trunkIM);
+
+    // ── Tree crowns (InstancedMesh with per-instance color) ──
+    const crownGeo = new THREE.SphereGeometry(2.0, 8, 6);
+    const crownMat = new THREE.MeshStandardMaterial({ color: 0x2a6d2a, roughness: 0.8 });
+    const crownIM = new THREE.InstancedMesh(crownGeo, crownMat, trees.length);
+    crownIM.castShadow = true;
+    for (let i = 0; i < trees.length; i++) {
+      const t = trees[i];
+      const r = t.crownR!;
+      const h = t.trunkH!;
+      _m.makeScale(r / 2.0, r / 2.0, r / 2.0);
+      _m.setPosition(t.x, t.y + h + r * 0.6, t.z);
+      crownIM.setMatrixAt(i, _m);
+      const g = 0x1a + Math.floor((t.green! / 255) * 0x40);
+      _c.setRGB(g / 255 * 0.4, g / 255, g / 255 * 0.4);
+      crownIM.setColorAt(i, _c);
+    }
+    crownIM.instanceMatrix.needsUpdate = true;
+    crownIM.instanceColor!.needsUpdate = true;
+    group.add(crownIM);
+  }
+
+  // ── Blocks (InstancedMesh with per-instance color) ──
+  if (blocks.length > 0) {
+    const blockGeo = new THREE.BoxGeometry(1, 1, 1);
+    const blockMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.7 });
+    const blockIM = new THREE.InstancedMesh(blockGeo, blockMat, blocks.length);
+    blockIM.castShadow = true;
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      _m.makeScale(b.bw!, b.bh!, b.bd!);
+      _m.setPosition(b.x, b.y + b.bh! / 2, b.z);
+      blockIM.setMatrixAt(i, _m);
+      const grey = 0.3 + Math.random() * 0.3;
+      _c.setRGB(grey, grey, grey);
+      blockIM.setColorAt(i, _c);
+    }
+    blockIM.instanceMatrix.needsUpdate = true;
+    blockIM.instanceColor!.needsUpdate = true;
+    group.add(blockIM);
+  }
+
+  // ── Street lights (InstancedMesh — NO PointLights) ──
+  const LIGHT_COUNT = 30;
+
+  // Poles
   const poleGeo = new THREE.CylinderGeometry(0.08, 0.1, 6, 6);
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x555566, metalness: 0.6, roughness: 0.3 });
-  const pole = new THREE.Mesh(poleGeo, poleMat);
-  pole.position.y = 3;
-  group.add(pole);
+  const poleIM = new THREE.InstancedMesh(poleGeo, poleMat, LIGHT_COUNT);
 
-  const fixGeo = new THREE.SphereGeometry(0.25, 8, 6);
-  const fixMat = new THREE.MeshStandardMaterial({ color: 0xffffaa, emissive: 0xffdd66, emissiveIntensity: 0.8 });
-  const fixture = new THREE.Mesh(fixGeo, fixMat);
-  fixture.position.y = 6;
-  group.add(fixture);
+  // Fixtures (emissive glow — replaces PointLight)
+  const fixGeo = new THREE.SphereGeometry(0.3, 8, 6);
+  const fixMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffdd66, emissiveIntensity: 1.5, roughness: 0.2 });
+  const fixIM = new THREE.InstancedMesh(fixGeo, fixMat, LIGHT_COUNT);
 
-  const pointLight = new THREE.PointLight(0xffdd88, 0.6, 20, 2);
-  pointLight.position.y = 5.8;
-  group.add(pointLight);
+  for (let i = 0; i < LIGHT_COUNT; i++) {
+    const t = i / LIGHT_COUNT;
+    const p = spline.getPointAt(t);
+    const tangent = spline.getTangentAt(t).normalize();
+    const rx = tangent.z, rz = -tangent.x;
+    const side = i % 2 === 0 ? 1 : -1;
+    const offset = ROAD_WIDTH / 2 + 2;
+    const x = p.x + rx * offset * side;
+    const z = p.z + rz * offset * side;
+
+    _m.identity();
+    _m.setPosition(x, p.y + 3, z);
+    poleIM.setMatrixAt(i, _m);
+
+    _m.setPosition(x, p.y + 6, z);
+    fixIM.setMatrixAt(i, _m);
+  }
+  poleIM.instanceMatrix.needsUpdate = true;
+  fixIM.instanceMatrix.needsUpdate = true;
+  group.add(poleIM);
+  group.add(fixIM);
 
   return group;
 }

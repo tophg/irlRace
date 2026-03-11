@@ -83,6 +83,7 @@ export interface TrackData {
   roadMesh: THREE.Mesh;
   barrierLeft: THREE.Mesh;
   barrierRight: THREE.Mesh;
+  kerbGroup: THREE.Group;
   checkpoints: Checkpoint[];
   sceneryGroup: THREE.Group;
   totalLength: number;

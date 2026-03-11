@@ -73,13 +73,16 @@ export function spawnTireSmoke(pos: THREE.Vector3, driftIntensity: number) {
 }
 
 export function updateVFX(dt: number) {
-  for (let i = activeSmoke.length - 1; i >= 0; i--) {
+  // Swap-and-pop removal avoids O(N) splice shifts
+  let i = 0;
+  while (i < activeSmoke.length) {
     const p = activeSmoke[i];
     p.life -= dt;
 
     if (p.life <= 0) {
       p.mesh.visible = false;
-      activeSmoke.splice(i, 1);
+      activeSmoke[i] = activeSmoke[activeSmoke.length - 1];
+      activeSmoke.pop();
       continue;
     }
 
@@ -90,22 +93,26 @@ export function updateVFX(dt: number) {
     const mat = p.mesh.material as THREE.MeshBasicMaterial;
     mat.opacity = lifeFrac * 0.3;
     p.mesh.scale.setScalar(1.5 - lifeFrac * 0.8);
+    i++;
   }
 
-  // Sparks
-  for (let i = activeSparks.length - 1; i >= 0; i--) {
-    const s = activeSparks[i];
+  // Sparks (swap-and-pop)
+  let j = 0;
+  while (j < activeSparks.length) {
+    const s = activeSparks[j];
     s.life -= dt;
     if (s.life <= 0) {
       s.mesh.visible = false;
-      activeSparks.splice(i, 1);
+      activeSparks[j] = activeSparks[activeSparks.length - 1];
+      activeSparks.pop();
       continue;
     }
     s.mesh.position.addScaledVector(s.velocity, dt);
-    s.velocity.y -= 15 * dt; // gravity
+    s.velocity.y -= 15 * dt;
     const mat = s.mesh.material as THREE.MeshBasicMaterial;
     mat.opacity = s.life * 3;
     s.mesh.scale.setScalar(0.5 + (1 - s.life) * 0.5);
+    j++;
   }
 }
 

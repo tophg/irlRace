@@ -5,7 +5,7 @@ import './index.css';
 
 import { GameState, CAR_ROSTER, CarDef, EventType } from './types';
 import type { TrackData } from './types';
-import { initScene, getRenderer, getScene, getCamera, applyEnvironment, getEnvironmentForSeed } from './scene';
+import { initScene, getRenderer, getScene, getCamera, getDirLight, applyEnvironment, getEnvironmentForSeed } from './scene';
 import { loadCarModel } from './loaders';
 import { generateTrack, buildCheckpointMarkers, getClosestSplinePoint } from './track';
 import { Vehicle } from './vehicle';
@@ -574,6 +574,7 @@ async function startRace() {
     scene.add(trackData.roadMesh);
     scene.add(trackData.barrierLeft);
     scene.add(trackData.barrierRight);
+    scene.add(trackData.kerbGroup);
     scene.add(trackData.sceneryGroup);
 
     // Checkpoint markers
@@ -708,10 +709,12 @@ function clearRaceObjects() {
     scene.remove(trackData.roadMesh);
     scene.remove(trackData.barrierLeft);
     scene.remove(trackData.barrierRight);
+    scene.remove(trackData.kerbGroup);
     scene.remove(trackData.sceneryGroup);
     disposeMesh(trackData.roadMesh);
     disposeMesh(trackData.barrierLeft);
     disposeMesh(trackData.barrierRight);
+    disposeMesh(trackData.kerbGroup);
     disposeMesh(trackData.sceneryGroup);
     trackData = null;
   }
@@ -908,9 +911,14 @@ function stopReplayPlayback() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 let lbEl: HTMLElement | null = null;
+let lbLastUpdate = 0;
+const LB_UPDATE_INTERVAL = 250; // ms — 4Hz
 
 function updateLeaderboard() {
   if (!raceEngine) return;
+  const now = performance.now();
+  if (now - lbLastUpdate < LB_UPDATE_INTERVAL) return;
+  lbLastUpdate = now;
 
   if (!lbEl) {
     lbEl = document.createElement('div');
@@ -1091,7 +1099,8 @@ function gameLoop(timestamp: number) {
     }
     updateVFX(dt);
     updateBoostFlame(s === GameState.RACING && getInput().boost, playerVehicle.group.position, playerVehicle.heading, timestamp / 1000);
-    updateSpeedLines(Math.abs(playerVehicle.speed) / selectedCar.maxSpeed);
+    const speedRatioForLines = Math.abs(playerVehicle.speed) / selectedCar.maxSpeed;
+    if (speedRatioForLines > 0.65) updateSpeedLines(speedRatioForLines);
 
     // Audio
     updateEngineAudio(playerVehicle.speed, selectedCar.maxSpeed);
@@ -1225,6 +1234,20 @@ function gameLoop(timestamp: number) {
         const tag = remoteNameTags.get(id);
         if (tag) updateNameTag(tag, mesh.position);
       }
+    }
+
+    // Shadow camera follows player for sharper nearby shadows
+    if (playerVehicle) {
+      const dl = getDirLight();
+      const pp = playerVehicle.group.position;
+      dl.position.set(pp.x + 50, 80, pp.z + 30);
+      dl.target.position.set(pp.x, pp.y, pp.z);
+      dl.target.updateMatrixWorld();
+      dl.shadow.camera.left = -40;
+      dl.shadow.camera.right = 40;
+      dl.shadow.camera.top = 40;
+      dl.shadow.camera.bottom = -40;
+      dl.shadow.camera.updateProjectionMatrix();
     }
 
     // Debug overlay

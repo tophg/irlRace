@@ -58,6 +58,34 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
   },
 ];
 
+function createGroundTexture(): THREE.CanvasTexture {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#282830';
+  ctx.fillRect(0, 0, size, size);
+
+  // Subtle grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.lineWidth = 1;
+  const step = 32;
+  for (let x = 0; x <= size; x += step) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, size); ctx.stroke();
+  }
+  for (let y = 0; y <= size; y += step) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(size, y); ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(60, 60);
+  return tex;
+}
+
 export function initScene(container: HTMLElement) {
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -93,9 +121,11 @@ export function initScene(container: HTMLElement) {
   dirLight.shadow.camera.top = 100;
   dirLight.shadow.camera.bottom = -100;
   scene.add(dirLight);
+  scene.add(dirLight.target);
 
   const groundGeo = new THREE.PlaneGeometry(1200, 1200);
-  const groundMat = new THREE.MeshStandardMaterial({ color: 0x222228, roughness: 0.85, metalness: 0.05 });
+  const groundTex = createGroundTexture();
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x222228, roughness: 0.85, metalness: 0.05, map: groundTex });
   groundMesh = new THREE.Mesh(groundGeo, groundMat);
   groundMesh.rotation.x = -Math.PI / 2;
   groundMesh.position.y = -0.05;
@@ -176,3 +206,4 @@ export function getEnvironmentForSeed(seed: number): EnvironmentPreset {
 export function getRenderer() { return renderer; }
 export function getScene() { return scene; }
 export function getCamera() { return camera; }
+export function getDirLight() { return dirLight; }
