@@ -495,6 +495,7 @@ function wireNetworkCallbacks() {
         raceReadyCount = 0;
         trackSeed = data.seed ?? Math.floor(Math.random() * 99999);
         totalLaps = data.laps ?? totalLaps;
+        if (data.players) mpPlayersList = data.players;
         destroyLeaderboard();
         uiOverlay.querySelector('.results-overlay')?.remove();
         startRace();
@@ -527,7 +528,7 @@ function wireNetworkCallbacks() {
         break;
 
       case EventType.RACE_READY:
-        // Host: a guest finished loading
+        if (!netPeer?.getIsHost()) break;
         raceReadyCount++;
         if (raceReadyCount >= (netPeer?.getConnectionCount() ?? 0) && raceGoResolve) {
           raceGoResolve();
@@ -854,6 +855,15 @@ function clearRaceObjects() {
 // RESULTS SCREEN
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+function resolvePlayerName(id: string): string {
+  if (id === 'local') return 'You';
+  if (id.startsWith('ai_')) return `AI ${id.replace('ai_', '')}`;
+  const netName = netPeer?.getRemotePlayers().find(rp => rp.id === id)?.name;
+  if (netName && netName !== 'Racer') return netName;
+  const mpName = mpPlayersList.find(p => p.id === id)?.name;
+  return mpName || netName || id.slice(0, 8);
+}
+
 function showResults() {
   gameState = GameState.RESULTS;
   netPeer?.stopBroadcasting();
@@ -863,7 +873,7 @@ function showResults() {
 
   const rankings = raceEngine?.getRankings() ?? [];
   const winner = rankings[0];
-  const winnerName = winner?.id === 'local' ? 'You' : winner?.id.startsWith('ai_') ? `AI ${winner.id.replace('ai_', '')}` : (netPeer?.getRemotePlayers().find(r => r.id === winner?.id)?.name || winner?.id || '???');
+  const winnerName = winner ? resolvePlayerName(winner.id) : '???';
   const isMultiplayer = !!netPeer;
   const isHost = netPeer?.getIsHost() ?? false;
   const hasReplay = replayRecorder?.hasData() ?? false;
@@ -896,7 +906,7 @@ function showResults() {
       </tr></thead>
       <tbody>
         ${rankings.map((r, i) => {
-          const name = r.id === 'local' ? 'You' : r.id.startsWith('ai_') ? `AI ${r.id.replace('ai_', '')}` : (netPeer?.getRemotePlayers().find(rp => rp.id === r.id)?.name || r.id.slice(0, 8));
+          const name = resolvePlayerName(r.id);
           const isSelf = r.id === 'local';
           const isDnf = r.dnf;
           const bestLap = r.lapTimes.length > 0 ? Math.min(...r.lapTimes) : null;
@@ -934,7 +944,11 @@ function showResults() {
     el.remove();
     raceReadyCount = 0;
     trackSeed = Math.floor(Math.random() * 99999);
-    netPeer!.broadcastEvent(EventType.REMATCH_REQUEST, { seed: trackSeed, laps: totalLaps });
+    // Rebuild players list with currently connected players
+    const rematchPlayers = [{ id: netPeer!.getLocalId(), name: localPlayerName, carId: selectedCar.id }];
+    for (const rp of netPeer!.getRemotePlayers()) rematchPlayers.push({ id: rp.id, name: rp.name, carId: rp.carId });
+    mpPlayersList = rematchPlayers;
+    netPeer!.broadcastEvent(EventType.REMATCH_REQUEST, { seed: trackSeed, laps: totalLaps, players: rematchPlayers });
     destroyLeaderboard();
     startRace();
   });
@@ -1014,7 +1028,7 @@ function updateLeaderboard() {
 
   const rankings = raceEngine.getRankings();
   lbEl.innerHTML = rankings.map((r, i) => {
-    const name = r.id === 'local' ? 'YOU' : r.id.startsWith('ai_') ? `AI ${r.id.replace('ai_', '')}` : (netPeer?.getRemotePlayers().find(rp => rp.id === r.id)?.name?.slice(0, 8) || r.id.slice(0, 8));
+    const name = r.id === 'local' ? 'YOU' : resolvePlayerName(r.id);
     const isSelf = r.id === 'local';
     return `
       <div class="lb-row${isSelf ? ' self' : ''}${r.dnf ? ' dnf' : ''}">
