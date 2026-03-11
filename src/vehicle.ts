@@ -72,6 +72,15 @@ export class Vehicle {
   // Damage
   damage: DamageState = createDamageState();
 
+  // Debug telemetry (populated each frame for debug overlay)
+  telemetry = {
+    alphaFront: 0, alphaRear: 0,
+    frontLatF: 0, rearLatF: 0,
+    frontGrip: 0.5, rearGrip: 0.5,
+    yawTorque: 0, kinBlend: 0,
+    slipAngle: 0, longForce: 0,
+  };
+
   constructor(def: CarDef) {
     this.def = def;
     this.group = new THREE.Group();
@@ -247,9 +256,21 @@ export class Vehicle {
     this._velX = clampedFwd * sinH + newVLateral * cosH;
     this._velZ = clampedFwd * cosH - newVLateral * sinH;
 
+    // ── Telemetry ──
+    this.telemetry.alphaFront = alphaFront;
+    this.telemetry.alphaRear = alphaRear;
+    this.telemetry.frontLatF = frontLatF;
+    this.telemetry.rearLatF = rearLatF;
+    this.telemetry.frontGrip = frontGrip;
+    this.telemetry.rearGrip = rearGrip;
+    this.telemetry.yawTorque = yawTorque;
+    this.telemetry.slipAngle = Math.atan2(Math.abs(vLateral), Math.max(absSpeed, 1));
+    this.telemetry.longForce = longForce;
+
     // ── Steering: blend kinematic (snappy arcade) + physics (natural limits) ──
-    const kinBlend = 1 / (1 + absSpeed * 0.06);
-    const kinSteer = this.steer * def.handling * dt / (1 + absSpeed * 0.04);
+    const kinBlend = 1 / (1 + absSpeed * 0.05);
+    this.telemetry.kinBlend = kinBlend;
+    const kinSteer = this.steer * def.handling * dt / (1 + absSpeed * 0.035);
     if (absSpeed > 0.5) {
       this.angularVel += kinSteer * signFwd * kinBlend;
       this.angularVel += (yawTorque / yawInertia) * dt * (1 - kinBlend * 0.5);
@@ -458,7 +479,7 @@ export class Vehicle {
    * relative to the car's heading, reduces zone HP, and deforms the mesh.
    */
   applyDamage(impactDir: THREE.Vector3, impactForce: number) {
-    if (impactForce < 3) return;
+    if (impactForce < 8) return;
 
     const localDirX = impactDir.x * Math.cos(this.heading) - impactDir.z * Math.sin(this.heading);
     const localDirZ = impactDir.x * Math.sin(this.heading) + impactDir.z * Math.cos(this.heading);
@@ -470,7 +491,7 @@ export class Vehicle {
       zone = localDirX > 0 ? 'left' : 'right';
     }
 
-    const dmgAmount = Math.min(impactForce * 1.5, 40);
+    const dmgAmount = Math.min((impactForce - 8) * 1.2, 35);
     this.damage[zone].hp = Math.max(0, this.damage[zone].hp - dmgAmount);
     this.damage[zone].deformAmount += dmgAmount;
 
@@ -481,8 +502,8 @@ export class Vehicle {
   private deformMesh(impactDir: THREE.Vector3, force: number) {
     if (!this.model) return;
 
-    const radius = 1.5;
-    const strength = force * 0.008;
+    const radius = 1.8;
+    const strength = force * 0.005;
     const worldImpactPoint = this.group.position.clone().add(impactDir.clone().multiplyScalar(2));
 
     this.model.traverse((child) => {
@@ -497,7 +518,7 @@ export class Vehicle {
       const localDir = impactDir.clone().transformDirection(invMat);
 
       let changed = false;
-      const maxVerts = Math.min(positions.length / 3, 200);
+      const maxVerts = Math.min(positions.length / 3, 500);
       for (let i = 0; i < maxVerts; i++) {
         const idx = i * 3;
         const dx = positions[idx] - localImpact.x;

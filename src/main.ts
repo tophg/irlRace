@@ -5,7 +5,7 @@ import './index.css';
 
 import { GameState, CAR_ROSTER, CarDef, EventType } from './types';
 import type { TrackData } from './types';
-import { initScene, getRenderer, getScene, getCamera } from './scene';
+import { initScene, getRenderer, getScene, getCamera, applyEnvironment, getEnvironmentForSeed } from './scene';
 import { loadCarModel } from './loaders';
 import { generateTrack, buildCheckpointMarkers, getClosestSplinePoint } from './track';
 import { Vehicle } from './vehicle';
@@ -24,6 +24,7 @@ import {
   initBoostFlame, updateBoostFlame,
   createNameTag, updateNameTag,
   destroyVFX, spawnCollisionSparks, spawnDamageSmoke,
+  initSkidMarks, updateSkidMarks, destroySkidMarks,
 } from './vfx';
 import { initInput, showTouchControls, getInput } from './input';
 import { resolveCarCollisions, CarCollider, CollisionEvent } from './bvh';
@@ -80,6 +81,68 @@ const _remoteRaycaster = new THREE.Raycaster();
 const _impactDir = new THREE.Vector3();
 const _sparkPos = new THREE.Vector3();
 let driftSfxCooldown = 0;
+
+// ── Debug Overlay ──
+let debugVisible = false;
+let debugEl: HTMLElement | null = null;
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Backquote') {
+    debugVisible = !debugVisible;
+    if (debugEl) debugEl.style.display = debugVisible ? 'block' : 'none';
+  }
+});
+
+function updateDebugOverlay() {
+  if (!debugVisible || !playerVehicle) return;
+
+  if (!debugEl) {
+    debugEl = document.createElement('pre');
+    debugEl.id = 'debug-overlay';
+    debugEl.style.cssText = `
+      position:fixed; top:70px; left:24px; z-index:999;
+      background:rgba(0,0,0,0.75); color:#0f0; font:12px/1.5 monospace;
+      padding:10px 14px; border-radius:6px; pointer-events:none;
+      min-width:260px; white-space:pre;
+    `;
+    document.body.appendChild(debugEl);
+  }
+
+  const t = playerVehicle.telemetry;
+  const d = playerVehicle.damage;
+  const deg = (r: number) => (r * 180 / Math.PI).toFixed(1);
+  const f1 = (v: number) => v.toFixed(1);
+  const f2 = (v: number) => v.toFixed(2);
+  const pct = (v: number) => Math.round(v) + '%';
+
+  debugEl.textContent =
+`== PHYSICS TELEMETRY ==
+Speed:      ${f1(playerVehicle.speed)} u/s  (${Math.floor(Math.abs(playerVehicle.speed) * 2.5)} MPH)
+Steer:      ${f2(playerVehicle.steer)}
+AngVel:     ${f2(playerVehicle.driftAngle)} rad/s
+SlipAngle:  ${deg(t.slipAngle)}°
+
+-- AXLE SLIP --
+Front α:    ${deg(t.alphaFront)}°
+Rear  α:    ${deg(t.alphaRear)}°
+
+-- LATERAL FORCES --
+Front Lat:  ${f1(t.frontLatF)}
+Rear  Lat:  ${f1(t.rearLatF)}
+Yaw Torque: ${f1(t.yawTorque)}
+Long Force: ${f1(t.longForce)}
+
+-- WEIGHT DIST --
+Front Grip: ${f2(t.frontGrip)}
+Rear  Grip: ${f2(t.rearGrip)}
+Kin Blend:  ${pct(t.kinBlend * 100)}
+
+-- DAMAGE --
+Front HP:   ${pct(d.front.hp)}
+Rear  HP:   ${pct(d.rear.hp)}
+Left  HP:   ${pct(d.left.hp)}
+Right HP:   ${pct(d.right.hp)}`;
+}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TITLE SCREEN
@@ -302,6 +365,7 @@ async function startRace() {
     const seed = trackSeed ?? Math.floor(Math.random() * 99999);
     trackSeed = null; // consume the seed
     trackData = generateTrack(seed);
+    applyEnvironment(getEnvironmentForSeed(seed));
     scene.add(trackData.roadMesh);
     scene.add(trackData.barrierLeft);
     scene.add(trackData.barrierRight);
@@ -330,6 +394,7 @@ async function startRace() {
     initVFX(scene);
     initBoostFlame(scene);
     initSpeedLines(container);
+    initSkidMarks(scene);
 
     // AI opponents
     // Only spawn AI in singleplayer — multiplayer has real opponents
@@ -471,8 +536,9 @@ function clearRaceObjects() {
   }
   remoteNameTags.clear();
 
-  // Clean up VFX (smoke, speed lines, boost flame)
+  // Clean up VFX (smoke, speed lines, boost flame, skid marks)
   destroyVFX();
+  destroySkidMarks();
 
   // Stop audio
   stopAudio();
@@ -709,6 +775,9 @@ function gameLoop(timestamp: number) {
     if (driftAbs > 0.15 && s === GameState.RACING) {
       spawnTireSmoke(playerVehicle.group.position, driftAbs);
     }
+    if (s === GameState.RACING) {
+      updateSkidMarks(playerVehicle.group.position, playerVehicle.heading, driftAbs, playerVehicle.group.position.y);
+    }
     updateVFX(dt);
     updateBoostFlame(s === GameState.RACING && getInput().boost, playerVehicle.group.position, playerVehicle.heading, timestamp / 1000);
     updateSpeedLines(Math.abs(playerVehicle.speed) / selectedCar.maxSpeed);
@@ -800,6 +869,9 @@ function gameLoop(timestamp: number) {
         if (tag) updateNameTag(tag, mesh.position);
       }
     }
+
+    // Debug overlay
+    updateDebugOverlay();
 
     // Render
     renderer.render(scene, camera);

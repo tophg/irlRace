@@ -1,4 +1,4 @@
-/* ── Hood Racer — Scene Setup ── */
+/* ── Hood Racer — Scene Setup + Environment Presets ── */
 
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -7,8 +7,58 @@ let renderer: THREE.WebGLRenderer;
 let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
 
+// Mutable references for environment theming
+let hemiLight: THREE.HemisphereLight;
+let dirLight: THREE.DirectionalLight;
+let groundMesh: THREE.Mesh;
+let skyMat: THREE.ShaderMaterial;
+
+// ── Environment Presets ──
+export interface EnvironmentPreset {
+  name: string;
+  fogColor: number;
+  fogDensity: number;
+  skyTop: number;
+  skyBottom: number;
+  skyHorizon: number;
+  hemiSky: number;
+  hemiGround: number;
+  hemiIntensity: number;
+  dirColor: number;
+  dirIntensity: number;
+  dirPosition: [number, number, number];
+  groundColor: number;
+  exposure: number;
+}
+
+export const ENVIRONMENTS: EnvironmentPreset[] = [
+  {
+    name: 'Urban Night',
+    fogColor: 0x1a1a2e, fogDensity: 0.0025,
+    skyTop: 0x0d0d1a, skyBottom: 0x1a1a3a, skyHorizon: 0x2a1a30,
+    hemiSky: 0x88aacc, hemiGround: 0x444422, hemiIntensity: 1.0,
+    dirColor: 0xffeedd, dirIntensity: 2.0, dirPosition: [50, 80, 30],
+    groundColor: 0x222228, exposure: 1.2,
+  },
+  {
+    name: 'Desert Dawn',
+    fogColor: 0x8b6914, fogDensity: 0.0015,
+    skyTop: 0x1a0a2e, skyBottom: 0xff6633, skyHorizon: 0xffaa44,
+    hemiSky: 0xffddaa, hemiGround: 0x886633, hemiIntensity: 1.4,
+    dirColor: 0xffcc88, dirIntensity: 2.8, dirPosition: [80, 30, 50],
+    groundColor: 0x8b7355, exposure: 1.5,
+  },
+  {
+    name: 'Coastal Sunset',
+    fogColor: 0x334466, fogDensity: 0.002,
+    skyTop: 0x0a1628, skyBottom: 0x2244aa, skyHorizon: 0xff6644,
+    hemiSky: 0xaabbdd, hemiGround: 0x445566, hemiIntensity: 1.2,
+    dirColor: 0xffaa77, dirIntensity: 2.5, dirPosition: [-60, 25, 60],
+    groundColor: 0x2a3040, exposure: 1.3,
+  },
+];
+
 export function initScene(container: HTMLElement) {
-  // Renderer
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -18,25 +68,21 @@ export function initScene(container: HTMLElement) {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   container.appendChild(renderer.domElement);
 
-  // Scene
   scene = new THREE.Scene();
   scene.fog = new THREE.FogExp2(0x1a1a2e, 0.0025);
 
-  // Camera
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
   camera.position.set(0, 10, 20);
 
-  // Environment map for car reflections
   const pmremGenerator = new THREE.PMREMGenerator(renderer);
   const envMap = pmremGenerator.fromScene(new RoomEnvironment()).texture;
   scene.environment = envMap;
   pmremGenerator.dispose();
 
-  // Lighting
-  const hemiLight = new THREE.HemisphereLight(0x88aacc, 0x444422, 1.0);
+  hemiLight = new THREE.HemisphereLight(0x88aacc, 0x444422, 1.0);
   scene.add(hemiLight);
 
-  const dirLight = new THREE.DirectionalLight(0xffeedd, 2.0);
+  dirLight = new THREE.DirectionalLight(0xffeedd, 2.0);
   dirLight.position.set(50, 80, 30);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.set(2048, 2048);
@@ -48,22 +94,16 @@ export function initScene(container: HTMLElement) {
   dirLight.shadow.camera.bottom = -100;
   scene.add(dirLight);
 
-  // Ground plane (asphalt)
   const groundGeo = new THREE.PlaneGeometry(1200, 1200);
-  const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x222228,
-    roughness: 0.85,
-    metalness: 0.05,
-  });
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.05;
-  ground.receiveShadow = true;
-  scene.add(ground);
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x222228, roughness: 0.85, metalness: 0.05 });
+  groundMesh = new THREE.Mesh(groundGeo, groundMat);
+  groundMesh.rotation.x = -Math.PI / 2;
+  groundMesh.position.y = -0.05;
+  groundMesh.receiveShadow = true;
+  scene.add(groundMesh);
 
-  // Sky gradient
   const skyGeo = new THREE.SphereGeometry(800, 32, 16);
-  const skyMat = new THREE.ShaderMaterial({
+  skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide,
     uniforms: {
       topColor: { value: new THREE.Color(0x0d0d1a) },
@@ -91,10 +131,8 @@ export function initScene(container: HTMLElement) {
       }
     `,
   });
-  const sky = new THREE.Mesh(skyGeo, skyMat);
-  scene.add(sky);
+  scene.add(new THREE.Mesh(skyGeo, skyMat));
 
-  // Handle resize
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
@@ -102,6 +140,33 @@ export function initScene(container: HTMLElement) {
   });
 
   return { renderer, scene, camera };
+}
+
+/** Apply an environment preset to the scene. Call after initScene. */
+export function applyEnvironment(preset: EnvironmentPreset) {
+  (scene.fog as THREE.FogExp2).color.setHex(preset.fogColor);
+  (scene.fog as THREE.FogExp2).density = preset.fogDensity;
+
+  skyMat.uniforms.topColor.value.setHex(preset.skyTop);
+  skyMat.uniforms.bottomColor.value.setHex(preset.skyBottom);
+  skyMat.uniforms.horizonColor.value.setHex(preset.skyHorizon);
+
+  hemiLight.color.setHex(preset.hemiSky);
+  hemiLight.groundColor.setHex(preset.hemiGround);
+  hemiLight.intensity = preset.hemiIntensity;
+
+  dirLight.color.setHex(preset.dirColor);
+  dirLight.intensity = preset.dirIntensity;
+  dirLight.position.set(...preset.dirPosition);
+
+  (groundMesh.material as THREE.MeshStandardMaterial).color.setHex(preset.groundColor);
+
+  renderer.toneMappingExposure = preset.exposure;
+}
+
+/** Pick environment deterministically from seed. */
+export function getEnvironmentForSeed(seed: number): EnvironmentPreset {
+  return ENVIRONMENTS[seed % ENVIRONMENTS.length];
 }
 
 export function getRenderer() { return renderer; }

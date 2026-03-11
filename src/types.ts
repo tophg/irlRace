@@ -34,12 +34,18 @@ export interface CarDef {
 }
 
 export const CAR_ROSTER: CarDef[] = [
-  { id: 'camry_blue',  name: 'Camry SE',        file: 'blue_camry.glb',    maxSpeed: 70, acceleration: 28, handling: 2.2, braking: 45, driftFactor: 0.30, gripCoeff: 0.85, latFriction: 6.0, suspStiffness: 0.04, steerSpeed: 3.0,  driftThreshold: 0.12, mass: 1500, cgHeight: 0.15, frontBias: 0.55 },
-  { id: 'camry_white', name: 'Camry LE',        file: 'white_camry.glb',   maxSpeed: 65, acceleration: 30, handling: 2.4, braking: 48, driftFactor: 0.25, gripCoeff: 0.90, latFriction: 7.0, suspStiffness: 0.03, steerSpeed: 3.2,  driftThreshold: 0.15, mass: 1480, cgHeight: 0.14, frontBias: 0.54 },
-  { id: 'altima',      name: 'Altima SR',       file: 'Nissan_Altima.glb', maxSpeed: 78, acceleration: 25, handling: 2.0, braking: 42, driftFactor: 0.35, gripCoeff: 0.75, latFriction: 4.5, suspStiffness: 0.05, steerSpeed: 2.6,  driftThreshold: 0.10, mass: 1550, cgHeight: 0.16, frontBias: 0.53 },
-  { id: 'maxima',      name: 'Maxima Platinum', file: 'Nissan_Maxima.glb', maxSpeed: 72, acceleration: 32, handling: 2.1, braking: 44, driftFactor: 0.32, gripCoeff: 0.80, latFriction: 5.5, suspStiffness: 0.04, steerSpeed: 2.8,  driftThreshold: 0.11, mass: 1600, cgHeight: 0.15, frontBias: 0.54 },
-  { id: 'wrx_rally',   name: 'WRX STI Rally',   file: 'Subaru_WRX1.glb',  maxSpeed: 68, acceleration: 34, handling: 2.8, braking: 50, driftFactor: 0.20, gripCoeff: 1.00, latFriction: 8.0, suspStiffness: 0.03, steerSpeed: 3.5,  driftThreshold: 0.18, mass: 1450, cgHeight: 0.13, frontBias: 0.48 },
-  { id: 'wrx_street',  name: 'WRX STI Street',  file: 'Subaru_WRX2.glb',  maxSpeed: 66, acceleration: 30, handling: 2.5, braking: 46, driftFactor: 0.45, gripCoeff: 0.70, latFriction: 3.5, suspStiffness: 0.06, steerSpeed: 2.5,  driftThreshold: 0.08, mass: 1420, cgHeight: 0.14, frontBias: 0.50 },
+  // Camry SE — reliable all-rounder, predictable and stable
+  { id: 'camry_blue',  name: 'Camry SE',        file: 'blue_camry.glb',    maxSpeed: 70, acceleration: 28, handling: 2.4, braking: 45, driftFactor: 0.30, gripCoeff: 0.85, latFriction: 5.5, suspStiffness: 0.04, steerSpeed: 3.0,  driftThreshold: 0.12, mass: 1500, cgHeight: 0.12, frontBias: 0.54 },
+  // Camry LE — better grip, forgiving, great for beginners
+  { id: 'camry_white', name: 'Camry LE',        file: 'white_camry.glb',   maxSpeed: 65, acceleration: 30, handling: 2.6, braking: 48, driftFactor: 0.22, gripCoeff: 0.92, latFriction: 6.5, suspStiffness: 0.03, steerSpeed: 3.2,  driftThreshold: 0.15, mass: 1480, cgHeight: 0.11, frontBias: 0.53 },
+  // Altima SR — fastest top speed but loose rear, rewards skilled driving
+  { id: 'altima',      name: 'Altima SR',       file: 'Nissan_Altima.glb', maxSpeed: 78, acceleration: 26, handling: 2.0, braking: 42, driftFactor: 0.38, gripCoeff: 0.78, latFriction: 4.0, suspStiffness: 0.05, steerSpeed: 2.6,  driftThreshold: 0.10, mass: 1550, cgHeight: 0.16, frontBias: 0.57 },
+  // Maxima Platinum — heavy cruiser, strong accel, planted but slow to turn
+  { id: 'maxima',      name: 'Maxima Platinum', file: 'Nissan_Maxima.glb', maxSpeed: 72, acceleration: 33, handling: 1.9, braking: 44, driftFactor: 0.28, gripCoeff: 0.82, latFriction: 5.0, suspStiffness: 0.04, steerSpeed: 2.8,  driftThreshold: 0.11, mass: 1650, cgHeight: 0.14, frontBias: 0.55 },
+  // WRX STI Rally — best grip, neutral AWD balance, sharp turn-in
+  { id: 'wrx_rally',   name: 'WRX STI Rally',   file: 'Subaru_WRX1.glb',  maxSpeed: 68, acceleration: 34, handling: 3.0, braking: 50, driftFactor: 0.18, gripCoeff: 1.05, latFriction: 7.0, suspStiffness: 0.03, steerSpeed: 3.5,  driftThreshold: 0.18, mass: 1430, cgHeight: 0.10, frontBias: 0.47 },
+  // WRX STI Street — drift missile, low grip, huge slide, fun but wild
+  { id: 'wrx_street',  name: 'WRX STI Street',  file: 'Subaru_WRX2.glb',  maxSpeed: 66, acceleration: 30, handling: 2.5, braking: 46, driftFactor: 0.50, gripCoeff: 0.68, latFriction: 3.2, suspStiffness: 0.06, steerSpeed: 2.5,  driftThreshold: 0.08, mass: 1400, cgHeight: 0.13, frontBias: 0.50 },
 ];
 
 // ── Damage ──
