@@ -69,7 +69,7 @@ export function initScene(container: HTMLElement) {
   container.appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x1a1a2e, 0.0003);
+  scene.fog = null;
 
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
   camera.position.set(0, 10, 20);
@@ -145,8 +145,11 @@ export function initScene(container: HTMLElement) {
 
 /** Apply an environment preset to the scene. Call after initScene. */
 export function applyEnvironment(preset: EnvironmentPreset) {
-  (scene.fog as THREE.FogExp2).color.setHex(preset.fogColor);
-  (scene.fog as THREE.FogExp2).density = preset.fogDensity;
+  // Fog disabled for now
+  // if (scene.fog) {
+  //   (scene.fog as THREE.FogExp2).color.setHex(preset.fogColor);
+  //   (scene.fog as THREE.FogExp2).density = preset.fogDensity;
+  // }
 
   skyMat.uniforms.topColor.value.setHex(preset.skyTop);
   skyMat.uniforms.bottomColor.value.setHex(preset.skyBottom);
