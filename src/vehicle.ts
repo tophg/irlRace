@@ -2,6 +2,7 @@
 
 import * as THREE from 'three';
 import { CarDef, InputState, VehicleState, DamageState, createDamageState } from './types';
+import { getSettings } from './settings';
 import { getClosestSplinePoint } from './track';
 import type { SplineBVH } from './bvh';
 
@@ -214,7 +215,7 @@ export class Vehicle {
     const vLatRear  = vLateral - this.angularVel * AXLE_REAR;
     const vFwdClamped = Math.max(absSpeed, 1.5);
 
-    const maxSteerAngle = 0.35;
+    const maxSteerAngle = 0.35 * getSettings().steerSensitivity;
     const steerAngle = (this.steer + steerBias) * maxSteerAngle / (1 + absSpeed * 0.025);
     const signFwd = vForward >= 0 ? 1 : -1;
 

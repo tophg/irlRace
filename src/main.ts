@@ -27,6 +27,8 @@ import {
   initSkidMarks, updateSkidMarks, destroySkidMarks,
 } from './vfx';
 import { initInput, showTouchControls, getInput } from './input';
+import { loadSettings, getSettings, showSettings } from './settings';
+import { ReplayRecorder, ReplayPlayer } from './replay';
 import { resolveCarCollisions, CarCollider, CollisionEvent } from './bvh';
 
 // ── DOM ──
@@ -81,6 +83,8 @@ const _remoteRaycaster = new THREE.Raycaster();
 const _impactDir = new THREE.Vector3();
 const _sparkPos = new THREE.Vector3();
 let driftSfxCooldown = 0;
+let replayRecorder: ReplayRecorder | null = null;
+let replayPlayer: ReplayPlayer | null = null;
 
 // ── Debug Overlay ──
 let debugVisible = false;
@@ -161,6 +165,7 @@ function showTitleScreen() {
     <div class="menu-buttons">
       <button class="menu-btn" id="btn-singleplayer">SINGLEPLAYER</button>
       <button class="menu-btn" id="btn-multiplayer">MULTIPLAYER</button>
+      <button class="menu-btn" id="btn-settings" style="border-color:var(--col-text-dim);font-size:16px;">SETTINGS</button>
     </div>
   `;
   uiOverlay.appendChild(titleEl);
@@ -173,6 +178,13 @@ function showTitleScreen() {
   document.getElementById('btn-multiplayer')!.addEventListener('click', () => {
     titleEl.remove();
     enterMultiplayerLobby();
+  });
+
+  document.getElementById('btn-settings')!.addEventListener('click', () => {
+    showSettings(uiOverlay, () => {
+      localPlayerName = getSettings().playerName || localPlayerName;
+      applySettingsToRenderer();
+    });
   });
 }
 
@@ -428,6 +440,8 @@ async function startRace() {
     await runCountdown(uiOverlay);
 
     raceEngine.start();
+    replayRecorder = new ReplayRecorder();
+    replayRecorder.start();
     gameState = GameState.RACING;
   } finally {
     raceStarting = false;
@@ -555,12 +569,14 @@ function showResults() {
   netPeer?.stopBroadcasting();
   netPeer?.stopPinging();
   showTouchControls(false);
+  replayRecorder?.stop();
 
   const rankings = raceEngine?.getRankings() ?? [];
   const winner = rankings[0];
   const winnerName = winner?.id === 'local' ? 'You' : winner?.id.startsWith('ai_') ? `AI ${winner.id.replace('ai_', '')}` : (netPeer?.getRemotePlayers().find(r => r.id === winner?.id)?.name || winner?.id || '???');
   const isMultiplayer = !!netPeer;
   const isHost = netPeer?.getIsHost() ?? false;
+  const hasReplay = replayRecorder?.hasData() ?? false;
 
   const el = document.createElement('div');
   el.className = 'results-overlay';
@@ -588,6 +604,7 @@ function showResults() {
       </tbody>
     </table>
     <div class="menu-buttons" style="width:240px; margin-top:8px;">
+      ${hasReplay ? '<button class="menu-btn" id="btn-replay" style="border-color:var(--col-cyan);color:var(--col-cyan);">WATCH REPLAY</button>' : ''}
       ${isMultiplayer && isHost ? '<button class="menu-btn" id="btn-rematch" style="background:var(--col-green);">REMATCH</button>' : ''}
       ${!isMultiplayer ? '<button class="menu-btn" id="btn-play-again">PLAY AGAIN</button>' : ''}
       <button class="menu-btn" id="btn-main-menu">MAIN MENU</button>
@@ -595,6 +612,11 @@ function showResults() {
   `;
   uiOverlay.appendChild(el);
 
+  document.getElementById('btn-replay')?.addEventListener('click', () => {
+    el.remove();
+    destroyLeaderboard();
+    startReplayPlayback();
+  });
   document.getElementById('btn-play-again')?.addEventListener('click', () => {
     el.remove();
     startRace();
@@ -614,6 +636,49 @@ function showResults() {
     destroyLeaderboard();
     showTitleScreen();
   });
+}
+
+function startReplayPlayback() {
+  if (!replayRecorder || !trackData || !playerVehicle) return;
+
+  // Build mesh map for replay (player + AI vehicles)
+  const meshes = new Map<string, THREE.Group>();
+  meshes.set('local', playerVehicle.group);
+  for (const ai of aiRacers) meshes.set(ai.id, ai.vehicle.group);
+
+  replayPlayer = new ReplayPlayer(replayRecorder, camera, meshes);
+  replayPlayer.start();
+  showHUD(false);
+
+  // Show replay HUD with exit button
+  const replayHud = document.createElement('div');
+  replayHud.id = 'replay-hud';
+  replayHud.style.cssText = `
+    position:fixed; top:24px; left:50%; transform:translateX(-50%); z-index:100;
+    display:flex; align-items:center; gap:16px;
+  `;
+  replayHud.innerHTML = `
+    <div style="font-family:var(--font-display);font-size:18px;color:var(--col-cyan);letter-spacing:3px;">REPLAY</div>
+    <div id="replay-progress" style="width:200px;height:4px;background:rgba(255,255,255,0.15);border-radius:2px;">
+      <div id="replay-bar" style="height:100%;background:var(--col-cyan);border-radius:2px;width:0%;transition:width 0.1s;"></div>
+    </div>
+    <button class="menu-btn" id="btn-exit-replay" style="padding:8px 16px;font-size:14px;">EXIT</button>
+  `;
+  uiOverlay.appendChild(replayHud);
+
+  document.getElementById('btn-exit-replay')!.addEventListener('click', () => {
+    stopReplayPlayback();
+  });
+}
+
+function stopReplayPlayback() {
+  if (replayPlayer) {
+    replayPlayer.stop();
+    replayPlayer = null;
+  }
+  const hud = document.getElementById('replay-hud');
+  if (hud) hud.remove();
+  showResults();
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -677,6 +742,15 @@ function gameLoop(timestamp: number) {
 
   // ── Title / Lobby ──
   if (s === GameState.TITLE || s === GameState.LOBBY) {
+    renderer.render(scene, camera);
+    return;
+  }
+
+  // ── Replay playback ──
+  if (replayPlayer?.isPlaying()) {
+    replayPlayer.update(dt);
+    const bar = document.getElementById('replay-bar');
+    if (bar) bar.style.width = `${Math.round(replayPlayer.getProgress() * 100)}%`;
     renderer.render(scene, camera);
     return;
   }
@@ -841,6 +915,14 @@ function gameLoop(timestamp: number) {
       // Leaderboard
       updateLeaderboard();
 
+      // Record replay frames
+      if (replayRecorder) {
+        replayRecorder.record('local', playerVehicle.group.position, playerVehicle.heading, playerVehicle.speed);
+        for (const ai of aiRacers) {
+          replayRecorder.record(ai.id, ai.vehicle.group.position, ai.vehicle.heading, ai.vehicle.speed);
+        }
+      }
+
       // Damage HUD
       if (playerVehicle) updateDamageHUD(playerVehicle.damage);
     }
@@ -879,8 +961,26 @@ function gameLoop(timestamp: number) {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SETTINGS APPLICATION
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function applySettingsToRenderer() {
+  const s = getSettings();
+  renderer.shadowMap.enabled = s.shadowQuality > 0;
+  if (s.shadowQuality === 1) {
+    renderer.shadowMap.type = THREE.BasicShadowMap;
+  } else if (s.shadowQuality >= 2) {
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // BOOT
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+const savedSettings = loadSettings();
+if (savedSettings.playerName) localPlayerName = savedSettings.playerName;
+applySettingsToRenderer();
 
 lastTime = performance.now();
 showTitleScreen();

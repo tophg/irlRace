@@ -1,6 +1,9 @@
 /* ── Hood Racer — Procedural Audio (v2 — Multi-Layer Engine) ── */
 
+import { getSettings } from './settings';
+
 let audioCtx: AudioContext | null = null;
+let masterGain: GainNode | null = null;
 
 // Multi-oscillator engine (fundamental + 2 harmonics)
 let engineOscs: OscillatorNode[] = [];
@@ -21,6 +24,11 @@ export function initAudio() {
   audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
   if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
 
+  const s = getSettings();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = s.masterVolume;
+  masterGain.connect(audioCtx.destination);
+
   engineMaster = audioCtx.createGain();
   engineMaster.gain.value = 0;
 
@@ -29,7 +37,7 @@ export function initAudio() {
   engineFilter.frequency.value = 800;
   engineFilter.Q.value = 1.5;
   engineFilter.connect(engineMaster);
-  engineMaster.connect(audioCtx.destination);
+  engineMaster.connect(masterGain);
 
   // Layer 1: fundamental (sawtooth — raw engine rumble)
   const osc1 = audioCtx.createOscillator();
@@ -95,9 +103,11 @@ export function updateEngineAudio(speed: number, maxSpeed: number) {
   engineGains[1].gain.setTargetAtTime(0.10 + rpmInGear * 0.18, t, ramp);
   engineGains[2].gain.setTargetAtTime(0.05 + rpmInGear * 0.10, t, ramp);
 
-  // Master volume
-  const vol = 0.02 + ratio * 0.09;
+  // Engine volume (scaled by settings)
+  const vol = (0.02 + ratio * 0.09) * getSettings().engineVolume;
   engineMaster.gain.setTargetAtTime(vol, t, 0.05);
+
+  if (masterGain) masterGain.gain.setTargetAtTime(getSettings().masterVolume, t, 0.1);
 
   // Filter opens with RPM
   engineFilter!.frequency.setTargetAtTime(600 + rpmInGear * 600, t, ramp);
@@ -112,22 +122,23 @@ export function updateEngineAudio(speed: number, maxSpeed: number) {
 }
 
 function playGearShiftPop() {
-  if (!audioCtx) return;
+  if (!audioCtx || !masterGain) return;
+  const sfxVol = getSettings().sfxVolume;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.type = 'sawtooth';
   osc.frequency.setValueAtTime(200, audioCtx.currentTime);
   osc.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 0.06);
-  gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+  gain.gain.setValueAtTime(0.08 * sfxVol, audioCtx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
   osc.connect(gain);
-  gain.connect(audioCtx.destination);
+  gain.connect(masterGain);
   osc.start();
   osc.stop(audioCtx.currentTime + 0.08);
 }
 
 function playExhaustCrackle() {
-  if (!audioCtx) return;
+  if (!audioCtx || !masterGain) return;
   const len = Math.floor(audioCtx.sampleRate * 0.04);
   const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
   const data = buf.getChannelData(0);
@@ -140,45 +151,46 @@ function playExhaustCrackle() {
   flt.type = 'highpass';
   flt.frequency.value = 1500;
   const gain = audioCtx.createGain();
-  gain.gain.value = 0.06;
+  gain.gain.value = 0.06 * getSettings().sfxVolume;
   src.connect(flt);
   flt.connect(gain);
-  gain.connect(audioCtx.destination);
+  gain.connect(masterGain);
   src.start();
 }
 
 /** Play a checkpoint chirp. */
 export function playCheckpointSFX() {
-  if (!audioCtx) return;
-
+  if (!audioCtx || !masterGain) return;
+  const sv = getSettings().sfxVolume;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.type = 'sine';
   osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
   osc.frequency.exponentialRampToValueAtTime(1800, audioCtx.currentTime + 0.1);
-  gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+  gain.gain.setValueAtTime(0.15 * sv, audioCtx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
   osc.connect(gain);
-  gain.connect(audioCtx.destination);
+  gain.connect(masterGain);
   osc.start();
   osc.stop(audioCtx.currentTime + 0.15);
 }
 
 /** Play a lap completion fanfare. */
 export function playLapFanfare() {
-  if (!audioCtx) return;
-
-  const notes = [523, 659, 784]; // C5, E5, G5 — major chord
+  if (!audioCtx || !masterGain) return;
+  const sv = getSettings().sfxVolume;
+  const dest = masterGain;
+  const notes = [523, 659, 784];
   notes.forEach((freq, i) => {
     const osc = audioCtx!.createOscillator();
     const gain = audioCtx!.createGain();
     osc.type = 'triangle';
     osc.frequency.value = freq;
     gain.gain.setValueAtTime(0, audioCtx!.currentTime + i * 0.08);
-    gain.gain.linearRampToValueAtTime(0.12, audioCtx!.currentTime + i * 0.08 + 0.05);
+    gain.gain.linearRampToValueAtTime(0.12 * sv, audioCtx!.currentTime + i * 0.08 + 0.05);
     gain.gain.exponentialRampToValueAtTime(0.001, audioCtx!.currentTime + i * 0.08 + 0.4);
     osc.connect(gain);
-    gain.connect(audioCtx!.destination);
+    gain.connect(dest);
     osc.start(audioCtx!.currentTime + i * 0.08);
     osc.stop(audioCtx!.currentTime + i * 0.08 + 0.4);
   });
@@ -209,7 +221,7 @@ export function playDriftSFX(intensity: number) {
 
   source.connect(filter);
   filter.connect(gain);
-  gain.connect(audioCtx.destination);
+  gain.connect(masterGain!);
   source.start();
 }
 
@@ -251,7 +263,7 @@ export function playCollisionSFX(intensity: number) {
   source.connect(filter);
   filter.connect(hiFilter);
   hiFilter.connect(gain);
-  gain.connect(audioCtx.destination);
+  gain.connect(masterGain!);
   source.start();
   source.stop(audioCtx.currentTime + 0.25);
 }
@@ -262,6 +274,7 @@ export function stopAudio() {
   engineGains = [];
   engineMaster = null;
   engineFilter = null;
+  masterGain = null;
   prevGear = 0;
   collisionSfxCooldown = 0;
   if (crackleTimeout) { clearTimeout(crackleTimeout); crackleTimeout = null; }
