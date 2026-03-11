@@ -69,6 +69,9 @@ export class NetPeer {
       }
 
       conn.on('open', () => {
+        // Force raw binary mode on host side to match guest's serialization: 'none'
+        (conn as any).serialization = 'none';
+
         const remote: RemotePlayer = {
           id: conn.peer,
           conn,
