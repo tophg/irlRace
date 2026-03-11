@@ -87,7 +87,7 @@ export class Vehicle {
     this.wheelRL = createWheel();
     this.wheelRR = createWheel();
 
-    const wheelY = 0.35, frontZ = -1.3, rearZ = 1.3, sideX = 0.85;
+    const wheelY = 0.47, frontZ = -1.3, rearZ = 1.3, sideX = 0.85;
     this.wheelFL.position.set(-sideX, wheelY, frontZ);
     this.wheelFR.position.set(sideX, wheelY, frontZ);
     this.wheelRL.position.set(-sideX, wheelY, rearZ);
