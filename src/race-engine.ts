@@ -25,6 +25,8 @@ export class RaceEngine {
       finished: false,
       finishTime: 0,
       position: new THREE.Vector3(),
+      lapTimes: [],
+      lastLapStart: 0,
     });
   }
 
@@ -54,13 +56,17 @@ export class RaceEngine {
     racer.checkpointIndex++;
 
     if (racer.checkpointIndex >= this.checkpoints.length) {
-      // Completed a lap
       racer.checkpointIndex = 0;
       racer.lapIndex++;
 
+      // Record lap time
+      const now = performance.now() - this.raceStartTime;
+      racer.lapTimes.push(now - racer.lastLapStart);
+      racer.lastLapStart = now;
+
       if (racer.lapIndex >= this.totalLaps) {
         racer.finished = true;
-        racer.finishTime = performance.now() - this.raceStartTime;
+        racer.finishTime = now;
         return 'finish';
       }
       return 'lap';
@@ -119,6 +125,13 @@ export class RaceEngine {
   isWrongWay(heading: number, splineTangent: THREE.Vector3): boolean {
     RaceEngine._moveDir.set(Math.sin(heading), 0, Math.cos(heading));
     return RaceEngine._moveDir.dot(splineTangent) < -0.3;
+  }
+
+  /** Get the best (fastest) lap time for a racer in ms, or null. */
+  getBestLap(id: string): number | null {
+    const racer = this.racers.get(id);
+    if (!racer || racer.lapTimes.length === 0) return null;
+    return Math.min(...racer.lapTimes);
   }
 
   /** Get elapsed race time in seconds. */

@@ -11,7 +11,7 @@ import { generateTrack, buildCheckpointMarkers, getClosestSplinePoint } from './
 import { Vehicle } from './vehicle';
 import { VehicleCamera } from './vehicle-camera';
 import { RaceEngine } from './race-engine';
-import { createHUD, updateHUD, updateMinimap, updateDamageHUD, showHUD, destroyHUD } from './hud';
+import { createHUD, updateHUD, updateMinimap, updateDamageHUD, showHUD, destroyHUD, showLapOverlay } from './hud';
 import { runCountdown } from './countdown';
 import { initAudio, updateEngineAudio, playCheckpointSFX, playLapFanfare, playDriftSFX, playCollisionSFX, stopAudio } from './audio';
 import { AIRacer, OpponentInfo } from './ai-racer';
@@ -91,10 +91,17 @@ let replayPlayer: ReplayPlayer | null = null;
 let debugVisible = false;
 let debugEl: HTMLElement | null = null;
 
+let pauseOverlay: HTMLElement | null = null;
+let aiCount = 4;
+
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Backquote') {
     debugVisible = !debugVisible;
     if (debugEl) debugEl.style.display = debugVisible ? 'block' : 'none';
+  }
+  if (e.code === 'Escape') {
+    if (gameState === GameState.RACING) togglePause();
+    else if (gameState === GameState.PAUSED) togglePause();
   }
 });
 
@@ -150,6 +157,145 @@ Right HP:   ${pct(d.right.hp)}`;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PAUSE MENU
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function togglePause() {
+  if (gameState === GameState.RACING) {
+    gameState = GameState.PAUSED;
+    pauseOverlay = document.createElement('div');
+    pauseOverlay.className = 'pause-overlay';
+    pauseOverlay.innerHTML = `
+      <div class="pause-title">PAUSED</div>
+      <div class="menu-buttons" style="width:240px;">
+        <button class="menu-btn" id="btn-resume">RESUME</button>
+        <button class="menu-btn" id="btn-restart">RESTART</button>
+        <button class="menu-btn" id="btn-quit">MAIN MENU</button>
+      </div>
+    `;
+    uiOverlay.appendChild(pauseOverlay);
+
+    document.getElementById('btn-resume')!.addEventListener('click', togglePause);
+    document.getElementById('btn-restart')!.addEventListener('click', () => {
+      destroyPause();
+      clearRaceObjects();
+      destroyLeaderboard();
+      startRace();
+    });
+    document.getElementById('btn-quit')!.addEventListener('click', () => {
+      destroyPause();
+      netPeer?.destroy();
+      netPeer = null;
+      clearRaceObjects();
+      destroyLeaderboard();
+      showTitleScreen();
+    });
+  } else if (gameState === GameState.PAUSED) {
+    destroyPause();
+    gameState = GameState.RACING;
+  }
+}
+
+function destroyPause() {
+  if (pauseOverlay) { pauseOverlay.remove(); pauseOverlay = null; }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// LOADING SCREEN
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+let loadingEl: HTMLElement | null = null;
+
+function showLoading() {
+  loadingEl = document.createElement('div');
+  loadingEl.className = 'loading-overlay';
+  loadingEl.innerHTML = '<div class="loading-text">GENERATING TRACK...</div>';
+  uiOverlay.appendChild(loadingEl);
+}
+
+function hideLoading() {
+  if (loadingEl) { loadingEl.remove(); loadingEl = null; }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// RACE CONFIGURATION (singleplayer only)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function showRaceConfig(onStart: (laps: number, ai: number, seed: string) => void) {
+  const el = document.createElement('div');
+  el.className = 'race-config-overlay';
+  el.innerHTML = `
+    <div class="settings-panel" style="max-width:360px;">
+      <div class="settings-title">RACE SETUP</div>
+      <label class="settings-row">
+        <span>Laps</span>
+        <select id="cfg-laps">
+          <option value="1">1</option>
+          <option value="3" selected>3</option>
+          <option value="5">5</option>
+          <option value="10">10</option>
+        </select>
+      </label>
+      <label class="settings-row">
+        <span>AI Opponents</span>
+        <select id="cfg-ai">
+          <option value="0">None</option>
+          <option value="2">2</option>
+          <option value="4" selected>4</option>
+        </select>
+      </label>
+      <label class="settings-row">
+        <span>Track Seed</span>
+        <input type="text" id="cfg-seed" placeholder="Random" maxlength="5"
+               class="lobby-input" style="width:100px;font-size:14px;padding:4px 8px;letter-spacing:2px;">
+      </label>
+      <div style="display:flex;gap:12px;justify-content:center;margin-top:16px;">
+        <button class="select-btn" id="cfg-go">START RACE</button>
+      </div>
+    </div>
+  `;
+  uiOverlay.appendChild(el);
+
+  document.getElementById('cfg-go')!.addEventListener('click', () => {
+    const laps = parseInt((el.querySelector('#cfg-laps') as HTMLSelectElement).value);
+    const ai = parseInt((el.querySelector('#cfg-ai') as HTMLSelectElement).value);
+    const seed = (el.querySelector('#cfg-seed') as HTMLInputElement).value.trim();
+    el.remove();
+    onStart(laps, ai, seed);
+  });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// CONTROLS REFERENCE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function showControlsRef() {
+  const el = document.createElement('div');
+  el.className = 'controls-overlay';
+  el.innerHTML = `
+    <div class="settings-panel" style="max-width:400px;">
+      <div class="settings-title">CONTROLS</div>
+      <div class="controls-section">
+        <div class="controls-heading">KEYBOARD</div>
+        <div class="controls-row"><span>Steer</span><span>WASD / Arrow Keys</span></div>
+        <div class="controls-row"><span>Boost</span><span>Shift / Space</span></div>
+        <div class="controls-row"><span>Pause</span><span>Escape</span></div>
+        <div class="controls-row"><span>Debug</span><span>Backtick (\`)</span></div>
+      </div>
+      <div class="controls-section">
+        <div class="controls-heading">MOBILE</div>
+        <div class="controls-row"><span>Steer</span><span>Drag left side of screen</span></div>
+        <div class="controls-row"><span>Gas / Brake / Boost</span><span>Right side buttons</span></div>
+        <div class="controls-row"><span>Tilt steering</span><span>Enable in Settings</span></div>
+      </div>
+      <button class="select-btn" id="ctrl-close" style="margin-top:16px;">CLOSE</button>
+    </div>
+  `;
+  uiOverlay.appendChild(el);
+  document.getElementById('ctrl-close')!.addEventListener('click', () => el.remove());
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TITLE SCREEN
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -166,6 +312,7 @@ function showTitleScreen() {
     <div class="menu-buttons">
       <button class="menu-btn" id="btn-singleplayer">SINGLEPLAYER</button>
       <button class="menu-btn" id="btn-multiplayer">MULTIPLAYER</button>
+      <button class="menu-btn" id="btn-controls" style="border-color:var(--col-text-dim);font-size:16px;">CONTROLS</button>
       <button class="menu-btn" id="btn-settings" style="border-color:var(--col-text-dim);font-size:16px;">SETTINGS</button>
     </div>
   `;
@@ -180,6 +327,8 @@ function showTitleScreen() {
     titleEl.remove();
     enterGarage('multiplayer');
   });
+
+  document.getElementById('btn-controls')!.addEventListener('click', showControlsRef);
 
   document.getElementById('btn-settings')!.addEventListener('click', () => {
     showSettings(uiOverlay, () => {
@@ -201,9 +350,13 @@ function enterGarage(mode: 'singleplayer' | 'multiplayer') {
     destroyGarage();
 
     if (mode === 'singleplayer') {
-      startRace();
+      showRaceConfig((laps, ai, seed) => {
+        totalLaps = laps;
+        aiCount = ai;
+        if (seed) trackSeed = parseInt(seed, 10) || Math.floor(Math.random() * 99999);
+        startRace();
+      });
     } else {
-      // Return to lobby flow after car selection
       enterMultiplayerLobby();
     }
   });
@@ -408,6 +561,7 @@ async function startRace() {
 
   try {
     gameState = GameState.COUNTDOWN;
+    showLoading();
 
     // Clear previous race
     clearRaceObjects();
@@ -479,8 +633,9 @@ async function startRace() {
     // Audio
     initAudio();
 
+    hideLoading();
+
     // Countdown
-    // Sync countdown: guests shorten duration by estimated network delay
     const countdownDuration = netPeer ? Math.max(2000, 3400 - netPeer.getRtt() / 2) : 3400;
     await runCountdown(uiOverlay, countdownDuration);
 
@@ -494,7 +649,7 @@ async function startRace() {
 }
 
 async function spawnAI(trackData: TrackData) {
-  const aiCars = CAR_ROSTER.filter(c => c.id !== selectedCar.id).slice(0, 4);
+  const aiCars = CAR_ROSTER.filter(c => c.id !== selectedCar.id).slice(0, aiCount);
   const laneOffsets = [3.5, -3.5, 3.5, -3.5];
   const startTs = [0.02, 0.02, 0.04, 0.04];
 
@@ -628,29 +783,48 @@ function showResults() {
 
   const el = document.createElement('div');
   el.className = 'results-overlay';
+  // Build per-lap breakdown for the local player
+  const localProgress = raceEngine?.getProgress('local');
+  const localBestLap = raceEngine?.getBestLap('local');
+  const lapBreakdownHtml = localProgress && localProgress.lapTimes.length > 0
+    ? `<div class="lap-breakdown">
+        <div class="lap-breakdown-title">YOUR LAPS</div>
+        ${localProgress.lapTimes.map((t, i) => {
+          const isBest = localBestLap != null && t <= localBestLap;
+          return `<div class="lap-breakdown-row${isBest ? ' best' : ''}">
+            <span>Lap ${i + 1}</span>
+            <span>${RaceEngine.formatTime(t)}${isBest ? ' ★' : ''}</span>
+          </div>`;
+        }).join('')}
+       </div>` : '';
+
   el.innerHTML = `
-    <div class="results-title">${winner?.dnf ? '🏁 RACE COMPLETE' : `🏆 ${winnerName.toUpperCase()} WINS!`}</div>
+    <div class="results-title">${winner?.dnf ? 'RACE COMPLETE' : `${winnerName.toUpperCase()} WINS!`}</div>
     <table class="results-table">
       <thead><tr>
         <th>POS</th>
         <th>RACER</th>
         <th>TIME</th>
+        <th>BEST LAP</th>
       </tr></thead>
       <tbody>
         ${rankings.map((r, i) => {
           const name = r.id === 'local' ? 'You' : r.id.startsWith('ai_') ? `AI ${r.id.replace('ai_', '')}` : (netPeer?.getRemotePlayers().find(rp => rp.id === r.id)?.name || r.id.slice(0, 8));
           const isSelf = r.id === 'local';
           const isDnf = r.dnf;
+          const bestLap = r.lapTimes.length > 0 ? Math.min(...r.lapTimes) : null;
           return `
             <tr class="${isSelf ? 'local' : ''} ${isDnf ? 'dnf' : ''} ${i === 0 && !isDnf ? 'winner' : ''}">
               <td>${isDnf ? '—' : i + 1}</td>
               <td>${name}${isDnf ? ' <span style="color:#ff4444;font-size:11px;">DNF</span>' : ''}</td>
               <td>${isDnf ? '—' : r.finished ? RaceEngine.formatTime(r.finishTime) : 'Racing...'}</td>
+              <td>${bestLap !== null ? RaceEngine.formatTime(bestLap) : '—'}</td>
             </tr>
           `;
         }).join('')}
       </tbody>
     </table>
+    ${lapBreakdownHtml}
     <div class="menu-buttons" style="width:240px; margin-top:8px;">
       ${hasReplay ? '<button class="menu-btn" id="btn-replay" style="border-color:var(--col-cyan);color:var(--col-cyan);">WATCH REPLAY</button>' : ''}
       ${isMultiplayer && isHost ? '<button class="menu-btn" id="btn-rematch" style="background:var(--col-green);">REMATCH</button>' : ''}
@@ -803,6 +977,12 @@ function gameLoop(timestamp: number) {
     return;
   }
 
+  // ── Paused: render but don't update physics ──
+  if (s === GameState.PAUSED) {
+    renderer.render(scene, camera);
+    return;
+  }
+
   // ── Countdown / Racing / Results ──
   if (s === GameState.COUNTDOWN || s === GameState.RACING || s === GameState.RESULTS) {
     if (!playerVehicle || !trackData) {
@@ -942,6 +1122,13 @@ function gameLoop(timestamp: number) {
       } else if (event === 'lap') {
         playLapFanfare();
         netPeer?.broadcastEvent(EventType.LAP_COMPLETE, { lap: progress?.lapIndex ?? 0 });
+        // Show lap completion overlay
+        if (progress) {
+          const lastLapTime = progress.lapTimes[progress.lapTimes.length - 1] ?? 0;
+          const bestLap = raceEngine.getBestLap('local');
+          const isBest = bestLap !== null && lastLapTime <= bestLap;
+          showLapOverlay(uiOverlay, progress.lapIndex, lastLapTime, isBest);
+        }
       } else if (event === 'finish') {
         const finishTime = raceEngine.getProgress('local')?.finishTime ?? 0;
         netPeer?.broadcastEvent(EventType.RACE_FINISH, { finishTime });
@@ -964,6 +1151,8 @@ function gameLoop(timestamp: number) {
         myRank,
         rankings.length,
         wrongWay,
+        raceEngine.getElapsedTime() * 1000,
+        getInput().boost,
       );
 
       // Minimap

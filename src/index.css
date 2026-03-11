@@ -572,3 +572,163 @@ canvas { display: block; }
   font-size: 12px;
   color: var(--col-text-dim);
 }
+
+/* ── Race Timer ── */
+.hud-timer {
+  position: absolute;
+  top: 24px; left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--col-text);
+  text-shadow: 0 0 8px rgba(0,0,0,0.6);
+  pointer-events: none;
+}
+
+/* ── Boost Gauge ── */
+.hud-boost {
+  position: absolute;
+  bottom: 90px; right: 24px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--col-text-dim);
+  padding: 6px 14px;
+  border: 2px solid rgba(0,229,255,0.2);
+  border-radius: var(--radius);
+  background: rgba(0,229,255,0.05);
+  pointer-events: none;
+  transition: all 0.15s;
+}
+.hud-boost.boost-active {
+  color: var(--col-cyan);
+  border-color: var(--col-cyan);
+  background: rgba(0,229,255,0.2);
+  box-shadow: 0 0 16px rgba(0,229,255,0.4);
+  text-shadow: 0 0 8px var(--col-cyan);
+}
+
+/* ── Lap Completion Overlay ── */
+.lap-overlay {
+  position: absolute;
+  top: 30%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  z-index: 65;
+  pointer-events: none;
+  animation: lap-pop 0.5s ease-out;
+}
+.lap-overlay.fade-out { animation: lap-fade 0.5s ease-in forwards; }
+.lap-overlay-title {
+  font-family: var(--font-display);
+  font-size: 36px;
+  color: var(--col-yellow);
+  text-shadow: 0 0 20px rgba(255,230,0,0.4);
+}
+.lap-overlay-time {
+  font-family: var(--font-display);
+  font-size: 24px;
+  color: var(--col-text);
+  margin-top: 4px;
+}
+.lap-overlay-best {
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--col-green);
+  text-shadow: 0 0 12px rgba(57,255,20,0.5);
+  margin-top: 4px;
+  letter-spacing: 3px;
+}
+.lap-overlay.best-lap .lap-overlay-title { color: var(--col-green); text-shadow: 0 0 20px rgba(57,255,20,0.5); }
+@keyframes lap-pop {
+  0% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+@keyframes lap-fade {
+  to { opacity: 0; transform: translate(-50%, -60%); }
+}
+
+/* ── Pause Menu ── */
+.pause-overlay {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 24px;
+  background: rgba(10,10,15,0.85);
+  z-index: 90;
+}
+.pause-title {
+  font-family: var(--font-display);
+  font-size: 48px;
+  color: var(--col-text);
+  letter-spacing: 8px;
+}
+
+/* ── Loading Screen ── */
+.loading-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10,10,15,0.95);
+  z-index: 95;
+}
+.loading-text {
+  font-family: var(--font-display);
+  font-size: 24px;
+  color: var(--col-accent);
+  letter-spacing: 4px;
+  animation: loading-pulse 1.2s ease-in-out infinite;
+}
+@keyframes loading-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ── Race Config ── */
+.race-config-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10,10,15,0.9);
+  z-index: 85;
+}
+
+/* ── Controls Reference ── */
+.controls-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10,10,15,0.92);
+  z-index: 120;
+}
+.controls-section { margin: 12px 0 6px; }
+.controls-heading {
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--col-accent);
+  letter-spacing: 3px;
+  margin-bottom: 6px;
+}
+.controls-row {
+  display: flex; justify-content: space-between;
+  padding: 4px 0;
+  font-size: 14px;
+  color: var(--col-text);
+}
+.controls-row span:last-child { color: var(--col-text-dim); }
+
+/* ── Lap Breakdown (results) ── */
+.lap-breakdown {
+  margin-top: 12px;
+  text-align: center;
+}
+.lap-breakdown-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  color: var(--col-text-dim);
+  letter-spacing: 3px;
+  margin-bottom: 6px;
+}
+.lap-breakdown-row {
+  display: flex; justify-content: space-between;
+  padding: 3px 16px;
+  font-size: 14px;
+  color: var(--col-text);
+  min-width: 200px;
+}
+.lap-breakdown-row.best { color: var(--col-green); font-weight: 600; }

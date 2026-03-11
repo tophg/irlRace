@@ -10,6 +10,7 @@ export enum GameState {
   LOBBY,
   COUNTDOWN,
   RACING,
+  PAUSED,
   RESULTS,
 }
 
@@ -110,6 +111,8 @@ export interface RacerProgress {
   finishTime: number;
   position: THREE.Vector3;
   dnf?: boolean;
+  lapTimes: number[];
+  lastLapStart: number;
 }
 
 // ── Network Packets ──

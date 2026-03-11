@@ -2,16 +2,18 @@
 
 import * as THREE from 'three';
 import type { DamageState } from './types';
+import { RaceEngine } from './race-engine';
 
 let hudEl: HTMLElement;
 let speedEl: HTMLElement;
 let lapEl: HTMLElement;
 let positionEl: HTMLElement;
 let wrongWayEl: HTMLElement;
+let timerEl: HTMLElement;
+let boostEl: HTMLElement;
 let minimapCanvas: HTMLCanvasElement;
 let minimapCtx: CanvasRenderingContext2D;
 
-// Cached minimap data (computed once per track)
 let cachedMinimapPoints: THREE.Vector3[] | null = null;
 let cachedMinimapSpline: THREE.CatmullRomCurve3 | null = null;
 let cachedMinX = 0, cachedMaxX = 0, cachedMinZ = 0, cachedMaxZ = 0;
@@ -20,10 +22,12 @@ export function createHUD(overlay: HTMLElement): HTMLElement {
   hudEl = document.createElement('div');
   hudEl.className = 'hud';
   hudEl.innerHTML = `
+    <div class="hud-timer" id="hud-timer">0:00.000</div>
     <div class="hud-speed" id="hud-speed">0<span>MPH</span></div>
     <div class="hud-lap" id="hud-lap">LAP 1/3</div>
     <div class="hud-position" id="hud-position">1<sup>st</sup></div>
-    <div class="hud-wrong-way" id="hud-wrong-way">⚠ WRONG WAY</div>
+    <div class="hud-wrong-way" id="hud-wrong-way">WRONG WAY</div>
+    <div class="hud-boost" id="hud-boost">BOOST</div>
     <canvas class="hud-minimap" id="hud-minimap" width="160" height="160"></canvas>
     <div class="hud-damage" id="hud-damage">
       <div class="dmg-zone dmg-front" id="dmg-front"></div>
@@ -39,6 +43,8 @@ export function createHUD(overlay: HTMLElement): HTMLElement {
   lapEl = hudEl.querySelector('#hud-lap')!;
   positionEl = hudEl.querySelector('#hud-position')!;
   wrongWayEl = hudEl.querySelector('#hud-wrong-way')!;
+  timerEl = hudEl.querySelector('#hud-timer')!;
+  boostEl = hudEl.querySelector('#hud-boost')!;
   minimapCanvas = hudEl.querySelector('#hud-minimap') as HTMLCanvasElement;
   minimapCtx = minimapCanvas.getContext('2d')!;
 
@@ -52,10 +58,12 @@ export function updateHUD(
   rank: number,
   totalRacers: number,
   wrongWay: boolean,
+  elapsedMs: number,
+  boostActive: boolean,
 ) {
   if (!hudEl) return;
 
-  const mph = Math.floor(Math.abs(speed) * 2.5); // convert to display MPH
+  const mph = Math.floor(Math.abs(speed) * 2.5);
   speedEl.innerHTML = `${mph}<span>MPH</span>`;
 
   lapEl.textContent = `LAP ${Math.min(lapIndex + 1, totalLaps)}/${totalLaps}`;
@@ -64,7 +72,38 @@ export function updateHUD(
   positionEl.innerHTML = `${rank}<sup>${suffix}</sup>`;
 
   wrongWayEl.style.display = wrongWay ? 'block' : 'none';
+
+  timerEl.textContent = RaceEngine.formatTime(elapsedMs);
+
+  boostEl.classList.toggle('boost-active', boostActive);
 }
+
+// ── Lap completion overlay ──
+
+let lapOverlayTimeout: number | null = null;
+
+export function showLapOverlay(overlay: HTMLElement, lapNum: number, lapTimeMs: number, isBestLap: boolean) {
+  // Remove any existing
+  overlay.querySelector('.lap-overlay')?.remove();
+  if (lapOverlayTimeout) clearTimeout(lapOverlayTimeout);
+
+  const el = document.createElement('div');
+  el.className = `lap-overlay${isBestLap ? ' best-lap' : ''}`;
+  el.innerHTML = `
+    <div class="lap-overlay-title">LAP ${lapNum} COMPLETE</div>
+    <div class="lap-overlay-time">${RaceEngine.formatTime(lapTimeMs)}</div>
+    ${isBestLap ? '<div class="lap-overlay-best">BEST LAP</div>' : ''}
+  `;
+  overlay.appendChild(el);
+
+  lapOverlayTimeout = window.setTimeout(() => {
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), 500);
+    lapOverlayTimeout = null;
+  }, 2000);
+}
+
+// ── Minimap ──
 
 export function updateMinimap(
   spline: THREE.CatmullRomCurve3,
@@ -73,7 +112,6 @@ export function updateMinimap(
 ) {
   if (!minimapCtx) return;
 
-  // Cache spline points and bounds (recompute only when spline changes)
   if (cachedMinimapSpline !== spline) {
     cachedMinimapSpline = spline;
     cachedMinimapPoints = spline.getSpacedPoints(100);
@@ -92,7 +130,6 @@ export function updateMinimap(
   const h = minimapCanvas.height;
   minimapCtx.clearRect(0, 0, w, h);
 
-  // Background
   minimapCtx.fillStyle = 'rgba(10,10,15,0.7)';
   minimapCtx.fillRect(0, 0, w, h);
 
@@ -102,7 +139,6 @@ export function updateMinimap(
   const scaleX = (w - margin * 2) / rangeX;
   const scaleZ = (h - margin * 2) / rangeZ;
   const scale = Math.min(scaleX, scaleZ);
-
   const minX = cachedMinX;
   const minZ = cachedMinZ;
 
@@ -111,7 +147,6 @@ export function updateMinimap(
     y: margin + (p.z - minZ) * scale,
   });
 
-  // Draw track line
   minimapCtx.strokeStyle = '#555566';
   minimapCtx.lineWidth = 3;
   minimapCtx.beginPath();
@@ -123,7 +158,6 @@ export function updateMinimap(
   minimapCtx.closePath();
   minimapCtx.stroke();
 
-  // Draw other racers
   minimapCtx.fillStyle = '#ff6600';
   for (const pos of otherPositions) {
     const m = toMap(pos);
@@ -132,7 +166,6 @@ export function updateMinimap(
     minimapCtx.fill();
   }
 
-  // Draw player
   const pm = toMap(playerPos);
   minimapCtx.fillStyle = '#00e5ff';
   minimapCtx.beginPath();
@@ -144,6 +177,8 @@ export function updateMinimap(
   minimapCtx.arc(pm.x, pm.y, 7, 0, Math.PI * 2);
   minimapCtx.stroke();
 }
+
+// ── Damage ──
 
 function dmgColor(hp: number): string {
   if (hp > 70) return '#4caf50';
@@ -169,6 +204,7 @@ export function showHUD(visible: boolean) {
 
 export function destroyHUD() {
   if (hudEl) hudEl.remove();
+  if (lapOverlayTimeout) { clearTimeout(lapOverlayTimeout); lapOverlayTimeout = null; }
   cachedMinimapPoints = null;
   cachedMinimapSpline = null;
 }
