@@ -3,8 +3,9 @@
 import Peer, { DataConnection } from 'peerjs';
 import { PacketType, EventType } from './types';
 
-const BROADCAST_HZ = 20; // 50ms interval
+const BROADCAST_HZ = 20;
 const INTERP_DELAY = 80; // ms behind real-time
+const MAX_PLAYERS = 6;
 const _encoder = new TextEncoder();
 const _decoder = new TextDecoder();
 
@@ -14,6 +15,11 @@ export interface StateSnapshot {
   heading: number;
   speed: number;
   time: number;
+  // Damage HP per zone (transmitted in state packets)
+  dmgFront?: number;
+  dmgRear?: number;
+  dmgLeft?: number;
+  dmgRight?: number;
 }
 
 export interface RemotePlayer {
@@ -22,6 +28,8 @@ export interface RemotePlayer {
   buffer: StateSnapshot[];
   name: string;
   carId: string;
+  rtt: number;
+  ready: boolean;
 }
 
 type StateCallback = (fromId: string, snap: StateSnapshot) => void;
@@ -41,8 +49,8 @@ export class NetPeer {
 
   private broadcastInterval: number | null = null;
   private pingInterval: number | null = null;
-  latencyMs = 0;
-  private statePacketBuffer = new ArrayBuffer(15);
+  // 19-byte state packet: 15B position/heading/speed + 4B damage HP
+  private statePacketBuffer = new ArrayBuffer(19);
   private stateView = new DataView(this.statePacketBuffer);
 
   /** Create a room (host). Returns the room code. */
@@ -54,6 +62,12 @@ export class NetPeer {
     await this.initPeer(peerId);
 
     this.peer!.on('connection', (conn) => {
+      // Enforce max player cap
+      if (this.connections.size >= MAX_PLAYERS - 1) {
+        conn.on('open', () => conn.close());
+        return;
+      }
+
       conn.on('open', () => {
         const remote: RemotePlayer = {
           id: conn.peer,
@@ -61,6 +75,8 @@ export class NetPeer {
           buffer: [],
           name: conn.metadata?.name || 'Racer',
           carId: conn.metadata?.carId || '',
+          rtt: 0,
+          ready: false,
         };
         this.connections.set(conn.peer, remote);
         this.onPlayerJoin(conn.peer, remote.name);
@@ -99,6 +115,8 @@ export class NetPeer {
           buffer: [],
           name: 'Host',
           carId: '',
+          rtt: 0,
+          ready: false,
         };
         this.connections.set(conn.peer, remote);
         this.onPlayerJoin(conn.peer, 'Host');
@@ -125,7 +143,10 @@ export class NetPeer {
   }
 
   /** Start broadcasting state at 20Hz. */
-  startBroadcasting(getState: () => { x: number; z: number; heading: number; speed: number }) {
+  startBroadcasting(getState: () => {
+    x: number; z: number; heading: number; speed: number;
+    dmgFront?: number; dmgRear?: number; dmgLeft?: number; dmgRight?: number;
+  }) {
     if (this.broadcastInterval) return;
 
     this.broadcastInterval = window.setInterval(() => {
@@ -141,8 +162,11 @@ export class NetPeer {
     }
   }
 
-  /** Send compact 15-byte state packet. */
-  private broadcastState(state: { x: number; z: number; heading: number; speed: number }) {
+  /** Send 19-byte state packet: position + heading + speed + damage. */
+  private broadcastState(state: {
+    x: number; z: number; heading: number; speed: number;
+    dmgFront?: number; dmgRear?: number; dmgLeft?: number; dmgRight?: number;
+  }) {
     const view = this.stateView;
     view.setUint8(0, PacketType.STATE);
     view.setFloat32(1, state.x, true);
@@ -150,23 +174,25 @@ export class NetPeer {
     const normHeading = ((state.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
     view.setUint16(9, Math.round(normHeading * 10000), true);
     view.setFloat32(11, state.speed, true);
+    view.setUint8(15, Math.round(state.dmgFront ?? 100));
+    view.setUint8(16, Math.round(state.dmgRear ?? 100));
+    view.setUint8(17, Math.round(state.dmgLeft ?? 100));
+    view.setUint8(18, Math.round(state.dmgRight ?? 100));
 
     for (const remote of this.connections.values()) {
-      try {
-        remote.conn.send(this.statePacketBuffer);
-      } catch { /* swallow send errors */ }
+      try { remote.conn.send(this.statePacketBuffer); } catch {}
     }
 
-    // Host relay: re-broadcast to other guests
-    if (this.isHost && this.connections.size > 1) {
-      this.relayState(this.localId, state);
-    }
+    // FIX: Do NOT relay host's own state — guests already received it directly
   }
 
   /** Host: relay a guest's state to all other guests. */
-  private relayState(fromId: string, state: { x: number; z: number; heading: number; speed: number }) {
+  private relayState(fromId: string, state: {
+    x: number; z: number; heading: number; speed: number;
+    dmgFront?: number; dmgRear?: number; dmgLeft?: number; dmgRight?: number;
+  }) {
     const idBytes = _encoder.encode(fromId);
-    const buf = new ArrayBuffer(1 + 1 + idBytes.length + 14);
+    const buf = new ArrayBuffer(1 + 1 + idBytes.length + 18);
     const view = new DataView(buf);
     view.setUint8(0, PacketType.STATE_RELAY);
     view.setUint8(1, idBytes.length);
@@ -178,6 +204,10 @@ export class NetPeer {
     const normHeading = ((state.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
     view.setUint16(offset + 8, Math.round(normHeading * 10000), true);
     view.setFloat32(offset + 10, state.speed, true);
+    view.setUint8(offset + 14, Math.round(state.dmgFront ?? 100));
+    view.setUint8(offset + 15, Math.round(state.dmgRear ?? 100));
+    view.setUint8(offset + 16, Math.round(state.dmgLeft ?? 100));
+    view.setUint8(offset + 17, Math.round(state.dmgRight ?? 100));
 
     for (const [id, remote] of this.connections) {
       if (id !== fromId) {
@@ -200,6 +230,24 @@ export class NetPeer {
     }
   }
 
+  /** Host: relay an event embedding the original sender ID. */
+  private relayEvent(fromId: string, eventType: number, jsonBytes: Uint8Array) {
+    const idBytes = _encoder.encode(fromId);
+    const buf = new ArrayBuffer(1 + 1 + idBytes.length + 1 + jsonBytes.length);
+    const view = new DataView(buf);
+    view.setUint8(0, PacketType.EVENT_RELAY);
+    view.setUint8(1, idBytes.length);
+    new Uint8Array(buf, 2, idBytes.length).set(idBytes);
+    view.setUint8(2 + idBytes.length, eventType);
+    new Uint8Array(buf, 3 + idBytes.length).set(jsonBytes);
+
+    for (const [id, remote] of this.connections) {
+      if (id !== fromId) {
+        try { remote.conn.send(buf); } catch {}
+      }
+    }
+  }
+
   private handleData(fromId: string, data: unknown) {
     if (!(data instanceof ArrayBuffer)) return;
     const view = new DataView(data);
@@ -213,10 +261,13 @@ export class NetPeer {
           heading: view.getUint16(9, true) / 10000,
           speed: view.getFloat32(11, true),
           time: performance.now(),
+          dmgFront: data.byteLength >= 19 ? view.getUint8(15) : undefined,
+          dmgRear:  data.byteLength >= 19 ? view.getUint8(16) : undefined,
+          dmgLeft:  data.byteLength >= 19 ? view.getUint8(17) : undefined,
+          dmgRight: data.byteLength >= 19 ? view.getUint8(18) : undefined,
         };
         this.onState(fromId, snap);
 
-        // Host relay
         if (this.isHost) {
           this.relayState(fromId, snap);
         }
@@ -231,14 +282,24 @@ export class NetPeer {
           const eventData = JSON.parse(json);
           this.onEvent(fromId, eventType, eventData);
 
-          // Host relay events to all other guests
+          // FIX: relay with embedded sender ID instead of raw forward
           if (this.isHost) {
-            for (const [id, remote] of this.connections) {
-              if (id !== fromId) {
-                try { remote.conn.send(data); } catch {}
-              }
-            }
+            this.relayEvent(fromId, eventType, jsonBytes);
           }
+        } catch {}
+        break;
+      }
+
+      case PacketType.EVENT_RELAY: {
+        const idLen = view.getUint8(1);
+        const idBytes = new Uint8Array(data, 2, idLen);
+        const actualFromId = _decoder.decode(idBytes);
+        const eventType = view.getUint8(2 + idLen) as EventType;
+        const jsonBytes = new Uint8Array(data, 3 + idLen);
+        const json = _decoder.decode(jsonBytes);
+        try {
+          const eventData = JSON.parse(json);
+          this.onEvent(actualFromId, eventType, eventData);
         } catch {}
         break;
       }
@@ -255,13 +316,16 @@ export class NetPeer {
           heading: view.getUint16(offset + 8, true) / 10000,
           speed: view.getFloat32(offset + 10, true),
           time: performance.now(),
+          dmgFront: data.byteLength >= offset + 18 ? view.getUint8(offset + 14) : undefined,
+          dmgRear:  data.byteLength >= offset + 18 ? view.getUint8(offset + 15) : undefined,
+          dmgLeft:  data.byteLength >= offset + 18 ? view.getUint8(offset + 16) : undefined,
+          dmgRight: data.byteLength >= offset + 18 ? view.getUint8(offset + 17) : undefined,
         };
         this.onState(actualFromId, snap);
         break;
       }
 
       case PacketType.PING: {
-        // Respond with PONG containing the same timestamp
         const pongBuf = new ArrayBuffer(9);
         const pongView = new DataView(pongBuf);
         pongView.setUint8(0, PacketType.PONG);
@@ -273,7 +337,10 @@ export class NetPeer {
 
       case PacketType.PONG: {
         const sentTime = view.getFloat64(1, true);
-        this.latencyMs = Math.round(performance.now() - sentTime);
+        const rtt = Math.round(performance.now() - sentTime);
+        // FIX: store RTT per-peer instead of single scalar
+        const remote = this.connections.get(fromId);
+        if (remote) remote.rtt = rtt;
         break;
       }
     }
@@ -295,7 +362,6 @@ export class NetPeer {
     const renderTime = performance.now() - INTERP_DELAY;
     const buf = remote.buffer;
 
-    // Find surrounding snapshots
     let s0: StateSnapshot | null = null;
     let s1: StateSnapshot | null = null;
     for (let i = buf.length - 1; i >= 1; i--) {
@@ -315,6 +381,10 @@ export class NetPeer {
       heading: lerpAngle(s0.heading, s1.heading, t),
       speed: s0.speed + (s1.speed - s0.speed) * t,
       time: renderTime,
+      dmgFront: s1.dmgFront,
+      dmgRear: s1.dmgRear,
+      dmgLeft: s1.dmgLeft,
+      dmgRight: s1.dmgRight,
     };
   }
 
@@ -322,15 +392,28 @@ export class NetPeer {
   addToBuffer(id: string, snap: StateSnapshot) {
     let remote = this.connections.get(id);
     if (!remote) {
-      // Create stub for late-joining players
-      remote = { id, conn: null as any, buffer: [], name: 'Racer', carId: '' };
+      remote = { id, conn: null as any, buffer: [], name: 'Racer', carId: '', rtt: 0, ready: false };
       this.connections.set(id, remote);
     }
     remote.buffer.push(snap);
-    // Cap buffer at 10 snapshots
     if (remote.buffer.length > 10) {
       remote.buffer.splice(0, remote.buffer.length - 10);
     }
+  }
+
+  /** Mark a remote player as ready. */
+  setPlayerReady(id: string, ready: boolean) {
+    const remote = this.connections.get(id);
+    if (remote) remote.ready = ready;
+  }
+
+  /** Check if all connected players are ready. */
+  allPlayersReady(): boolean {
+    if (this.connections.size === 0) return false;
+    for (const remote of this.connections.values()) {
+      if (!remote.ready) return false;
+    }
+    return true;
   }
 
   getConnectedIds(): string[] {
@@ -346,6 +429,20 @@ export class NetPeer {
   getIsHost() { return this.isHost; }
   getConnectionCount() { return this.connections.size; }
 
+  /** Get average RTT across all peers. */
+  getRtt(): number {
+    const peers = this.getRemotePlayers();
+    if (peers.length === 0) return 0;
+    let sum = 0;
+    for (const p of peers) sum += p.rtt;
+    return Math.round(sum / peers.length);
+  }
+
+  /** Get RTT for a specific peer. */
+  getPeerRtt(id: string): number {
+    return this.connections.get(id)?.rtt ?? 0;
+  }
+
   destroy() {
     this.stopBroadcasting();
     this.stopPinging();
@@ -357,7 +454,6 @@ export class NetPeer {
     this.peer = null;
   }
 
-  /** Start sending PING every 3 seconds. */
   startPinging() {
     if (this.pingInterval) return;
     this.pingInterval = window.setInterval(() => {
@@ -374,12 +470,10 @@ export class NetPeer {
   stopPinging() {
     if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; }
   }
-
-  getRtt(): number { return this.latencyMs; }
 }
 
 function generateRoomCode(): string {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // no ambiguous chars
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   let code = '';
   for (let i = 0; i < 4; i++) {
     code += chars[Math.floor(Math.random() * chars.length)];

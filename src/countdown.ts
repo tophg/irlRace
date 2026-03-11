@@ -4,8 +4,12 @@ let overlayEl: HTMLElement | null = null;
 let countdownTimers: number[] = [];
 let countdownAudioCtx: AudioContext | null = null;
 
-/** Run the 3-2-1-GO countdown sequence. Returns a promise that resolves on GO. */
-export function runCountdown(uiOverlay: HTMLElement): Promise<void> {
+/**
+ * Run the 3-2-1-GO countdown sequence. Returns a promise that resolves on GO.
+ * @param durationMs Total countdown duration (default 3400ms). Used for network sync —
+ *                   guests shorten their countdown by estimated network delay.
+ */
+export function runCountdown(uiOverlay: HTMLElement, durationMs = 3400): Promise<void> {
   return new Promise((resolve) => {
     forceStopCountdown();
 
@@ -30,11 +34,13 @@ export function runCountdown(uiOverlay: HTMLElement): Promise<void> {
       osc.stop(audioCtx.currentTime + duration);
     };
 
+    // Scale step delays proportionally to the total duration
+    const scale = durationMs / 3400;
     const sequence = [
       { text: '3', css: 'countdown-number', delay: 0 },
-      { text: '2', css: 'countdown-number', delay: 900 },
-      { text: '1', css: 'countdown-number', delay: 1800 },
-      { text: 'GO!', css: 'countdown-go', delay: 2700 },
+      { text: '2', css: 'countdown-number', delay: 900 * scale },
+      { text: '1', css: 'countdown-number', delay: 1800 * scale },
+      { text: 'GO!', css: 'countdown-go', delay: 2700 * scale },
     ];
 
     countdownTimers = [];
@@ -56,7 +62,7 @@ export function runCountdown(uiOverlay: HTMLElement): Promise<void> {
     const finishId = window.setTimeout(() => {
       cleanupCountdown();
       resolve();
-    }, 3400);
+    }, durationMs);
     countdownTimers.push(finishId);
   });
 }

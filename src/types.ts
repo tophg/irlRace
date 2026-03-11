@@ -117,6 +117,7 @@ export enum PacketType {
   PING = 3,
   PONG = 4,
   STATE_RELAY = 5,
+  EVENT_RELAY = 6,
 }
 
 export enum EventType {
@@ -129,6 +130,8 @@ export enum EventType {
   CAR_SELECT = 7,
   REMATCH_REQUEST = 8,
   REMATCH_ACCEPT = 9,
+  PLAYER_READY = 10,
+  PLAYER_LIST = 11,
 }
 
 // ── Input ──

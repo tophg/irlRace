@@ -83,6 +83,7 @@ const _remoteRaycaster = new THREE.Raycaster();
 const _impactDir = new THREE.Vector3();
 const _sparkPos = new THREE.Vector3();
 let driftSfxCooldown = 0;
+const remotePrevPos = new Map<string, { x: number; z: number }>();
 let replayRecorder: ReplayRecorder | null = null;
 let replayPlayer: ReplayPlayer | null = null;
 
@@ -177,7 +178,7 @@ function showTitleScreen() {
 
   document.getElementById('btn-multiplayer')!.addEventListener('click', () => {
     titleEl.remove();
-    enterMultiplayerLobby();
+    enterGarage('multiplayer');
   });
 
   document.getElementById('btn-settings')!.addEventListener('click', () => {
@@ -238,7 +239,6 @@ function enterMultiplayerLobby() {
         onStart: () => {
           destroyLobby();
           trackSeed = Math.floor(Math.random() * 99999);
-          // Build players array with car selections
           const players = [{ id: netPeer!.getLocalId(), name: localPlayerName, carId: selectedCar.id }];
           for (const rp of netPeer!.getRemotePlayers()) players.push({ id: rp.id, name: rp.name, carId: rp.carId });
           netPeer!.broadcastEvent(EventType.COUNTDOWN_START, { laps: totalLaps, seed: trackSeed, players });
@@ -246,13 +246,14 @@ function enterMultiplayerLobby() {
         },
         onBack: () => { netPeer?.destroy(); netPeer = null; destroyLobby(); showTitleScreen(); },
       });
+
+      // Send initial player list to connected guests
+      broadcastPlayerList();
     },
 
     onJoin: async (code: string) => {
       netPeer = new NetPeer();
       wireNetworkCallbacks();
-
-      // Use module-level localPlayerName
 
       try {
         showToast(uiOverlay, 'Connecting...');
@@ -265,18 +266,31 @@ function enterMultiplayerLobby() {
           onHost: () => {},
           onJoin: () => {},
           onStart: () => {},
+          onReady: () => {
+            netPeer?.broadcastEvent(EventType.PLAYER_READY, { ready: true });
+          },
           onBack: () => { netPeer?.destroy(); netPeer = null; destroyLobby(); showTitleScreen(); },
         });
 
-        showToast(uiOverlay, '✓ Connected to room');
+        showToast(uiOverlay, 'Connected to room');
       } catch (err) {
-        showToast(uiOverlay, '✗ Could not connect');
+        showToast(uiOverlay, `Could not connect: ${(err as Error).message}`);
+        destroyLobby();
+        enterMultiplayerLobby();
       }
     },
 
     onStart: () => {},
     onBack: () => { destroyLobby(); showTitleScreen(); },
   });
+}
+
+function broadcastPlayerList() {
+  if (!netPeer?.getIsHost()) return;
+  const players = netPeer.getRemotePlayers().map(p => ({
+    id: p.id, name: p.name, ready: p.ready,
+  }));
+  netPeer.broadcastEvent(EventType.PLAYER_LIST, { players });
 }
 
 function wireNetworkCallbacks() {
@@ -311,20 +325,45 @@ function wireNetworkCallbacks() {
         break;
 
       case EventType.REMATCH_REQUEST:
-        // Host sent a rematch with new seed
         trackSeed = data.seed ?? Math.floor(Math.random() * 99999);
         totalLaps = data.laps ?? totalLaps;
         destroyLeaderboard();
-        // Remove results overlay if present (guest receives rematch while viewing results)
         uiOverlay.querySelector('.results-overlay')?.remove();
         startRace();
+        break;
+
+      case EventType.RACE_FINISH:
+        if (raceEngine) {
+          const racer = raceEngine.getProgress(fromId);
+          if (racer && !racer.finished) {
+            racer.finished = true;
+            racer.finishTime = data.finishTime ?? 0;
+            racer.lapIndex = totalLaps;
+            racer.checkpointIndex = 0;
+          }
+        }
+        break;
+
+      case EventType.PLAYER_READY:
+        netPeer!.setPlayerReady(fromId, data.ready ?? true);
+        updatePlayerList(netPeer!.getRemotePlayers().map(p => ({
+          id: p.id, name: p.name, ready: p.ready,
+        })));
+        broadcastPlayerList();
+        break;
+
+      case EventType.PLAYER_LIST:
+        if (data.players) {
+          updatePlayerList(data.players);
+        }
         break;
     }
   };
 
   netPeer.onPlayerJoin = (id, name) => {
     showToast(uiOverlay, `${name} joined`);
-    updatePlayerList(netPeer!.getRemotePlayers().map(p => ({ id: p.id, name: p.name })));
+    updatePlayerList(netPeer!.getRemotePlayers().map(p => ({ id: p.id, name: p.name, ready: p.ready })));
+    broadcastPlayerList();
   };
 
   netPeer.onPlayerLeave = (id, disconnectedName) => {
@@ -422,6 +461,10 @@ async function startRace() {
         z: playerVehicle!.group.position.z,
         heading: playerVehicle!.heading,
         speed: playerVehicle!.speed,
+        dmgFront: playerVehicle!.damage.front.hp,
+        dmgRear: playerVehicle!.damage.rear.hp,
+        dmgLeft: playerVehicle!.damage.left.hp,
+        dmgRight: playerVehicle!.damage.right.hp,
       }));
 
       // Start latency monitoring
@@ -437,7 +480,9 @@ async function startRace() {
     initAudio();
 
     // Countdown
-    await runCountdown(uiOverlay);
+    // Sync countdown: guests shorten duration by estimated network delay
+    const countdownDuration = netPeer ? Math.max(2000, 3400 - netPeer.getRtt() / 2) : 3400;
+    await runCountdown(uiOverlay, countdownDuration);
 
     raceEngine.start();
     replayRecorder = new ReplayRecorder();
@@ -549,6 +594,8 @@ function clearRaceObjects() {
     }
   }
   remoteNameTags.clear();
+
+  remotePrevPos.clear();
 
   // Clean up VFX (smoke, speed lines, boost flame, skid marks)
   destroyVFX();
@@ -886,6 +933,8 @@ function gameLoop(timestamp: number) {
         playLapFanfare();
         netPeer?.broadcastEvent(EventType.LAP_COMPLETE, { lap: progress?.lapIndex ?? 0 });
       } else if (event === 'finish') {
+        const finishTime = raceEngine.getProgress('local')?.finishTime ?? 0;
+        netPeer?.broadcastEvent(EventType.RACE_FINISH, { finishTime });
         destroyLeaderboard();
         showResults();
       }
@@ -945,6 +994,33 @@ function gameLoop(timestamp: number) {
             mesh.position.set(snap.x, nearest.point.y, snap.z);
           }
           mesh.rotation.y = snap.heading;
+
+          // Remote VFX: tire smoke from approximate drift
+          if (s === GameState.RACING) {
+            const prev = remotePrevPos.get(id);
+            if (prev) {
+              const dx = snap.x - prev.x;
+              const dz = snap.z - prev.z;
+              if (dx * dx + dz * dz > 0.01) {
+                const moveHeading = Math.atan2(dx, dz);
+                let driftApprox = Math.abs(snap.heading - moveHeading);
+                if (driftApprox > Math.PI) driftApprox = Math.PI * 2 - driftApprox;
+                if (driftApprox > 0.2) {
+                  spawnTireSmoke(mesh.position, driftApprox * 0.5);
+                }
+              }
+            }
+            remotePrevPos.set(id, { x: snap.x, z: snap.z });
+
+            // Remote damage smoke
+            const worstHp = Math.min(
+              snap.dmgFront ?? 100, snap.dmgRear ?? 100,
+              snap.dmgLeft ?? 100, snap.dmgRight ?? 100,
+            );
+            if (worstHp < 50) {
+              spawnDamageSmoke(mesh.position, 1 - worstHp / 50, dt);
+            }
+          }
         }
 
         const tag = remoteNameTags.get(id);
