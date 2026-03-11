@@ -5,6 +5,11 @@ let engineOsc: OscillatorNode | null = null;
 let engineGain: GainNode | null = null;
 
 export function initAudio() {
+  // Clean up previous audio context to prevent resource leak on rematch/replay
+  if (engineOsc) { try { engineOsc.stop(); } catch {} engineOsc = null; }
+  if (engineGain) { engineGain = null; }
+  if (audioCtx) { try { audioCtx.close(); } catch {} audioCtx = null; }
+
   audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
 
   // Engine drone

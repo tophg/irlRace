@@ -76,7 +76,6 @@ export function initGarage(
   garageScene.add(underglow);
 
   // Environment map for reflections
-  const { RoomEnvironment } = THREE as any;
   if (THREE.PMREMGenerator) {
     const pmrem = new THREE.PMREMGenerator(renderer);
     try {

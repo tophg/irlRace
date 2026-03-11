@@ -69,6 +69,10 @@ let lastTime = 0;
 // ── Collision ──
 const carHalf = new THREE.Vector3(1.0, 0.8, 2.2); // approximate car half-extents
 
+// ── Reusable temps (avoid per-frame allocations) ──
+const _rPos = new THREE.Vector3();
+const _defaultTangent = new THREE.Vector3(0, 0, 1);
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TITLE SCREEN
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -627,7 +631,7 @@ function gameLoop(timestamp: number) {
       const myRank = rankings.findIndex(r => r.id === 'local') + 1;
       const wrongWay = raceEngine.isWrongWay(
         playerVehicle.heading,
-        trackData.checkpoints[progress?.checkpointIndex ?? 0]?.tangent ?? new THREE.Vector3(0, 0, 1),
+        trackData.checkpoints[progress?.checkpointIndex ?? 0]?.tangent ?? _defaultTangent,
       );
 
       updateHUD(
@@ -653,7 +657,7 @@ function gameLoop(timestamp: number) {
       for (const [id, mesh] of remoteMeshes) {
         const snap = netPeer.getInterpolatedState(id);
         if (snap) {
-          const _rPos = new THREE.Vector3(snap.x, 0, snap.z);
+          _rPos.set(snap.x, 0, snap.z);
           const nearest = getClosestSplinePoint(trackData!.spline, _rPos, trackData!.bvh);
           mesh.position.set(snap.x, nearest.point.y, snap.z);
           mesh.rotation.y = snap.heading;

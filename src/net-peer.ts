@@ -5,6 +5,8 @@ import { PacketType, EventType } from './types';
 
 const BROADCAST_HZ = 20; // 50ms interval
 const INTERP_DELAY = 80; // ms behind real-time
+const _encoder = new TextEncoder();
+const _decoder = new TextDecoder();
 
 export interface StateSnapshot {
   x: number;
@@ -160,7 +162,7 @@ export class NetPeer {
 
   /** Host: relay a guest's state to all other guests. */
   private relayState(fromId: string, state: { x: number; z: number; heading: number; speed: number }) {
-    const idBytes = new TextEncoder().encode(fromId);
+    const idBytes = _encoder.encode(fromId);
     const buf = new ArrayBuffer(1 + 1 + idBytes.length + 12);
     const view = new DataView(buf);
     view.setUint8(0, PacketType.STATE_RELAY);
@@ -183,7 +185,7 @@ export class NetPeer {
   /** Send a game event. */
   broadcastEvent(type: EventType, data: any = {}) {
     const json = JSON.stringify({ type, ...data });
-    const jsonBytes = new TextEncoder().encode(json);
+    const jsonBytes = _encoder.encode(json);
     const buf = new ArrayBuffer(2 + jsonBytes.length);
     new DataView(buf).setUint8(0, PacketType.EVENT);
     new DataView(buf).setUint8(1, type);
@@ -220,7 +222,7 @@ export class NetPeer {
       case PacketType.EVENT: {
         const eventType = view.getUint8(1) as EventType;
         const jsonBytes = new Uint8Array(data, 2);
-        const json = new TextDecoder().decode(jsonBytes);
+        const json = _decoder.decode(jsonBytes);
         try {
           const eventData = JSON.parse(json);
           this.onEvent(fromId, eventType, eventData);
@@ -240,7 +242,7 @@ export class NetPeer {
       case PacketType.STATE_RELAY: {
         const idLen = view.getUint8(1);
         const idBytes = new Uint8Array(data, 2, idLen);
-        const actualFromId = new TextDecoder().decode(idBytes);
+        const actualFromId = _decoder.decode(idBytes);
 
         const offset = 2 + idLen;
         const snap: StateSnapshot = {

@@ -9,6 +9,7 @@ import type { SplineBVH } from './bvh';
 const _carForward = new THREE.Vector3();
 const _carRight = new THREE.Vector3();
 const _temp = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
 
 export class Vehicle {
   readonly group: THREE.Group;
@@ -303,9 +304,9 @@ export class Vehicle {
     this.group.position.y += 0.05;
 
     if (laneOffset !== 0) {
-      const right = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
-      this.group.position.x += right.x * laneOffset;
-      this.group.position.z += right.z * laneOffset;
+      _temp.crossVectors(tangent, _up).normalize();
+      this.group.position.x += _temp.x * laneOffset;
+      this.group.position.z += _temp.z * laneOffset;
     }
 
     this.heading = Math.atan2(tangent.x, tangent.z);

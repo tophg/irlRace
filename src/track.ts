@@ -369,6 +369,13 @@ function scoreTrack(curvatures: number[], totalLength: number, speedProfile: num
 // MESH BUILDERS (P2-E: auto-banked corners)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// Reusable temps for mesh builders (avoids ~1200 allocations per track gen)
+const _meshUp = new THREE.Vector3();
+const _meshRight = new THREE.Vector3();
+const _meshBankQuat = new THREE.Quaternion();
+const _meshBankedRight = new THREE.Vector3();
+const _meshBankedUp = new THREE.Vector3();
+
 function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[]): THREE.Mesh {
   const points = spline.getSpacedPoints(SPLINE_SAMPLES);
   const vertices: number[] = [];
@@ -380,8 +387,8 @@ function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[]): TH
   for (let i = 0; i < points.length; i++) {
     const t = i / (points.length - 1);
     const tangent = spline.getTangentAt(t).normalize();
-    const up = new THREE.Vector3(0, 1, 0);
-    const right = new THREE.Vector3().crossVectors(tangent, up).normalize();
+    _meshUp.set(0, 1, 0);
+    _meshRight.crossVectors(tangent, _meshUp).normalize();
 
     // ── P2-E: Auto-banking ──
     // Bank the road cross-section proportional to curvature
@@ -389,29 +396,29 @@ function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[]): TH
     const bankAngle = clamp(kappa * BANK_SCALE, -MAX_BANK_ANGLE, MAX_BANK_ANGLE);
 
     // Rotate the "up" and "right" vectors about the tangent by bankAngle
-    const bankQuat = new THREE.Quaternion().setFromAxisAngle(tangent, -bankAngle);
-    const bankedRight = right.clone().applyQuaternion(bankQuat);
-    const bankedUp = up.clone().applyQuaternion(bankQuat);
+    _meshBankQuat.setFromAxisAngle(tangent, -bankAngle);
+    _meshBankedRight.copy(_meshRight).applyQuaternion(_meshBankQuat);
+    _meshBankedUp.copy(_meshUp).applyQuaternion(_meshBankQuat);
 
     const p = points[i];
 
     // Left edge
     vertices.push(
-      p.x - bankedRight.x * halfW,
-      p.y + 0.01 - bankedRight.y * halfW,
-      p.z - bankedRight.z * halfW,
+      p.x - _meshBankedRight.x * halfW,
+      p.y + 0.01 - _meshBankedRight.y * halfW,
+      p.z - _meshBankedRight.z * halfW,
     );
     // Right edge
     vertices.push(
-      p.x + bankedRight.x * halfW,
-      p.y + 0.01 + bankedRight.y * halfW,
-      p.z + bankedRight.z * halfW,
+      p.x + _meshBankedRight.x * halfW,
+      p.y + 0.01 + _meshBankedRight.y * halfW,
+      p.z + _meshBankedRight.z * halfW,
     );
 
     uvs.push(0, t * 40);
     uvs.push(1, t * 40);
 
-    normals.push(bankedUp.x, bankedUp.y, bankedUp.z, bankedUp.x, bankedUp.y, bankedUp.z);
+    normals.push(_meshBankedUp.x, _meshBankedUp.y, _meshBankedUp.z, _meshBankedUp.x, _meshBankedUp.y, _meshBankedUp.z);
 
     if (i < points.length - 1) {
       const base = i * 2;
@@ -480,17 +487,18 @@ function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number): THREE.M
   for (let i = 0; i < points.length; i++) {
     const t = i / (points.length - 1);
     const tangent = spline.getTangentAt(t).normalize();
-    const up = new THREE.Vector3(0, 1, 0);
-    const right = new THREE.Vector3().crossVectors(tangent, up).normalize();
+    _meshUp.set(0, 1, 0);
+    _meshRight.crossVectors(tangent, _meshUp).normalize();
     const p = points[i];
-    const ox = p.x + right.x * halfW * side;
-    const oz = p.z + right.z * halfW * side;
+    const ox = p.x + _meshRight.x * halfW * side;
+    const oz = p.z + _meshRight.z * halfW * side;
 
     vertices.push(ox, p.y, oz);
     vertices.push(ox, p.y + BARRIER_HEIGHT, oz);
 
-    const n = right.clone().multiplyScalar(-side);
-    normals.push(n.x, 0, n.z, n.x, 0, n.z);
+    const nx = -_meshRight.x * side;
+    const nz = -_meshRight.z * side;
+    normals.push(nx, 0, nz, nx, 0, nz);
 
     if (i < points.length - 1) {
       const base = i * 2;
