@@ -491,7 +491,7 @@ export class Vehicle {
     if (Math.abs(localDirZ) > Math.abs(localDirX)) {
       zone = localDirZ > 0 ? 'front' : 'rear';
     } else {
-      zone = localDirX > 0 ? 'left' : 'right';
+      zone = localDirX > 0 ? 'right' : 'left';
     }
 
     const dmgAmount = Math.min((impactForce - 8) * 1.2, 35);

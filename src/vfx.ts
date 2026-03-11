@@ -459,7 +459,11 @@ export function destroyVFX() {
   for (const s of activeSparks) s.mesh.visible = false;
   activeSparks.length = 0;
   if (sceneRef) {
-    for (const mesh of sparkPool) sceneRef.remove(mesh);
+    for (const mesh of sparkPool) {
+      sceneRef.remove(mesh);
+      mesh.geometry?.dispose();
+      (mesh.material as THREE.Material)?.dispose();
+    }
   }
   sparkPool.length = 0;
   sparkIdx = 0;
@@ -467,7 +471,11 @@ export function destroyVFX() {
   damageSmokeCooldown = 0;
 
   if (sceneRef) {
-    for (const mesh of smokePool) sceneRef.remove(mesh);
+    for (const mesh of smokePool) {
+      sceneRef.remove(mesh);
+      mesh.geometry?.dispose();
+      (mesh.material as THREE.Material)?.dispose();
+    }
   }
   smokePool.length = 0;
   smokeIdx = 0;
@@ -487,6 +495,8 @@ export function destroyVFX() {
   // Remove boost flame
   if (boostFlame) {
     boostFlame.parent?.remove(boostFlame);
+    boostFlame.geometry?.dispose();
+    (boostFlame.material as THREE.Material)?.dispose();
     boostFlame = null;
   }
 }

@@ -16,6 +16,7 @@ const state: InputState = {
 let tiltEnabled = false;
 let tiltPermissionGranted = false;
 let tiltSmoothed = 0;
+let tiltHandler: ((e: DeviceOrientationEvent) => void) | null = null;
 
 // Analog steering zone state
 let steerTouchId: number | null = null;
@@ -168,10 +169,10 @@ export async function enableTiltSteering(): Promise<boolean> {
   tiltPermissionGranted = true;
   tiltEnabled = true;
 
-  window.addEventListener('deviceorientation', (e: DeviceOrientationEvent) => {
+  tiltHandler = (e: DeviceOrientationEvent) => {
     if (!tiltEnabled || e.gamma === null) return;
 
-    const gamma = e.gamma; // -90..90 deg, left/right tilt
+    const gamma = e.gamma;
     const deadZone = 5;
     const sensitivity = getSettings().steerSensitivity;
 
@@ -181,12 +182,12 @@ export async function enableTiltSteering(): Promise<boolean> {
       raw = Math.max(-1, Math.min(1, raw * sensitivity));
     }
 
-    // Smooth with lerp
     tiltSmoothed += (raw - tiltSmoothed) * 0.15;
     state.steerAnalog = tiltSmoothed;
     state.left = tiltSmoothed < -0.15;
     state.right = tiltSmoothed > 0.15;
-  });
+  };
+  window.addEventListener('deviceorientation', tiltHandler);
 
   return true;
 }
@@ -195,6 +196,10 @@ export function disableTiltSteering() {
   tiltEnabled = false;
   tiltSmoothed = 0;
   state.steerAnalog = 0;
+  if (tiltHandler) {
+    window.removeEventListener('deviceorientation', tiltHandler);
+    tiltHandler = null;
+  }
 }
 
 export function isTiltAvailable(): boolean {
