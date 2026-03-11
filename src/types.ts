@@ -86,6 +86,8 @@ export interface TrackData {
   sceneryGroup: THREE.Group;
   totalLength: number;
   bvh: SplineBVH;
+  speedProfile: number[];
+  curvatures: number[];
 }
 
 // ── Vehicle Runtime ──

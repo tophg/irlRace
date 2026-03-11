@@ -82,7 +82,7 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   // ── 11. Quality score ──
   const qualityScore = scoreTrack(curvatures, totalLength, speedProfile);
 
-  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, checkpoints, sceneryGroup, totalLength, bvh };
+  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures };
   return { data, qualityScore };
 }
 

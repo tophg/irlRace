@@ -14,7 +14,7 @@ import { RaceEngine } from './race-engine';
 import { createHUD, updateHUD, updateMinimap, updateDamageHUD, showHUD, destroyHUD } from './hud';
 import { runCountdown } from './countdown';
 import { initAudio, updateEngineAudio, playCheckpointSFX, playLapFanfare, playDriftSFX, playCollisionSFX, stopAudio } from './audio';
-import { AIRacer } from './ai-racer';
+import { AIRacer, OpponentInfo } from './ai-racer';
 import { initGarage, updateGarage, destroyGarage } from './garage';
 import { NetPeer } from './net-peer';
 import { showLobby, updatePlayerList, destroyLobby, showToast } from './mp-lobby';
@@ -500,7 +500,7 @@ async function spawnAI(trackData: TrackData) {
 
   for (let i = 0; i < aiCars.length; i++) {
     const def = aiCars[i];
-    const ai = new AIRacer(`ai_${i}`, { ...def });
+    const ai = new AIRacer(`ai_${i}`, { ...def }, i);
     raceEngine!.addRacer(`ai_${i}`);
 
     try {
@@ -509,6 +509,7 @@ async function spawnAI(trackData: TrackData) {
     } catch {}
 
     ai.place(trackData!.spline, startTs[i] ?? 0.02, laneOffsets[i] ?? 0, trackData!.bvh);
+    ai.setSpeedProfile(trackData!.speedProfile);
     ai.vehicle.setRoadMesh(trackData!.roadMesh);
     scene.add(ai.vehicle.group);
     aiRacers.push(ai);
@@ -824,10 +825,19 @@ function gameLoop(timestamp: number) {
 
     // AI update
     if (s === GameState.RACING) {
+      // Build opponent list for AI awareness (player + all other AIs)
       const playerT = getClosestSplinePoint(trackData.spline, playerVehicle.group.position, trackData.bvh).t;
+      const allOpponents: OpponentInfo[] = [
+        { position: playerVehicle.group.position, t: playerT, id: 'local' },
+      ];
       for (const ai of aiRacers) {
-        ai.setRubberBand(playerT);
-        ai.update(dt);
+        allOpponents.push({ position: ai.vehicle.group.position, t: ai.getCurrentT(), id: ai.id });
+      }
+
+      for (const ai of aiRacers) {
+        // Pass all opponents except self
+        const opponents = allOpponents.filter(o => o.id !== ai.id);
+        ai.update(dt, opponents);
         raceEngine?.updateRacer(ai.id, ai.vehicle.group.position);
       }
 
