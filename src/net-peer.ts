@@ -69,8 +69,8 @@ export class NetPeer {
       }
 
       conn.on('open', () => {
-        // Force raw binary mode on host side to match guest's serialization: 'none'
-        (conn as any).serialization = 'none';
+        // Force raw binary mode on host side to match guest's serialization: 'raw'
+        (conn as any).serialization = 'raw';
 
         const remote: RemotePlayer = {
           id: conn.peer,
@@ -103,7 +103,7 @@ export class NetPeer {
     const hostPeerId = `hoodracer-${roomCode}`;
     const conn = this.peer!.connect(hostPeerId, {
       reliable: true,
-      serialization: 'none',
+      serialization: 'raw',
       metadata: { name, carId },
     });
 
