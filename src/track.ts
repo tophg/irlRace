@@ -1,4 +1,4 @@
-/* ── Hood Racer — Procedural Track Generator ── */
+/* ── Hood Racer — Procedural Track Generator (v2 — Convex Hull + Elevation) ── */
 
 import * as THREE from 'three';
 import { Checkpoint, TrackData } from './types';
@@ -6,58 +6,366 @@ import { Checkpoint, TrackData } from './types';
 const ROAD_WIDTH = 14;
 const BARRIER_HEIGHT = 1.8;
 const BARRIER_THICKNESS = 0.4;
-const NUM_CONTROL_POINTS = 12;
-const TRACK_RADIUS_MIN = 60;
-const TRACK_RADIUS_MAX = 120;
 const SPLINE_SAMPLES = 400;
+const MIN_RADIUS = 18;      // tightest allowed corner
+const MAX_BANK_ANGLE = 0.35; // ~20° banking
+const BANK_SCALE = 8;
 
-/** Generate a closed circuit racing track. */
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// PUBLIC API
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** Generate a closed circuit. Re-rolls up to 5 times if quality check fails. */
 export function generateTrack(seed?: number): TrackData {
-  const rng = seededRandom(seed ?? (Date.now() % 100000));
+  const baseSeed = seed ?? (Date.now() % 100000);
 
-  // ── 1. Generate control points in a roughly oval loop ──
-  const controlPoints: THREE.Vector3[] = [];
-  for (let i = 0; i < NUM_CONTROL_POINTS; i++) {
-    const angle = (i / NUM_CONTROL_POINTS) * Math.PI * 2;
-    const radiusX = TRACK_RADIUS_MIN + rng() * (TRACK_RADIUS_MAX - TRACK_RADIUS_MIN);
-    const radiusZ = TRACK_RADIUS_MIN + rng() * (TRACK_RADIUS_MAX - TRACK_RADIUS_MIN);
-    // Add randomness to radius for organic feel
-    const jitterR = (rng() - 0.5) * 30;
-    const x = Math.cos(angle) * (radiusX + jitterR);
-    const z = Math.sin(angle) * (radiusZ + jitterR);
-    const y = Math.sin(angle * 2) * (2 + rng() * 4); // gentle hills
-    controlPoints.push(new THREE.Vector3(x, y, z));
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const result = buildTrackAttempt(baseSeed + attempt * 7919);
+    if (result.qualityScore >= 0.5 || attempt === 4) {
+      console.log(`Track gen attempt ${attempt + 1}, seed=${baseSeed + attempt * 7919}, score=${result.qualityScore.toFixed(2)}`);
+      return result.data;
+    }
   }
 
-  // ── 2. Create smooth closed spline ──
-  const spline = new THREE.CatmullRomCurve3(controlPoints, true, 'centripetal', 0.5);
-  const totalLength = spline.getLength();
+  // Unreachable but TS needs it
+  return buildTrackAttempt(baseSeed).data;
+}
 
-  // ── 3. Build road surface ──
-  const roadMesh = buildRoadMesh(spline);
+interface TrackAttemptResult { data: TrackData; qualityScore: number }
 
-  // ── 4. Build barriers ──
-  const barrierLeft = buildBarrierMesh(spline, -1);
-  const barrierRight = buildBarrierMesh(spline, 1);
+function buildTrackAttempt(seed: number): TrackAttemptResult {
+  const rng = seededRandom(seed);
 
-  // ── 5. Place checkpoints at equal intervals ──
+  // ── 1. Convex-hull seed points ──
+  const hullPts = generateHullPoints(rng);
+
+  // ── 2. Insert chicane dent points ──
+  const routePoints2D = addChicanes(hullPts, rng);
+
+  // ── 3. Apply Perlin-style elevation ──
+  const controlPoints3D = applyElevation(routePoints2D, rng);
+
+  // ── 4. Build smooth closed spline ──
+  const spline = new THREE.CatmullRomCurve3(controlPoints3D, true, 'centripetal', 0.5);
+
+  // ── 5. Curvature constraint enforcement ──
+  enforceMinRadius(spline, controlPoints3D, MIN_RADIUS);
+  // Rebuild spline after enforcement
+  const finalSpline = new THREE.CatmullRomCurve3(controlPoints3D, true, 'centripetal', 0.5);
+  const totalLength = finalSpline.getLength();
+
+  // ── 6. Compute curvature profile + speed profile ──
+  const { curvatures, speedProfile } = computeProfiles(finalSpline);
+
+  // ── 7. Build meshes ──
+  const roadMesh = buildRoadMesh(finalSpline, curvatures);
+  const barrierLeft = buildBarrierMesh(finalSpline, -1);
+  const barrierRight = buildBarrierMesh(finalSpline, 1);
+
+  // ── 8. Place checkpoints ──
   const numCheckpoints = 10;
   const checkpoints: Checkpoint[] = [];
   for (let i = 0; i < numCheckpoints; i++) {
     const t = i / numCheckpoints;
-    const position = spline.getPointAt(t);
-    const tangent = spline.getTangentAt(t).normalize();
+    const position = finalSpline.getPointAt(t);
+    const tangent = finalSpline.getTangentAt(t).normalize();
     checkpoints.push({ position, tangent, index: i });
   }
 
-  // ── 6. Generate scenery ──
-  const sceneryGroup = generateScenery(spline, rng);
+  // ── 9. Scenery ──
+  const sceneryGroup = generateScenery(finalSpline, rng);
 
-  return { spline, roadMesh, barrierLeft, barrierRight, checkpoints, sceneryGroup, totalLength };
+  // ── 10. Quality score ──
+  const qualityScore = scoreTrack(curvatures, totalLength, speedProfile);
+
+  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, checkpoints, sceneryGroup, totalLength };
+  return { data, qualityScore };
 }
 
-/** Build a flat road strip following the spline. */
-function buildRoadMesh(spline: THREE.CatmullRomCurve3): THREE.Mesh {
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// P2-A: CONVEX HULL SEED GENERATION
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** Generate N random 2D seed points → convex hull → winding-order vertices. */
+function generateHullPoints(rng: () => number): THREE.Vector2[] {
+  const N = 8 + Math.floor(rng() * 5); // 8–12 seed points
+  const pts: THREE.Vector2[] = [];
+  for (let i = 0; i < N; i++) {
+    pts.push(new THREE.Vector2(
+      (rng() - 0.5) * 300,
+      (rng() - 0.5) * 300,
+    ));
+  }
+  return convexHull(pts);
+}
+
+/** Gift-wrapping (Jarvis March) convex hull — returns points in CCW winding order. */
+function convexHull(pts: THREE.Vector2[]): THREE.Vector2[] {
+  if (pts.length < 3) return pts;
+
+  // Find leftmost point
+  let start = 0;
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i].x < pts[start].x || (pts[i].x === pts[start].x && pts[i].y < pts[start].y)) {
+      start = i;
+    }
+  }
+
+  const hull: THREE.Vector2[] = [];
+  let current = start;
+  do {
+    hull.push(pts[current]);
+    let next = 0;
+    for (let i = 0; i < pts.length; i++) {
+      if (i === current) continue;
+      // Cross product to find most counter-clockwise point
+      const cross = crossProduct(pts[current], pts[next], pts[i]);
+      if (next === current || cross > 0 ||
+        (cross === 0 && pts[current].distanceTo(pts[i]) > pts[current].distanceTo(pts[next]))) {
+        next = i;
+      }
+    }
+    current = next;
+  } while (current !== start && hull.length < pts.length + 1);
+
+  return hull;
+}
+
+function crossProduct(o: THREE.Vector2, a: THREE.Vector2, b: THREE.Vector2): number {
+  return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+}
+
+/** Insert 1-3 "dent" points per hull edge to create chicanes. */
+function addChicanes(hull: THREE.Vector2[], rng: () => number): THREE.Vector2[] {
+  const result: THREE.Vector2[] = [];
+
+  for (let i = 0; i < hull.length; i++) {
+    result.push(hull[i].clone());
+
+    const next = hull[(i + 1) % hull.length];
+    const edgeLen = hull[i].distanceTo(next);
+
+    // Only add chicanes on edges > 60 units
+    if (edgeLen > 60 && rng() > 0.35) {
+      const numDents = 1 + Math.floor(rng() * 2); // 1–2 dents
+      for (let d = 0; d < numDents; d++) {
+        const t = 0.25 + rng() * 0.5; // midrange on the edge
+        const mid = hull[i].clone().lerp(next, t);
+
+        // Dent inward toward the centroid
+        const centroid = hull.reduce((acc, p) => acc.add(p.clone()), new THREE.Vector2()).divideScalar(hull.length);
+        const inward = centroid.clone().sub(mid).normalize();
+        const dentDepth = 15 + rng() * 40;
+        mid.add(inward.multiplyScalar(dentDepth));
+
+        result.push(mid);
+      }
+    }
+  }
+
+  return result;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// P2-D: ELEVATION (Layered Simplex-like noise)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** Apply gentle hills via seeded 2D noise to the 2D route points. */
+function applyElevation(pts2D: THREE.Vector2[], rng: () => number): THREE.Vector3[] {
+  // Use a simple value-noise implementation (no dependencies)
+  const noise = createValueNoise2D(rng);
+
+  const pts3D = pts2D.map(p => {
+    const nx = p.x * 0.004;
+    const ny = p.y * 0.004;
+    // Two octaves of noise
+    const coarse = noise(nx, ny) * 15;
+    const fine = noise(nx * 4, ny * 4) * 3;
+    const y = coarse + fine;
+    return new THREE.Vector3(p.x, y, p.y);
+  });
+
+  // 5-point moving average to smooth out elevation
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < pts3D.length; i++) {
+      let avg = 0;
+      let count = 0;
+      for (let j = -2; j <= 2; j++) {
+        const idx = (i + j + pts3D.length) % pts3D.length;
+        avg += pts3D[idx].y;
+        count++;
+      }
+      pts3D[i].y = avg / count;
+    }
+  }
+
+  return pts3D;
+}
+
+/** Simple seeded 2D value noise (gradient-hash based, no external deps). */
+function createValueNoise2D(rng: () => number): (x: number, y: number) => number {
+  // Build a 256-entry permutation table (seeded)
+  const perm = new Uint8Array(512);
+  for (let i = 0; i < 256; i++) perm[i] = i;
+  // Fisher–Yates shuffle with seeded rng
+  for (let i = 255; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [perm[i], perm[j]] = [perm[j], perm[i]];
+  }
+  for (let i = 0; i < 256; i++) perm[i + 256] = perm[i];
+
+  const fade = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
+  const lerp = (a: number, b: number, t: number) => a + t * (b - a);
+  const grad = (hash: number, x: number, y: number) => {
+    const h = hash & 3;
+    const u = h < 2 ? x : y;
+    const v = h < 2 ? y : x;
+    return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
+  };
+
+  return (x: number, y: number): number => {
+    const xi = Math.floor(x) & 255;
+    const yi = Math.floor(y) & 255;
+    const xf = x - Math.floor(x);
+    const yf = y - Math.floor(y);
+    const u = fade(xf);
+    const v = fade(yf);
+    const aa = perm[perm[xi] + yi];
+    const ab = perm[perm[xi] + yi + 1];
+    const ba = perm[perm[xi + 1] + yi];
+    const bb = perm[perm[xi + 1] + yi + 1];
+    return lerp(
+      lerp(grad(aa, xf, yf), grad(ba, xf - 1, yf), u),
+      lerp(grad(ab, xf, yf - 1), grad(bb, xf - 1, yf - 1), u),
+      v,
+    );
+  };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// P2-B: CURVATURE CONSTRAINT ENFORCEMENT
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** Iteratively relax control points where curvature exceeds 1/minRadius. */
+function enforceMinRadius(spline: THREE.CatmullRomCurve3, ctrlPts: THREE.Vector3[], minRadius: number) {
+  const maxIter = 10;
+  const maxCurvature = 1 / minRadius;
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    let violated = false;
+    // Sample curvature at many points
+    for (let i = 0; i < 200; i++) {
+      const t = i / 200;
+      const kappa = estimateCurvature(spline, t);
+
+      if (Math.abs(kappa) > maxCurvature) {
+        violated = true;
+        // Find closest control point and relax it toward its neighbours
+        let bestIdx = 0, bestDist = Infinity;
+        const pt = spline.getPointAt(t);
+        for (let c = 0; c < ctrlPts.length; c++) {
+          const d = pt.distanceToSquared(ctrlPts[c]);
+          if (d < bestDist) { bestDist = d; bestIdx = c; }
+        }
+
+        const prev = ctrlPts[(bestIdx - 1 + ctrlPts.length) % ctrlPts.length];
+        const next = ctrlPts[(bestIdx + 1) % ctrlPts.length];
+        const mid = prev.clone().add(next).multiplyScalar(0.5);
+        // Move 20% toward the midpoint of neighbours (relaxation)
+        ctrlPts[bestIdx].lerp(mid, 0.2);
+      }
+    }
+
+    if (!violated) break;
+
+    // Rebuild spline for next iteration
+    spline.points = ctrlPts;
+    spline.updateArcLengths();
+  }
+}
+
+/** Estimate curvature κ at parameter t using finite differences. */
+function estimateCurvature(spline: THREE.CatmullRomCurve3, t: number): number {
+  const eps = 0.002;
+  const t0 = Math.max(0, t - eps);
+  const t1 = Math.min(1, t + eps);
+  const tan0 = spline.getTangentAt(t0);
+  const tan1 = spline.getTangentAt(t1);
+  const dTan = tan1.clone().sub(tan0);
+  const ds = spline.getLength() * (t1 - t0);
+  if (ds < 0.001) return 0;
+  return dTan.length() / ds;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// P2-C: CURVATURE-DRIVEN SPEED PROFILE
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function computeProfiles(spline: THREE.CatmullRomCurve3): { curvatures: number[]; speedProfile: number[] } {
+  const N = SPLINE_SAMPLES;
+  const curvatures: number[] = [];
+  const speedProfile: number[] = [];
+  const maxSpeed = 80;   // max speed units/s
+  const maxLatG = 1.2;   // comfortable lateral g  
+  const g = 35;          // gravity-ish tuning constant
+
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const kappa = estimateCurvature(spline, t);
+    curvatures.push(kappa);
+
+    // optimal speed = sqrt(maxLatG * g / |κ|)
+    const absK = Math.max(Math.abs(kappa), 0.001);
+    const optimalSpeed = Math.min(Math.sqrt(maxLatG * g / absK), maxSpeed);
+    speedProfile.push(Math.max(optimalSpeed, 12)); // minimum corner speed
+  }
+
+  return { curvatures, speedProfile };
+}
+
+/** Export speed profile for external use (AI, boost zones). */
+export function getSpeedProfileAt(speedProfile: number[], t: number): number {
+  const idx = Math.floor(t * (speedProfile.length - 1));
+  return speedProfile[Math.min(idx, speedProfile.length - 1)];
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// P2-F: TRACK QUALITY SCORER
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function scoreTrack(curvatures: number[], totalLength: number, speedProfile: number[]): number {
+  let score = 1.0;
+
+  // A. Total length: prefer 400–1200 units
+  if (totalLength < 300) score -= 0.3;
+  else if (totalLength > 1500) score -= 0.2;
+
+  // B. Curvature variety (stddev)
+  const mean = curvatures.reduce((a, b) => a + b, 0) / curvatures.length;
+  const variance = curvatures.reduce((a, k) => a + (k - mean) ** 2, 0) / curvatures.length;
+  const stddev = Math.sqrt(variance);
+  if (stddev < 0.005) score -= 0.3; // too uniform
+
+  // C. Longest straight (speedProfile >= 0.85 * maxSpeed for consecutive samples)
+  let maxStraight = 0, currentStraight = 0;
+  for (const sp of speedProfile) {
+    if (sp >= 60) { currentStraight++; } else { maxStraight = Math.max(maxStraight, currentStraight); currentStraight = 0; }
+  }
+  maxStraight = Math.max(maxStraight, currentStraight);
+  if (maxStraight < 20) score -= 0.2; // no good straight
+
+  // D. Tightest corner must not violate minRadius
+  const maxK = Math.max(...curvatures);
+  if (maxK > 1 / MIN_RADIUS) score -= 0.2;
+
+  return Math.max(0, Math.min(1, score));
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MESH BUILDERS (P2-E: auto-banked corners)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[]): THREE.Mesh {
   const points = spline.getSpacedPoints(SPLINE_SAMPLES);
   const vertices: number[] = [];
   const indices: number[] = [];
@@ -71,17 +379,35 @@ function buildRoadMesh(spline: THREE.CatmullRomCurve3): THREE.Mesh {
     const up = new THREE.Vector3(0, 1, 0);
     const right = new THREE.Vector3().crossVectors(tangent, up).normalize();
 
+    // ── P2-E: Auto-banking ──
+    // Bank the road cross-section proportional to curvature
+    const kappa = curvatures[Math.min(i, curvatures.length - 1)] || 0;
+    const bankAngle = clamp(kappa * BANK_SCALE, -MAX_BANK_ANGLE, MAX_BANK_ANGLE);
+
+    // Rotate the "up" and "right" vectors about the tangent by bankAngle
+    const bankQuat = new THREE.Quaternion().setFromAxisAngle(tangent, -bankAngle);
+    const bankedRight = right.clone().applyQuaternion(bankQuat);
+    const bankedUp = up.clone().applyQuaternion(bankQuat);
+
     const p = points[i];
 
     // Left edge
-    vertices.push(p.x - right.x * halfW, p.y + 0.01, p.z - right.z * halfW);
+    vertices.push(
+      p.x - bankedRight.x * halfW,
+      p.y + 0.01 - bankedRight.y * halfW,
+      p.z - bankedRight.z * halfW,
+    );
     // Right edge
-    vertices.push(p.x + right.x * halfW, p.y + 0.01, p.z + right.z * halfW);
+    vertices.push(
+      p.x + bankedRight.x * halfW,
+      p.y + 0.01 + bankedRight.y * halfW,
+      p.z + bankedRight.z * halfW,
+    );
 
-    uvs.push(0, t * 40); // left
-    uvs.push(1, t * 40); // right
+    uvs.push(0, t * 40);
+    uvs.push(1, t * 40);
 
-    normals.push(0, 1, 0, 0, 1, 0);
+    normals.push(bankedUp.x, bankedUp.y, bankedUp.z, bankedUp.x, bankedUp.y, bankedUp.z);
 
     if (i < points.length - 1) {
       const base = i * 2;
@@ -96,7 +422,6 @@ function buildRoadMesh(spline: THREE.CatmullRomCurve3): THREE.Mesh {
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geo.setIndex(indices);
 
-  // Road texture from canvas
   const roadTex = createRoadTexture();
   const mat = new THREE.MeshStandardMaterial({
     map: roadTex,
@@ -110,55 +435,37 @@ function buildRoadMesh(spline: THREE.CatmullRomCurve3): THREE.Mesh {
   return mesh;
 }
 
-/** Create a procedural road texture with lane markings. */
 function createRoadTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 256;
+  canvas.width = 256; canvas.height = 256;
   const ctx = canvas.getContext('2d')!;
 
-  // Base asphalt
   ctx.fillStyle = '#3a3a42';
   ctx.fillRect(0, 0, 256, 256);
 
-  // Asphalt noise
   for (let i = 0; i < 3000; i++) {
     const x = Math.random() * 256;
     const y = Math.random() * 256;
-    const brightness = 50 + Math.random() * 30;
-    ctx.fillStyle = `rgb(${brightness},${brightness},${brightness + 5})`;
+    const b = 50 + Math.random() * 30;
+    ctx.fillStyle = `rgb(${b},${b},${b + 5})`;
     ctx.fillRect(x, y, 1, 1);
   }
 
-  // Center dashed line
-  ctx.strokeStyle = '#ffcc00';
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 3;
   ctx.setLineDash([20, 20]);
-  ctx.beginPath();
-  ctx.moveTo(128, 0);
-  ctx.lineTo(128, 256);
-  ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(128, 0); ctx.lineTo(128, 256); ctx.stroke();
   ctx.setLineDash([]);
 
-  // Edge lines
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(10, 0); ctx.lineTo(10, 256);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(246, 0); ctx.lineTo(246, 256);
-  ctx.stroke();
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(10, 256); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(246, 0); ctx.lineTo(246, 256); ctx.stroke();
 
   const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(1, 1);
-  tex.anisotropy = 4;
+  tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1, 1); tex.anisotropy = 4;
   return tex;
 }
 
-/** Build barrier walls along one side of the track. */
 function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number): THREE.Mesh {
   const points = spline.getSpacedPoints(SPLINE_SAMPLES);
   const vertices: number[] = [];
@@ -171,17 +478,13 @@ function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number): THREE.M
     const tangent = spline.getTangentAt(t).normalize();
     const up = new THREE.Vector3(0, 1, 0);
     const right = new THREE.Vector3().crossVectors(tangent, up).normalize();
-
     const p = points[i];
     const ox = p.x + right.x * halfW * side;
     const oz = p.z + right.z * halfW * side;
 
-    // Bottom vertex
     vertices.push(ox, p.y, oz);
-    // Top vertex
     vertices.push(ox, p.y + BARRIER_HEIGHT, oz);
 
-    // Normal pointing inward
     const n = right.clone().multiplyScalar(-side);
     normals.push(n.x, 0, n.z, n.x, 0, n.z);
 
@@ -197,12 +500,7 @@ function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number): THREE.M
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geo.setIndex(indices);
 
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xcc3300,
-    roughness: 0.6,
-    metalness: 0.2,
-    side: THREE.DoubleSide,
-  });
+  const mat = new THREE.MeshStandardMaterial({ color: 0xcc3300, roughness: 0.6, metalness: 0.2, side: THREE.DoubleSide });
   mat.emissive = new THREE.Color(0x330000);
 
   const mesh = new THREE.Mesh(geo, mat);
@@ -210,48 +508,41 @@ function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number): THREE.M
   return mesh;
 }
 
-/** Scatter scenery objects around the track edges. */
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SCENERY
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THREE.Group {
   const group = new THREE.Group();
-  const numObjects = 80;
 
-  for (let i = 0; i < numObjects; i++) {
+  for (let i = 0; i < 80; i++) {
     const t = rng();
     const p = spline.getPointAt(t);
     const tangent = spline.getTangentAt(t).normalize();
-    const up = new THREE.Vector3(0, 1, 0);
-    const right = new THREE.Vector3().crossVectors(tangent, up).normalize();
-
+    const right = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
     const side = rng() > 0.5 ? 1 : -1;
     const offset = ROAD_WIDTH / 2 + 5 + rng() * 30;
-
     const x = p.x + right.x * offset * side;
     const z = p.z + right.z * offset * side;
 
     if (rng() > 0.3) {
-      // Tree
       const tree = createTree(rng);
       tree.position.set(x, p.y, z);
       group.add(tree);
     } else {
-      // Concrete block / barrel
       const block = createBlock(rng);
       block.position.set(x, p.y, z);
       group.add(block);
     }
   }
 
-  // Street lights along the track
   for (let i = 0; i < 30; i++) {
     const t = i / 30;
     const p = spline.getPointAt(t);
     const tangent = spline.getTangentAt(t).normalize();
-    const up = new THREE.Vector3(0, 1, 0);
-    const right = new THREE.Vector3().crossVectors(tangent, up).normalize();
-
+    const right = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
     const side = i % 2 === 0 ? 1 : -1;
     const offset = ROAD_WIDTH / 2 + 2;
-
     const x = p.x + right.x * offset * side;
     const z = p.z + right.z * offset * side;
 
@@ -300,26 +591,18 @@ function createBlock(rng: () => number): THREE.Mesh {
 
 function createStreetLight(): THREE.Group {
   const group = new THREE.Group();
-
-  // Pole
   const poleGeo = new THREE.CylinderGeometry(0.08, 0.1, 6, 6);
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x555566, metalness: 0.6, roughness: 0.3 });
   const pole = new THREE.Mesh(poleGeo, poleMat);
   pole.position.y = 3;
   group.add(pole);
 
-  // Light fixture
   const fixGeo = new THREE.SphereGeometry(0.25, 8, 6);
-  const fixMat = new THREE.MeshStandardMaterial({
-    color: 0xffffaa,
-    emissive: 0xffdd66,
-    emissiveIntensity: 0.8,
-  });
+  const fixMat = new THREE.MeshStandardMaterial({ color: 0xffffaa, emissive: 0xffdd66, emissiveIntensity: 0.8 });
   const fixture = new THREE.Mesh(fixGeo, fixMat);
   fixture.position.y = 6;
   group.add(fixture);
 
-  // Point light (limited range for perf)
   const pointLight = new THREE.PointLight(0xffdd88, 0.6, 20, 2);
   pointLight.position.y = 5.8;
   group.add(pointLight);
@@ -327,7 +610,10 @@ function createStreetLight(): THREE.Group {
   return group;
 }
 
-/** Seeded PRNG (mulberry32) for reproducible tracks. */
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// UTILITIES
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 function seededRandom(seed: number): () => number {
   let s = seed | 0;
   return () => {
@@ -338,7 +624,10 @@ function seededRandom(seed: number): () => number {
   };
 }
 
-/** Get the closest point on the spline to a world position + distance to road center. */
+function clamp(v: number, min: number, max: number): number {
+  return v < min ? min : v > max ? max : v;
+}
+
 export function getClosestSplinePoint(
   spline: THREE.CatmullRomCurve3,
   pos: THREE.Vector3,
@@ -352,26 +641,17 @@ export function getClosestSplinePoint(
     const t = i / samples;
     const p = spline.getPointAt(t);
     const d = pos.distanceToSquared(p);
-    if (d < bestDist) {
-      bestDist = d;
-      bestT = t;
-      bestPoint = p;
-    }
+    if (d < bestDist) { bestDist = d; bestT = t; bestPoint = p; }
   }
 
   return { t: bestT, point: bestPoint, distance: Math.sqrt(bestDist) };
 }
 
-/** Build 3D checkpoint gate arches. */
 export function buildCheckpointMarkers(checkpoints: Checkpoint[]): THREE.Group {
   const group = new THREE.Group();
 
   checkpoints.forEach((cp, i) => {
     const arch = createCheckpointArch(i === 0);
-    // Orient the arch perpendicular to the track
-    const right = new THREE.Vector3()
-      .crossVectors(cp.tangent, new THREE.Vector3(0, 1, 0))
-      .normalize();
     arch.position.copy(cp.position);
     arch.position.y += 0.1;
     arch.lookAt(cp.position.clone().add(cp.tangent));
@@ -387,38 +667,29 @@ function createCheckpointArch(isStart: boolean): THREE.Group {
   const width = ROAD_WIDTH;
   const color = isStart ? 0xffcc00 : 0xff6600;
 
-  // Left pillar
   const pillarGeo = new THREE.BoxGeometry(0.3, height, 0.3);
   const pillarMat = new THREE.MeshStandardMaterial({
-    color,
-    transparent: true,
-    opacity: 0.6,
-    emissive: new THREE.Color(color),
-    emissiveIntensity: 0.3,
+    color, transparent: true, opacity: 0.6,
+    emissive: new THREE.Color(color), emissiveIntensity: 0.3,
   });
   const leftPillar = new THREE.Mesh(pillarGeo, pillarMat);
   leftPillar.position.set(-width / 2, height / 2, 0);
   arch.add(leftPillar);
 
-  // Right pillar
   const rightPillar = new THREE.Mesh(pillarGeo, pillarMat.clone());
   rightPillar.position.set(width / 2, height / 2, 0);
   arch.add(rightPillar);
 
-  // Top beam
   const beamGeo = new THREE.BoxGeometry(width + 0.3, 0.3, 0.3);
   const beam = new THREE.Mesh(beamGeo, pillarMat.clone());
   beam.position.set(0, height, 0);
   arch.add(beam);
 
-  // Start/finish banner
   if (isStart) {
     const bannerGeo = new THREE.PlaneGeometry(width, 1.5);
     const bannerCanvas = document.createElement('canvas');
-    bannerCanvas.width = 512;
-    bannerCanvas.height = 96;
+    bannerCanvas.width = 512; bannerCanvas.height = 96;
     const ctx = bannerCanvas.getContext('2d')!;
-    // Checkerboard
     const sq = 32;
     for (let r = 0; r < 3; r++) {
       for (let c = 0; c < 16; c++) {
@@ -427,12 +698,7 @@ function createCheckpointArch(isStart: boolean): THREE.Group {
       }
     }
     const bannerTex = new THREE.CanvasTexture(bannerCanvas);
-    const bannerMat = new THREE.MeshBasicMaterial({
-      map: bannerTex,
-      transparent: true,
-      opacity: 0.85,
-      side: THREE.DoubleSide,
-    });
+    const bannerMat = new THREE.MeshBasicMaterial({ map: bannerTex, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
     const banner = new THREE.Mesh(bannerGeo, bannerMat);
     banner.position.set(0, height - 1, 0);
     arch.add(banner);
