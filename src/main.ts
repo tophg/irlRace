@@ -406,6 +406,7 @@ function enterMultiplayerLobby() {
           trackSeed = Math.floor(Math.random() * 99999);
           const players = [{ id: netPeer!.getLocalId(), name: localPlayerName, carId: selectedCar.id }];
           for (const rp of netPeer!.getRemotePlayers()) players.push({ id: rp.id, name: rp.name, carId: rp.carId });
+          mpPlayersList = players;
           netPeer!.broadcastEvent(EventType.COUNTDOWN_START, { laps: totalLaps, seed: trackSeed, players });
           startRace();
         },
@@ -471,7 +472,8 @@ function wireNetworkCallbacks() {
         destroyLobby();
         totalLaps = data.laps ?? 3;
         trackSeed = data.seed ?? Math.floor(Math.random() * 99999);
-        // Store remote player car selections for spawning
+        // Store full player list for spawning (includes guests we don't have direct connections to)
+        mpPlayersList = data.players ?? [];
         if (data.players) {
           for (const p of data.players) {
             const rp = netPeer!.getRemotePlayers().find(r => r.id === p.id);
@@ -490,6 +492,7 @@ function wireNetworkCallbacks() {
         break;
 
       case EventType.REMATCH_REQUEST:
+        raceReadyCount = 0;
         trackSeed = data.seed ?? Math.floor(Math.random() * 99999);
         totalLaps = data.laps ?? totalLaps;
         destroyLeaderboard();
@@ -583,6 +586,7 @@ function wireNetworkCallbacks() {
 
 let currentRaceSeed = 0;
 let raceReadyCount = 0;
+let mpPlayersList: { id: string; name: string; carId: string }[] = [];
 let raceGoResolve: (() => void) | null = null;
 
 async function startRace() {
@@ -716,15 +720,23 @@ async function spawnAI(trackData: TrackData) {
 
 async function spawnRemoteVehicles() {
   if (!netPeer || !trackData) return;
-  const remotes = netPeer.getRemotePlayers();
+
+  // Use the full players list from COUNTDOWN_START (includes guests we have no direct connection to)
+  // Filter out our own local ID
+  const localId = netPeer.getLocalId();
+  const allPlayers = mpPlayersList.length > 0
+    ? mpPlayersList.filter(p => p.id !== localId)
+    : netPeer.getRemotePlayers().map(r => ({ id: r.id, name: r.name, carId: r.carId }));
+
   const laneOffsets = [3.5, -3.5, 3.5, -3.5, 3.5, -3.5];
 
-  for (let ri = 0; ri < remotes.length; ri++) {
-    const remote = remotes[ri];
-    const def = CAR_ROSTER.find(c => c.id === remote.carId) ?? CAR_ROSTER[0];
+  for (let ri = 0; ri < allPlayers.length; ri++) {
+    const player = allPlayers[ri];
+    if (remoteMeshes.has(player.id)) continue;
+
+    const def = CAR_ROSTER.find(c => c.id === player.carId) ?? CAR_ROSTER[0];
     try {
       const model = await loadCarModel(def.file);
-      // Place on the track start line instead of origin
       const startT = 0.02 + ri * 0.02;
       const pt = trackData.spline.getPointAt(startT);
       const tangent = trackData.spline.getTangentAt(startT).normalize();
@@ -736,13 +748,13 @@ async function spawnRemoteVehicles() {
       model.position.y += 0.05;
       model.rotation.y = Math.atan2(tangent.x, tangent.z);
       scene.add(model);
-      remoteMeshes.set(remote.id, model);
+      remoteMeshes.set(player.id, model);
 
-      const tag = createNameTag(remote.name, scene);
-      remoteNameTags.set(remote.id, tag);
+      const tag = createNameTag(player.name || 'Racer', scene);
+      remoteNameTags.set(player.id, tag);
     } catch {}
 
-    raceEngine!.addRacer(remote.id);
+    raceEngine!.addRacer(player.id);
   }
 }
 
@@ -762,6 +774,7 @@ function clearRaceObjects() {
   // Stop network broadcasting before nulling vehicles
   netPeer?.stopBroadcasting();
   netPeer?.stopPinging();
+  netPeer?.clearBuffers();
 
   // Stop replay recorder
   replayRecorder?.stop();
@@ -919,6 +932,7 @@ function showResults() {
   });
   document.getElementById('btn-rematch')?.addEventListener('click', () => {
     el.remove();
+    raceReadyCount = 0;
     trackSeed = Math.floor(Math.random() * 99999);
     netPeer!.broadcastEvent(EventType.REMATCH_REQUEST, { seed: trackSeed, laps: totalLaps });
     destroyLeaderboard();

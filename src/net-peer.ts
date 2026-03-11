@@ -452,6 +452,13 @@ export class NetPeer {
   getIsHost() { return this.isHost; }
   getConnectionCount() { return this.connections.size; }
 
+  /** Clear all per-player snapshot buffers (call between races). */
+  clearBuffers() {
+    for (const remote of this.connections.values()) {
+      remote.buffer.length = 0;
+    }
+  }
+
   /** Get average RTT across all peers. */
   getRtt(): number {
     const peers = this.getRemotePlayers();
