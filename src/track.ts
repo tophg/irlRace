@@ -586,28 +586,21 @@ function buildKerbs(spline: THREE.CatmullRomCurve3, curvatures: number[]): THREE
 function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THREE.Group {
   const group = new THREE.Group();
 
-  // Pre-compute all scenery positions
-  interface SceneryItem { x: number; y: number; z: number; type: 'tree' | 'block'; trunkH?: number; crownR?: number; green?: number; bw?: number; bh?: number; bd?: number; }
-  const items: SceneryItem[] = [];
+  // Pre-compute all tree positions
+  interface TreeItem { x: number; y: number; z: number; trunkH: number; crownR: number; green: number; }
+  const trees: TreeItem[] = [];
   for (let i = 0; i < 80; i++) {
     const t = rng();
     const p = spline.getPointAt(t);
     const tangent = spline.getTangentAt(t).normalize();
-    const rx = tangent.z, rz = -tangent.x; // perpendicular (right vector XZ)
+    const rx = tangent.z, rz = -tangent.x;
     const side = rng() > 0.5 ? 1 : -1;
     const offset = ROAD_WIDTH / 2 + 5 + rng() * 30;
     const x = p.x + rx * offset * side;
     const z = p.z + rz * offset * side;
-
-    if (rng() > 0.1) {
-      items.push({ x, y: p.y, z, type: 'tree', trunkH: 2 + rng() * 3, crownR: 1.5 + rng() * 2, green: Math.floor(rng() * 255) });
-    } else {
-      items.push({ x, y: p.y, z, type: 'block', bw: 0.8 + rng() * 1.5, bh: 0.6 + rng() * 1.2, bd: 0.8 + rng() * 1.5 });
-    }
+    trees.push({ x, y: p.y, z, trunkH: 2 + rng() * 3, crownR: 1.5 + rng() * 2, green: Math.floor(rng() * 255) });
   }
 
-  const trees = items.filter(i => i.type === 'tree');
-  const blocks = items.filter(i => i.type === 'block');
   const _m = new THREE.Matrix4();
   const _c = new THREE.Color();
 
@@ -619,9 +612,8 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
     trunkIM.castShadow = true;
     for (let i = 0; i < trees.length; i++) {
       const t = trees[i];
-      const h = t.trunkH!;
-      _m.makeScale(1, h / 3.5, 1);
-      _m.setPosition(t.x, t.y + h / 2, t.z);
+      _m.makeScale(1, t.trunkH / 3.5, 1);
+      _m.setPosition(t.x, t.y + t.trunkH / 2, t.z);
       trunkIM.setMatrixAt(i, _m);
     }
     trunkIM.instanceMatrix.needsUpdate = true;
@@ -634,38 +626,16 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
     crownIM.castShadow = true;
     for (let i = 0; i < trees.length; i++) {
       const t = trees[i];
-      const r = t.crownR!;
-      const h = t.trunkH!;
-      _m.makeScale(r / 2.0, r / 2.0, r / 2.0);
-      _m.setPosition(t.x, t.y + h + r * 0.6, t.z);
+      _m.makeScale(t.crownR / 2.0, t.crownR / 2.0, t.crownR / 2.0);
+      _m.setPosition(t.x, t.y + t.trunkH + t.crownR * 0.6, t.z);
       crownIM.setMatrixAt(i, _m);
-      const g = 0x1a + Math.floor((t.green! / 255) * 0x40);
+      const g = 0x1a + Math.floor((t.green / 255) * 0x40);
       _c.setRGB(g / 255 * 0.4, g / 255, g / 255 * 0.4);
       crownIM.setColorAt(i, _c);
     }
     crownIM.instanceMatrix.needsUpdate = true;
     crownIM.instanceColor!.needsUpdate = true;
     group.add(crownIM);
-  }
-
-  // ── Blocks (InstancedMesh with per-instance color) ──
-  if (blocks.length > 0) {
-    const blockGeo = new THREE.BoxGeometry(1, 1, 1);
-    const blockMat = new THREE.MeshStandardMaterial({ color: 0x666666, roughness: 0.7 });
-    const blockIM = new THREE.InstancedMesh(blockGeo, blockMat, blocks.length);
-    blockIM.castShadow = true;
-    for (let i = 0; i < blocks.length; i++) {
-      const b = blocks[i];
-      _m.makeScale(b.bw!, b.bh!, b.bd!);
-      _m.setPosition(b.x, b.y + b.bh! / 2, b.z);
-      blockIM.setMatrixAt(i, _m);
-      const grey = 0.3 + (i / Math.max(blocks.length, 1)) * 0.3;
-      _c.setRGB(grey, grey, grey);
-      blockIM.setColorAt(i, _c);
-    }
-    blockIM.instanceMatrix.needsUpdate = true;
-    blockIM.instanceColor!.needsUpdate = true;
-    group.add(blockIM);
   }
 
   // ── Street lights (InstancedMesh — NO PointLights) ──
