@@ -77,11 +77,25 @@ export class RaceEngine {
     racer.checkpointIndex = checkpointIndex;
   }
 
-  /** Get sorted rankings. */
+  /** Mark a racer as DNF (disconnected). */
+  markDnf(id: string) {
+    const racer = this.racers.get(id);
+    if (racer) {
+      racer.dnf = true;
+      racer.finished = true;
+      racer.finishTime = Infinity;
+    }
+  }
+
+  /** Get sorted rankings (finished first by time, then in-progress by laps/cp, DNF last). */
   getRankings(): RacerProgress[] {
     const all = Array.from(this.racers.values());
 
     return all.sort((a, b) => {
+      // DNF always last
+      if (a.dnf && !b.dnf) return 1;
+      if (!a.dnf && b.dnf) return -1;
+
       if (a.finished && !b.finished) return -1;
       if (!a.finished && b.finished) return 1;
       if (a.finished && b.finished) return a.finishTime - b.finishTime;

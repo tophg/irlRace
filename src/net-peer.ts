@@ -38,6 +38,8 @@ export class NetPeer {
   onPlayerLeave: (id: string) => void = () => {};
 
   private broadcastInterval: number | null = null;
+  private pingInterval: number | null = null;
+  latencyMs = 0;
   private statePacketBuffer = new ArrayBuffer(13);
   private stateView = new DataView(this.statePacketBuffer);
 
@@ -251,6 +253,23 @@ export class NetPeer {
         this.onState(actualFromId, snap);
         break;
       }
+
+      case PacketType.PING: {
+        // Respond with PONG containing the same timestamp
+        const pongBuf = new ArrayBuffer(9);
+        const pongView = new DataView(pongBuf);
+        pongView.setUint8(0, PacketType.PONG);
+        pongView.setFloat64(1, view.getFloat64(1, true), true);
+        const remote = this.connections.get(fromId);
+        if (remote) try { remote.conn.send(pongBuf); } catch {}
+        break;
+      }
+
+      case PacketType.PONG: {
+        const sentTime = view.getFloat64(1, true);
+        this.latencyMs = Math.round(performance.now() - sentTime);
+        break;
+      }
     }
   }
 
@@ -322,6 +341,7 @@ export class NetPeer {
 
   destroy() {
     this.stopBroadcasting();
+    this.stopPinging();
     for (const remote of this.connections.values()) {
       remote.conn?.close();
     }
@@ -329,6 +349,26 @@ export class NetPeer {
     this.peer?.destroy();
     this.peer = null;
   }
+
+  /** Start sending PING every 3 seconds. */
+  startPinging() {
+    if (this.pingInterval) return;
+    this.pingInterval = window.setInterval(() => {
+      const buf = new ArrayBuffer(9);
+      const view = new DataView(buf);
+      view.setUint8(0, PacketType.PING);
+      view.setFloat64(1, performance.now(), true);
+      for (const remote of this.connections.values()) {
+        try { remote.conn.send(buf); } catch {}
+      }
+    }, 3000);
+  }
+
+  stopPinging() {
+    if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; }
+  }
+
+  getRtt(): number { return this.latencyMs; }
 }
 
 function generateRoomCode(): string {

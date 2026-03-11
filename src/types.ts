@@ -75,6 +75,7 @@ export interface RacerProgress {
   finished: boolean;
   finishTime: number;
   position: THREE.Vector3;
+  dnf?: boolean;
 }
 
 // ── Network Packets ──

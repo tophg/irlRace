@@ -27,8 +27,12 @@ export function showLobby(
 
   if (!opts.roomCode) {
     // Initial state: choose host or join
-    lobbyEl.innerHTML = `
+  lobbyEl.innerHTML = `
       <div class="lobby-title">MULTIPLAYER</div>
+      <div style="text-align:center; margin-bottom:12px;">
+        <input class="lobby-input" id="lobby-name-input" placeholder="YOUR NAME" maxlength="12"
+               value="${localStorage.getItem('hr-player-name') || ''}" style="text-transform:uppercase;" />
+      </div>
       <div class="menu-buttons">
         <button class="menu-btn" id="lobby-host-btn">HOST GAME</button>
         <button class="menu-btn" id="lobby-join-btn-show">JOIN GAME</button>
@@ -62,9 +66,19 @@ export function showLobby(
 
   overlay.appendChild(lobbyEl);
 
+  // Helper: read and persist name from input
+  const persistName = () => {
+    const nameInput = lobbyEl!.querySelector('#lobby-name-input') as HTMLInputElement | null;
+    if (nameInput) {
+      const name = nameInput.value.trim().toUpperCase() || `RACER_${Math.floor(Math.random() * 9999)}`;
+      localStorage.setItem('hr-player-name', name);
+      if ((opts as any).onNameChange) (opts as any).onNameChange(name);
+    }
+  };
+
   // Wire up buttons
   const hostBtn = lobbyEl.querySelector('#lobby-host-btn');
-  hostBtn?.addEventListener('click', () => opts.onHost());
+  hostBtn?.addEventListener('click', () => { persistName(); opts.onHost(); });
 
   const joinShowBtn = lobbyEl.querySelector('#lobby-join-btn-show') as HTMLElement | null;
   const joinSection = lobbyEl.querySelector('#join-section') as HTMLElement | null;
@@ -75,6 +89,7 @@ export function showLobby(
 
   const joinGoBtn = lobbyEl.querySelector('#lobby-join-go');
   joinGoBtn?.addEventListener('click', () => {
+    persistName();
     const input = lobbyEl!.querySelector('#lobby-code-input') as HTMLInputElement;
     const code = input.value.trim().toUpperCase();
     if (code.length === 4) opts.onJoin(code);

@@ -37,6 +37,8 @@ const { renderer, scene, camera } = initScene(container);
 let gameState: GameState = GameState.TITLE;
 let totalLaps = 3;
 let selectedCar: CarDef = CAR_ROSTER[0];
+let trackSeed: number | null = null;
+let localPlayerName = localStorage.getItem('hr-player-name') || `Racer_${Math.floor(Math.random() * 9999)}`;
 
 // ── Player vehicle ──
 let playerVehicle: Vehicle | null = null;
@@ -133,7 +135,7 @@ function enterMultiplayerLobby() {
       wireNetworkCallbacks();
 
       const code = await netPeer.createRoom();
-      const playerName = localStorage.getItem('playerName') || `Racer_${Math.floor(Math.random() * 9999)}`;
+      // playerName comes from module-level localPlayerName
 
       destroyLobby();
       showLobby(uiOverlay, {
@@ -143,7 +145,11 @@ function enterMultiplayerLobby() {
         onJoin: () => {},
         onStart: () => {
           destroyLobby();
-          netPeer!.broadcastEvent(EventType.COUNTDOWN_START, { laps: totalLaps });
+          trackSeed = Math.floor(Math.random() * 99999);
+          // Build players array with car selections
+          const players = [{ id: netPeer!.getLocalId(), name: localPlayerName, carId: selectedCar.id }];
+          for (const rp of netPeer!.getRemotePlayers()) players.push({ id: rp.id, name: rp.name, carId: rp.carId });
+          netPeer!.broadcastEvent(EventType.COUNTDOWN_START, { laps: totalLaps, seed: trackSeed, players });
           startRace();
         },
         onBack: () => { netPeer?.destroy(); netPeer = null; destroyLobby(); showTitleScreen(); },
@@ -154,11 +160,11 @@ function enterMultiplayerLobby() {
       netPeer = new NetPeer();
       wireNetworkCallbacks();
 
-      const playerName = localStorage.getItem('playerName') || `Racer_${Math.floor(Math.random() * 9999)}`;
+      // Use module-level localPlayerName
 
       try {
         showToast(uiOverlay, 'Connecting...');
-        await netPeer.joinRoom(code, playerName, selectedCar.id);
+        await netPeer.joinRoom(code, localPlayerName, selectedCar.id);
 
         destroyLobby();
         showLobby(uiOverlay, {
@@ -193,6 +199,14 @@ function wireNetworkCallbacks() {
       case EventType.COUNTDOWN_START:
         destroyLobby();
         totalLaps = data.laps ?? 3;
+        trackSeed = data.seed ?? Math.floor(Math.random() * 99999);
+        // Store remote player car selections for spawning
+        if (data.players) {
+          for (const p of data.players) {
+            const rp = netPeer!.getRemotePlayers().find(r => r.id === p.id);
+            if (rp) rp.carId = p.carId;
+          }
+        }
         startRace();
         break;
 
@@ -203,6 +217,14 @@ function wireNetworkCallbacks() {
       case EventType.LAP_COMPLETE:
         raceEngine?.updateRemoteProgress(fromId, data.lap, 0);
         break;
+
+      case EventType.REMATCH_REQUEST:
+        // Host sent a rematch with new seed
+        trackSeed = data.seed ?? Math.floor(Math.random() * 99999);
+        totalLaps = data.laps ?? totalLaps;
+        destroyLeaderboard();
+        startRace();
+        break;
     }
   };
 
@@ -212,14 +234,23 @@ function wireNetworkCallbacks() {
   };
 
   netPeer.onPlayerLeave = (id) => {
-    showToast(uiOverlay, `Player disconnected`);
+    const remote = netPeer!.getRemotePlayers().find(r => r.id === id);
+    const name = remote?.name || 'Player';
+
+    // Mark as DNF if race is in progress
+    if (gameState === GameState.RACING || gameState === GameState.COUNTDOWN) {
+      raceEngine?.markDnf(id);
+      showToast(uiOverlay, `${name} disconnected (DNF)`);
+    } else {
+      showToast(uiOverlay, `${name} disconnected`);
+    }
 
     // Clean up remote mesh
     const mesh = remoteMeshes.get(id);
     if (mesh) { scene.remove(mesh); remoteMeshes.delete(id); }
 
     const tag = remoteNameTags.get(id);
-    if (tag) { scene.remove(tag); remoteNameTags.delete(id); }
+    if (tag) { scene.remove(tag); remoteNameTags.delete(id); };
   };
 }
 
@@ -234,7 +265,9 @@ async function startRace() {
   clearRaceObjects();
 
   // Generate track
-  trackData = generateTrack(Math.floor(Math.random() * 99999));
+  const seed = trackSeed ?? Math.floor(Math.random() * 99999);
+  trackSeed = null; // consume the seed
+  trackData = generateTrack(seed);
   scene.add(trackData.roadMesh);
   scene.add(trackData.barrierLeft);
   scene.add(trackData.barrierRight);
@@ -264,7 +297,8 @@ async function startRace() {
   initSpeedLines(container);
 
   // AI opponents
-  spawnAI(trackData);
+  // Only spawn AI in singleplayer — multiplayer has real opponents
+  if (!netPeer) spawnAI(trackData);
 
   // Multiplayer remote vehicles
   if (netPeer) {
@@ -277,6 +311,9 @@ async function startRace() {
       heading: playerVehicle!.heading,
       speed: playerVehicle!.speed,
     }));
+
+    // Start latency monitoring
+    netPeer.startPinging();
   }
 
   // HUD
@@ -371,11 +408,15 @@ function showResults() {
   showTouchControls(false);
 
   const rankings = raceEngine?.getRankings() ?? [];
+  const winner = rankings[0];
+  const winnerName = winner?.id === 'local' ? 'You' : winner?.id.startsWith('ai_') ? `AI ${winner.id.replace('ai_', '')}` : (netPeer?.getRemotePlayers().find(r => r.id === winner?.id)?.name || winner?.id || '???');
+  const isMultiplayer = !!netPeer;
+  const isHost = netPeer?.getIsHost() ?? false;
 
   const el = document.createElement('div');
   el.className = 'results-overlay';
   el.innerHTML = `
-    <div class="results-title">🏁 RACE COMPLETE</div>
+    <div class="results-title">${winner?.dnf ? '🏁 RACE COMPLETE' : `🏆 ${winnerName.toUpperCase()} WINS!`}</div>
     <table class="results-table">
       <thead><tr>
         <th>POS</th>
@@ -383,24 +424,37 @@ function showResults() {
         <th>TIME</th>
       </tr></thead>
       <tbody>
-        ${rankings.map((r, i) => `
-          <tr class="${r.id === 'local' ? 'local' : ''}">
-            <td>${i + 1}</td>
-            <td>${r.id === 'local' ? 'You' : r.id.startsWith('ai_') ? `AI ${r.id.replace('ai_', '')}` : r.id}</td>
-            <td>${r.finished ? RaceEngine.formatTime(r.finishTime) : 'DNF'}</td>
-          </tr>
-        `).join('')}
+        ${rankings.map((r, i) => {
+          const name = r.id === 'local' ? 'You' : r.id.startsWith('ai_') ? `AI ${r.id.replace('ai_', '')}` : (netPeer?.getRemotePlayers().find(rp => rp.id === r.id)?.name || r.id.slice(0, 8));
+          const isSelf = r.id === 'local';
+          const isDnf = r.dnf;
+          return `
+            <tr class="${isSelf ? 'local' : ''} ${isDnf ? 'dnf' : ''} ${i === 0 && !isDnf ? 'winner' : ''}">
+              <td>${isDnf ? '—' : i + 1}</td>
+              <td>${name}${isDnf ? ' <span style="color:#ff4444;font-size:11px;">DNF</span>' : ''}</td>
+              <td>${isDnf ? '—' : r.finished ? RaceEngine.formatTime(r.finishTime) : 'Racing...'}</td>
+            </tr>
+          `;
+        }).join('')}
       </tbody>
     </table>
     <div class="menu-buttons" style="width:240px; margin-top:8px;">
-      <button class="menu-btn" id="btn-play-again">PLAY AGAIN</button>
+      ${isMultiplayer && isHost ? '<button class="menu-btn" id="btn-rematch" style="background:var(--col-green);">REMATCH</button>' : ''}
+      ${!isMultiplayer ? '<button class="menu-btn" id="btn-play-again">PLAY AGAIN</button>' : ''}
       <button class="menu-btn" id="btn-main-menu">MAIN MENU</button>
     </div>
   `;
   uiOverlay.appendChild(el);
 
-  document.getElementById('btn-play-again')!.addEventListener('click', () => {
+  document.getElementById('btn-play-again')?.addEventListener('click', () => {
     el.remove();
+    startRace();
+  });
+  document.getElementById('btn-rematch')?.addEventListener('click', () => {
+    el.remove();
+    trackSeed = Math.floor(Math.random() * 99999);
+    netPeer!.broadcastEvent(EventType.REMATCH_REQUEST, { seed: trackSeed, laps: totalLaps });
+    destroyLeaderboard();
     startRace();
   });
   document.getElementById('btn-main-menu')!.addEventListener('click', () => {
@@ -408,6 +462,7 @@ function showResults() {
     netPeer?.destroy();
     netPeer = null;
     clearRaceObjects();
+    destroyLeaderboard();
     showTitleScreen();
   });
 }
@@ -430,16 +485,23 @@ function updateLeaderboard() {
 
   const rankings = raceEngine.getRankings();
   lbEl.innerHTML = rankings.map((r, i) => {
-    const name = r.id === 'local' ? 'YOU' : r.id.startsWith('ai_') ? `AI ${i}` : r.id.slice(0, 8);
+    const name = r.id === 'local' ? 'YOU' : r.id.startsWith('ai_') ? `AI ${i}` : (netPeer?.getRemotePlayers().find(rp => rp.id === r.id)?.name?.slice(0, 8) || r.id.slice(0, 8));
     const isSelf = r.id === 'local';
     return `
-      <div class="lb-row${isSelf ? ' self' : ''}">
-        <span class="lb-pos">${i + 1}</span>
-        <span class="lb-name">${name}</span>
+      <div class="lb-row${isSelf ? ' self' : ''}${r.dnf ? ' dnf' : ''}">
+        <span class="lb-pos">${r.dnf ? '—' : i + 1}</span>
+        <span class="lb-name">${name}${r.dnf ? ' DNF' : ''}</span>
         <span class="lb-progress">L${r.lapIndex + 1}</span>
       </div>
     `;
   }).join('');
+
+  // Latency badge (multiplayer only)
+  if (netPeer) {
+    const rtt = netPeer.getRtt();
+    const color = rtt < 80 ? '#4caf50' : rtt < 150 ? '#ffcc00' : '#ff4444';
+    lbEl.innerHTML += `<div style="text-align:right;font-size:11px;color:${color};margin-top:4px;">${rtt}ms</div>`;
+  }
 }
 
 function destroyLeaderboard() {
@@ -561,7 +623,9 @@ function gameLoop(timestamp: number) {
       for (const [id, mesh] of remoteMeshes) {
         const snap = netPeer.getInterpolatedState(id);
         if (snap) {
-          mesh.position.set(snap.x, 0, snap.z);
+          const _rPos = new THREE.Vector3(snap.x, 0, snap.z);
+          const nearest = getClosestSplinePoint(trackData!.spline, _rPos, 100);
+          mesh.position.set(snap.x, nearest.point.y, snap.z);
           mesh.rotation.y = snap.heading;
         }
 
