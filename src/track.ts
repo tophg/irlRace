@@ -16,19 +16,9 @@ const BANK_SCALE = 8;
 // PUBLIC API
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/** Generate a closed circuit. Re-rolls up to 5 times if quality check fails. */
+/** Generate a closed circuit deterministically from seed. Single-pass for cross-platform consistency. */
 export function generateTrack(seed?: number): TrackData {
   const baseSeed = seed ?? (Date.now() % 100000);
-
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const result = buildTrackAttempt(baseSeed + attempt * 7919);
-    if (result.qualityScore >= 0.5 || attempt === 4) {
-      console.log(`Track gen attempt ${attempt + 1}, seed=${baseSeed + attempt * 7919}, score=${result.qualityScore.toFixed(2)}`);
-      return result.data;
-    }
-  }
-
-  // Unreachable but TS needs it
   return buildTrackAttempt(baseSeed).data;
 }
 

@@ -138,6 +138,8 @@ export enum EventType {
   REMATCH_ACCEPT = 9,
   PLAYER_READY = 10,
   PLAYER_LIST = 11,
+  RACE_READY = 12,
+  RACE_GO = 13,
 }
 
 // ── Input ──

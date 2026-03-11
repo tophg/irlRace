@@ -178,6 +178,7 @@ function togglePause() {
     document.getElementById('btn-resume')!.addEventListener('click', togglePause);
     document.getElementById('btn-restart')!.addEventListener('click', () => {
       destroyPause();
+      trackSeed = currentRaceSeed;
       clearRaceObjects();
       destroyLeaderboard();
       startRace();
@@ -510,6 +511,19 @@ function wireNetworkCallbacks() {
           updatePlayerList(data.players);
         }
         break;
+
+      case EventType.RACE_READY:
+        // Host: a guest finished loading
+        raceReadyCount++;
+        if (raceReadyCount >= (netPeer?.getConnectionCount() ?? 0) && raceGoResolve) {
+          raceGoResolve();
+        }
+        break;
+
+      case EventType.RACE_GO:
+        // Guest: host says everyone is ready, start countdown
+        if (raceGoResolve) raceGoResolve();
+        break;
     }
   };
 
@@ -555,6 +569,10 @@ function wireNetworkCallbacks() {
 // RACE SETUP
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+let currentRaceSeed = 0;
+let raceReadyCount = 0;
+let raceGoResolve: (() => void) | null = null;
+
 async function startRace() {
   if (raceStarting) return;
   raceStarting = true;
@@ -563,12 +581,12 @@ async function startRace() {
     gameState = GameState.COUNTDOWN;
     showLoading();
 
-    // Clear previous race
     clearRaceObjects();
 
-    // Generate track
+    // Generate track (preserve seed for restart)
     const seed = trackSeed ?? Math.floor(Math.random() * 99999);
-    trackSeed = null; // consume the seed
+    currentRaceSeed = seed;
+    trackSeed = null;
     trackData = generateTrack(seed);
     applyEnvironment(getEnvironmentForSeed(seed));
     scene.add(trackData.roadMesh);
@@ -577,14 +595,11 @@ async function startRace() {
     scene.add(trackData.kerbGroup);
     scene.add(trackData.sceneryGroup);
 
-    // Checkpoint markers
     checkpointMarkers = buildCheckpointMarkers(trackData.checkpoints);
     scene.add(checkpointMarkers);
 
-    // Race engine
     raceEngine = new RaceEngine(trackData.checkpoints, totalLaps);
 
-    // Player vehicle
     const playerModel = await loadCarModel(selectedCar.file);
     playerVehicle = new Vehicle(selectedCar);
     playerVehicle.setModel(playerModel);
@@ -593,24 +608,18 @@ async function startRace() {
     playerVehicle.setRoadMesh(trackData.roadMesh);
     raceEngine.addRacer('local');
 
-    // Camera
     vehicleCamera = new VehicleCamera(camera);
 
-    // VFX
     initVFX(scene);
     initBoostFlame(scene);
     initSpeedLines(container);
     initSkidMarks(scene);
 
-    // AI opponents
-    // Only spawn AI in singleplayer — multiplayer has real opponents
     if (!netPeer) await spawnAI(trackData);
 
-    // Multiplayer remote vehicles
     if (netPeer) {
       await spawnRemoteVehicles();
 
-      // Start broadcasting player state
       netPeer.startBroadcasting(() => ({
         x: playerVehicle!.group.position.x,
         z: playerVehicle!.group.position.z,
@@ -622,23 +631,42 @@ async function startRace() {
         dmgRight: playerVehicle!.damage.right.hp,
       }));
 
-      // Start latency monitoring
       netPeer.startPinging();
     }
 
-    // HUD
     createHUD(uiOverlay);
     showHUD(true);
     showTouchControls(true);
-
-    // Audio
     initAudio();
-
     hideLoading();
 
-    // Countdown
-    const countdownDuration = netPeer ? Math.max(2000, 3400 - netPeer.getRtt() / 2) : 3400;
-    await runCountdown(uiOverlay, countdownDuration);
+    // ── Synchronized start (multiplayer ready barrier) ──
+    if (netPeer) {
+      if (netPeer.getIsHost()) {
+        // Host: wait for all guests to send RACE_READY
+        raceReadyCount = 0;
+        const guestCount = netPeer.getConnectionCount();
+        if (guestCount > 0) {
+          await Promise.race([
+            new Promise<void>(resolve => { raceGoResolve = resolve; }),
+            new Promise<void>(resolve => setTimeout(resolve, 10000)),
+          ]);
+          raceGoResolve = null;
+        }
+        // Broadcast GO to all guests
+        netPeer.broadcastEvent(EventType.RACE_GO, {});
+      } else {
+        // Guest: signal ready, then wait for RACE_GO
+        netPeer.broadcastEvent(EventType.RACE_READY, {});
+        await Promise.race([
+          new Promise<void>(resolve => { raceGoResolve = resolve; }),
+          new Promise<void>(resolve => setTimeout(resolve, 10000)),
+        ]);
+        raceGoResolve = null;
+      }
+    }
+
+    await runCountdown(uiOverlay);
 
     raceEngine.start();
     replayRecorder = new ReplayRecorder();
@@ -673,13 +701,26 @@ async function spawnAI(trackData: TrackData) {
 }
 
 async function spawnRemoteVehicles() {
-  if (!netPeer) return;
+  if (!netPeer || !trackData) return;
+  const remotes = netPeer.getRemotePlayers();
+  const laneOffsets = [3.5, -3.5, 3.5, -3.5, 3.5, -3.5];
 
-  for (const remote of netPeer.getRemotePlayers()) {
+  for (let ri = 0; ri < remotes.length; ri++) {
+    const remote = remotes[ri];
     const def = CAR_ROSTER.find(c => c.id === remote.carId) ?? CAR_ROSTER[0];
     try {
       const model = await loadCarModel(def.file);
-      model.position.set(0, 0, 0);
+      // Place on the track start line instead of origin
+      const startT = 0.02 + ri * 0.02;
+      const pt = trackData.spline.getPointAt(startT);
+      const tangent = trackData.spline.getTangentAt(startT).normalize();
+      const right = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
+      const lane = laneOffsets[ri % laneOffsets.length];
+      model.position.copy(pt);
+      model.position.x += right.x * lane;
+      model.position.z += right.z * lane;
+      model.position.y += 0.05;
+      model.rotation.y = Math.atan2(tangent.x, tangent.z);
       scene.add(model);
       remoteMeshes.set(remote.id, model);
 
@@ -1051,6 +1092,17 @@ function gameLoop(timestamp: number) {
           heading: ai.vehicle.heading,
         });
         velocities.push(ai.vehicle);
+      }
+
+      // Remote multiplayer vehicle colliders (push-apart only)
+      for (const [id, mesh] of remoteMeshes) {
+        colliders.push({
+          id,
+          position: mesh.position,
+          halfExtents: carHalf,
+          heading: mesh.rotation.y,
+        });
+        velocities.push({ velX: 0, velZ: 0 });
       }
 
       const collisionEvents = resolveCarCollisions(colliders, velocities);
