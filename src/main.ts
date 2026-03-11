@@ -759,14 +759,27 @@ async function spawnRemoteVehicles() {
   }
 }
 
+function disposeMaterial(mat: THREE.Material) {
+  const std = mat as THREE.MeshStandardMaterial;
+  if (std.map) std.map.dispose();
+  if (std.normalMap) std.normalMap.dispose();
+  if (std.aoMap) std.aoMap.dispose();
+  if (std.emissiveMap) std.emissiveMap.dispose();
+  mat.dispose();
+}
+
 function disposeMesh(obj: THREE.Object3D) {
   obj.traverse((child) => {
     if ((child as THREE.Mesh).isMesh) {
       const mesh = child as THREE.Mesh;
       mesh.geometry?.dispose();
       const mat = mesh.material;
-      if (Array.isArray(mat)) mat.forEach(m => m.dispose());
-      else if (mat) mat.dispose();
+      if (Array.isArray(mat)) mat.forEach(m => disposeMaterial(m));
+      else if (mat) disposeMaterial(mat as THREE.Material);
+      // Dispose InstancedMesh GPU buffers (instanceMatrix, instanceColor)
+      if ((mesh as THREE.InstancedMesh).isInstancedMesh) {
+        (mesh as THREE.InstancedMesh).dispose();
+      }
     }
   });
 }
@@ -1034,7 +1047,7 @@ function updateLeaderboard() {
       <div class="lb-row${isSelf ? ' self' : ''}${r.dnf ? ' dnf' : ''}">
         <span class="lb-pos">${r.dnf ? '—' : i + 1}</span>
         <span class="lb-name">${name}${r.dnf ? ' DNF' : ''}</span>
-        <span class="lb-progress">L${r.lapIndex + 1}</span>
+        <span class="lb-progress">${r.finished ? 'FIN' : `L${r.lapIndex + 1}`}</span>
       </div>
     `;
   }).join('');
