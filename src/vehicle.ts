@@ -72,6 +72,7 @@ export class Vehicle {
 
   // Damage
   damage: DamageState = createDamageState();
+  detachedZones = new Set<string>();
 
   // Debug telemetry (populated each frame for debug overlay)
   telemetry = {
@@ -471,6 +472,7 @@ export class Vehicle {
     this._roadPitch = 0;
     this._roadRoll = 0;
     this.damage = createDamageState();
+    this.detachedZones.clear();
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -499,6 +501,43 @@ export class Vehicle {
     this.damage[zone].deformAmount += dmgAmount;
 
     this.deformMesh(impactDir, impactForce);
+
+    // Detach a part when zone reaches 0 HP
+    if (this.damage[zone].hp <= 0 && !this.detachedZones.has(zone)) {
+      this.detachedZones.add(zone);
+    }
+  }
+
+  /** Create a detached part mesh for a destroyed zone. Returns null if already detached. */
+  createDetachedPart(zone: string): THREE.Mesh | null {
+    const sinH = Math.sin(this.heading);
+    const cosH = Math.cos(this.heading);
+    const pos = this.group.position;
+
+    // Part dimensions and offsets per zone
+    const parts: Record<string, { w: number; h: number; d: number; ox: number; oy: number; oz: number; color: number }> = {
+      front: { w: 2.0, h: 0.08, d: 1.2, ox: 0, oy: 0.8, oz: -2.2, color: 0x888899 },
+      rear:  { w: 1.8, h: 0.3, d: 0.4, ox: 0, oy: 0.5, oz: 2.0, color: 0x666677 },
+      left:  { w: 0.08, h: 0.8, d: 1.6, ox: -1.0, oy: 0.6, oz: 0, color: 0x777788 },
+      right: { w: 0.08, h: 0.8, d: 1.6, ox: 1.0, oy: 0.6, oz: 0, color: 0x777788 },
+    };
+
+    const p = parts[zone];
+    if (!p) return null;
+
+    const geo = new THREE.BoxGeometry(p.w, p.h, p.d);
+    const mat = new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.6, metalness: 0.3 });
+    const mesh = new THREE.Mesh(geo, mat);
+
+    // World position from car position + rotated local offset
+    mesh.position.set(
+      pos.x + cosH * p.ox + sinH * p.oz,
+      pos.y + p.oy,
+      pos.z - sinH * p.ox + cosH * p.oz,
+    );
+    mesh.rotation.y = this.heading + (Math.random() - 0.5) * 0.5;
+
+    return mesh;
   }
 
   /** Displace mesh vertices near the impact for visual crumple. */

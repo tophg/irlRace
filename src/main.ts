@@ -25,6 +25,7 @@ import {
   createNameTag, updateNameTag,
   destroyVFX, spawnCollisionSparks, spawnDamageSmoke,
   initSkidMarks, updateSkidMarks, destroySkidMarks,
+  spawnFlameParticle, spawnExplosion,
 } from './vfx';
 import { initInput, showTouchControls, getInput } from './input';
 import { loadSettings, getSettings, showSettings } from './settings';
@@ -86,6 +87,11 @@ let driftSfxCooldown = 0;
 const remotePrevPos = new Map<string, { x: number; z: number }>();
 let replayRecorder: ReplayRecorder | null = null;
 let replayPlayer: ReplayPlayer | null = null;
+
+// Detached car parts (tumbling debris)
+interface DetachedPart { mesh: THREE.Mesh; vx: number; vy: number; vz: number; ax: number; ay: number; az: number; life: number; }
+const detachedParts: DetachedPart[] = [];
+const _flamePos = new THREE.Vector3();
 
 // ── Debug Overlay ──
 let debugVisible = false;
@@ -846,6 +852,14 @@ function clearRaceObjects() {
 
   remotePrevPos.clear();
 
+  // Clean up detached parts
+  for (const dp of detachedParts) {
+    scene.remove(dp.mesh);
+    dp.mesh.geometry?.dispose();
+    (dp.mesh.material as THREE.Material)?.dispose();
+  }
+  detachedParts.length = 0;
+
   // Clean up VFX (smoke, speed lines, boost flame, skid marks)
   destroyVFX();
   destroySkidMarks();
@@ -1212,6 +1226,7 @@ function gameLoop(timestamp: number) {
             (cA.position.z + cB.position.z) / 2,
           );
           spawnCollisionSparks(_sparkPos, evt.impactForce);
+          if (evt.impactForce > 25) spawnExplosion(_sparkPos, evt.impactForce);
           playCollisionSFX(Math.min(evt.impactForce / 30, 1));
         }
       }
@@ -1238,11 +1253,76 @@ function gameLoop(timestamp: number) {
       driftSfxCooldown = 0.12;
     }
 
-    // Damage smoke (emit when zones are heavily damaged)
+    // Damage smoke + flames (emit when zones are heavily damaged)
     if (s === GameState.RACING && playerVehicle) {
       const dmg = playerVehicle.damage;
       const worstHp = Math.min(dmg.front.hp, dmg.rear.hp, dmg.left.hp, dmg.right.hp);
       if (worstHp < 50) spawnDamageSmoke(playerVehicle.group.position, 1 - worstHp / 50, dt);
+
+      // Per-zone flames for critically damaged areas
+      const sinH = Math.sin(playerVehicle.heading);
+      const cosH = Math.cos(playerVehicle.heading);
+      const pp = playerVehicle.group.position;
+      const zoneOffsets: [string, number, number, number][] = [
+        ['front', 0, 1.0, -2.0],
+        ['rear', 0, 0.8, 1.8],
+        ['left', -1.0, 0.7, 0],
+        ['right', 1.0, 0.7, 0],
+      ];
+      for (const [zone, lx, ly, lz] of zoneOffsets) {
+        const hp = dmg[zone as keyof typeof dmg].hp;
+        if (hp < 20) {
+          _flamePos.set(
+            pp.x + cosH * lx + sinH * lz,
+            pp.y + ly,
+            pp.z - sinH * lx + cosH * lz,
+          );
+          spawnFlameParticle(_flamePos, 1 - hp / 20, dt);
+        }
+      }
+
+      // Check for newly detached parts
+      for (const zone of ['front', 'rear', 'left', 'right'] as const) {
+        if (playerVehicle.detachedZones.has(zone) && !detachedParts.some(dp => (dp as any).zone === zone && (dp as any).owner === 'local')) {
+          const partMesh = playerVehicle.createDetachedPart(zone);
+          if (partMesh) {
+            scene.add(partMesh);
+            detachedParts.push({
+              mesh: partMesh,
+              vx: playerVehicle.velX + (Math.random() - 0.5) * 8,
+              vy: 3 + Math.random() * 5,
+              vz: playerVehicle.velZ + (Math.random() - 0.5) * 8,
+              ax: (Math.random() - 0.5) * 10,
+              ay: (Math.random() - 0.5) * 10,
+              az: (Math.random() - 0.5) * 10,
+              life: 4.0,
+            });
+            // Spawn explosion at detach point
+            spawnExplosion(partMesh.position, 30);
+          }
+        }
+      }
+    }
+
+    // Update detached parts physics
+    for (let i = detachedParts.length - 1; i >= 0; i--) {
+      const dp = detachedParts[i];
+      dp.life -= dt;
+      if (dp.life <= 0 || dp.mesh.position.y < -10) {
+        scene.remove(dp.mesh);
+        dp.mesh.geometry?.dispose();
+        (dp.mesh.material as THREE.Material)?.dispose();
+        detachedParts[i] = detachedParts[detachedParts.length - 1];
+        detachedParts.pop();
+        continue;
+      }
+      dp.mesh.position.x += dp.vx * dt;
+      dp.mesh.position.y += dp.vy * dt;
+      dp.mesh.position.z += dp.vz * dt;
+      dp.vy -= 15 * dt; // gravity
+      dp.mesh.rotation.x += dp.ax * dt;
+      dp.mesh.rotation.y += dp.ay * dt;
+      dp.mesh.rotation.z += dp.az * dt;
     }
 
     // Checkpoint detection (local player)
