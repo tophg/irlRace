@@ -100,7 +100,7 @@ export class NetPeer {
     const hostPeerId = `hoodracer-${roomCode}`;
     const conn = this.peer!.connect(hostPeerId, {
       reliable: true,
-      serialization: 'binary',
+      serialization: 'none',
       metadata: { name, carId },
     });
 
@@ -248,8 +248,27 @@ export class NetPeer {
     }
   }
 
-  private handleData(fromId: string, data: unknown) {
-    if (!(data instanceof ArrayBuffer)) return;
+  private handleData(fromId: string, rawData: unknown) {
+    // Normalize: browsers/PeerJS may deliver ArrayBuffer, Uint8Array, or Blob
+    if (rawData instanceof Blob) {
+      rawData.arrayBuffer().then(ab => this.processPacket(fromId, ab));
+      return;
+    }
+    let data: ArrayBuffer;
+    if (rawData instanceof ArrayBuffer) {
+      data = rawData;
+    } else if (rawData instanceof Uint8Array) {
+      data = rawData.buffer.slice(rawData.byteOffset, rawData.byteOffset + rawData.byteLength) as ArrayBuffer;
+    } else if (ArrayBuffer.isView(rawData)) {
+      const v = rawData as ArrayBufferView;
+      data = v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength) as ArrayBuffer;
+    } else {
+      return;
+    }
+    this.processPacket(fromId, data);
+  }
+
+  private processPacket(fromId: string, data: ArrayBuffer) {
     const view = new DataView(data);
     const packetType = view.getUint8(0);
 
