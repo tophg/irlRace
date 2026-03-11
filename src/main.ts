@@ -25,6 +25,7 @@ import {
   createNameTag, updateNameTag,
 } from './vfx';
 import { initInput, showTouchControls, getInput } from './input';
+import { resolveCarCollisions, CarCollider } from './bvh';
 
 // ── DOM ──
 const container = document.getElementById('game-container')!;
@@ -64,6 +65,9 @@ const input = initInput();
 
 // ── Timing ──
 let lastTime = 0;
+
+// ── Collision ──
+const carHalf = new THREE.Vector3(1.0, 0.8, 2.2); // approximate car half-extents
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TITLE SCREEN
@@ -346,7 +350,7 @@ async function spawnAI(trackData: TrackData) {
       ai.vehicle.setModel(model);
     } catch {}
 
-    ai.place(trackData!.spline, startTs[i] ?? 0.02, laneOffsets[i] ?? 0);
+    ai.place(trackData!.spline, startTs[i] ?? 0.02, laneOffsets[i] ?? 0, trackData!.bvh);
     scene.add(ai.vehicle.group);
     aiRacers.push(ai);
   }
@@ -541,7 +545,7 @@ function gameLoop(timestamp: number) {
 
     // Player update
     if (s === GameState.RACING) {
-      playerVehicle.update(dt, getInput(), trackData.spline);
+      playerVehicle.update(dt, getInput(), trackData.spline, trackData.bvh);
     }
 
     // Camera
@@ -555,10 +559,36 @@ function gameLoop(timestamp: number) {
     // AI update
     if (s === GameState.RACING) {
       for (const ai of aiRacers) {
-        ai.setRubberBand(getClosestSplinePoint(trackData.spline, playerVehicle.group.position, 100).t);
+        ai.setRubberBand(getClosestSplinePoint(trackData.spline, playerVehicle.group.position, trackData.bvh).t);
         ai.update(dt);
         raceEngine?.updateRacer(ai.id, ai.vehicle.group.position);
       }
+
+      // ── Car-to-car collision (BVH broadphase + push-apart) ──
+      const colliders: CarCollider[] = [];
+      const velocities: { velX: number; velZ: number }[] = [];
+
+      // Player collider
+      colliders.push({
+        id: 'local',
+        position: playerVehicle.group.position,
+        halfExtents: carHalf,
+        heading: playerVehicle.heading,
+      });
+      velocities.push(playerVehicle);
+
+      // AI colliders
+      for (const ai of aiRacers) {
+        colliders.push({
+          id: ai.id,
+          position: ai.vehicle.group.position,
+          halfExtents: carHalf,
+          heading: ai.vehicle.heading,
+        });
+        velocities.push(ai.vehicle);
+      }
+
+      resolveCarCollisions(colliders, velocities);
     }
 
     // VFX
@@ -624,7 +654,7 @@ function gameLoop(timestamp: number) {
         const snap = netPeer.getInterpolatedState(id);
         if (snap) {
           const _rPos = new THREE.Vector3(snap.x, 0, snap.z);
-          const nearest = getClosestSplinePoint(trackData!.spline, _rPos, 100);
+          const nearest = getClosestSplinePoint(trackData!.spline, _rPos, trackData!.bvh);
           mesh.position.set(snap.x, nearest.point.y, snap.z);
           mesh.rotation.y = snap.heading;
         }

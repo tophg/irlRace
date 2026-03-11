@@ -112,10 +112,12 @@ export class RaceEngine {
     return this.racers.get(id);
   }
 
+  private static _moveDir = new THREE.Vector3();
+
   /** Check wrong-way by comparing velocity direction to spline tangent. */
   isWrongWay(heading: number, splineTangent: THREE.Vector3): boolean {
-    const moveDir = new THREE.Vector3(Math.sin(heading), 0, Math.cos(heading));
-    return moveDir.dot(splineTangent) < -0.3;
+    RaceEngine._moveDir.set(Math.sin(heading), 0, Math.cos(heading));
+    return RaceEngine._moveDir.dot(splineTangent) < -0.3;
   }
 
   /** Get elapsed race time in seconds. */

@@ -24,29 +24,58 @@ export function initGarage(
 
   // Dedicated scene for showroom
   garageScene = new THREE.Scene();
-  garageScene.background = new THREE.Color(0x0a0a14);
+  garageScene.background = new THREE.Color(0x0c0c1a);
+  garageScene.fog = new THREE.FogExp2(0x0c0c1a, 0.018);
 
-  garageCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
-  garageCamera.position.set(0, 3, 7);
-  garageCamera.lookAt(0, 1, 0);
+  garageCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+  garageCamera.position.set(0, 2.8, 7.5);
+  garageCamera.lookAt(0, 0.8, 0);
 
-  // Lighting
-  const ambient = new THREE.AmbientLight(0x666688, 0.6);
+  // ── Showroom Lighting — Bright Cinematic ──
+
+  // Ambient base — visible shadow fill
+  const ambient = new THREE.AmbientLight(0x667799, 1.2);
   garageScene.add(ambient);
 
-  const key = new THREE.DirectionalLight(0xffeedd, 2.5);
-  key.position.set(5, 8, 5);
-  garageScene.add(key);
+  // Key light — bright cool-white spotlight from top-front-right
+  const keySpot = new THREE.SpotLight(0xddeeff, 300, 30, Math.PI / 4, 0.5, 1.2);
+  keySpot.position.set(4, 8, 5);
+  keySpot.target.position.set(0, 0, 0);
+  keySpot.castShadow = true;
+  keySpot.shadow.mapSize.set(1024, 1024);
+  garageScene.add(keySpot);
+  garageScene.add(keySpot.target);
 
-  const fill = new THREE.DirectionalLight(0x8888ff, 0.8);
-  fill.position.set(-5, 4, -3);
-  garageScene.add(fill);
+  // Fill light — warm from front-left
+  const fillSpot = new THREE.SpotLight(0xffd4a0, 150, 25, Math.PI / 3, 0.6, 1.2);
+  fillSpot.position.set(-5, 5, 4);
+  fillSpot.target.position.set(0, 0.5, 0);
+  garageScene.add(fillSpot);
+  garageScene.add(fillSpot.target);
 
-  const rim = new THREE.DirectionalLight(0xff6600, 1.2);
-  rim.position.set(0, 2, -6);
-  garageScene.add(rim);
+  // Front fill — broad wash so car is never dark from camera angle
+  const frontFill = new THREE.DirectionalLight(0xccccdd, 1.5);
+  frontFill.position.set(0, 4, 8);
+  garageScene.add(frontFill);
 
-  // Environment map
+  // Rim/accent light — neon orange from behind
+  const rimSpot = new THREE.SpotLight(0xff6a2a, 200, 22, Math.PI / 5, 0.4, 1.2);
+  rimSpot.position.set(0, 3, -7);
+  rimSpot.target.position.set(0, 0.5, 0);
+  garageScene.add(rimSpot);
+  garageScene.add(rimSpot.target);
+
+  // Overhead down-light (bright white wash for top reflections)
+  const overhead = new THREE.PointLight(0xeeeeff, 60, 15, 1.5);
+  overhead.position.set(0, 6, 0);
+  garageScene.add(overhead);
+
+  // Under-glow (cool blue for premium floor glow)
+  const underglow = new THREE.PointLight(0x3366ff, 25, 8, 1.5);
+  underglow.position.set(0, 0.15, 0);
+  garageScene.add(underglow);
+
+  // Environment map for reflections
   const { RoomEnvironment } = THREE as any;
   if (THREE.PMREMGenerator) {
     const pmrem = new THREE.PMREMGenerator(renderer);
@@ -58,23 +87,37 @@ export function initGarage(
     pmrem.dispose();
   }
 
-  // Turntable platform
-  const platGeo = new THREE.CylinderGeometry(3.5, 3.5, 0.15, 48);
+  // Turntable platform — polished dark surface
+  const platGeo = new THREE.CylinderGeometry(3.5, 3.8, 0.12, 64);
   const platMat = new THREE.MeshStandardMaterial({
-    color: 0x1a1a2a,
-    metalness: 0.6,
-    roughness: 0.3,
+    color: 0x1a1a2e,
+    metalness: 0.85,
+    roughness: 0.15,
   });
   platform = new THREE.Mesh(platGeo, platMat);
-  platform.position.y = -0.075;
+  platform.position.y = -0.06;
+  platform.receiveShadow = true;
   garageScene.add(platform);
 
-  // Floor
-  const floorGeo = new THREE.PlaneGeometry(30, 30);
-  const floorMat = new THREE.MeshStandardMaterial({ color: 0x111118, roughness: 0.9 });
+  // Platform edge ring (neon accent)
+  const ringGeo = new THREE.TorusGeometry(3.65, 0.03, 8, 64);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xff6a2a });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.01;
+  garageScene.add(ring);
+
+  // Floor — large dark reflective surface
+  const floorGeo = new THREE.PlaneGeometry(40, 40);
+  const floorMat = new THREE.MeshStandardMaterial({
+    color: 0x080812,
+    roughness: 0.6,
+    metalness: 0.4,
+  });
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -0.15;
+  floor.position.y = -0.12;
+  floor.receiveShadow = true;
   garageScene.add(floor);
 
   // UI

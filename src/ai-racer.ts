@@ -4,12 +4,14 @@ import * as THREE from 'three';
 import { Vehicle } from './vehicle';
 import { CarDef, InputState } from './types';
 import { getClosestSplinePoint } from './track';
+import type { SplineBVH } from './bvh';
 
 export class AIRacer {
   readonly vehicle: Vehicle;
   readonly id: string;
 
   private spline: THREE.CatmullRomCurve3 | null = null;
+  private bvh: SplineBVH | null = null;
   private currentT = 0;
   private lookaheadT = 0.015;
   private rubberBandTarget = 1.0; // speed multiplier
@@ -24,8 +26,9 @@ export class AIRacer {
   }
 
   /** Place the AI on the track at position t with a lane offset. */
-  place(spline: THREE.CatmullRomCurve3, t: number, laneOffset: number) {
+  place(spline: THREE.CatmullRomCurve3, t: number, laneOffset: number, bvh?: SplineBVH) {
     this.spline = spline;
+    this.bvh = bvh ?? null;
     this.currentT = t;
     this.vehicle.placeOnTrack(spline, t, laneOffset);
   }
@@ -49,7 +52,9 @@ export class AIRacer {
     if (!this.spline) return;
 
     // Find current position on spline
-    const nearest = getClosestSplinePoint(this.spline, this.vehicle.group.position, 200);
+    const nearest = this.bvh
+      ? getClosestSplinePoint(this.spline, this.vehicle.group.position, this.bvh)
+      : getClosestSplinePoint(this.spline, this.vehicle.group.position, 200);
     this.currentT = nearest.t;
 
     // Target point ahead on spline
@@ -86,7 +91,7 @@ export class AIRacer {
       boost: false,
     };
 
-    this.vehicle.update(dt, input, this.spline);
+    this.vehicle.update(dt, input, this.spline, this.bvh ?? undefined);
 
     // Restore original max speed
     this.vehicle.def.maxSpeed = origMaxSpeed;

@@ -1,7 +1,5 @@
 /* ── Hood Racer — HUD ── */
 
-import { RaceEngine } from './race-engine';
-import { getClosestSplinePoint } from './track';
 import * as THREE from 'three';
 
 let hudEl: HTMLElement;

@@ -2,6 +2,7 @@
 
 import * as THREE from 'three';
 import { Checkpoint, TrackData } from './types';
+import { SplineBVH } from './bvh';
 
 const ROAD_WIDTH = 14;
 const BARRIER_HEIGHT = 1.8;
@@ -75,10 +76,13 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   // ── 9. Scenery ──
   const sceneryGroup = generateScenery(finalSpline, rng);
 
-  // ── 10. Quality score ──
+  // ── 10. Build BVH for O(log N) nearest-point queries ──
+  const bvh = new SplineBVH(finalSpline, 800);
+
+  // ── 11. Quality score ──
   const qualityScore = scoreTrack(curvatures, totalLength, speedProfile);
 
-  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, checkpoints, sceneryGroup, totalLength };
+  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, checkpoints, sceneryGroup, totalLength, bvh };
   return { data, qualityScore };
 }
 
@@ -628,11 +632,23 @@ function clamp(v: number, min: number, max: number): number {
   return v < min ? min : v > max ? max : v;
 }
 
+/**
+ * Find the closest point on the spline to `pos`.
+ * When a SplineBVH is provided, uses O(log N) branch-and-bound traversal.
+ * Falls back to brute-force O(N) linear scan otherwise.
+ */
 export function getClosestSplinePoint(
   spline: THREE.CatmullRomCurve3,
   pos: THREE.Vector3,
-  samples = 100
+  samplesOrBvh: number | SplineBVH = 100,
 ): { t: number; point: THREE.Vector3; distance: number } {
+  // ── BVH fast path ──
+  if (typeof samplesOrBvh !== 'number') {
+    return samplesOrBvh.nearestPoint(pos);
+  }
+
+  // ── Brute-force fallback ──
+  const samples = samplesOrBvh;
   let bestT = 0;
   let bestDist = Infinity;
   let bestPoint = new THREE.Vector3();

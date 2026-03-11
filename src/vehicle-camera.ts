@@ -11,6 +11,10 @@ const FOV_MIN = 60;
 const FOV_MAX = 78;
 const FOV_LERP = 0.04;
 
+// Reusable temps to avoid per-frame allocations
+const _desired = new THREE.Vector3();
+const _lookTarget = new THREE.Vector3();
+
 export class VehicleCamera {
   private camera: THREE.PerspectiveCamera;
   private currentLookAt = new THREE.Vector3();
@@ -29,29 +33,29 @@ export class VehicleCamera {
     maxSpeed: number,
   ) {
     // Desired position: behind and above the vehicle
-    const desiredX = targetPos.x - Math.sin(heading) * CHASE_DISTANCE;
-    const desiredY = targetPos.y + CHASE_HEIGHT;
-    const desiredZ = targetPos.z - Math.cos(heading) * CHASE_DISTANCE;
-
-    const desired = new THREE.Vector3(desiredX, desiredY, desiredZ);
+    _desired.set(
+      targetPos.x - Math.sin(heading) * CHASE_DISTANCE,
+      targetPos.y + CHASE_HEIGHT,
+      targetPos.z - Math.cos(heading) * CHASE_DISTANCE,
+    );
 
     if (!this.initialized) {
-      this.smoothPos.copy(desired);
+      this.smoothPos.copy(_desired);
       this.currentLookAt.copy(targetPos);
       this.initialized = true;
     }
 
     // Smooth position follow
-    this.smoothPos.lerp(desired, POSITION_LERP);
+    this.smoothPos.lerp(_desired, POSITION_LERP);
     this.camera.position.copy(this.smoothPos);
 
     // Look-at point: slightly ahead of the vehicle
-    const lookTarget = new THREE.Vector3(
+    _lookTarget.set(
       targetPos.x + Math.sin(heading) * LOOK_AHEAD,
       targetPos.y + 1.5,
       targetPos.z + Math.cos(heading) * LOOK_AHEAD,
     );
-    this.currentLookAt.lerp(lookTarget, LOOK_LERP);
+    this.currentLookAt.lerp(_lookTarget, LOOK_LERP);
     this.camera.lookAt(this.currentLookAt);
 
     // Speed-based FOV

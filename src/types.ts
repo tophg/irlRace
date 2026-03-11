@@ -1,6 +1,7 @@
 /* ── Hood Racer — Shared Types ── */
 
 import * as THREE from 'three';
+import type { SplineBVH } from './bvh';
 
 // ── Game States ──
 export enum GameState {
@@ -54,6 +55,7 @@ export interface TrackData {
   checkpoints: Checkpoint[];
   sceneryGroup: THREE.Group;
   totalLength: number;
+  bvh: SplineBVH;
 }
 
 // ── Vehicle Runtime ──

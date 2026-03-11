@@ -3,11 +3,11 @@
 import * as THREE from 'three';
 import { CarDef, InputState, VehicleState } from './types';
 import { getClosestSplinePoint } from './track';
+import type { SplineBVH } from './bvh';
 
 // Reusable temps to avoid GC
 const _carForward = new THREE.Vector3();
 const _carRight = new THREE.Vector3();
-const _vel2 = new THREE.Vector2();
 const _temp = new THREE.Vector3();
 
 export class Vehicle {
@@ -23,9 +23,15 @@ export class Vehicle {
   driftAngle = 0;      // visual drift, for VFX / audio
 
   // Internal velocity vector on XZ plane
-  private velX = 0;
-  private velZ = 0;
+  private _velX = 0;
+  private _velZ = 0;
   private angularVel = 0;  // heading rate of change (rad/s)
+
+  /** Expose velocity for car-to-car collision damping */
+  get velX() { return this._velX; }
+  set velX(v: number) { this._velX = v; }
+  get velZ() { return this._velZ; }
+  set velZ(v: number) { this._velZ = v; }
 
   // Smooth steer interpolation
   private steerTarget = 0;
@@ -61,18 +67,23 @@ export class Vehicle {
 
     const createWheel = (): THREE.Mesh => {
       const wheelGroup = new THREE.Group();
+
+      // Tire: default torus ring is flat in XZ. Rotate to stand upright (ring in YZ plane)
+      // so the axle runs along X and the wheel spins correctly with rotation.x
       const tire = new THREE.Mesh(wheelGeo, wheelMat);
-      tire.rotation.y = Math.PI / 2;
+      tire.rotation.z = Math.PI / 2;
       wheelGroup.add(tire);
 
+      // Hub: default cylinder axis is Y. Rotate so axle runs along X
       const hub = new THREE.Mesh(hubGeo, hubMat);
-      hub.rotation.x = Math.PI / 2;
+      hub.rotation.z = Math.PI / 2;
       wheelGroup.add(hub);
 
+      // Spokes: fan out in the YZ wheel plane (rotate around X axis)
       for (let i = 0; i < 5; i++) {
         const spokeGeo = new THREE.BoxGeometry(0.04, 0.3, 0.04);
         const spoke = new THREE.Mesh(spokeGeo, hubMat);
-        spoke.rotation.z = (i / 5) * Math.PI;
+        spoke.rotation.x = (i / 5) * Math.PI;
         wheelGroup.add(spoke);
       }
 
@@ -87,6 +98,8 @@ export class Vehicle {
     this.wheelRL = createWheel();
     this.wheelRR = createWheel();
 
+    // wheelY = 0.47 matches torus outer radius (0.35 + 0.12 = 0.47)
+    // so tire bottoms sit exactly at Y=0 — the road surface
     const wheelY = 0.47, frontZ = -1.3, rearZ = 1.3, sideX = 0.85;
     this.wheelFL.position.set(-sideX, wheelY, frontZ);
     this.wheelFR.position.set(sideX, wheelY, frontZ);
@@ -99,7 +112,7 @@ export class Vehicle {
   // PHYSICS UPDATE — Friction Circle Model
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  update(dt: number, input: InputState, spline?: THREE.CatmullRomCurve3) {
+  update(dt: number, input: InputState, spline?: THREE.CatmullRomCurve3, bvh?: SplineBVH) {
     dt = Math.min(dt, 0.05);
     const { def } = this;
 
@@ -118,8 +131,8 @@ export class Vehicle {
     _carRight.set(cosH, 0, -sinH);
 
     // ── Decompose velocity into car-local components ──
-    const vForward = this.velX * sinH + this.velZ * cosH;
-    const vLateral = this.velX * cosH - this.velZ * sinH;
+    const vForward = this._velX * sinH + this._velZ * cosH;
+    const vLateral = this._velX * cosH - this._velZ * sinH;
 
     // ── Longitudinal forces ──
     let longForce = 0;
@@ -167,8 +180,8 @@ export class Vehicle {
     const clampedForward = Math.max(-def.maxSpeed * 0.3, Math.min(newVForward, boostedMax));
 
     // Convert back to world XZ
-    this.velX = clampedForward * sinH + newVLateral * cosH;
-    this.velZ = clampedForward * cosH - newVLateral * sinH;
+    this._velX = clampedForward * sinH + newVLateral * cosH;
+    this._velZ = clampedForward * cosH - newVLateral * sinH;
 
     // ── Speed-sensitive steering ──
     const absSpeed = Math.abs(vForward);
@@ -199,25 +212,25 @@ export class Vehicle {
     this.driftAngle = Math.atan2(-vLateral, Math.max(absSpeed, 1)) * def.driftFactor * 5;
 
     // ── Scalar speed (for HUD, network, audio) ──
-    this.speed = vForward + appliedLong * dt;
-    // Use the velocity-projected speed for accuracy
-    this.speed = this.velX * sinH + this.velZ * cosH;
+    this.speed = this._velX * sinH + this._velZ * cosH;
 
     // Stop threshold
     if (absSpeed < 0.1 && this.throttle === 0) {
-      this.velX = 0;
-      this.velZ = 0;
+      this._velX = 0;
+      this._velZ = 0;
       this.speed = 0;
       this.angularVel = 0;
     }
 
     // ── Position update ──
-    this.group.position.x += this.velX * dt;
-    this.group.position.z += this.velZ * dt;
+    this.group.position.x += this._velX * dt;
+    this.group.position.z += this._velZ * dt;
 
     // ── Keep on road surface ──
     if (spline) {
-      const nearest = getClosestSplinePoint(spline, this.group.position, 200);
+      const nearest = bvh
+        ? getClosestSplinePoint(spline, this.group.position, bvh)
+        : getClosestSplinePoint(spline, this.group.position, 200);
       this.group.position.y = nearest.point.y;
 
       // Soft barrier — push car back if too far from road
@@ -228,8 +241,8 @@ export class Vehicle {
         this.group.position.x += _temp.x * pushStrength;
         this.group.position.z += _temp.z * pushStrength;
         // Friction penalty on velocity
-        this.velX *= 0.92;
-        this.velZ *= 0.92;
+        this._velX *= 0.92;
+        this._velZ *= 0.92;
       }
     }
 
@@ -298,8 +311,8 @@ export class Vehicle {
     this.heading = Math.atan2(tangent.x, tangent.z);
     this.group.rotation.y = this.heading;
     this.speed = 0;
-    this.velX = 0;
-    this.velZ = 0;
+    this._velX = 0;
+    this._velZ = 0;
     this.angularVel = 0;
     this.steer = 0;
     this.driftAngle = 0;
