@@ -34,7 +34,7 @@ export interface EnvironmentPreset {
 export const ENVIRONMENTS: EnvironmentPreset[] = [
   {
     name: 'Urban Night',
-    fogColor: 0x1a1a2e, fogDensity: 0.0008,
+    fogColor: 0x1a1a2e, fogDensity: 0.0003,
     skyTop: 0x0d0d1a, skyBottom: 0x1a1a3a, skyHorizon: 0x2a1a30,
     hemiSky: 0x88aacc, hemiGround: 0x444422, hemiIntensity: 1.2,
     dirColor: 0xffeedd, dirIntensity: 2.5, dirPosition: [50, 80, 30],
@@ -42,7 +42,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
   },
   {
     name: 'Desert Dawn',
-    fogColor: 0xccaa66, fogDensity: 0.0006,
+    fogColor: 0xccaa66, fogDensity: 0.00025,
     skyTop: 0x1a0a2e, skyBottom: 0xff6633, skyHorizon: 0xffaa44,
     hemiSky: 0xffddaa, hemiGround: 0x886633, hemiIntensity: 1.6,
     dirColor: 0xffcc88, dirIntensity: 3.0, dirPosition: [80, 30, 50],
@@ -50,7 +50,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
   },
   {
     name: 'Coastal Sunset',
-    fogColor: 0x445577, fogDensity: 0.0007,
+    fogColor: 0x445577, fogDensity: 0.0003,
     skyTop: 0x0a1628, skyBottom: 0x2244aa, skyHorizon: 0xff6644,
     hemiSky: 0xaabbdd, hemiGround: 0x445566, hemiIntensity: 1.4,
     dirColor: 0xffaa77, dirIntensity: 3.0, dirPosition: [-60, 25, 60],
@@ -69,7 +69,7 @@ export function initScene(container: HTMLElement) {
   container.appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x1a1a2e, 0.0008);
+  scene.fog = new THREE.FogExp2(0x1a1a2e, 0.0003);
 
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
   camera.position.set(0, 10, 20);
