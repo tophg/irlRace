@@ -49,6 +49,8 @@ export class NetPeer {
 
   private broadcastInterval: number | null = null;
   private pingInterval: number | null = null;
+  private heartbeatInterval: number | null = null;
+  private lastSeen = new Map<string, number>();
   // 19-byte state packet: 15B position/heading/speed + 4B damage HP
   private statePacketBuffer = new ArrayBuffer(19);
   private stateView = new DataView(this.statePacketBuffer);
@@ -56,10 +58,24 @@ export class NetPeer {
   /** Create a room (host). Returns the room code. */
   async createRoom(): Promise<string> {
     this.isHost = true;
-    this.roomId = generateRoomCode();
-    const peerId = `hoodracer-${this.roomId}`;
 
-    await this.initPeer(peerId);
+    // Try up to 3 room codes in case of collision
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      this.roomId = generateRoomCode();
+      const peerId = `hoodracer-${this.roomId}`;
+      try {
+        await this.initPeer(peerId);
+        break;
+      } catch (err) {
+        lastError = err as Error;
+        // Clean up failed peer before retrying
+        this.peer?.destroy();
+        this.peer = null;
+      }
+    }
+
+    if (!this.peer) throw lastError ?? new Error('Failed to create room');
 
     this.peer!.on('connection', (conn) => {
       // Enforce max player cap
@@ -82,6 +98,7 @@ export class NetPeer {
           ready: false,
         };
         this.connections.set(conn.peer, remote);
+        this.lastSeen.set(conn.peer, performance.now());
         this.onPlayerJoin(conn.peer, remote.name);
 
         conn.on('data', (data) => this.handleData(conn.peer, data));
@@ -272,6 +289,7 @@ export class NetPeer {
   }
 
   private processPacket(fromId: string, data: ArrayBuffer) {
+    this.lastSeen.set(fromId, performance.now());
     const view = new DataView(data);
     const packetType = view.getUint8(0);
 
@@ -476,10 +494,12 @@ export class NetPeer {
   destroy() {
     this.stopBroadcasting();
     this.stopPinging();
+    this.stopHeartbeat();
     for (const remote of this.connections.values()) {
       remote.conn?.close();
     }
     this.connections.clear();
+    this.lastSeen.clear();
     this.peer?.destroy();
     this.peer = null;
   }
@@ -499,6 +519,24 @@ export class NetPeer {
 
   stopPinging() {
     if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; }
+  }
+
+  /** Start checking for stale connections every 5s. */
+  startHeartbeat() {
+    if (this.heartbeatInterval) return;
+    this.heartbeatInterval = window.setInterval(() => {
+      const now = performance.now();
+      const STALE_MS = 15000;
+      for (const [id, ts] of this.lastSeen) {
+        if (now - ts > STALE_MS && this.connections.has(id)) {
+          this.handleDisconnect(id);
+        }
+      }
+    }, 5000);
+  }
+
+  stopHeartbeat() {
+    if (this.heartbeatInterval) { clearInterval(this.heartbeatInterval); this.heartbeatInterval = null; }
   }
 }
 

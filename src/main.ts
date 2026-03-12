@@ -542,8 +542,30 @@ function wireNetworkCallbacks() {
         break;
 
       case EventType.RACE_GO:
-        // Guest: host says everyone is ready, start countdown
         if (raceGoResolve) raceGoResolve();
+        break;
+
+      case EventType.CAR_SELECT: {
+        const rp = netPeer!.getRemotePlayers().find(r => r.id === fromId);
+        if (rp && data.carId) {
+          rp.carId = data.carId;
+        }
+        break;
+      }
+
+      case EventType.REMATCH_ACCEPT:
+        if (netPeer!.getIsHost() && gameState === GameState.RESULTS) {
+          uiOverlay.querySelector('.results-overlay')?.remove();
+          if (postWinnerTimer) { clearTimeout(postWinnerTimer); postWinnerTimer = null; }
+          raceReadyCount = 0;
+          trackSeed = Math.floor(Math.random() * 99999);
+          const rematchPlayers = [{ id: netPeer!.getLocalId(), name: localPlayerName, carId: selectedCar.id }];
+          for (const rp of netPeer!.getRemotePlayers()) rematchPlayers.push({ id: rp.id, name: rp.name, carId: rp.carId });
+          mpPlayersList = rematchPlayers;
+          netPeer!.broadcastEvent(EventType.REMATCH_REQUEST, { seed: trackSeed, laps: totalLaps, players: rematchPlayers });
+          destroyLeaderboard();
+          startRace();
+        }
         break;
     }
   };
@@ -655,6 +677,7 @@ async function startRace() {
       }));
 
       netPeer.startPinging();
+      netPeer.startHeartbeat();
     }
 
     createHUD(uiOverlay);
@@ -666,13 +689,11 @@ async function startRace() {
     // ── Synchronized start (multiplayer ready barrier) ──
     if (netPeer) {
       if (netPeer.getIsHost()) {
-        // Host: wait for all guests to send RACE_READY (count was reset before COUNTDOWN_START)
         const guestCount = netPeer.getConnectionCount();
         if (guestCount > 0 && raceReadyCount < guestCount) {
           await Promise.race([
             new Promise<void>(resolve => {
               raceGoResolve = resolve;
-              // Re-check in case RACE_READY arrived during loading
               if (raceReadyCount >= guestCount) resolve();
             }),
             new Promise<void>(resolve => setTimeout(resolve, 10000)),
@@ -681,7 +702,6 @@ async function startRace() {
         }
         netPeer.broadcastEvent(EventType.RACE_GO, {});
       } else {
-        // Guest: signal ready, then wait for RACE_GO
         netPeer.broadcastEvent(EventType.RACE_READY, {});
         await Promise.race([
           new Promise<void>(resolve => { raceGoResolve = resolve; }),
@@ -891,12 +911,24 @@ function resolvePlayerName(id: string): string {
   return mpName || netName || id.slice(0, 8);
 }
 
+let postWinnerTimer: number | null = null;
+
 function showResults() {
   gameState = GameState.RESULTS;
   netPeer?.stopBroadcasting();
   netPeer?.stopPinging();
   showTouchControls(false);
   replayRecorder?.stop();
+
+  if (postWinnerTimer) clearTimeout(postWinnerTimer);
+  postWinnerTimer = window.setTimeout(() => {
+    if (raceEngine) {
+      for (const r of raceEngine.getRankings()) {
+        if (!r.finished) raceEngine.markDnf(r.id);
+      }
+    }
+    postWinnerTimer = null;
+  }, 15000);
 
   const rankings = raceEngine?.getRankings() ?? [];
   const winner = rankings[0];
@@ -951,7 +983,7 @@ function showResults() {
     ${lapBreakdownHtml}
     <div class="menu-buttons" style="width:240px; margin-top:8px;">
       ${hasReplay ? '<button class="menu-btn" id="btn-replay" style="border-color:var(--col-cyan);color:var(--col-cyan);">WATCH REPLAY</button>' : ''}
-      ${isMultiplayer && isHost ? '<button class="menu-btn" id="btn-rematch" style="background:var(--col-green);">REMATCH</button>' : ''}
+      ${isMultiplayer ? '<button class="menu-btn" id="btn-rematch" style="background:var(--col-green);">REMATCH</button>' : ''}
       ${!isMultiplayer ? '<button class="menu-btn" id="btn-play-again">PLAY AGAIN</button>' : ''}
       <button class="menu-btn" id="btn-main-menu">MAIN MENU</button>
     </div>
@@ -965,22 +997,29 @@ function showResults() {
   });
   document.getElementById('btn-play-again')?.addEventListener('click', () => {
     el.remove();
+    if (postWinnerTimer) { clearTimeout(postWinnerTimer); postWinnerTimer = null; }
     startRace();
   });
   document.getElementById('btn-rematch')?.addEventListener('click', () => {
     el.remove();
-    raceReadyCount = 0;
-    trackSeed = Math.floor(Math.random() * 99999);
-    // Rebuild players list with currently connected players
-    const rematchPlayers = [{ id: netPeer!.getLocalId(), name: localPlayerName, carId: selectedCar.id }];
-    for (const rp of netPeer!.getRemotePlayers()) rematchPlayers.push({ id: rp.id, name: rp.name, carId: rp.carId });
-    mpPlayersList = rematchPlayers;
-    netPeer!.broadcastEvent(EventType.REMATCH_REQUEST, { seed: trackSeed, laps: totalLaps, players: rematchPlayers });
-    destroyLeaderboard();
-    startRace();
+    if (postWinnerTimer) { clearTimeout(postWinnerTimer); postWinnerTimer = null; }
+    if (isHost) {
+      raceReadyCount = 0;
+      trackSeed = Math.floor(Math.random() * 99999);
+      const rematchPlayers = [{ id: netPeer!.getLocalId(), name: localPlayerName, carId: selectedCar.id }];
+      for (const rp of netPeer!.getRemotePlayers()) rematchPlayers.push({ id: rp.id, name: rp.name, carId: rp.carId });
+      mpPlayersList = rematchPlayers;
+      netPeer!.broadcastEvent(EventType.REMATCH_REQUEST, { seed: trackSeed, laps: totalLaps, players: rematchPlayers });
+      destroyLeaderboard();
+      startRace();
+    } else {
+      netPeer!.broadcastEvent(EventType.REMATCH_ACCEPT, {});
+      showToast(uiOverlay, 'Rematch requested...');
+    }
   });
   document.getElementById('btn-main-menu')!.addEventListener('click', () => {
     el.remove();
+    if (postWinnerTimer) { clearTimeout(postWinnerTimer); postWinnerTimer = null; }
     netPeer?.destroy();
     netPeer = null;
     clearRaceObjects();
