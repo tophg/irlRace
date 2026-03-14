@@ -118,23 +118,11 @@ export class RaceEngine {
       if (!a.finished && b.finished) return 1;
       if (a.finished && b.finished) return a.finishTime - b.finishTime;
 
-      // Continuous ranking using spline parameter.
-      // Handle wrap-around near the start/finish line (t=0):
-      // Each checkpoint i is at roughly t = i/numCheckpoints.
-      // If a racer's trackT is far ahead of their checkpoint's expected t,
-      // they've wrapped around the t=0 boundary and are actually behind.
-      const numCPs = this.checkpoints.length;
-      const effectiveT = (r: RacerProgress) => {
-        const expectedT = r.checkpointIndex / numCPs;
-        let t = r.trackT;
-        // If trackT is more than half a lap ahead of expected position,
-        // the car wrapped around t=0 and is actually behind
-        if (t - expectedT > 0.5) {
-          t -= 1.0;
-        }
-        return r.lapIndex + t;
-      };
-      return effectiveT(b) - effectiveT(a);
+      // Primary sort: lap index (checkpoint-based, always reliable)
+      if (a.lapIndex !== b.lapIndex) return b.lapIndex - a.lapIndex;
+
+      // Within same lap: use raw trackT for continuous positioning
+      return b.trackT - a.trackT;
     });
   }
 
