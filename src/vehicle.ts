@@ -253,9 +253,8 @@ export class Vehicle {
 
     // ── Integrate velocity ──
     const newVForward = vForward + longForce * dt;
-    const boostedMax = this._nitroActive ? def.maxSpeed * 1.4 * maxSpdMult : def.maxSpeed * maxSpdMult;
 
-    // ── Nitro drain/recharge ──
+    // ── Nitro drain/recharge (must run before boostedMax) ──
     if (input.boost && this.nitro > 0) {
       this._nitroActive = true;
       this.nitro = Math.max(0, this.nitro - 40 * dt);
@@ -270,6 +269,8 @@ export class Vehicle {
     if (!this._nitroActive && absSpeed > 2) {
       this.nitro = Math.min(100, this.nitro + 2 * dt);
     }
+
+    const boostedMax = this._nitroActive ? def.maxSpeed * 1.4 * maxSpdMult : def.maxSpeed * maxSpdMult;
     const clampedFwd = Math.max(-def.maxSpeed * 0.3, Math.min(newVForward, boostedMax));
 
     const totalLatAccel = frontLatF + rearLatF;
@@ -300,7 +301,7 @@ export class Vehicle {
 
     // ── Auto-countersteer (reduced — tyre forces now provide natural correction) ──
     const slideAngle = Math.atan2(Math.abs(vLateral), Math.max(absSpeed, 0.5));
-    const driftHeld = input.boost ? 0.1 : 0.5;
+    const driftHeld = this._nitroActive ? 0.1 : 0.5;
     this.angularVel *= 1 - Math.min(1, 3.0 * driftHeld * slideAngle * dt);
 
     // Angular damping (frame-rate independent)
@@ -568,13 +569,19 @@ export class Vehicle {
     return mesh;
   }
 
+  // Pooled temps for deformMesh (avoid per-collision allocations)
+  private static _deformInvMat = new THREE.Matrix4();
+  private static _deformLocalImpact = new THREE.Vector3();
+  private static _deformLocalDir = new THREE.Vector3();
+  private static _deformWorldImpact = new THREE.Vector3();
+
   /** Displace mesh vertices near the impact for visual crumple. */
   private deformMesh(impactDir: THREE.Vector3, force: number) {
     if (!this.model) return;
 
     const radius = 1.8;
     const strength = force * 0.005;
-    const worldImpactPoint = this.group.position.clone().add(impactDir.clone().multiplyScalar(2));
+    Vehicle._deformWorldImpact.copy(this.group.position).addScaledVector(impactDir, 2);
 
     this.model.traverse((child) => {
       if (!(child as THREE.Mesh).isMesh) return;
@@ -583,9 +590,11 @@ export class Vehicle {
       if (!posAttr) return;
 
       const positions = posAttr.array as Float32Array;
-      const invMat = new THREE.Matrix4().copy(mesh.matrixWorld).invert();
-      const localImpact = worldImpactPoint.clone().applyMatrix4(invMat);
-      const localDir = impactDir.clone().transformDirection(invMat);
+      Vehicle._deformInvMat.copy(mesh.matrixWorld).invert();
+      Vehicle._deformLocalImpact.copy(Vehicle._deformWorldImpact).applyMatrix4(Vehicle._deformInvMat);
+      Vehicle._deformLocalDir.copy(impactDir).transformDirection(Vehicle._deformInvMat);
+      const localImpact = Vehicle._deformLocalImpact;
+      const localDir = Vehicle._deformLocalDir;
 
       let changed = false;
       const maxVerts = Math.min(positions.length / 3, 500);

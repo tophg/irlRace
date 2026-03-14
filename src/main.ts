@@ -1905,7 +1905,13 @@ function gameLoop(timestamp: number) {
       dl.shadow.camera.updateProjectionMatrix();
     }
 
-    // Rear-view mirror render (scissored viewport — zero GPU readback)
+    // Debug overlay
+    updateDebugOverlay();
+
+    // Main render
+    renderer.render(scene, camera);
+
+    // Rear-view mirror render (scissored viewport AFTER main render — zero GPU readback)
     if (mirrorCamera && playerVehicle && s === GameState.RACING) {
       const sinH = Math.sin(playerVehicle.heading);
       const cosH = Math.cos(playerVehicle.heading);
@@ -1921,19 +1927,16 @@ function gameLoop(timestamp: number) {
       const mirX = Math.floor((canvasW - mirW) / 2);
       const mirY = canvasH - mirH - 14; // WebGL Y is bottom-up, 14px from top
 
+      renderer.autoClear = false;
       renderer.setScissorTest(true);
       renderer.setViewport(mirX, mirY, mirW, mirH);
       renderer.setScissor(mirX, mirY, mirW, mirH);
+      renderer.clearDepth();
       renderer.render(scene, mirrorCamera);
       renderer.setScissorTest(false);
       renderer.setViewport(0, 0, canvasW, canvasH);
+      renderer.autoClear = true;
     }
-
-    // Debug overlay
-    updateDebugOverlay();
-
-    // Render
-    renderer.render(scene, camera);
   }
 }
 
