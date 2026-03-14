@@ -829,8 +829,8 @@ async function startRace() {
     playerVehicle = new Vehicle(selectedCar);
     playerVehicle.setModel(playerModel);
     scene.add(playerVehicle.group);
-    playerVehicle.placeOnTrack(trackData.spline, 0, -3.5);
     playerVehicle.setRoadMesh(trackData.roadMesh);
+    playerVehicle.placeOnTrack(trackData.spline, 0, -3.5);
     raceEngine.addRacer('local');
 
     vehicleCamera = new VehicleCamera(camera);
@@ -940,9 +940,9 @@ async function spawnAI(trackData: TrackData) {
       ai.vehicle.setModel(model);
     } catch {}
 
+    ai.vehicle.setRoadMesh(trackData!.roadMesh);
     ai.place(trackData!.spline, startTs[i] ?? 0.02, laneOffsets[i] ?? 0, trackData!.bvh);
     ai.setSpeedProfile(trackData!.speedProfile);
-    ai.vehicle.setRoadMesh(trackData!.roadMesh);
     scene.add(ai.vehicle.group);
     aiRacers.push(ai);
   }
@@ -975,7 +975,17 @@ async function spawnRemoteVehicles() {
       model.position.copy(pt);
       model.position.x += right.x * lane;
       model.position.z += right.z * lane;
-      model.position.y += 0.05;
+
+      // Snap to road surface via raycast
+      const rayOrigin = new THREE.Vector3(model.position.x, model.position.y + 10, model.position.z);
+      const rc = new THREE.Raycaster(rayOrigin, new THREE.Vector3(0, -1, 0), 0, 25);
+      const hits = rc.intersectObject(trackData.roadMesh, false);
+      if (hits.length > 0) {
+        model.position.y = hits[0].point.y;
+      } else {
+        model.position.y += 0.05;
+      }
+
       model.rotation.y = Math.atan2(tangent.x, tangent.z);
       scene.add(model);
       remoteMeshes.set(player.id, model);

@@ -478,12 +478,28 @@ export class Vehicle {
     const tangent = spline.getTangentAt(t).normalize();
 
     this.group.position.copy(pos);
-    this.group.position.y += 0.05;
 
     if (laneOffset !== 0) {
       _temp.crossVectors(tangent, _up).normalize();
       this.group.position.x += _temp.x * laneOffset;
       this.group.position.z += _temp.z * laneOffset;
+    }
+
+    // Snap to road mesh surface if available (avoids floating above road)
+    if (this.roadMesh) {
+      this.raycaster.set(
+        _temp.set(this.group.position.x, this.group.position.y + 10, this.group.position.z),
+        _rayDown,
+      );
+      this.raycaster.far = 25;
+      const hits = this.raycaster.intersectObject(this.roadMesh, false);
+      if (hits.length > 0) {
+        this.group.position.y = hits[0].point.y;
+      } else {
+        this.group.position.y += 0.05;
+      }
+    } else {
+      this.group.position.y += 0.05;
     }
 
     this.heading = Math.atan2(tangent.x, tangent.z);
