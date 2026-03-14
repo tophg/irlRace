@@ -71,7 +71,6 @@ export class RaceEngine {
       racer.lapIndex++;
 
       // Record lap time
-      const now = performance.now() - this.raceStartTime;
       racer.lapTimes.push(now - racer.lastLapStart);
       racer.lastLapStart = now;
 

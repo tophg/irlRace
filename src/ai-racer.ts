@@ -198,12 +198,16 @@ export class AIRacer {
     }
 
     // ── Build input ──
+    // AI uses nitro on straights when available
+    const onStraight = Math.abs(steerInput) < 0.15 && absSpeed > this.vehicle.def.maxSpeed * 0.6;
+    const aiBoost = onStraight && this.vehicle.nitro > 30;
+
     const input: InputState = {
       up: throttle > 0.3,
       down: brake > 0.1,
       left: steerInput < -0.12,
       right: steerInput > 0.12,
-      boost: false,
+      boost: aiBoost,
       steerAnalog: steerInput,
     };
 

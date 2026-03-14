@@ -155,10 +155,6 @@ function buildPlaceholder() {
   group.add(body);
   group.add(cabin);
 
-  placeholderMesh = new THREE.Mesh(); // container
-  placeholderMesh.visible = false;
-  (placeholderMesh as any).add(body, cabin);
-  // Store as a Group-like container
   placeholderMesh = group as any;
   placeholderMesh!.visible = false;
 }
