@@ -1923,8 +1923,9 @@ function gameLoop(timestamp: number) {
       const sinH = Math.sin(playerVehicle.heading);
       const cosH = Math.cos(playerVehicle.heading);
       const pp = playerVehicle.group.position;
-      mirrorCamera.position.set(pp.x + sinH * 1.5, pp.y + 2.5, pp.z + cosH * 1.5);
-      mirrorCamera.lookAt(pp.x + sinH * 20, pp.y + 1.5, pp.z + cosH * 20);
+      // Position camera at car roof, looking backward
+      mirrorCamera.position.set(pp.x, pp.y + 2.5, pp.z);
+      mirrorCamera.lookAt(pp.x - sinH * 20, pp.y + 1.5, pp.z - cosH * 20);
 
       // Render as a viewport in the top-center of the canvas
       const canvasW = renderer.domElement.width;
