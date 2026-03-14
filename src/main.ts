@@ -1488,6 +1488,15 @@ function gameLoop(timestamp: number) {
       return;
     }
 
+    // ── Countdown: run physics with zero input so cars settle on road surface ──
+    if (s === GameState.COUNTDOWN) {
+      const neutralInput = { up: false, down: false, left: false, right: false, boost: false, steerAnalog: 0 };
+      playerVehicle.update(dt, neutralInput, trackData.spline, trackData.bvh);
+      for (const ai of aiRacers) {
+        ai.vehicle.update(dt, neutralInput, trackData.spline, trackData.bvh);
+      }
+    }
+
     // Player update
     if (s === GameState.RACING && vehicleCamera?.mode === 'chase') {
       // Apply weather grip modifier
