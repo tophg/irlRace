@@ -11,7 +11,7 @@ import { generateTrack, buildCheckpointMarkers, getClosestSplinePoint } from './
 import { Vehicle } from './vehicle';
 import { VehicleCamera } from './vehicle-camera';
 import { RaceEngine } from './race-engine';
-import { createHUD, updateHUD, updateMinimap, updateDamageHUD, updateGapHUD, showHUD, destroyHUD, showLapOverlay } from './hud';
+import { createHUD, updateHUD, updateMinimap, updateDamageHUD, updateGapHUD, updateNitroHUD, showHUD, destroyHUD, showLapOverlay } from './hud';
 import { runCountdown } from './countdown';
 import { initAudio, updateEngineAudio, playCheckpointSFX, playLapFanfare, playDriftSFX, playCollisionSFX, playPositionSFX, stopAudio } from './audio';
 import { AIRacer, OpponentInfo } from './ai-racer';
@@ -60,9 +60,7 @@ const aiRacers: AIRacer[] = [];
 
 // ── Rear-View Mirror ──
 let mirrorCamera: THREE.PerspectiveCamera | null = null;
-let mirrorTarget: THREE.WebGLRenderTarget | null = null;
-let mirrorCanvas: HTMLCanvasElement | null = null;
-let mirrorCtx: CanvasRenderingContext2D | null = null;
+let mirrorBorder: HTMLElement | null = null;
 
 // ── Race engine ──
 let raceEngine: RaceEngine | null = null;
@@ -867,18 +865,14 @@ async function startRace() {
 
     // Rear-view mirror
     mirrorCamera = new THREE.PerspectiveCamera(50, 320 / 120, 0.5, 500);
-    mirrorTarget = new THREE.WebGLRenderTarget(320, 120, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
-    mirrorCanvas = document.createElement('canvas');
-    mirrorCanvas.width = 320;
-    mirrorCanvas.height = 120;
-    mirrorCanvas.className = 'hud-mirror';
-    mirrorCanvas.style.cssText = `
+    mirrorBorder = document.createElement('div');
+    mirrorBorder.style.cssText = `
       position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      width: 320px; height: 120px;
       border: 2px solid rgba(255,255,255,0.2); border-radius: 6px;
       pointer-events: none; z-index: 20; opacity: 0.85;
     `;
-    uiOverlay.appendChild(mirrorCanvas);
-    mirrorCtx = mirrorCanvas.getContext('2d')!;
+    uiOverlay.appendChild(mirrorBorder);
     showTouchControls(true);
     initAudio();
     hideLoading();
@@ -1053,8 +1047,7 @@ function clearRaceObjects() {
   }
 
   // Destroy mirror
-  if (mirrorCanvas) { mirrorCanvas.remove(); mirrorCanvas = null; mirrorCtx = null; }
-  if (mirrorTarget) { mirrorTarget.dispose(); mirrorTarget = null; }
+  if (mirrorBorder) { mirrorBorder.remove(); mirrorBorder = null; }
   mirrorCamera = null;
 
   // Remove player
@@ -1495,6 +1488,30 @@ function gameLoop(timestamp: number) {
       playerVehicle.update(dt, getInput(), trackData.spline, trackData.bvh);
       playerVehicle.def.gripCoeff = origGrip;
       playerVehicle.def.driftFactor = origDrift;
+
+      // Slipstream detection: draft behind any AI car
+      const pp = playerVehicle.group.position;
+      const pH = playerVehicle.heading;
+      for (const ai of aiRacers) {
+        const aPos = ai.vehicle.group.position;
+        const dx = aPos.x - pp.x;
+        const dz = aPos.z - pp.z;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist < 15 && dist > 2) {
+          // Check heading alignment (player is behind and facing same direction as AI)
+          const toAiAngle = Math.atan2(dx, dz);
+          let angleDiff = Math.abs(toAiAngle - pH);
+          if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
+          if (angleDiff < 0.52) { // ~30° cone
+            // Closer = stronger draft
+            const draftStrength = (1 - dist / 15) * 20;
+            playerVehicle.addNitro(draftStrength * dt);
+          }
+        }
+      }
+
+      // Nitro HUD update
+      updateNitroHUD(playerVehicle.nitro, playerVehicle.isNitroActive);
     }
 
     // Spectator orbit camera (during RESULTS)
@@ -1527,7 +1544,7 @@ function gameLoop(timestamp: number) {
         }
       }
 
-      vehicleCamera.update(camTarget, camHeading, camSpeed, camMaxSpeed);
+      vehicleCamera.update(camTarget, camHeading, camSpeed, camMaxSpeed, playerVehicle.driftAngle);
     }
 
     // AI update
@@ -1590,11 +1607,13 @@ function gameLoop(timestamp: number) {
           _impactDir.set(evt.normalX, 0, evt.normalZ);
           playerVehicle.applyDamage(_impactDir, evt.impactForce);
           raceStats.collisionCount++;
+          vehicleCamera?.shake(Math.min(evt.impactForce / 40, 1));
         }
         if (evt.idB === 'local' && playerVehicle) {
           _impactDir.set(-evt.normalX, 0, -evt.normalZ);
           playerVehicle.applyDamage(_impactDir, evt.impactForce);
           raceStats.collisionCount++;
+          vehicleCamera?.shake(Math.min(evt.impactForce / 40, 1));
         }
         for (const ai of aiRacers) {
           if (evt.idA === ai.id) {
@@ -1632,7 +1651,7 @@ function gameLoop(timestamp: number) {
     }
     updateVFX(dt);
     updateWeather(dt, playerVehicle.group.position);
-    updateBoostFlame(s === GameState.RACING && getInput().boost, playerVehicle.group.position, playerVehicle.heading, timestamp / 1000);
+    updateBoostFlame(s === GameState.RACING && playerVehicle.isNitroActive, playerVehicle.group.position, playerVehicle.heading, timestamp / 1000);
     const speedRatioForLines = Math.abs(playerVehicle.speed) / selectedCar.maxSpeed;
     if (speedRatioForLines > 0.65) updateSpeedLines(speedRatioForLines);
 
@@ -1886,28 +1905,28 @@ function gameLoop(timestamp: number) {
       dl.shadow.camera.updateProjectionMatrix();
     }
 
-    // Rear-view mirror render (low-res, every other frame for perf)
-    if (mirrorCamera && mirrorTarget && mirrorCtx && mirrorCanvas && playerVehicle && s === GameState.RACING) {
+    // Rear-view mirror render (scissored viewport — zero GPU readback)
+    if (mirrorCamera && playerVehicle && s === GameState.RACING) {
       const sinH = Math.sin(playerVehicle.heading);
       const cosH = Math.cos(playerVehicle.heading);
       const pp = playerVehicle.group.position;
       mirrorCamera.position.set(pp.x + sinH * 1.5, pp.y + 2.5, pp.z + cosH * 1.5);
       mirrorCamera.lookAt(pp.x + sinH * 20, pp.y + 1.5, pp.z + cosH * 20);
-      renderer.setRenderTarget(mirrorTarget);
-      renderer.render(scene, mirrorCamera);
-      renderer.setRenderTarget(null);
 
-      // Copy to canvas
-      const buf = new Uint8Array(320 * 120 * 4);
-      renderer.readRenderTargetPixels(mirrorTarget, 0, 0, 320, 120, buf);
-      const imgData = mirrorCtx.createImageData(320, 120);
-      // WebGL is bottom-up, canvas is top-down — flip vertically
-      for (let row = 0; row < 120; row++) {
-        const srcOff = (119 - row) * 320 * 4;
-        const dstOff = row * 320 * 4;
-        imgData.data.set(buf.subarray(srcOff, srcOff + 320 * 4), dstOff);
-      }
-      mirrorCtx.putImageData(imgData, 0, 0);
+      // Render as a viewport in the top-center of the canvas
+      const canvasW = renderer.domElement.width;
+      const canvasH = renderer.domElement.height;
+      const mirW = 320;
+      const mirH = 120;
+      const mirX = Math.floor((canvasW - mirW) / 2);
+      const mirY = canvasH - mirH - 14; // WebGL Y is bottom-up, 14px from top
+
+      renderer.setScissorTest(true);
+      renderer.setViewport(mirX, mirY, mirW, mirH);
+      renderer.setScissor(mirX, mirY, mirW, mirH);
+      renderer.render(scene, mirrorCamera);
+      renderer.setScissorTest(false);
+      renderer.setViewport(0, 0, canvasW, canvasH);
     }
 
     // Debug overlay

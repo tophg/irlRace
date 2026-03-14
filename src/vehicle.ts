@@ -40,6 +40,8 @@ export class Vehicle {
   throttle = 0;
   brake = 0;
   driftAngle = 0;      // visual drift, for VFX / audio
+  nitro = 50;          // 0–100 nitro meter
+  private _nitroActive = false; // actual nitro burn state (requires nitro > 0)
 
   // Internal velocity vector on XZ plane
   private _velX = 0;
@@ -251,7 +253,23 @@ export class Vehicle {
 
     // ── Integrate velocity ──
     const newVForward = vForward + longForce * dt;
-    const boostedMax = input.boost ? def.maxSpeed * 1.4 * maxSpdMult : def.maxSpeed * maxSpdMult;
+    const boostedMax = this._nitroActive ? def.maxSpeed * 1.4 * maxSpdMult : def.maxSpeed * maxSpdMult;
+
+    // ── Nitro drain/recharge ──
+    if (input.boost && this.nitro > 0) {
+      this._nitroActive = true;
+      this.nitro = Math.max(0, this.nitro - 40 * dt);
+    } else {
+      this._nitroActive = false;
+    }
+    // Drift recharge (stronger drift = faster recharge)
+    if (Math.abs(this.driftAngle) > 0.15 && absSpeed > 5) {
+      this.nitro = Math.min(100, this.nitro + Math.abs(this.driftAngle) * 25 * dt);
+    }
+    // Passive slow recharge
+    if (!this._nitroActive && absSpeed > 2) {
+      this.nitro = Math.min(100, this.nitro + 2 * dt);
+    }
     const clampedFwd = Math.max(-def.maxSpeed * 0.3, Math.min(newVForward, boostedMax));
 
     const totalLatAccel = frontLatF + rearLatF;
@@ -418,6 +436,14 @@ export class Vehicle {
     }
   }
 
+  /** Add nitro from external source (slipstream, near-miss). */
+  addNitro(amount: number) {
+    this.nitro = Math.min(100, this.nitro + amount);
+  }
+
+  /** Whether nitro boost is currently firing. */
+  get isNitroActive(): boolean { return this._nitroActive; }
+
   /** Get current state for network broadcasting. */
   getState(): VehicleState {
     return {
@@ -471,6 +497,8 @@ export class Vehicle {
     this.driftAngle = 0;
     this._roadPitch = 0;
     this._roadRoll = 0;
+    this.nitro = 50;
+    this._nitroActive = false;
     this.damage = createDamageState();
     this.detachedZones.clear();
   }

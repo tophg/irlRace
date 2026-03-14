@@ -13,6 +13,11 @@ let engineFilter: BiquadFilterNode | null = null;
 let prevGear = 0;
 let crackleTimeout: number | null = null;
 
+// Wind noise layer
+let windSource: AudioBufferSourceNode | null = null;
+let windGain: GainNode | null = null;
+let windFilter: BiquadFilterNode | null = null;
+
 const GEAR_RATIOS = [3.2, 2.1, 1.4, 1.0, 0.78];
 const GEAR_COUNT = GEAR_RATIOS.length;
 const IDLE_FREQ = 75;
@@ -72,6 +77,25 @@ export function initAudio() {
   engineOscs = [osc1, osc2, osc3];
   engineGains = [g1, g2, g3];
   prevGear = 0;
+
+  // Wind noise layer (persistent white noise through bandpass)
+  const windBufLen = audioCtx.sampleRate * 2;
+  const windBuf = audioCtx.createBuffer(1, windBufLen, audioCtx.sampleRate);
+  const windData = windBuf.getChannelData(0);
+  for (let i = 0; i < windBufLen; i++) windData[i] = Math.random() * 2 - 1;
+  windSource = audioCtx.createBufferSource();
+  windSource.buffer = windBuf;
+  windSource.loop = true;
+  windFilter = audioCtx.createBiquadFilter();
+  windFilter.type = 'bandpass';
+  windFilter.frequency.value = 400;
+  windFilter.Q.value = 0.8;
+  windGain = audioCtx.createGain();
+  windGain.gain.value = 0;
+  windSource.connect(windFilter);
+  windFilter.connect(windGain);
+  windGain.connect(masterGain);
+  windSource.start();
 }
 
 export function updateEngineAudio(speed: number, maxSpeed: number) {
@@ -111,6 +135,13 @@ export function updateEngineAudio(speed: number, maxSpeed: number) {
 
   // Filter opens with RPM
   engineFilter!.frequency.setTargetAtTime(600 + rpmInGear * 600, t, ramp);
+
+  // Wind noise — volume scales with speed², frequency shifts for whoosh
+  if (windGain && windFilter) {
+    const windVol = Math.pow(ratio, 2) * 0.06 * getSettings().sfxVolume;
+    windGain.gain.setTargetAtTime(windVol, t, 0.1);
+    windFilter.frequency.setTargetAtTime(400 + ratio * 1200, t, 0.1);
+  }
 
   // Exhaust crackle on deceleration (RPM dropping while speed is high)
   if (ratio > 0.3 && rpmInGear < 0.15 && speed > 0) {
@@ -301,5 +332,7 @@ export function stopAudio() {
   prevGear = 0;
   collisionSfxCooldown = 0;
   if (crackleTimeout) { clearTimeout(crackleTimeout); crackleTimeout = null; }
+  if (windSource) { try { windSource.stop(); } catch {} windSource = null; }
+  windGain = null; windFilter = null;
   if (audioCtx) { try { audioCtx.close(); } catch {} audioCtx = null; }
 }

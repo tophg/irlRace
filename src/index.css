@@ -655,6 +655,33 @@ canvas { display: block; }
   text-shadow: 0 0 8px var(--col-cyan);
 }
 
+/* ── Nitro Bar ── */
+.hud-nitro {
+  position: absolute;
+  bottom: 50px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px;
+  pointer-events: none; z-index: 20;
+}
+.hud-nitro-label {
+  font-family: var(--font-display);
+  font-size: 11px; letter-spacing: 2px;
+  color: var(--col-text-dim);
+}
+.hud-nitro-track {
+  width: 200px; height: 10px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 5px;
+  border: 1px solid rgba(255,255,255,0.15);
+  overflow: hidden;
+}
+.hud-nitro-fill {
+  height: 100%; width: 50%;
+  background: linear-gradient(90deg, #0088ff, #ff6600);
+  border-radius: 5px;
+  transition: width 0.08s linear;
+}
+
 /* ── Lap Completion Overlay ── */
 .lap-overlay {
   position: absolute;

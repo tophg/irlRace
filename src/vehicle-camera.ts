@@ -33,6 +33,11 @@ export class VehicleCamera {
   private orbitAngle = 0;
   private orbitCenter = new THREE.Vector3();
 
+  // Shake state
+  private shakeIntensity = 0;
+  private shakeDecay = 0;
+  private driftTilt = 0;
+
   constructor(camera: THREE.PerspectiveCamera) {
     this.camera = camera;
   }
@@ -43,13 +48,19 @@ export class VehicleCamera {
     heading: number,
     speed: number,
     maxSpeed: number,
+    driftAngle = 0,
   ) {
     if (this.mode === 'chase') {
-      this.updateChase(targetPos, heading, speed, maxSpeed);
+      this.updateChase(targetPos, heading, speed, maxSpeed, driftAngle);
     } else if (this.mode === 'follow') {
-      // Follow mode uses chase logic but with gentler FOV
-      this.updateChase(targetPos, heading, speed, maxSpeed);
+      this.updateChase(targetPos, heading, speed, maxSpeed, driftAngle);
     }
+  }
+
+  /** Trigger a camera shake (e.g. on collision). intensity 0–1. */
+  shake(intensity: number) {
+    this.shakeIntensity = Math.max(this.shakeIntensity, Math.min(intensity, 1));
+    this.shakeDecay = 0.3; // 300ms decay
   }
 
   private updateChase(
@@ -57,6 +68,7 @@ export class VehicleCamera {
     heading: number,
     speed: number,
     maxSpeed: number,
+    driftAngle = 0,
   ) {
     // Desired position: behind and above the vehicle
     _desired.set(
@@ -89,6 +101,33 @@ export class VehicleCamera {
     const targetFOV = FOV_MIN + (FOV_MAX - FOV_MIN) * speedRatio;
     this.camera.fov += (targetFOV - this.camera.fov) * FOV_LERP;
     this.camera.updateProjectionMatrix();
+
+    // ── Camera effects ──
+
+    // Collision shake (decaying noise)
+    if (this.shakeIntensity > 0.001) {
+      const t = performance.now() * 0.03;
+      const sx = (Math.sin(t * 7.3) + Math.sin(t * 13.1)) * this.shakeIntensity * 0.3;
+      const sy = (Math.sin(t * 11.7) + Math.sin(t * 5.3)) * this.shakeIntensity * 0.2;
+      this.camera.position.x += sx;
+      this.camera.position.y += sy;
+      this.shakeDecay -= 1 / 60; // approximate dt
+      if (this.shakeDecay <= 0) this.shakeIntensity = 0;
+      else this.shakeIntensity *= 0.92;
+    }
+
+    // Speed vibration (subtle at high speed)
+    if (speedRatio > 0.75) {
+      const vib = (speedRatio - 0.75) * 4; // 0–1 above 75% speed
+      const t2 = performance.now() * 0.05;
+      this.camera.position.x += Math.sin(t2 * 23) * vib * 0.04;
+      this.camera.position.y += Math.sin(t2 * 31) * vib * 0.02;
+    }
+
+    // Drift tilt (camera rolls toward drift direction)
+    const targetTilt = driftAngle * 0.15;
+    this.driftTilt += (targetTilt - this.driftTilt) * 0.06;
+    this.camera.rotation.z = this.driftTilt;
   }
 
   /** Start spectator orbit mode around a center point. */

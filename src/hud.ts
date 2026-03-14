@@ -12,6 +12,7 @@ let wrongWayEl: HTMLElement;
 let timerEl: HTMLElement;
 let boostEl: HTMLElement;
 let gapEl: HTMLElement;
+let nitroFillEl: HTMLElement;
 let minimapCanvas: HTMLCanvasElement;
 let minimapCtx: CanvasRenderingContext2D;
 
@@ -29,6 +30,12 @@ export function createHUD(overlay: HTMLElement): HTMLElement {
     <div class="hud-position" id="hud-position">1<sup>st</sup></div>
     <div class="hud-wrong-way" id="hud-wrong-way">WRONG WAY</div>
     <div class="hud-boost" id="hud-boost">BOOST</div>
+    <div class="hud-nitro" id="hud-nitro">
+      <div class="hud-nitro-label">NITRO</div>
+      <div class="hud-nitro-track">
+        <div class="hud-nitro-fill" id="hud-nitro-fill"></div>
+      </div>
+    </div>
     <canvas class="hud-minimap" id="hud-minimap" width="160" height="160"></canvas>
     <div class="hud-damage" id="hud-damage">
       <div class="dmg-zone dmg-front" id="dmg-front"></div>
@@ -48,6 +55,7 @@ export function createHUD(overlay: HTMLElement): HTMLElement {
   timerEl = hudEl.querySelector('#hud-timer')!;
   boostEl = hudEl.querySelector('#hud-boost')!;
   gapEl = hudEl.querySelector('#hud-gap')!;
+  nitroFillEl = hudEl.querySelector('#hud-nitro-fill')!;
   minimapCanvas = hudEl.querySelector('#hud-minimap') as HTMLCanvasElement;
   minimapCtx = minimapCanvas.getContext('2d')!;
 
@@ -79,6 +87,25 @@ export function updateHUD(
   timerEl.textContent = RaceEngine.formatTime(elapsedMs);
 
   boostEl.classList.toggle('boost-active', boostActive);
+}
+
+export function updateNitroHUD(nitro: number, isActive: boolean) {
+  if (!nitroFillEl) return;
+  const pct = Math.max(0, Math.min(100, nitro));
+  nitroFillEl.style.width = `${pct}%`;
+  // Color gradient: low=blue, mid=orange, full=red
+  if (pct > 70) {
+    nitroFillEl.style.background = 'linear-gradient(90deg, #ff6600, #ff2200)';
+  } else if (pct > 30) {
+    nitroFillEl.style.background = 'linear-gradient(90deg, #0088ff, #ff6600)';
+  } else {
+    nitroFillEl.style.background = 'linear-gradient(90deg, #0044aa, #0088ff)';
+  }
+  if (isActive) {
+    nitroFillEl.style.boxShadow = '0 0 12px rgba(255, 100, 0, 0.8)';
+  } else {
+    nitroFillEl.style.boxShadow = 'none';
+  }
 }
 
 // ── Lap completion overlay ──
