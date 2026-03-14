@@ -784,6 +784,7 @@ async function startRace() {
     scene.add(trackData.roadMesh);
     scene.add(trackData.barrierLeft);
     scene.add(trackData.barrierRight);
+    scene.add(trackData.shoulderMesh);
     scene.add(trackData.kerbGroup);
     scene.add(trackData.sceneryGroup);
 
@@ -972,11 +973,13 @@ function clearRaceObjects() {
     scene.remove(trackData.roadMesh);
     scene.remove(trackData.barrierLeft);
     scene.remove(trackData.barrierRight);
+    scene.remove(trackData.shoulderMesh);
     scene.remove(trackData.kerbGroup);
     scene.remove(trackData.sceneryGroup);
     disposeMesh(trackData.roadMesh);
     disposeMesh(trackData.barrierLeft);
     disposeMesh(trackData.barrierRight);
+    disposeMesh(trackData.shoulderMesh);
     disposeMesh(trackData.kerbGroup);
     disposeMesh(trackData.sceneryGroup);
     trackData = null;
@@ -1461,7 +1464,7 @@ function gameLoop(timestamp: number) {
         // Pass all opponents except self
         const opponents = allOpponents.filter(o => o.id !== ai.id);
         ai.update(dt, opponents);
-        raceEngine?.updateRacer(ai.id, ai.vehicle.group.position);
+        raceEngine?.updateRacer(ai.id, ai.vehicle.group.position, ai.getCurrentT());
       }
 
       // ── Car-to-car collision (BVH broadphase + push-apart) ──
@@ -1631,7 +1634,8 @@ function gameLoop(timestamp: number) {
 
     // Checkpoint detection (local player)
     if (s === GameState.RACING && raceEngine) {
-      const event = raceEngine.updateRacer('local', playerVehicle.group.position);
+      const localT = getClosestSplinePoint(trackData.spline, playerVehicle.group.position, trackData.bvh).t;
+      const event = raceEngine.updateRacer('local', playerVehicle.group.position, localT);
       const progress = raceEngine.getProgress('local');
 
       if (event === 'checkpoint') {
@@ -1662,6 +1666,7 @@ function gameLoop(timestamp: number) {
       // HUD update
       const rankings = raceEngine.getRankings();
       const myRank = rankings.findIndex(r => r.id === 'local') + 1;
+
 
       // Position change callout
       if (prevMyRank > 0 && myRank !== prevMyRank && myRank > 0) {

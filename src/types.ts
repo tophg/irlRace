@@ -83,6 +83,7 @@ export interface TrackData {
   roadMesh: THREE.Mesh;
   barrierLeft: THREE.Mesh;
   barrierRight: THREE.Mesh;
+  shoulderMesh: THREE.Mesh;
   kerbGroup: THREE.Group;
   checkpoints: Checkpoint[];
   sceneryGroup: THREE.Group;
@@ -111,6 +112,7 @@ export interface RacerProgress {
   finished: boolean;
   finishTime: number;
   position: THREE.Vector3;
+  trackT: number;       // spline parameter 0–1 (distance along track)
   dnf?: boolean;
   lapTimes: number[];
   lastLapStart: number;

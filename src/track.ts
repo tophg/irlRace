@@ -52,6 +52,7 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   const roadMesh = buildRoadMesh(finalSpline, curvatures, rng);
   const barrierLeft = buildBarrierMesh(finalSpline, -1);
   const barrierRight = buildBarrierMesh(finalSpline, 1);
+  const shoulderMesh = buildShoulders(finalSpline);
   const kerbGroup = buildKerbs(finalSpline, curvatures);
 
   // ── 8. Place checkpoints ──
@@ -73,7 +74,7 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   // ── 11. Quality score ──
   const qualityScore = scoreTrack(curvatures, totalLength, speedProfile);
 
-  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures };
+  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, shoulderMesh, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures };
   return { data, qualityScore };
 }
 
@@ -418,6 +419,11 @@ function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[], rng
     }
   }
 
+  // Close the loop: connect last pair of vertices to first pair
+  const last = (points.length - 1) * 2;
+  indices.push(last, last + 1, 0);
+  indices.push(last + 1, 1, 0);
+
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
@@ -438,25 +444,59 @@ function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[], rng
 }
 
 function createRoadTexture(rng: () => number): THREE.CanvasTexture {
+  const S = 512;
   const canvas = document.createElement('canvas');
-  canvas.width = 256; canvas.height = 256;
+  canvas.width = S; canvas.height = S;
   const ctx = canvas.getContext('2d')!;
 
+  // Base asphalt
   ctx.fillStyle = '#3a3a42';
-  ctx.fillRect(0, 0, 256, 256);
+  ctx.fillRect(0, 0, S, S);
 
-  ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 3;
-  ctx.setLineDash([20, 20]);
-  ctx.beginPath(); ctx.moveTo(128, 0); ctx.lineTo(128, 256); ctx.stroke();
+  // Asphalt grain noise
+  const imgData = ctx.getImageData(0, 0, S, S);
+  for (let i = 0; i < imgData.data.length; i += 4) {
+    const noise = (rng() - 0.5) * 18;
+    imgData.data[i]     += noise;
+    imgData.data[i + 1] += noise;
+    imgData.data[i + 2] += noise;
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // Faint tire marks (random dark streaks)
+  ctx.globalAlpha = 0.08;
+  ctx.strokeStyle = '#111111';
+  ctx.lineWidth = 3;
+  for (let t = 0; t < 6; t++) {
+    const x = 100 + rng() * 312;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x + (rng() - 0.5) * 20, S);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1.0;
+
+  // Center dashed yellow line
+  ctx.strokeStyle = '#ffcc00';
+  ctx.lineWidth = 4;
+  ctx.setLineDash([30, 25]);
+  ctx.beginPath(); ctx.moveTo(S / 2, 0); ctx.lineTo(S / 2, S); ctx.stroke();
   ctx.setLineDash([]);
 
-  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(10, 256); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(246, 0); ctx.lineTo(246, 256); ctx.stroke();
+  // Edge lines (solid white)
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(14, S); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(S - 14, 0); ctx.lineTo(S - 14, S); ctx.stroke();
+
+  // Shoulder rumble strips near edges
+  ctx.fillStyle = 'rgba(80,70,60,0.3)';
+  ctx.fillRect(0, 0, 10, S);
+  ctx.fillRect(S - 10, 0, 10, S);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(1, 1); tex.anisotropy = 4;
+  tex.repeat.set(1, 1); tex.anisotropy = 8;
   return tex;
 }
 
@@ -465,7 +505,9 @@ function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number): THREE.M
   const vertices: number[] = [];
   const indices: number[] = [];
   const normals: number[] = [];
-  const halfW = ROAD_WIDTH / 2 + BARRIER_THICKNESS;
+  const colors: number[] = [];
+  const baseHalfW = ROAD_WIDTH / 2 + BARRIER_THICKNESS;
+  const topHalfW = ROAD_WIDTH / 2 + BARRIER_THICKNESS * 0.6; // slight inward taper
 
   for (let i = 0; i < points.length; i++) {
     const t = i / (points.length - 1);
@@ -473,15 +515,29 @@ function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number): THREE.M
     _meshUp.set(0, 1, 0);
     _meshRight.crossVectors(tangent, _meshUp).normalize();
     const p = points[i];
-    const ox = p.x + _meshRight.x * halfW * side;
-    const oz = p.z + _meshRight.z * halfW * side;
 
-    vertices.push(ox, p.y, oz);
-    vertices.push(ox, p.y + BARRIER_HEIGHT, oz);
+    // Base (wider)
+    const bx = p.x + _meshRight.x * baseHalfW * side;
+    const bz = p.z + _meshRight.z * baseHalfW * side;
+    vertices.push(bx, p.y, bz);
+
+    // Top (narrower — taper inward)
+    const tx = p.x + _meshRight.x * topHalfW * side;
+    const tz = p.z + _meshRight.z * topHalfW * side;
+    vertices.push(tx, p.y + BARRIER_HEIGHT, tz);
 
     const nx = -_meshRight.x * side;
     const nz = -_meshRight.z * side;
     normals.push(nx, 0, nz, nx, 0, nz);
+
+    // Alternating red/white bands
+    const bandIndex = Math.floor(t * SPLINE_SAMPLES / 4);
+    const isRed = bandIndex % 2 === 0;
+    if (isRed) {
+      colors.push(0.85, 0.15, 0.1, 0.85, 0.15, 0.1);
+    } else {
+      colors.push(0.95, 0.95, 0.95, 0.95, 0.95, 0.95);
+    }
 
     if (i < points.length - 1) {
       const base = i * 2;
@@ -490,16 +546,98 @@ function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number): THREE.M
     }
   }
 
+  // Close the loop
+  const last = (points.length - 1) * 2;
+  indices.push(last, 0, last + 1);
+  indices.push(last + 1, 0, 1);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setIndex(indices);
+
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.5,
+    metalness: 0.1,
+    side: THREE.DoubleSide,
+    emissive: new THREE.Color(0x330000),
+    emissiveIntensity: 0.2,
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true;
+  return mesh;
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// SHOULDER STRIPS (gravel between road and barriers)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function buildShoulders(spline: THREE.CatmullRomCurve3): THREE.Mesh {
+  const points = spline.getSpacedPoints(SPLINE_SAMPLES);
+  const vertices: number[] = [];
+  const indices: number[] = [];
+  const normals: number[] = [];
+  const innerW = ROAD_WIDTH / 2;
+  const outerW = ROAD_WIDTH / 2 + BARRIER_THICKNESS;
+
+  for (let i = 0; i < points.length; i++) {
+    const t = i / (points.length - 1);
+    const tangent = spline.getTangentAt(t).normalize();
+    _meshUp.set(0, 1, 0);
+    _meshRight.crossVectors(tangent, _meshUp).normalize();
+    const p = points[i];
+
+    // Left shoulder: inner edge → outer edge
+    vertices.push(
+      p.x - _meshRight.x * outerW, p.y - 0.02, p.z - _meshRight.z * outerW,
+    );
+    vertices.push(
+      p.x - _meshRight.x * innerW, p.y + 0.005, p.z - _meshRight.z * innerW,
+    );
+    // Right shoulder: inner edge → outer edge
+    vertices.push(
+      p.x + _meshRight.x * innerW, p.y + 0.005, p.z + _meshRight.z * innerW,
+    );
+    vertices.push(
+      p.x + _meshRight.x * outerW, p.y - 0.02, p.z + _meshRight.z * outerW,
+    );
+
+    normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
+
+    if (i < points.length - 1) {
+      const base = i * 4;
+      // Left shoulder quad
+      indices.push(base, base + 4, base + 1);
+      indices.push(base + 1, base + 4, base + 5);
+      // Right shoulder quad
+      indices.push(base + 2, base + 6, base + 3);
+      indices.push(base + 3, base + 6, base + 7);
+    }
+  }
+
+  // Close the loop
+  const last = (points.length - 1) * 4;
+  indices.push(last, 0, last + 1);
+  indices.push(last + 1, 0, 1);
+  indices.push(last + 2, 2, last + 3);
+  indices.push(last + 3, 2, 3);
+
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geo.setIndex(indices);
 
-  const mat = new THREE.MeshStandardMaterial({ color: 0xcc3300, roughness: 0.6, metalness: 0.2, side: THREE.DoubleSide });
-  mat.emissive = new THREE.Color(0x330000);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x4a4038,
+    roughness: 0.95,
+    metalness: 0.0,
+  });
 
   const mesh = new THREE.Mesh(geo, mat);
-  mesh.castShadow = true;
+  mesh.receiveShadow = true;
   return mesh;
 }
 
@@ -583,8 +721,184 @@ function buildKerbs(spline: THREE.CatmullRomCurve3, curvatures: number[]): THREE
  * Collapses ~212 individual draw calls into ~5 instanced draws.
  * Street lights use emissive-only materials (no PointLights).
  */
-function generateScenery(_spline: THREE.CatmullRomCurve3, _rng: () => number): THREE.Group {
-  return new THREE.Group();
+function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THREE.Group {
+  const group = new THREE.Group();
+
+  // Pre-compute all tree positions
+  interface TreeItem { x: number; y: number; z: number; trunkH: number; crownR: number; green: number; }
+  const trees: TreeItem[] = [];
+  for (let i = 0; i < 80; i++) {
+    const t = rng();
+    const p = spline.getPointAt(t);
+    const tangent = spline.getTangentAt(t).normalize();
+    const rx = tangent.z, rz = -tangent.x;
+    const side = rng() > 0.5 ? 1 : -1;
+    const offset = ROAD_WIDTH / 2 + 5 + rng() * 30;
+    const x = p.x + rx * offset * side;
+    const z = p.z + rz * offset * side;
+    trees.push({ x, y: p.y, z, trunkH: 2 + rng() * 3, crownR: 1.5 + rng() * 2, green: Math.floor(rng() * 255) });
+  }
+
+  const _m = new THREE.Matrix4();
+  const _c = new THREE.Color();
+
+  // ── Tree trunks (InstancedMesh) ──
+  if (trees.length > 0) {
+    const trunkGeo = new THREE.CylinderGeometry(0.25, 0.3, 3.5, 6);
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.9 });
+    const trunkIM = new THREE.InstancedMesh(trunkGeo, trunkMat, trees.length);
+    trunkIM.castShadow = true;
+    for (let i = 0; i < trees.length; i++) {
+      const t = trees[i];
+      _m.makeScale(1, t.trunkH / 3.5, 1);
+      _m.setPosition(t.x, t.y + t.trunkH / 2, t.z);
+      trunkIM.setMatrixAt(i, _m);
+    }
+    trunkIM.instanceMatrix.needsUpdate = true;
+    group.add(trunkIM);
+
+    // ── Tree crowns (InstancedMesh with per-instance color) ──
+    const crownGeo = new THREE.SphereGeometry(2.0, 8, 6);
+    const crownMat = new THREE.MeshStandardMaterial({ color: 0x2a6d2a, roughness: 0.8 });
+    const crownIM = new THREE.InstancedMesh(crownGeo, crownMat, trees.length);
+    crownIM.castShadow = true;
+    for (let i = 0; i < trees.length; i++) {
+      const t = trees[i];
+      _m.makeScale(t.crownR / 2.0, t.crownR / 2.0, t.crownR / 2.0);
+      _m.setPosition(t.x, t.y + t.trunkH + t.crownR * 0.6, t.z);
+      crownIM.setMatrixAt(i, _m);
+      const g = 0x1a + Math.floor((t.green / 255) * 0x40);
+      _c.setRGB(g / 255 * 0.4, g / 255, g / 255 * 0.4);
+      crownIM.setColorAt(i, _c);
+    }
+    crownIM.instanceMatrix.needsUpdate = true;
+    crownIM.instanceColor!.needsUpdate = true;
+    group.add(crownIM);
+  }
+
+  // ── Street lights (InstancedMesh — NO PointLights) ──
+  const LIGHT_COUNT = 30;
+
+  // Poles
+  const poleGeo = new THREE.CylinderGeometry(0.08, 0.1, 6, 6);
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x555566, metalness: 0.6, roughness: 0.3 });
+  const poleIM = new THREE.InstancedMesh(poleGeo, poleMat, LIGHT_COUNT);
+
+  // Fixtures (emissive glow — replaces PointLight)
+  const fixGeo = new THREE.SphereGeometry(0.3, 8, 6);
+  const fixMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffdd66, emissiveIntensity: 1.5, roughness: 0.2 });
+  const fixIM = new THREE.InstancedMesh(fixGeo, fixMat, LIGHT_COUNT);
+
+  for (let i = 0; i < LIGHT_COUNT; i++) {
+    const t = i / LIGHT_COUNT;
+    const p = spline.getPointAt(t);
+    const tangent = spline.getTangentAt(t).normalize();
+    const rx = tangent.z, rz = -tangent.x;
+    const side = i % 2 === 0 ? 1 : -1;
+    const offset = ROAD_WIDTH / 2 + 2;
+    const x = p.x + rx * offset * side;
+    const z = p.z + rz * offset * side;
+
+    _m.identity();
+    _m.setPosition(x, p.y + 3, z);
+    poleIM.setMatrixAt(i, _m);
+
+    _m.setPosition(x, p.y + 6, z);
+    fixIM.setMatrixAt(i, _m);
+  }
+  poleIM.instanceMatrix.needsUpdate = true;
+  fixIM.instanceMatrix.needsUpdate = true;
+  group.add(poleIM);
+  group.add(fixIM);
+
+  // ── Tire walls at tight corners (InstancedMesh) ──
+  // Find sharp corners and place tire stacks outside them
+  const TIRE_STACK_COUNT = 20;
+  const tireGeo = new THREE.TorusGeometry(0.35, 0.15, 6, 8);
+  const tireMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
+  const tireIM = new THREE.InstancedMesh(tireGeo, tireMat, TIRE_STACK_COUNT * 3);
+  let tireIdx = 0;
+
+  // Sample curvature and place at the sharpest corners
+  const cornerSpots: { t: number; side: number }[] = [];
+  for (let i = 0; i < 200 && cornerSpots.length < TIRE_STACK_COUNT; i++) {
+    const t = rng();
+    const kappa = estimateCurvature(spline, t);
+    if (Math.abs(kappa) > 0.035) {
+      const side = kappa > 0 ? 1 : -1; // outside of corner
+      cornerSpots.push({ t, side });
+    }
+  }
+
+  for (const spot of cornerSpots) {
+    const p = spline.getPointAt(spot.t);
+    const tangent = spline.getTangentAt(spot.t).normalize();
+    const rx = tangent.z, rz = -tangent.x;
+    const offset = ROAD_WIDTH / 2 + BARRIER_THICKNESS + 1;
+    const x = p.x + rx * offset * spot.side;
+    const z = p.z + rz * offset * spot.side;
+
+    // Stack 3 tires vertically
+    for (let s = 0; s < 3; s++) {
+      if (tireIdx >= TIRE_STACK_COUNT * 3) break;
+      _m.identity();
+      _m.makeRotationX(Math.PI / 2);
+      _m.setPosition(x, p.y + 0.15 + s * 0.3, z);
+      tireIM.setMatrixAt(tireIdx++, _m);
+    }
+  }
+  if (tireIdx > 0) {
+    tireIM.count = tireIdx;
+    tireIM.instanceMatrix.needsUpdate = true;
+    group.add(tireIM);
+  }
+
+  // ── Advertising boards at straight sections ──
+  const AD_COUNT = 8;
+  const adGeo = new THREE.PlaneGeometry(6, 2);
+
+  for (let i = 0; i < AD_COUNT; i++) {
+    const t = (i + 0.5) / AD_COUNT;
+    const p = spline.getPointAt(t);
+    const tangent = spline.getTangentAt(t).normalize();
+    const rx = tangent.z, rz = -tangent.x;
+    const side = i % 2 === 0 ? 1 : -1;
+    const offset = ROAD_WIDTH / 2 + BARRIER_THICKNESS + 2;
+    const x = p.x + rx * offset * side;
+    const z = p.z + rz * offset * side;
+
+    // Create a colored advertising board
+    const canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 86;
+    const ctx = canvas.getContext('2d')!;
+    const hue = Math.floor(rng() * 360);
+    ctx.fillStyle = `hsl(${hue}, 70%, 25%)`;
+    ctx.fillRect(0, 0, 256, 86);
+    ctx.fillStyle = `hsl(${hue}, 80%, 60%)`;
+    ctx.font = 'bold 36px sans-serif';
+    ctx.textAlign = 'center';
+    const sponsors = ['SPEED', 'TURBO', 'APEX', 'DRIFT', 'NITRO', 'BOOST', 'GRIP', 'RACE'];
+    ctx.fillText(sponsors[i % sponsors.length], 128, 55);
+    // Border
+    ctx.strokeStyle = `hsl(${hue}, 80%, 70%)`;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(4, 4, 248, 78);
+
+    const adTex = new THREE.CanvasTexture(canvas);
+    const adMat = new THREE.MeshStandardMaterial({
+      map: adTex,
+      emissive: new THREE.Color(`hsl(${hue}, 60%, 20%)`),
+      emissiveIntensity: 0.3,
+      side: THREE.DoubleSide,
+    });
+
+    const board = new THREE.Mesh(adGeo.clone(), adMat);
+    board.position.set(x, p.y + 2.5, z);
+    board.lookAt(p);
+    group.add(board);
+  }
+
+  return group;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

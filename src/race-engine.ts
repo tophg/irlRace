@@ -26,6 +26,7 @@ export class RaceEngine {
       finished: false,
       finishTime: 0,
       position: new THREE.Vector3(),
+      trackT: 0,
       lapTimes: [],
       lastLapStart: 0,
     });
@@ -42,11 +43,13 @@ export class RaceEngine {
   updateRacer(
     id: string,
     worldPos: THREE.Vector3,
+    trackT?: number,
   ): 'checkpoint' | 'lap' | 'finish' | null {
     const racer = this.racers.get(id);
     if (!racer || racer.finished) return null;
 
     racer.position.copy(worldPos);
+    if (trackT !== undefined) racer.trackT = trackT;
 
     const nextCP = this.checkpoints[racer.checkpointIndex];
     if (!nextCP) return null;
@@ -101,7 +104,7 @@ export class RaceEngine {
     }
   }
 
-  /** Get sorted rankings (finished first by time, then in-progress by laps/cp, DNF last). */
+  /** Get sorted rankings (finished first by time, then in-progress by laps/cp/distance, DNF last). */
   getRankings(): RacerProgress[] {
     const all = Array.from(this.racers.values());
 
@@ -115,10 +118,23 @@ export class RaceEngine {
       if (!a.finished && b.finished) return 1;
       if (a.finished && b.finished) return a.finishTime - b.finishTime;
 
-      // Lap first, then checkpoint
-      const scoreA = a.lapIndex * 10000 + a.checkpointIndex * 100;
-      const scoreB = b.lapIndex * 10000 + b.checkpointIndex * 100;
-      return scoreB - scoreA;
+      // Continuous ranking using spline parameter.
+      // Handle wrap-around near the start/finish line (t=0):
+      // Each checkpoint i is at roughly t = i/numCheckpoints.
+      // If a racer's trackT is far ahead of their checkpoint's expected t,
+      // they've wrapped around the t=0 boundary and are actually behind.
+      const numCPs = this.checkpoints.length;
+      const effectiveT = (r: RacerProgress) => {
+        const expectedT = r.checkpointIndex / numCPs;
+        let t = r.trackT;
+        // If trackT is more than half a lap ahead of expected position,
+        // the car wrapped around t=0 and is actually behind
+        if (t - expectedT > 0.5) {
+          t -= 1.0;
+        }
+        return r.lapIndex + t;
+      };
+      return effectiveT(b) - effectiveT(a);
     });
   }
 
