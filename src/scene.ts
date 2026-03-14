@@ -128,7 +128,7 @@ export function initScene(container: HTMLElement) {
   const groundMat = new THREE.MeshStandardMaterial({ color: 0x222228, roughness: 0.85, metalness: 0.05, map: groundTex });
   groundMesh = new THREE.Mesh(groundGeo, groundMat);
   groundMesh.rotation.x = -Math.PI / 2;
-  groundMesh.position.y = -0.05;
+  groundMesh.position.y = -30;
   groundMesh.receiveShadow = true;
   scene.add(groundMesh);
 

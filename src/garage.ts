@@ -32,7 +32,6 @@ export function initGarage(
   // Dedicated scene for showroom
   garageScene = new THREE.Scene();
   garageScene.background = new THREE.Color(0x0c0c1a);
-  garageScene.fog = new THREE.FogExp2(0x0c0c1a, 0.018);
 
   garageCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
   garageCamera.position.set(0, 2.8, 7.5);
