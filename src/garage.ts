@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { CAR_ROSTER, CarDef } from './types';
-import { loadCarModel } from './loaders';
+import { loadCarModel, loadCarModelWithProgress } from './loaders';
 
 let garageScene: THREE.Scene;
 let garageCamera: THREE.PerspectiveCamera;
@@ -14,6 +14,12 @@ let platform: THREE.Mesh;
 let rotationAngle = 0;
 let onSelectCallback: ((car: CarDef) => void) | null = null;
 let uiEl: HTMLElement | null = null;
+
+// Placeholder silhouette
+let placeholderMesh: THREE.Mesh | null = null;
+
+// Loading progress bar
+let progressBarEl: HTMLElement | null = null;
 
 export function initGarage(
   renderer: THREE.WebGLRenderer,
@@ -117,18 +123,74 @@ export function initGarage(
   floor.receiveShadow = true;
   garageScene.add(floor);
 
+  // Build placeholder silhouette (reused for all cars)
+  buildPlaceholder();
+
   // UI
   buildGarageUI(overlay);
 
-  // Preload all car models in background for instant switching
-  preloadAllModels();
-
+  // Show the first car immediately (no preload-all wall)
   showCar(0);
 }
 
-async function preloadAllModels() {
-  const promises = CAR_ROSTER.map(car => loadCarModel(car.file).catch(() => null));
-  await Promise.all(promises);
+/** Build a generic car-shaped silhouette for instant display while loading */
+function buildPlaceholder() {
+  const bodyGeo = new THREE.BoxGeometry(2.0, 0.7, 4.0);
+  const cabinGeo = new THREE.BoxGeometry(1.6, 0.6, 2.0);
+  const bodyMat = new THREE.MeshStandardMaterial({
+    color: 0x222244,
+    transparent: true,
+    opacity: 0.5,
+    roughness: 0.3,
+    metalness: 0.7,
+  });
+
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 0.6;
+
+  const cabin = new THREE.Mesh(cabinGeo, bodyMat);
+  cabin.position.y = 1.15;
+  cabin.position.z = -0.2;
+
+  const group = new THREE.Group();
+  group.add(body);
+  group.add(cabin);
+
+  placeholderMesh = new THREE.Mesh(); // container
+  placeholderMesh.visible = false;
+  (placeholderMesh as any).add(body, cabin);
+  // Store as a Group-like container
+  placeholderMesh = group as any;
+  placeholderMesh!.visible = false;
+}
+
+/** Lazy preload: load neighbors first, then background-load the rest */
+function lazyPreloadModels(startIndex: number) {
+  const total = CAR_ROSTER.length;
+  const order: number[] = [];
+
+  // Immediate neighbors first
+  const prev = (startIndex - 1 + total) % total;
+  const next = (startIndex + 1) % total;
+  order.push(prev, next);
+
+  // Then the rest
+  for (let i = 0; i < total; i++) {
+    if (i !== startIndex && i !== prev && i !== next) {
+      order.push(i);
+    }
+  }
+
+  // Staggered load — one at a time to avoid bandwidth contention
+  let i = 0;
+  const loadNext = () => {
+    if (i >= order.length) return;
+    const idx = order[i++];
+    loadCarModel(CAR_ROSTER[idx].file)
+      .catch(() => null)
+      .finally(() => setTimeout(loadNext, 50));
+  };
+  loadNext();
 }
 
 function buildGarageUI(overlay: HTMLElement) {
@@ -138,6 +200,7 @@ function buildGarageUI(overlay: HTMLElement) {
 
   uiEl.innerHTML = `
     <div class="car-name" id="garage-car-name"></div>
+    <div class="garage-progress-bar" id="garage-progress-bar"><div class="garage-progress-fill" id="garage-progress-fill"></div></div>
     <div class="car-stats" id="garage-stats"></div>
     <div class="car-nav">
       <button class="car-nav-btn" id="garage-prev">◀</button>
@@ -161,6 +224,8 @@ function buildGarageUI(overlay: HTMLElement) {
   uiEl.querySelector('#garage-select')!.addEventListener('click', () => {
     if (onSelectCallback) onSelectCallback(CAR_ROSTER[currentIndex]);
   });
+
+  progressBarEl = uiEl.querySelector('#garage-progress-bar') as HTMLElement;
 }
 
 let showCarRequestId = 0;
@@ -200,22 +265,58 @@ async function showCar(index: number) {
     currentModel = null;
   }
 
-  // Show loading state
-  if (nameEl) nameEl.textContent = `${car.name}  LOADING...`;
+  // Show placeholder silhouette immediately
+  showPlaceholder();
+  showProgressBar(true);
+  updateProgress(0);
 
   try {
-    const model = await loadCarModel(car.file);
+    const model = await loadCarModelWithProgress(car.file, (pct) => {
+      if (requestId === showCarRequestId) updateProgress(pct);
+    });
     // Guard against rapid navigation — only apply if this is still the current request
     if (requestId !== showCarRequestId) return;
     model.position.y = 0.25;
     garageScene.add(model);
     currentModel = model;
+    hidePlaceholder();
+    showProgressBar(false);
     if (nameEl) nameEl.textContent = car.name;
+
+    // Start lazy preloading neighbors + rest after first car loads
+    lazyPreloadModels(index);
   } catch (err) {
-    if (requestId === showCarRequestId && nameEl) {
-      nameEl.textContent = `${car.name}  (load failed)`;
+    if (requestId === showCarRequestId) {
+      hidePlaceholder();
+      showProgressBar(false);
+      if (nameEl) nameEl.textContent = `${car.name}  (load failed)`;
     }
   }
+}
+
+function showPlaceholder() {
+  if (placeholderMesh) {
+    placeholderMesh.visible = true;
+    placeholderMesh.position.y = 0.25;
+    if (!placeholderMesh.parent) garageScene.add(placeholderMesh);
+  }
+}
+
+function hidePlaceholder() {
+  if (placeholderMesh) {
+    placeholderMesh.visible = false;
+  }
+}
+
+function showProgressBar(visible: boolean) {
+  if (progressBarEl) {
+    progressBarEl.style.display = visible ? 'block' : 'none';
+  }
+}
+
+function updateProgress(pct: number) {
+  const fill = document.getElementById('garage-progress-fill');
+  if (fill) fill.style.width = `${Math.round(pct * 100)}%`;
 }
 
 export function updateGarage() {
@@ -223,12 +324,17 @@ export function updateGarage() {
   if (currentModel) {
     currentModel.rotation.y = rotationAngle;
   }
+  if (placeholderMesh?.visible) {
+    placeholderMesh.rotation.y = rotationAngle;
+  }
 
   garageRenderer.render(garageScene, garageCamera);
 }
 
 export function destroyGarage() {
   if (uiEl) { uiEl.remove(); uiEl = null; }
+  progressBarEl = null;
+  hidePlaceholder();
   if (currentModel) {
     garageScene.remove(currentModel);
     currentModel.traverse((child) => {

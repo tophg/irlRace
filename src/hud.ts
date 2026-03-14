@@ -11,6 +11,7 @@ let positionEl: HTMLElement;
 let wrongWayEl: HTMLElement;
 let timerEl: HTMLElement;
 let boostEl: HTMLElement;
+let gapEl: HTMLElement;
 let minimapCanvas: HTMLCanvasElement;
 let minimapCtx: CanvasRenderingContext2D;
 
@@ -36,6 +37,7 @@ export function createHUD(overlay: HTMLElement): HTMLElement {
       <div class="dmg-zone dmg-right" id="dmg-right"></div>
       <div class="dmg-body"></div>
     </div>
+    <div class="hud-gap" id="hud-gap"></div>
   `;
   overlay.appendChild(hudEl);
 
@@ -45,6 +47,7 @@ export function createHUD(overlay: HTMLElement): HTMLElement {
   wrongWayEl = hudEl.querySelector('#hud-wrong-way')!;
   timerEl = hudEl.querySelector('#hud-timer')!;
   boostEl = hudEl.querySelector('#hud-boost')!;
+  gapEl = hudEl.querySelector('#hud-gap')!;
   minimapCanvas = hudEl.querySelector('#hud-minimap') as HTMLCanvasElement;
   minimapCtx = minimapCanvas.getContext('2d')!;
 
@@ -108,7 +111,7 @@ export function showLapOverlay(overlay: HTMLElement, lapNum: number, lapTimeMs: 
 export function updateMinimap(
   spline: THREE.CatmullRomCurve3,
   playerPos: THREE.Vector3,
-  otherPositions: THREE.Vector3[],
+  otherPositions: { pos: THREE.Vector3; color?: string }[],
 ) {
   if (!minimapCtx) return;
 
@@ -158,14 +161,16 @@ export function updateMinimap(
   minimapCtx.closePath();
   minimapCtx.stroke();
 
-  minimapCtx.fillStyle = '#ff6600';
-  for (const pos of otherPositions) {
-    const m = toMap(pos);
+  // Other racers with individual colors
+  for (const other of otherPositions) {
+    minimapCtx.fillStyle = other.color || '#ff6600';
+    const m = toMap(other.pos);
     minimapCtx.beginPath();
     minimapCtx.arc(m.x, m.y, 3, 0, Math.PI * 2);
     minimapCtx.fill();
   }
 
+  // Player dot
   const pm = toMap(playerPos);
   minimapCtx.fillStyle = '#00e5ff';
   minimapCtx.beginPath();
@@ -200,6 +205,18 @@ export function updateDamageHUD(damage: DamageState) {
 
 export function showHUD(visible: boolean) {
   if (hudEl) hudEl.style.display = visible ? 'block' : 'none';
+}
+
+export function updateGapHUD(ahead: number | null, behind: number | null) {
+  if (!gapEl) return;
+  let html = '';
+  if (ahead !== null && ahead > 0) {
+    html += `<div class="hud-gap-ahead">+${(ahead / 1000).toFixed(1)}s</div>`;
+  }
+  if (behind !== null && behind > 0) {
+    html += `<div class="hud-gap-behind">-${(behind / 1000).toFixed(1)}s</div>`;
+  }
+  gapEl.innerHTML = html;
 }
 
 export function destroyHUD() {

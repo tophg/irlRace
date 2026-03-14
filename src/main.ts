@@ -11,13 +11,13 @@ import { generateTrack, buildCheckpointMarkers, getClosestSplinePoint } from './
 import { Vehicle } from './vehicle';
 import { VehicleCamera } from './vehicle-camera';
 import { RaceEngine } from './race-engine';
-import { createHUD, updateHUD, updateMinimap, updateDamageHUD, showHUD, destroyHUD, showLapOverlay } from './hud';
+import { createHUD, updateHUD, updateMinimap, updateDamageHUD, updateGapHUD, showHUD, destroyHUD, showLapOverlay } from './hud';
 import { runCountdown } from './countdown';
-import { initAudio, updateEngineAudio, playCheckpointSFX, playLapFanfare, playDriftSFX, playCollisionSFX, stopAudio } from './audio';
+import { initAudio, updateEngineAudio, playCheckpointSFX, playLapFanfare, playDriftSFX, playCollisionSFX, playPositionSFX, stopAudio } from './audio';
 import { AIRacer, OpponentInfo } from './ai-racer';
 import { initGarage, updateGarage, destroyGarage } from './garage';
 import { NetPeer } from './net-peer';
-import { showLobby, updatePlayerList, destroyLobby, showToast } from './mp-lobby';
+import { showLobby, updatePlayerList, destroyLobby, showToast, appendChatMessage } from './mp-lobby';
 import {
   initVFX, spawnTireSmoke, updateVFX,
   initSpeedLines, updateSpeedLines,
@@ -68,6 +68,21 @@ const remoteNameTags = new Map<string, THREE.Sprite>();
 // ── Input ──
 const input = initInput();
 
+// ── Keyboard listener for spectator cycling + emotes ──
+const EMOTE_MAP: Record<string, string> = { '1': '👍', '2': '😂', '3': '💨', '4': '🔥' };
+window.addEventListener('keydown', (e) => {
+  if (gameState === GameState.RESULTS && vehicleCamera?.mode === 'follow') {
+    if (e.key === 'ArrowLeft') cycleSpectateTarget(-1);
+    else if (e.key === 'ArrowRight') cycleSpectateTarget(1);
+  }
+  // Quick emotes during racing (1-4 keys)
+  if (gameState === GameState.RACING && EMOTE_MAP[e.key]) {
+    const emoji = EMOTE_MAP[e.key];
+    netPeer?.broadcastEvent(EventType.EMOTE, { emoji });
+    showEmoteBubble(emoji);
+  }
+});
+
 // ── Timing ──
 let lastTime = 0;
 let raceStarting = false;
@@ -87,6 +102,85 @@ let driftSfxCooldown = 0;
 const remotePrevPos = new Map<string, { x: number; z: number }>();
 let replayRecorder: ReplayRecorder | null = null;
 let replayPlayer: ReplayPlayer | null = null;
+let spectateTargetId: string | null = null;
+
+let posCalloutTimer: number | null = null;
+function showPositionCallout(gained: boolean, newRank: number) {
+  if (posCalloutTimer) clearTimeout(posCalloutTimer);
+  let el = document.getElementById('pos-callout');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'pos-callout';
+    uiOverlay.appendChild(el);
+  }
+  const suffix = newRank === 1 ? 'st' : newRank === 2 ? 'nd' : newRank === 3 ? 'rd' : 'th';
+  const arrow = gained ? '▲' : '▼';
+  el.className = `pos-callout ${gained ? 'pos-up' : 'pos-down'}`;
+  el.innerHTML = `<span class="pos-arrow">${arrow}</span> ${newRank}<sup>${suffix}</sup>`;
+  el.style.display = 'block';
+  posCalloutTimer = window.setTimeout(() => {
+    el!.style.display = 'none';
+    posCalloutTimer = null;
+  }, 1500);
+}
+const sessionWins = new Map<string, number>();
+let spectateHudEl: HTMLElement | null = null;
+let prevMyRank = 0;
+
+function showEmoteBubble(emoji: string, screenX?: number) {
+  const el = document.createElement('div');
+  el.className = 'emote-bubble';
+  el.textContent = emoji;
+  el.style.left = `${screenX ?? window.innerWidth / 2}px`;
+  el.style.top = `${window.innerHeight * 0.3}px`;
+  uiOverlay.appendChild(el);
+  setTimeout(() => el.remove(), 2100);
+}
+
+function spawnConfetti() {
+  const canvas = document.createElement('canvas');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  canvas.style.cssText = 'position:fixed;top:0;left:0;z-index:100;pointer-events:none;';
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d')!;
+
+  const particles: { x: number; y: number; vx: number; vy: number; color: string; size: number; rot: number; rv: number; }[] = [];
+  const colors = ['#ff6600', '#00e5ff', '#ffcc00', '#ff1744', '#76ff03', '#e040fb', '#ffffff'];
+  for (let i = 0; i < 120; i++) {
+    particles.push({
+      x: Math.random() * canvas.width,
+      y: -Math.random() * canvas.height * 0.3,
+      vx: (Math.random() - 0.5) * 6,
+      vy: Math.random() * 4 + 2,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      size: Math.random() * 8 + 4,
+      rot: Math.random() * Math.PI * 2,
+      rv: (Math.random() - 0.5) * 0.2,
+    });
+  }
+
+  let frame = 0;
+  const animate = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const p of particles) {
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.06; // gravity
+      p.rot += p.rv;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.4);
+      ctx.restore();
+    }
+    frame++;
+    if (frame < 180) requestAnimationFrame(animate);
+    else canvas.remove();
+  };
+  requestAnimationFrame(animate);
+}
 
 // Detached car parts (tumbling debris)
 interface DetachedPart { mesh: THREE.Mesh; vx: number; vy: number; vz: number; ax: number; ay: number; az: number; life: number; }
@@ -406,6 +500,22 @@ function enterMultiplayerLobby() {
         roomCode: code,
         onHost: () => {},
         onJoin: () => {},
+        onChat: (text) => {
+          netPeer?.broadcastEvent(EventType.CHAT, { text, name: localPlayerName });
+          appendChatMessage(localPlayerName, text);
+        },
+        onLapsChange: (laps) => { totalLaps = laps; },
+        onSeedChange: (seed) => {
+          if (seed.length > 0) {
+            const parsed = parseInt(seed, 10);
+            trackSeed = Number.isNaN(parsed) ? null : parsed;
+          } else {
+            trackSeed = null;
+          }
+        },
+        onKick: (id) => {
+          netPeer?.kickPlayer(id);
+        },
         onStart: () => {
           destroyLobby();
           raceReadyCount = 0;
@@ -438,6 +548,10 @@ function enterMultiplayerLobby() {
           onHost: () => {},
           onJoin: () => {},
           onStart: () => {},
+          onChat: (text) => {
+            netPeer?.broadcastEvent(EventType.CHAT, { text, name: localPlayerName });
+            appendChatMessage(localPlayerName, text);
+          },
           onReady: () => {
             netPeer?.broadcastEvent(EventType.PLAYER_READY, { ready: true });
           },
@@ -567,6 +681,31 @@ function wireNetworkCallbacks() {
           startRace();
         }
         break;
+
+      case EventType.CHAT: {
+        const senderName = data.name || resolvePlayerName(fromId);
+        appendChatMessage(senderName, data.text ?? '');
+        break;
+      }
+
+      case EventType.KICK: {
+        // Guest was kicked by host — return to title
+        showToast(uiOverlay, 'You were kicked from the lobby');
+        netPeer?.destroy();
+        netPeer = null;
+        destroyLobby();
+        clearRaceObjects();
+        destroyLeaderboard();
+        destroySpectateHUD();
+        showTitleScreen();
+        break;
+      }
+
+      case EventType.EMOTE: {
+        const emoji = data.emoji ?? '👍';
+        showEmoteBubble(emoji, Math.random() * window.innerWidth * 0.6 + window.innerWidth * 0.2);
+        break;
+      }
     }
   };
 
@@ -606,6 +745,14 @@ function wireNetworkCallbacks() {
 
     const tag = remoteNameTags.get(id);
     if (tag) { scene.remove(tag); remoteNameTags.delete(id); };
+  };
+
+  netPeer.onReconnecting = (id, name) => {
+    showToast(uiOverlay, `${name} reconnecting...`);
+  };
+
+  netPeer.onReconnected = (id, name) => {
+    showToast(uiOverlay, `${name} reconnected`);
   };
 }
 
@@ -896,6 +1043,80 @@ function clearRaceObjects() {
   // Reset cooldowns
   driftSfxCooldown = 0;
   lbLastUpdate = 0;
+  spectateTargetId = null;
+  prevMyRank = 0;
+  destroySpectateHUD();
+}
+
+function enterSpectatorMode() {
+  if (!vehicleCamera || !raceEngine) return;
+
+  // Find the closest unfinished racer to follow
+  const rankings = raceEngine.getRankings();
+  const unfinished = rankings.filter(r => !r.finished && !r.dnf && r.id !== 'local');
+
+  if (unfinished.length > 0) {
+    spectateTargetId = unfinished[0].id;
+    vehicleCamera.startFollow();
+    showSpectateHUD();
+  } else {
+    // No one left to follow — orbit the track center
+    spectateTargetId = null;
+    if (playerVehicle) {
+      vehicleCamera.startOrbit(playerVehicle.group.position);
+    }
+  }
+}
+
+function cycleSpectateTarget(direction: 1 | -1) {
+  if (!raceEngine || !vehicleCamera) return;
+  const rankings = raceEngine.getRankings();
+  const targets = rankings.filter(r => !r.finished && !r.dnf && r.id !== 'local');
+  if (targets.length === 0) {
+    // Everyone finished — switch to orbit
+    spectateTargetId = null;
+    vehicleCamera.startOrbit(playerVehicle!.group.position);
+    destroySpectateHUD();
+    return;
+  }
+
+  const curIdx = targets.findIndex(r => r.id === spectateTargetId);
+  let nextIdx = curIdx + direction;
+  if (nextIdx < 0) nextIdx = targets.length - 1;
+  if (nextIdx >= targets.length) nextIdx = 0;
+  spectateTargetId = targets[nextIdx].id;
+  vehicleCamera.startFollow();
+  updateSpectateHUD();
+}
+
+function showSpectateHUD() {
+  destroySpectateHUD();
+  spectateHudEl = document.createElement('div');
+  spectateHudEl.className = 'spectate-hud';
+  uiOverlay.appendChild(spectateHudEl);
+
+  spectateHudEl.querySelector('.arrow-left')?.addEventListener('click', () => cycleSpectateTarget(-1));
+  spectateHudEl.querySelector('.arrow-right')?.addEventListener('click', () => cycleSpectateTarget(1));
+
+  updateSpectateHUD();
+}
+
+function updateSpectateHUD() {
+  if (!spectateHudEl || !spectateTargetId) return;
+  const name = resolvePlayerName(spectateTargetId);
+  spectateHudEl.innerHTML = `
+    <span class="spectate-label">SPECTATING</span>
+    <span class="arrow arrow-left" id="spec-left">◀</span>
+    <span class="spectate-name">${name}</span>
+    <span class="arrow arrow-right" id="spec-right">▶</span>
+  `;
+  // Re-wire click events after innerHTML update
+  spectateHudEl.querySelector('#spec-left')?.addEventListener('click', () => cycleSpectateTarget(-1));
+  spectateHudEl.querySelector('#spec-right')?.addEventListener('click', () => cycleSpectateTarget(1));
+}
+
+function destroySpectateHUD() {
+  if (spectateHudEl) { spectateHudEl.remove(); spectateHudEl = null; }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -915,6 +1136,13 @@ let postWinnerTimer: number | null = null;
 
 function showResults() {
   gameState = GameState.RESULTS;
+
+  // Record session wins
+  const preRankings = raceEngine?.getRankings() ?? [];
+  if (preRankings.length > 0 && !preRankings[0].dnf && preRankings[0].finished) {
+    const winnerId = preRankings[0].id;
+    sessionWins.set(winnerId, (sessionWins.get(winnerId) || 0) + 1);
+  }
   netPeer?.stopBroadcasting();
   netPeer?.stopPinging();
   showTouchControls(false);
@@ -969,10 +1197,14 @@ function showResults() {
           const isSelf = r.id === 'local';
           const isDnf = r.dnf;
           const bestLap = r.lapTimes.length > 0 ? Math.min(...r.lapTimes) : null;
+          const delayMs = (i + 1) * 150;
+          const wins = sessionWins.get(r.id) || 0;
+          const winsHtml = wins > 0 ? ` <span class="session-wins">${wins}W</span>` : '';
+          const crownHtml = sessionWins.size > 0 && wins === Math.max(...sessionWins.values()) && wins > 0 ? ' 👑' : '';
           return `
-            <tr class="${isSelf ? 'local' : ''} ${isDnf ? 'dnf' : ''} ${i === 0 && !isDnf ? 'winner' : ''}">
+            <tr class="${isSelf ? 'local' : ''} ${isDnf ? 'dnf' : ''} ${i === 0 && !isDnf ? 'winner' : ''}" style="animation-delay:${delayMs}ms;">
               <td>${isDnf ? '—' : i + 1}</td>
-              <td>${name}${isDnf ? ' <span style="color:#ff4444;font-size:11px;">DNF</span>' : ''}</td>
+              <td>${name}${crownHtml}${winsHtml}${isDnf ? ' <span style="color:#ff4444;font-size:11px;">DNF</span>' : ''}</td>
               <td>${isDnf ? '—' : r.finished ? RaceEngine.formatTime(r.finishTime) : 'Racing...'}</td>
               <td>${bestLap !== null ? RaceEngine.formatTime(bestLap) : '—'}</td>
             </tr>
@@ -1024,6 +1256,8 @@ function showResults() {
     netPeer = null;
     clearRaceObjects();
     destroyLeaderboard();
+    destroySpectateHUD();
+    sessionWins.clear();
     showTitleScreen();
   });
 }
@@ -1096,10 +1330,16 @@ function updateLeaderboard() {
   lbEl.innerHTML = rankings.map((r, i) => {
     const name = r.id === 'local' ? 'YOU' : resolvePlayerName(r.id);
     const isSelf = r.id === 'local';
+    let rttDot = '';
+    if (netPeer && !isSelf && !r.id.startsWith('ai_')) {
+      const peerRtt = netPeer.getPeerRtt(r.id);
+      const dotClass = peerRtt < 80 ? 'ping-good' : peerRtt < 150 ? 'ping-mid' : 'ping-bad';
+      rttDot = `<span class="ping-dot ${dotClass}" style="margin-left:4px;"></span>`;
+    }
     return `
       <div class="lb-row${isSelf ? ' self' : ''}${r.dnf ? ' dnf' : ''}">
-        <span class="lb-pos">${r.dnf ? '—' : i + 1}</span>
-        <span class="lb-name">${name}${r.dnf ? ' DNF' : ''}</span>
+        <span class="lb-pos">${r.dnf ? '\u2014' : i + 1}</span>
+        <span class="lb-name">${name}${rttDot}${r.dnf ? ' DNF' : ''}</span>
         <span class="lb-progress">${r.finished ? 'FIN' : `L${r.lapIndex + 1}`}</span>
       </div>
     `;
@@ -1169,17 +1409,42 @@ function gameLoop(timestamp: number) {
     }
 
     // Player update
-    if (s === GameState.RACING) {
+    if (s === GameState.RACING && vehicleCamera?.mode === 'chase') {
       playerVehicle.update(dt, getInput(), trackData.spline, trackData.bvh);
     }
 
+    // Spectator orbit camera (during RESULTS)
+    if (s === GameState.RESULTS && vehicleCamera?.mode === 'orbit') {
+      vehicleCamera.updateOrbit(dt);
+    }
+
     // Camera
-    vehicleCamera?.update(
-      playerVehicle.group.position,
-      playerVehicle.heading,
-      playerVehicle.speed,
-      selectedCar.maxSpeed,
-    );
+    if (vehicleCamera && vehicleCamera.mode !== 'orbit') {
+      // Chase or follow mode — get the target
+      let camTarget = playerVehicle.group.position;
+      let camHeading = playerVehicle.heading;
+      let camSpeed = playerVehicle.speed;
+      let camMaxSpeed = selectedCar.maxSpeed;
+
+      if (vehicleCamera.mode === 'follow' && spectateTargetId) {
+        const targetMesh = remoteMeshes.get(spectateTargetId);
+        const aiTarget = aiRacers.find(a => a.id === spectateTargetId);
+        if (targetMesh) {
+          camTarget = targetMesh.position;
+          camHeading = targetMesh.rotation.y;
+          const snap = netPeer?.getInterpolatedState(spectateTargetId);
+          camSpeed = snap?.speed ?? 30;
+          camMaxSpeed = 70;
+        } else if (aiTarget) {
+          camTarget = aiTarget.vehicle.group.position;
+          camHeading = aiTarget.vehicle.heading;
+          camSpeed = aiTarget.vehicle.speed;
+          camMaxSpeed = aiTarget.vehicle.def.maxSpeed;
+        }
+      }
+
+      vehicleCamera.update(camTarget, camHeading, camSpeed, camMaxSpeed);
+    }
 
     // AI update
     if (s === GameState.RACING) {
@@ -1389,12 +1654,22 @@ function gameLoop(timestamp: number) {
         const finishTime = raceEngine.getProgress('local')?.finishTime ?? 0;
         netPeer?.broadcastEvent(EventType.RACE_FINISH, { finishTime });
         destroyLeaderboard();
+        spawnConfetti();
+        enterSpectatorMode();
         showResults();
       }
 
       // HUD update
       const rankings = raceEngine.getRankings();
       const myRank = rankings.findIndex(r => r.id === 'local') + 1;
+
+      // Position change callout
+      if (prevMyRank > 0 && myRank !== prevMyRank && myRank > 0) {
+        const gained = myRank < prevMyRank;
+        showPositionCallout(gained, myRank);
+        playPositionSFX(gained);
+      }
+      prevMyRank = myRank;
       const wrongWay = raceEngine.isWrongWay(
         playerVehicle.heading,
         trackData.checkpoints[progress?.checkpointIndex ?? 0]?.tangent ?? _defaultTangent,
@@ -1411,13 +1686,25 @@ function gameLoop(timestamp: number) {
         getInput().boost,
       );
 
-      // Minimap
-      const others = aiRacers.map(ai => ai.vehicle.group.position);
-      for (const mesh of remoteMeshes.values()) others.push(mesh.position);
-      updateMinimap(trackData.spline, playerVehicle.group.position, others);
+      // Minimap (per-player colors)
+      const PEER_COLORS = ['#ff6600', '#e040fb', '#ffcc00', '#76ff03', '#ff1744', '#00bcd4'];
+      const minimapDots: { pos: THREE.Vector3; color?: string }[] = [];
+      aiRacers.forEach(ai => minimapDots.push({ pos: ai.vehicle.group.position, color: '#ff6600' }));
+      let peerIdx = 0;
+      for (const mesh of remoteMeshes.values()) {
+        minimapDots.push({ pos: mesh.position, color: PEER_COLORS[peerIdx % PEER_COLORS.length] });
+        peerIdx++;
+      }
+      updateMinimap(trackData.spline, playerVehicle.group.position, minimapDots);
 
       // Leaderboard
       updateLeaderboard();
+
+      // Gap timer HUD
+      if (raceEngine) {
+        const gaps = raceEngine.getGaps('local');
+        updateGapHUD(gaps.ahead, gaps.behind);
+      }
 
       // Record replay frames
       if (replayRecorder) {

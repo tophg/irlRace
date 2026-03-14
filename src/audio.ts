@@ -268,6 +268,29 @@ export function playCollisionSFX(intensity: number) {
   source.stop(audioCtx.currentTime + 0.25);
 }
 
+/** Play position change audio cue. Ascending chirp = gained, descending = lost. */
+export function playPositionSFX(gained: boolean) {
+  if (!audioCtx || !masterGain) return;
+  const sv = getSettings().sfxVolume;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  const t = audioCtx.currentTime;
+  if (gained) {
+    osc.frequency.setValueAtTime(600, t);
+    osc.frequency.exponentialRampToValueAtTime(1200, t + 0.12);
+  } else {
+    osc.frequency.setValueAtTime(800, t);
+    osc.frequency.exponentialRampToValueAtTime(400, t + 0.12);
+  }
+  gain.gain.setValueAtTime(0.15 * sv, t);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+  osc.connect(gain);
+  gain.connect(masterGain);
+  osc.start();
+  osc.stop(t + 0.15);
+}
+
 export function stopAudio() {
   for (const osc of engineOscs) { try { osc.stop(); } catch {} }
   engineOscs = [];

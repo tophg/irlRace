@@ -140,6 +140,9 @@ export enum EventType {
   PLAYER_LIST = 11,
   RACE_READY = 12,
   RACE_GO = 13,
+  CHAT = 14,
+  KICK = 15,
+  EMOTE = 16,
 }
 
 // ── Input ──

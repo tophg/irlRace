@@ -10,6 +10,7 @@ export class RaceEngine {
   private racers = new Map<string, RacerProgress>();
   private raceStartTime = 0;
   private cpThreshold = 18; // distance to trigger checkpoint
+  private cpTimestamps = new Map<string, Map<number, number>>(); // id → (globalCpIndex → time)
 
   constructor(checkpoints: Checkpoint[], totalLaps = 3) {
     this.checkpoints = checkpoints;
@@ -28,6 +29,7 @@ export class RaceEngine {
       lapTimes: [],
       lastLapStart: 0,
     });
+    this.cpTimestamps.set(id, new Map());
   }
 
   /** Start the race timer. */
@@ -54,6 +56,12 @@ export class RaceEngine {
 
     // Checkpoint hit!
     racer.checkpointIndex++;
+
+    // Record timestamp for this checkpoint (global index)
+    const globalCpIndex = racer.lapIndex * this.checkpoints.length + racer.checkpointIndex - 1;
+    const now = performance.now() - this.raceStartTime;
+    const timestamps = this.cpTimestamps.get(id);
+    if (timestamps) timestamps.set(globalCpIndex, now);
 
     if (racer.checkpointIndex >= this.checkpoints.length) {
       racer.checkpointIndex = 0;
@@ -146,5 +154,59 @@ export class RaceEngine {
     const sec = Math.floor(totalSec % 60);
     const milli = Math.floor(ms % 1000);
     return `${min}:${sec.toString().padStart(2, '0')}.${milli.toString().padStart(3, '0')}`;
+  }
+
+  /** Get gap times to the car ahead and behind.
+   *  Returns { ahead: ms | null, behind: ms | null }.
+   *  Positive values = behind that car by X ms. */
+  getGaps(id: string): { ahead: number | null; behind: number | null } {
+    const rankings = this.getRankings();
+    const myIdx = rankings.findIndex(r => r.id === id);
+    if (myIdx < 0) return { ahead: null, behind: null };
+
+    const myTs = this.cpTimestamps.get(id);
+    if (!myTs || myTs.size === 0) return { ahead: null, behind: null };
+
+    // Find the latest global CP we've hit
+    const myProgress = rankings[myIdx];
+    const myGlobalCp = myProgress.lapIndex * this.checkpoints.length + myProgress.checkpointIndex;
+
+    let ahead: number | null = null;
+    let behind: number | null = null;
+
+    // Car ahead (lower index in rankings)
+    if (myIdx > 0) {
+      const aheadId = rankings[myIdx - 1].id;
+      const aheadTs = this.cpTimestamps.get(aheadId);
+      if (aheadTs) {
+        // Find the last common checkpoint
+        for (let cp = myGlobalCp; cp >= 0; cp--) {
+          const myTime = myTs.get(cp);
+          const theirTime = aheadTs.get(cp);
+          if (myTime !== undefined && theirTime !== undefined) {
+            ahead = myTime - theirTime; // positive = we're behind
+            break;
+          }
+        }
+      }
+    }
+
+    // Car behind (higher index in rankings)
+    if (myIdx < rankings.length - 1) {
+      const behindId = rankings[myIdx + 1].id;
+      const behindTs = this.cpTimestamps.get(behindId);
+      if (behindTs) {
+        for (let cp = myGlobalCp; cp >= 0; cp--) {
+          const myTime = myTs.get(cp);
+          const theirTime = behindTs.get(cp);
+          if (myTime !== undefined && theirTime !== undefined) {
+            behind = theirTime - myTime; // positive = they're behind us
+            break;
+          }
+        }
+      }
+    }
+
+    return { ahead, behind };
   }
 }

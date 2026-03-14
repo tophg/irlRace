@@ -46,6 +46,8 @@ export class NetPeer {
   onEvent: EventCallback = () => {};
   onPlayerJoin: (id: string, name: string) => void = () => {};
   onPlayerLeave: (id: string, name?: string) => void = () => {};
+  onReconnecting: (id: string, name: string) => void = () => {};
+  onReconnected: (id: string, name: string) => void = () => {};
 
   private broadcastInterval: number | null = null;
   private pingInterval: number | null = null;
@@ -54,6 +56,8 @@ export class NetPeer {
   // 19-byte state packet: 15B position/heading/speed + 4B damage HP
   private statePacketBuffer = new ArrayBuffer(19);
   private stateView = new DataView(this.statePacketBuffer);
+  private pendingReconnect = new Map<string, { name: string; timer: number; retries: number }>();
+  private reconnectInterval: number | null = null;
 
   /** Create a room (host). Returns the room code. */
   async createRoom(): Promise<string> {
@@ -102,7 +106,7 @@ export class NetPeer {
         this.onPlayerJoin(conn.peer, remote.name);
 
         conn.on('data', (data) => this.handleData(conn.peer, data));
-        conn.on('close', () => this.handleDisconnect(conn.peer));
+        conn.on('close', () => this.handleGracefulDisconnect(conn.peer));
       });
     });
 
@@ -142,7 +146,7 @@ export class NetPeer {
         this.onPlayerJoin(conn.peer, 'Host');
 
         conn.on('data', (data) => this.handleData(conn.peer, data));
-        conn.on('close', () => this.handleDisconnect(conn.peer));
+        conn.on('close', () => this.handleGracefulDisconnect(conn.peer));
 
         resolve();
       });
@@ -386,9 +390,53 @@ export class NetPeer {
     }
   }
 
+  private handleGracefulDisconnect(peerId: string) {
+    const remote = this.connections.get(peerId);
+    if (!remote) return;
+    const name = remote.name;
+
+    // Don't immediately disconnect — give a grace period for reconnection
+    this.onReconnecting(peerId, name);
+    this.pendingReconnect.set(peerId, { name, timer: 5000, retries: 0 });
+
+    // Start the reconnection interval if not already running
+    if (!this.reconnectInterval) {
+      this.reconnectInterval = window.setInterval(() => {
+        const now = performance.now();
+        for (const [id, info] of this.pendingReconnect) {
+          info.timer -= 500;
+          if (info.timer <= 0) {
+            // Grace period expired — finalize disconnect
+            this.pendingReconnect.delete(id);
+            this.finalizeDisconnect(id, info.name);
+          }
+        }
+        if (this.pendingReconnect.size === 0 && this.reconnectInterval) {
+          clearInterval(this.reconnectInterval);
+          this.reconnectInterval = null;
+        }
+      }, 500);
+    }
+  }
+
+  /** Called when a peer rejoins (e.g. host receives a new connection with same metadata). */
+  handleReconnection(peerId: string) {
+    const pending = this.pendingReconnect.get(peerId);
+    if (pending) {
+      this.pendingReconnect.delete(peerId);
+      this.onReconnected(peerId, pending.name);
+    }
+  }
+
+  private finalizeDisconnect(peerId: string, name?: string) {
+    this.connections.delete(peerId);
+    this.onPlayerLeave(peerId, name);
+  }
+
   private handleDisconnect(peerId: string) {
     const name = this.connections.get(peerId)?.name;
     this.connections.delete(peerId);
+    this.pendingReconnect.delete(peerId);
     this.onPlayerLeave(peerId, name);
   }
 
@@ -491,10 +539,32 @@ export class NetPeer {
     return this.connections.get(id)?.rtt ?? 0;
   }
 
+  /** Kick a player (host only). Sends KICK event, then closes connection. */
+  kickPlayer(id: string) {
+    const remote = this.connections.get(id);
+    if (!remote) return;
+    // Build and send kick event packet
+    const json = JSON.stringify({ type: EventType.KICK });
+    const jsonBytes = _encoder.encode(json);
+    const buf = new ArrayBuffer(2 + jsonBytes.length);
+    new DataView(buf).setUint8(0, PacketType.EVENT);
+    new DataView(buf).setUint8(1, EventType.KICK);
+    new Uint8Array(buf, 2).set(jsonBytes);
+    try { remote.conn.send(buf); } catch {}
+    setTimeout(() => {
+      remote.conn?.close();
+      this.connections.delete(id);
+      this.pendingReconnect.delete(id);
+      this.onPlayerLeave(id, remote.name);
+    }, 100);
+  }
+
   destroy() {
     this.stopBroadcasting();
     this.stopPinging();
     this.stopHeartbeat();
+    if (this.reconnectInterval) { clearInterval(this.reconnectInterval); this.reconnectInterval = null; }
+    this.pendingReconnect.clear();
     for (const remote of this.connections.values()) {
       remote.conn?.close();
     }

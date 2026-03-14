@@ -75,6 +75,65 @@ function deepCloneGroup(source: THREE.Group): THREE.Group {
   return cloned;
 }
 
+/** Load a GLB model with download progress callback. */
+export function loadCarModelWithProgress(
+  filename: string,
+  onProgress?: (pct: number) => void,
+): Promise<THREE.Group> {
+  const cached = modelCache.get(filename);
+  if (cached) {
+    onProgress?.(1);
+    return Promise.resolve(deepCloneGroup(cached));
+  }
+
+  return new Promise((resolve, reject) => {
+    gltfLoader.load(
+      `/models/${filename}`,
+      (gltf) => {
+        const model = gltf.scene;
+        // Same processing as loadCarModel
+        const box = new THREE.Box3().setFromObject(model);
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const scale = 4.0 / maxDim;
+        model.scale.setScalar(scale);
+        box.setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        model.position.sub(center);
+        model.position.y -= box.min.y;
+
+        model.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            const mesh = child as THREE.Mesh;
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            if (mesh.geometry) mesh.geometry.computeVertexNormals();
+            const mat = mesh.material as THREE.MeshStandardMaterial;
+            if (mat && mat.isMeshStandardMaterial) {
+              mat.envMapIntensity = 2.0;
+              mat.roughness = Math.max(mat.roughness * 0.7, 0.05);
+              mat.needsUpdate = true;
+            }
+          }
+        });
+
+        const wrapper = new THREE.Group();
+        model.rotation.y = Math.PI / 2;
+        wrapper.add(model);
+        modelCache.set(filename, wrapper);
+        onProgress?.(1);
+        resolve(deepCloneGroup(wrapper));
+      },
+      (event) => {
+        if (event.lengthComputable && event.total > 0) {
+          onProgress?.(event.loaded / event.total);
+        }
+      },
+      (error) => reject(error),
+    );
+  });
+}
+
 export function clearModelCache() {
   modelCache.clear();
 }
