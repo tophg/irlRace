@@ -20,6 +20,8 @@ const SPECTATE_FOV = 65;
 // Reusable temps to avoid per-frame allocations
 const _desired = new THREE.Vector3();
 const _lookTarget = new THREE.Vector3();
+const _tiltQuat = new THREE.Quaternion();
+const _localZ = new THREE.Vector3(0, 0, 1);
 
 export type CameraMode = 'chase' | 'orbit' | 'follow';
 
@@ -124,10 +126,14 @@ export class VehicleCamera {
       this.camera.position.y += Math.sin(t2 * 31) * vib * 0.02;
     }
 
-    // Drift tilt (camera rolls toward drift direction)
+    // Drift tilt (camera rolls toward drift direction) — apply via quaternion
+    // to avoid corrupting the lookAt euler decomposition
     const targetTilt = driftAngle * 0.15;
     this.driftTilt += (targetTilt - this.driftTilt) * 0.06;
-    this.camera.rotation.z = this.driftTilt;
+    if (Math.abs(this.driftTilt) > 0.001) {
+      _tiltQuat.setFromAxisAngle(_localZ, this.driftTilt);
+      this.camera.quaternion.multiply(_tiltQuat);
+    }
   }
 
   /** Start spectator orbit mode around a center point. */
