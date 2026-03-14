@@ -69,6 +69,28 @@ export class AIRacer {
     ] };
   }
 
+  /** Scale AI personality based on difficulty tier. */
+  applyDifficulty(difficulty: 'easy' | 'medium' | 'hard') {
+    const p = this.personality;
+    switch (difficulty) {
+      case 'easy':
+        p.topSpeedFactor *= 0.78;
+        p.consistency *= 0.70;
+        p.aggression *= 0.5;
+        p.bravery *= 0.4;
+        break;
+      case 'medium':
+        // Default — no changes
+        break;
+      case 'hard':
+        p.topSpeedFactor *= 1.06;
+        p.consistency = Math.min(p.consistency * 1.1, 0.99);
+        p.aggression = Math.min(p.aggression * 1.2, 1.0);
+        p.bravery = Math.min(p.bravery * 1.3, 1.0);
+        break;
+    }
+  }
+
   place(spline: THREE.CatmullRomCurve3, t: number, laneOffset: number, bvh?: SplineBVH) {
     this.spline = spline;
     this.bvh = bvh ?? null;

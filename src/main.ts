@@ -31,6 +31,7 @@ import { initInput, showTouchControls, getInput } from './input';
 import { loadSettings, getSettings, showSettings } from './settings';
 import { ReplayRecorder, ReplayPlayer } from './replay';
 import { resolveCarCollisions, CarCollider, CollisionEvent } from './bvh';
+import { getWeatherForSeed, initWeather, updateWeather, applyWetRoad, destroyWeather, getWeatherGripMultiplier, getWeatherDriftMultiplier, getCurrentWeather } from './weather';
 
 // ── DOM ──
 const container = document.getElementById('game-container')!;
@@ -57,8 +58,28 @@ let checkpointMarkers: THREE.Group | null = null;
 // ── AI ──
 const aiRacers: AIRacer[] = [];
 
+// ── Rear-View Mirror ──
+let mirrorCamera: THREE.PerspectiveCamera | null = null;
+let mirrorTarget: THREE.WebGLRenderTarget | null = null;
+let mirrorCanvas: HTMLCanvasElement | null = null;
+let mirrorCtx: CanvasRenderingContext2D | null = null;
+
 // ── Race engine ──
 let raceEngine: RaceEngine | null = null;
+
+// ── Race Stats ──
+interface RaceStats {
+  topSpeed: number;
+  totalDriftTime: number;
+  collisionCount: number;
+  avgPosition: number;
+  positionSampleCount: number;
+}
+let raceStats: RaceStats = { topSpeed: 0, totalDriftTime: 0, collisionCount: 0, avgPosition: 0, positionSampleCount: 0 };
+
+function resetRaceStats() {
+  raceStats = { topSpeed: 0, totalDriftTime: 0, collisionCount: 0, avgPosition: 0, positionSampleCount: 0 };
+}
 
 // ── Multiplayer ──
 let netPeer: NetPeer | null = null;
@@ -193,6 +214,7 @@ let debugEl: HTMLElement | null = null;
 
 let pauseOverlay: HTMLElement | null = null;
 let aiCount = 4;
+let aiDifficulty: 'easy' | 'medium' | 'hard' = 'medium';
 
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Backquote') {
@@ -322,7 +344,7 @@ function hideLoading() {
 // RACE CONFIGURATION (singleplayer only)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function showRaceConfig(onStart: (laps: number, ai: number, seed: string) => void) {
+function showRaceConfig(onStart: (laps: number, ai: number, difficulty: 'easy' | 'medium' | 'hard', seed: string) => void) {
   const el = document.createElement('div');
   el.className = 'race-config-overlay';
   el.innerHTML = `
@@ -346,6 +368,14 @@ function showRaceConfig(onStart: (laps: number, ai: number, seed: string) => voi
         </select>
       </label>
       <label class="settings-row">
+        <span>AI Difficulty</span>
+        <select id="cfg-difficulty">
+          <option value="easy">Easy</option>
+          <option value="medium" selected>Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+      </label>
+      <label class="settings-row">
         <span>Track Seed</span>
         <input type="text" id="cfg-seed" placeholder="Random" maxlength="5"
                class="lobby-input" style="width:100px;font-size:14px;padding:4px 8px;letter-spacing:2px;">
@@ -366,9 +396,10 @@ function showRaceConfig(onStart: (laps: number, ai: number, seed: string) => voi
   document.getElementById('cfg-go')!.addEventListener('click', () => {
     const laps = parseInt((el.querySelector('#cfg-laps') as HTMLSelectElement).value);
     const ai = parseInt((el.querySelector('#cfg-ai') as HTMLSelectElement).value);
+    const difficulty = (el.querySelector('#cfg-difficulty') as HTMLSelectElement).value as 'easy' | 'medium' | 'hard';
     const seed = (el.querySelector('#cfg-seed') as HTMLInputElement).value.trim();
     el.remove();
-    onStart(laps, ai, seed);
+    onStart(laps, ai, difficulty, seed);
   });
 }
 
@@ -458,9 +489,10 @@ function enterGarage(mode: 'singleplayer' | 'multiplayer') {
     destroyGarage();
 
     if (mode === 'singleplayer') {
-      showRaceConfig((laps, ai, seed) => {
+      showRaceConfig((laps, ai, difficulty, seed) => {
         totalLaps = laps;
         aiCount = ai;
+        aiDifficulty = difficulty;
         if (seed.length > 0) {
           const parsed = parseInt(seed, 10);
           trackSeed = Number.isNaN(parsed) ? Math.floor(Math.random() * 99999) : parsed;
@@ -781,6 +813,8 @@ async function startRace() {
     trackSeed = null;
     trackData = generateTrack(seed);
     applyEnvironment(getEnvironmentForSeed(seed));
+    initWeather(scene, getWeatherForSeed(seed));
+    if (getCurrentWeather() !== 'clear') applyWetRoad(trackData.roadMesh);
     scene.add(trackData.roadMesh);
     scene.add(trackData.barrierLeft);
     scene.add(trackData.barrierRight);
@@ -830,6 +864,21 @@ async function startRace() {
 
     createHUD(uiOverlay);
     showHUD(true);
+
+    // Rear-view mirror
+    mirrorCamera = new THREE.PerspectiveCamera(50, 320 / 120, 0.5, 500);
+    mirrorTarget = new THREE.WebGLRenderTarget(320, 120, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+    mirrorCanvas = document.createElement('canvas');
+    mirrorCanvas.width = 320;
+    mirrorCanvas.height = 120;
+    mirrorCanvas.className = 'hud-mirror';
+    mirrorCanvas.style.cssText = `
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      border: 2px solid rgba(255,255,255,0.2); border-radius: 6px;
+      pointer-events: none; z-index: 20; opacity: 0.85;
+    `;
+    uiOverlay.appendChild(mirrorCanvas);
+    mirrorCtx = mirrorCanvas.getContext('2d')!;
     showTouchControls(true);
     initAudio();
     hideLoading();
@@ -861,6 +910,7 @@ async function startRace() {
 
     await runCountdown(uiOverlay);
 
+    resetRaceStats();
     raceEngine.start();
     replayRecorder = new ReplayRecorder();
     replayRecorder.start();
@@ -888,6 +938,7 @@ async function spawnAI(trackData: TrackData) {
   for (let i = 0; i < aiCars.length; i++) {
     const def = aiCars[i];
     const ai = new AIRacer(`ai_${i}`, { ...def }, i);
+    ai.applyDifficulty(aiDifficulty);
     raceEngine!.addRacer(`ai_${i}`);
 
     try {
@@ -980,6 +1031,7 @@ function clearRaceObjects() {
 
   // Remove and dispose old track
   if (trackData) {
+    destroyWeather();
     scene.remove(trackData.roadMesh);
     scene.remove(trackData.barrierLeft);
     scene.remove(trackData.barrierRight);
@@ -999,6 +1051,11 @@ function clearRaceObjects() {
     disposeMesh(checkpointMarkers);
     checkpointMarkers = null;
   }
+
+  // Destroy mirror
+  if (mirrorCanvas) { mirrorCanvas.remove(); mirrorCanvas = null; mirrorCtx = null; }
+  if (mirrorTarget) { mirrorTarget.dispose(); mirrorTarget = null; }
+  mirrorCamera = null;
 
   // Remove player
   if (playerVehicle) {
@@ -1226,6 +1283,13 @@ function showResults() {
       </tbody>
     </table>
     ${lapBreakdownHtml}
+    <div class="lap-breakdown" style="margin-top:8px;">
+      <div class="lap-breakdown-title">RACE STATS</div>
+      <div class="lap-breakdown-row"><span>Top Speed</span><span>${Math.floor(raceStats.topSpeed)} MPH</span></div>
+      <div class="lap-breakdown-row"><span>Drift Time</span><span>${raceStats.totalDriftTime.toFixed(1)}s</span></div>
+      <div class="lap-breakdown-row"><span>Avg Position</span><span>${raceStats.positionSampleCount > 0 ? (raceStats.avgPosition / raceStats.positionSampleCount).toFixed(1) : '—'}</span></div>
+      <div class="lap-breakdown-row"><span>Collisions</span><span>${raceStats.collisionCount}</span></div>
+    </div>
     <div class="menu-buttons" style="width:240px; margin-top:8px;">
       ${hasReplay ? '<button class="menu-btn" id="btn-replay" style="border-color:var(--col-cyan);color:var(--col-cyan);">WATCH REPLAY</button>' : ''}
       ${isMultiplayer ? '<button class="menu-btn" id="btn-rematch" style="background:var(--col-green);">REMATCH</button>' : ''}
@@ -1423,7 +1487,14 @@ function gameLoop(timestamp: number) {
 
     // Player update
     if (s === GameState.RACING && vehicleCamera?.mode === 'chase') {
+      // Apply weather grip modifier
+      const origGrip = playerVehicle.def.gripCoeff;
+      const origDrift = playerVehicle.def.driftFactor;
+      playerVehicle.def.gripCoeff *= getWeatherGripMultiplier();
+      playerVehicle.def.driftFactor *= getWeatherDriftMultiplier();
       playerVehicle.update(dt, getInput(), trackData.spline, trackData.bvh);
+      playerVehicle.def.gripCoeff = origGrip;
+      playerVehicle.def.driftFactor = origDrift;
     }
 
     // Spectator orbit camera (during RESULTS)
@@ -1518,10 +1589,12 @@ function gameLoop(timestamp: number) {
         if (evt.idA === 'local' && playerVehicle) {
           _impactDir.set(evt.normalX, 0, evt.normalZ);
           playerVehicle.applyDamage(_impactDir, evt.impactForce);
+          raceStats.collisionCount++;
         }
         if (evt.idB === 'local' && playerVehicle) {
           _impactDir.set(-evt.normalX, 0, -evt.normalZ);
           playerVehicle.applyDamage(_impactDir, evt.impactForce);
+          raceStats.collisionCount++;
         }
         for (const ai of aiRacers) {
           if (evt.idA === ai.id) {
@@ -1558,9 +1631,17 @@ function gameLoop(timestamp: number) {
       updateSkidMarks(playerVehicle.group.position, playerVehicle.heading, driftAbs, playerVehicle.group.position.y);
     }
     updateVFX(dt);
+    updateWeather(dt, playerVehicle.group.position);
     updateBoostFlame(s === GameState.RACING && getInput().boost, playerVehicle.group.position, playerVehicle.heading, timestamp / 1000);
     const speedRatioForLines = Math.abs(playerVehicle.speed) / selectedCar.maxSpeed;
     if (speedRatioForLines > 0.65) updateSpeedLines(speedRatioForLines);
+
+    // ── Accumulate race stats ──
+    if (s === GameState.RACING) {
+      const speedMph = Math.abs(playerVehicle.speed) * 2.5;
+      if (speedMph > raceStats.topSpeed) raceStats.topSpeed = speedMph;
+      if (driftAbs > 0.15) raceStats.totalDriftTime += dt;
+    }
 
     // Audio
     updateEngineAudio(playerVehicle.speed, selectedCar.maxSpeed);
@@ -1676,6 +1757,12 @@ function gameLoop(timestamp: number) {
       // HUD update
       const rankings = raceEngine.getRankings();
       const myRank = rankings.findIndex(r => r.id === 'local') + 1;
+
+      // Track average position
+      if (myRank > 0) {
+        raceStats.avgPosition += myRank;
+        raceStats.positionSampleCount++;
+      }
 
 
       // Position change callout
@@ -1797,6 +1884,30 @@ function gameLoop(timestamp: number) {
       dl.shadow.camera.top = 40;
       dl.shadow.camera.bottom = -40;
       dl.shadow.camera.updateProjectionMatrix();
+    }
+
+    // Rear-view mirror render (low-res, every other frame for perf)
+    if (mirrorCamera && mirrorTarget && mirrorCtx && mirrorCanvas && playerVehicle && s === GameState.RACING) {
+      const sinH = Math.sin(playerVehicle.heading);
+      const cosH = Math.cos(playerVehicle.heading);
+      const pp = playerVehicle.group.position;
+      mirrorCamera.position.set(pp.x + sinH * 1.5, pp.y + 2.5, pp.z + cosH * 1.5);
+      mirrorCamera.lookAt(pp.x + sinH * 20, pp.y + 1.5, pp.z + cosH * 20);
+      renderer.setRenderTarget(mirrorTarget);
+      renderer.render(scene, mirrorCamera);
+      renderer.setRenderTarget(null);
+
+      // Copy to canvas
+      const buf = new Uint8Array(320 * 120 * 4);
+      renderer.readRenderTargetPixels(mirrorTarget, 0, 0, 320, 120, buf);
+      const imgData = mirrorCtx.createImageData(320, 120);
+      // WebGL is bottom-up, canvas is top-down — flip vertically
+      for (let row = 0; row < 120; row++) {
+        const srcOff = (119 - row) * 320 * 4;
+        const dstOff = row * 320 * 4;
+        imgData.data.set(buf.subarray(srcOff, srcOff + 320 * 4), dstOff);
+      }
+      mirrorCtx.putImageData(imgData, 0, 0);
     }
 
     // Debug overlay
