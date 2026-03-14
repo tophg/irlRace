@@ -1561,7 +1561,14 @@ function gameLoop(timestamp: number) {
       for (const ai of aiRacers) {
         // Pass all opponents except self
         const opponents = allOpponents.filter(o => o.id !== ai.id);
+        // Apply weather grip/drift penalty to AI (same as player)
+        const origGripAi = ai.vehicle.def.gripCoeff;
+        const origDriftAi = ai.vehicle.def.driftFactor;
+        ai.vehicle.def.gripCoeff *= getWeatherGripMultiplier();
+        ai.vehicle.def.driftFactor *= getWeatherDriftMultiplier();
         ai.update(dt, opponents);
+        ai.vehicle.def.gripCoeff = origGripAi;
+        ai.vehicle.def.driftFactor = origDriftAi;
         raceEngine?.updateRacer(ai.id, ai.vehicle.group.position, ai.getCurrentT());
       }
 
@@ -1804,7 +1811,7 @@ function gameLoop(timestamp: number) {
         rankings.length,
         wrongWay,
         raceEngine.getElapsedTime() * 1000,
-        getInput().boost,
+        playerVehicle.isNitroActive,
       );
 
       // Minimap (per-player colors)
