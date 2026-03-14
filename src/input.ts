@@ -32,8 +32,8 @@ export function initInput(): InputState {
     switch (e.code) {
       case 'ArrowUp':    case 'KeyW': state.up = true;    break;
       case 'ArrowDown':  case 'KeyS': state.down = true;  break;
-      case 'ArrowLeft':  case 'KeyA': state.left = true;  break;
-      case 'ArrowRight': case 'KeyD': state.right = true; break;
+      case 'ArrowLeft':  case 'KeyA': state.right = true;  break;
+      case 'ArrowRight': case 'KeyD': state.left = true; break;
       case 'ShiftLeft':  case 'Space': state.boost = true; break;
     }
   });
@@ -42,8 +42,8 @@ export function initInput(): InputState {
     switch (e.code) {
       case 'ArrowUp':    case 'KeyW': state.up = false;    break;
       case 'ArrowDown':  case 'KeyS': state.down = false;  break;
-      case 'ArrowLeft':  case 'KeyA': state.left = false;  break;
-      case 'ArrowRight': case 'KeyD': state.right = false; break;
+      case 'ArrowLeft':  case 'KeyA': state.right = false;  break;
+      case 'ArrowRight': case 'KeyD': state.left = false; break;
       case 'ShiftLeft':  case 'Space': state.boost = false; break;
     }
   });
@@ -95,9 +95,9 @@ function setupTouchControls() {
         if (touch.identifier === steerTouchId) {
           const dx = touch.clientX - steerOriginX;
           const normalized = Math.max(-1, Math.min(1, dx / STEER_RADIUS));
-          state.steerAnalog = normalized;
-          state.left = normalized < -0.15;
-          state.right = normalized > 0.15;
+          state.steerAnalog = -normalized;
+          state.left = normalized > 0.15;
+          state.right = normalized < -0.15;
           updateSteerIndicator(normalized);
           break;
         }
@@ -183,9 +183,9 @@ export async function enableTiltSteering(): Promise<boolean> {
     }
 
     tiltSmoothed += (raw - tiltSmoothed) * 0.15;
-    state.steerAnalog = tiltSmoothed;
-    state.left = tiltSmoothed < -0.15;
-    state.right = tiltSmoothed > 0.15;
+    state.steerAnalog = -tiltSmoothed;
+    state.left = tiltSmoothed > 0.15;
+    state.right = tiltSmoothed < -0.15;
   };
   window.addEventListener('deviceorientation', tiltHandler);
 
