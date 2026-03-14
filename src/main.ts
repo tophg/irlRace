@@ -871,9 +871,19 @@ async function startRace() {
 }
 
 async function spawnAI(trackData: TrackData) {
-  const aiCars = CAR_ROSTER.filter(c => c.id !== selectedCar.id).slice(0, aiCount);
-  const laneOffsets = [3.5, -3.5, 3.5, -3.5];
-  const startTs = [0.02, 0.02, 0.04, 0.04];
+  // Defensive: clear any leftover AI from previous race
+  for (const ai of aiRacers) {
+    scene.remove(ai.vehicle.group);
+  }
+  aiRacers.length = 0;
+
+  const available = CAR_ROSTER.filter(c => c.id !== selectedCar.id);
+  const count = Math.min(aiCount, available.length);
+  const aiCars = available.slice(0, count);
+  const laneOffsets = [3.5, -3.5, 3.5, -3.5, 3.5, -3.5];
+  const startTs = [0.02, 0.02, 0.04, 0.04, 0.06, 0.06];
+
+  console.log(`[spawnAI] aiCount=${aiCount}, spawning ${aiCars.length} AI racers`);
 
   for (let i = 0; i < aiCars.length; i++) {
     const def = aiCars[i];
