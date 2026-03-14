@@ -181,17 +181,16 @@ function applyElevation(pts2D: THREE.Vector2[], rng: () => number): THREE.Vector
     return new THREE.Vector3(p.x, y, p.y);
   });
 
-  // 5-point moving average to smooth out elevation
-  for (let pass = 0; pass < 2; pass++) {
+  // Non-biased moving average (read from copy) with wrap-around
+  // 4 passes × 9-point window for smooth hills across the start/finish seam
+  for (let pass = 0; pass < 4; pass++) {
+    const prev = pts3D.map(p => p.y);
     for (let i = 0; i < pts3D.length; i++) {
       let avg = 0;
-      let count = 0;
-      for (let j = -2; j <= 2; j++) {
-        const idx = (i + j + pts3D.length) % pts3D.length;
-        avg += pts3D[idx].y;
-        count++;
+      for (let j = -4; j <= 4; j++) {
+        avg += prev[(i + j + pts3D.length) % pts3D.length];
       }
-      pts3D[i].y = avg / count;
+      pts3D[i].y = avg / 9;
     }
   }
 
@@ -369,7 +368,10 @@ const _meshBankedRight = new THREE.Vector3();
 const _meshBankedUp = new THREE.Vector3();
 
 function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[], rng: () => number): THREE.Mesh {
-  const points = spline.getSpacedPoints(SPLINE_SAMPLES);
+  // getSpacedPoints(N) returns N+1 points; on a closed spline, point[N] == point[0].
+  // Drop the duplicate to avoid a degenerate triangle at the closure seam.
+  const rawPoints = spline.getSpacedPoints(SPLINE_SAMPLES);
+  const points = rawPoints.slice(0, rawPoints.length - 1);
   const vertices: number[] = [];
   const indices: number[] = [];
   const uvs: number[] = [];
@@ -384,7 +386,7 @@ function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[], rng
 
     // ── P2-E: Auto-banking ──
     // Bank the road cross-section proportional to curvature
-    const kappa = curvatures[Math.min(i, curvatures.length - 1)] || 0;
+    const kappa = curvatures[i % curvatures.length] || 0;
     const bankAngle = clamp(kappa * BANK_SCALE, -MAX_BANK_ANGLE, MAX_BANK_ANGLE);
 
     // Rotate the "up" and "right" vectors about the tangent by bankAngle
@@ -501,7 +503,8 @@ function createRoadTexture(rng: () => number): THREE.CanvasTexture {
 }
 
 function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number): THREE.Mesh {
-  const points = spline.getSpacedPoints(SPLINE_SAMPLES);
+  const rawPoints = spline.getSpacedPoints(SPLINE_SAMPLES);
+  const points = rawPoints.slice(0, rawPoints.length - 1);
   const vertices: number[] = [];
   const indices: number[] = [];
   const normals: number[] = [];
@@ -576,7 +579,8 @@ function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number): THREE.M
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function buildShoulders(spline: THREE.CatmullRomCurve3): THREE.Mesh {
-  const points = spline.getSpacedPoints(SPLINE_SAMPLES);
+  const rawPoints = spline.getSpacedPoints(SPLINE_SAMPLES);
+  const points = rawPoints.slice(0, rawPoints.length - 1);
   const vertices: number[] = [];
   const indices: number[] = [];
   const normals: number[] = [];
