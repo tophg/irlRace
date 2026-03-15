@@ -116,6 +116,9 @@ export function updateVFX(dt: number) {
     s.mesh.scale.setScalar(0.5 + (1 - s.life) * 0.5);
     j++;
   }
+
+  // Metal debris (tumble, gravity, bounce)
+  updateDebris(dt);
 }
 
 // ── Speed Lines (screen-space, canvas 2D overlay) ──
@@ -542,6 +545,208 @@ export function spawnExplosion(pos: THREE.Vector3, force: number) {
     vel.set((Math.random() - 0.5) * 3, 1 + Math.random() * 2, (Math.random() - 0.5) * 3);
     activeSmoke.push({ mesh, velocity: vel, life: 1.0, maxLife: 1.0 });
   }
+}
+
+// ── Metal Debris (tumbling rectangular shards on heavy impacts) ──
+
+const DEBRIS_POOL_SIZE = 30;
+const debrisPool: THREE.Mesh[] = [];
+let debrisIdx = 0;
+
+interface DebrisParticle {
+  mesh: THREE.Mesh;
+  vx: number; vy: number; vz: number;
+  ax: number; ay: number; az: number;  // angular velocity
+  life: number;
+  bounced: boolean;
+}
+
+const activeDebris: DebrisParticle[] = [];
+
+function ensureDebrisPool() {
+  if (debrisPool.length > 0 || !smokeScene) return;
+  const geo = new THREE.BoxGeometry(0.12, 0.04, 0.08);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x999999,
+    roughness: 0.4,
+    metalness: 0.8,
+    transparent: true,
+    opacity: 1,
+  });
+  for (let i = 0; i < DEBRIS_POOL_SIZE; i++) {
+    const m = new THREE.Mesh(geo, mat.clone());
+    m.visible = false;
+    smokeScene.add(m);
+    debrisPool.push(m);
+  }
+}
+
+/** Spawn metal debris particles at impact point. force controls count + speed. */
+export function spawnDebris(pos: THREE.Vector3, force: number, carVelX = 0, carVelZ = 0) {
+  if (!smokeScene) return;
+  ensureDebrisPool();
+
+  const count = Math.min(Math.floor(force * 0.3), 8);
+  for (let i = 0; i < count; i++) {
+    const mesh = debrisPool[debrisIdx % DEBRIS_POOL_SIZE];
+    debrisIdx++;
+    mesh.position.copy(pos);
+    mesh.position.x += (Math.random() - 0.5) * 0.5;
+    mesh.position.y += 0.3 + Math.random() * 0.3;
+    mesh.position.z += (Math.random() - 0.5) * 0.5;
+    mesh.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+    mesh.scale.set(0.5 + Math.random(), 0.5 + Math.random(), 0.5 + Math.random());
+    mesh.visible = true;
+    const mat = mesh.material as THREE.MeshStandardMaterial;
+    mat.opacity = 1;
+
+    // Inherit car velocity + random burst
+    const speed = 3 + Math.random() * force * 0.5;
+    const theta = Math.random() * Math.PI * 2;
+    activeDebris.push({
+      mesh,
+      vx: carVelX * 0.3 + Math.cos(theta) * speed,
+      vy: 2 + Math.random() * 4,
+      vz: carVelZ * 0.3 + Math.sin(theta) * speed,
+      ax: (Math.random() - 0.5) * 15,
+      ay: (Math.random() - 0.5) * 15,
+      az: (Math.random() - 0.5) * 15,
+      life: 2.0 + Math.random() * 1.5,
+      bounced: false,
+    });
+  }
+}
+
+/** Update debris physics (gravity, ground bounce, fade). Call in updateVFX. */
+function updateDebris(dt: number) {
+  let i = 0;
+  while (i < activeDebris.length) {
+    const d = activeDebris[i];
+    d.life -= dt;
+    if (d.life <= 0) {
+      d.mesh.visible = false;
+      activeDebris[i] = activeDebris[activeDebris.length - 1];
+      activeDebris.pop();
+      continue;
+    }
+
+    // Gravity
+    d.vy -= 12 * dt;
+
+    // Position
+    d.mesh.position.x += d.vx * dt;
+    d.mesh.position.y += d.vy * dt;
+    d.mesh.position.z += d.vz * dt;
+
+    // Rotation (tumble)
+    d.mesh.rotation.x += d.ax * dt;
+    d.mesh.rotation.y += d.ay * dt;
+    d.mesh.rotation.z += d.az * dt;
+
+    // Ground bounce
+    if (d.mesh.position.y < 0.05) {
+      d.mesh.position.y = 0.05;
+      d.vy = Math.abs(d.vy) * 0.3;
+      d.vx *= 0.7;
+      d.vz *= 0.7;
+      d.ax *= 0.5;
+      d.ay *= 0.5;
+      d.az *= 0.5;
+      d.bounced = true;
+    }
+
+    // Fade out in last 0.5s
+    if (d.life < 0.5) {
+      (d.mesh.material as THREE.MeshStandardMaterial).opacity = d.life * 2;
+    }
+
+    i++;
+  }
+}
+
+// ── Scrape Sparks (continuous stream during barrier contact) ──
+let scrapeCooldown = 0;
+
+/**
+ * Spawn continuous scrape sparks along a barrier tangent.
+ * Call every frame while the car is scraping a barrier.
+ */
+export function spawnScrapeSparks(
+  pos: THREE.Vector3,
+  tangentX: number,
+  tangentZ: number,
+  speed: number,
+  dt: number,
+) {
+  if (!smokeScene || speed < 3) return;
+  scrapeCooldown -= dt;
+  if (scrapeCooldown > 0) return;
+  scrapeCooldown = 0.02; // ~50 sparks/sec
+
+  if (sparkPool.length === 0) return;
+  const count = Math.ceil(Math.min(speed * 0.2, 3));
+  for (let i = 0; i < count; i++) {
+    const mesh = sparkPool[sparkIdx % SPARK_POOL_SIZE];
+    sparkIdx++;
+    mesh.position.copy(pos);
+    mesh.position.x += (Math.random() - 0.5) * 0.3;
+    mesh.position.y += Math.random() * 0.2;
+    mesh.position.z += (Math.random() - 0.5) * 0.3;
+    mesh.visible = true;
+    mesh.scale.setScalar(0.3 + Math.random() * 0.3);
+
+    const sMat = mesh.material as THREE.MeshBasicMaterial;
+    sMat.opacity = 1;
+    sMat.color.setRGB(1, 0.7 + Math.random() * 0.3, 0.2);
+
+    const vel = sparkVelPool[sparkVelIdx % SPARK_POOL_SIZE];
+    sparkVelIdx++;
+    // Sparks fly along the tangent + upward
+    const tangentSpeed = speed * 0.5 + Math.random() * 3;
+    vel.set(
+      tangentX * tangentSpeed + (Math.random() - 0.5) * 2,
+      1.5 + Math.random() * 2,
+      tangentZ * tangentSpeed + (Math.random() - 0.5) * 2,
+    );
+    activeSparks.push({ mesh, velocity: vel, life: 0.15 + Math.random() * 0.15 });
+  }
+}
+
+// ── Sustained Damage Zone Smoke (continuous trail from critically damaged zones) ──
+let dmgSmokeCd = 0;
+
+/**
+ * Spawn continuous dark smoke from a critically damaged zone.
+ * Call every frame for each zone with HP < 30%.
+ * @param pos — world position of the damaged zone
+ * @param severity — 0..1 (1 = zone at 0 HP)
+ */
+export function spawnDamageZoneSmoke(pos: THREE.Vector3, severity: number, dt: number) {
+  if (!smokeScene || severity < 0.3) return;
+  dmgSmokeCd -= dt;
+  if (dmgSmokeCd > 0) return;
+  dmgSmokeCd = 0.06; // ~16 puffs/sec
+
+  if (smokePool.length === 0) return;
+  const mesh = smokePool[smokeIdx % SMOKE_POOL_SIZE];
+  smokeIdx++;
+  mesh.position.copy(pos);
+  mesh.position.x += (Math.random() - 0.5) * 0.4;
+  mesh.position.y += 0.3;
+  mesh.position.z += (Math.random() - 0.5) * 0.4;
+  mesh.scale.setScalar(0.3 + severity * 0.5);
+  mesh.visible = true;
+
+  const mat = mesh.material as THREE.MeshBasicMaterial;
+  mat.opacity = 0.3 + severity * 0.2;
+  // Black smoke at severe damage, grey at moderate
+  const grey = 0.15 + (1 - severity) * 0.2;
+  mat.color.setRGB(grey, grey, grey);
+
+  const vel = smokeVelPool[smokeVelIdx % SMOKE_VEL_POOL_SIZE];
+  smokeVelIdx++;
+  vel.set((Math.random() - 0.5) * 0.5, 0.5 + severity * 1.5, (Math.random() - 0.5) * 0.5);
+  activeSmoke.push({ mesh, velocity: vel, life: 0.6 + severity * 0.4, maxLife: 1.0 });
 }
 
 /** Remove all VFX objects from the scene and DOM. Call between races. */

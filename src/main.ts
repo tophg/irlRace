@@ -26,6 +26,7 @@ import {
   destroyVFX, spawnCollisionSparks, spawnDamageSmoke,
   initSkidMarks, updateSkidMarks, destroySkidMarks,
   spawnFlameParticle, spawnExplosion,
+  spawnDebris, spawnScrapeSparks, spawnDamageZoneSmoke,
 } from './vfx';
 import {
   initGPUParticles, updateGPUParticles, destroyGPUParticles,
@@ -1027,6 +1028,7 @@ function stepPhysics(dt: number, s: GameState) {
         (cA.position.z + cB.position.z) / 2,
       );
       spawnCollisionSparks(G._sparkPos, evt.impactForce);
+      if (evt.impactForce > 20) spawnDebris(G._sparkPos, evt.impactForce);
       if (evt.impactForce > 25) spawnExplosion(G._sparkPos, evt.impactForce);
       playCollisionSFX(Math.min(evt.impactForce / 30, 1));
     }
@@ -1038,6 +1040,7 @@ function stepPhysics(dt: number, s: GameState) {
     const b = G.playerVehicle.lastBarrierImpact;
     G._sparkPos.set(b.posX, b.posY, b.posZ);
     spawnCollisionSparks(G._sparkPos, b.force);
+    if (b.force > 20) spawnDebris(G._sparkPos, b.force, G.playerVehicle.speed * Math.sin(G.playerVehicle.heading), G.playerVehicle.speed * Math.cos(G.playerVehicle.heading));
     G.vehicleCamera?.shake(Math.min(b.force / 30, 0.8));
     flashDamage(b.force / 25);
     setImpactIntensity(b.force / 25);
@@ -1218,6 +1221,31 @@ function gameLoop(timestamp: number) {
       updateSkidMarks(G.playerVehicle.group.position, G.playerVehicle.heading, driftAbs, G.playerVehicle.group.position.y);
     }
     updateVFX(frameDt);
+
+    // ── Per-frame damage zone smoke (player car) ──
+    if (s === GameState.RACING && G.playerVehicle) {
+      const pp = G.playerVehicle.group.position;
+      const sinH = Math.sin(G.playerVehicle.heading);
+      const cosH = Math.cos(G.playerVehicle.heading);
+      const zones: Array<{ zone: 'front' | 'rear' | 'left' | 'right'; ox: number; oz: number }> = [
+        { zone: 'front', ox: 0, oz: -2.2 },
+        { zone: 'rear', ox: 0, oz: 2.0 },
+        { zone: 'left', ox: -1.0, oz: 0 },
+        { zone: 'right', ox: 1.0, oz: 0 },
+      ];
+      for (const z of zones) {
+        const dmg = G.playerVehicle.damage[z.zone];
+        const severity = 1 - dmg.hp / 100;
+        if (severity > 0.7) {
+          G._sparkPos.set(
+            pp.x + cosH * z.ox + sinH * z.oz,
+            pp.y + 0.6,
+            pp.z - sinH * z.ox + cosH * z.oz,
+          );
+          spawnDamageZoneSmoke(G._sparkPos, severity, frameDt);
+        }
+      }
+    }
     updateGPUParticles(renderer, frameDt);
     updateWeather(frameDt, G.playerVehicle.group.position);
     updateBoostFlame(s === GameState.RACING && G.playerVehicle.isNitroActive, G.playerVehicle.group.position, G.playerVehicle.heading, timestamp / 1000);
