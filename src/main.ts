@@ -628,9 +628,17 @@ function destroySpectateHUD() {
 // RESULTS SCREEN
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+const AI_DRIVER_NAMES = [
+  'Blaze', 'Nitro', 'Ghost', 'Viper', 'Smoke', 'Flash',
+  'Turbo', 'Clutch', 'Drift', 'Razor', 'Burn', 'Apex',
+];
+
 function resolvePlayerName(id: string): string {
   if (id === 'local') return 'You';
-  if (id.startsWith('ai_')) return `AI ${id.replace('ai_', '')}`;
+  if (id.startsWith('ai_')) {
+    const idx = parseInt(id.replace('ai_', ''), 10) || 0;
+    return AI_DRIVER_NAMES[idx % AI_DRIVER_NAMES.length];
+  }
   const netName = G.netPeer?.getRemotePlayers().find(rp => rp.id === id)?.name;
   if (netName && netName !== 'Racer') return netName;
   const mpName = G.mpPlayersList.find(p => p.id === id)?.name;
