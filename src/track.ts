@@ -563,8 +563,9 @@ function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number): THREE.M
 
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
-    roughness: 0.5,
-    metalness: 0.1,
+    roughness: 0.85,
+    metalness: 0.02,
+    envMapIntensity: 0.2,
     side: THREE.DoubleSide,
     emissive: new THREE.Color(0x330000),
     emissiveIntensity: 0.2,
