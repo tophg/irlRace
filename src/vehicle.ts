@@ -532,7 +532,7 @@ export class Vehicle {
         }
 
         // Smooth Y interpolation (prevents snapping/jerky vertical movement)
-        const yLerp = 1 - Math.exp(-12 * dt);
+        const yLerp = 1 - Math.exp(-30 * dt);
         this.group.position.y += (targetY - this.group.position.y) * yLerp;
 
         // Road surface pitch (positive = nose up)
@@ -558,7 +558,7 @@ export class Vehicle {
         : getClosestSplinePoint(spline, this.group.position, 200);
 
       // Smooth Y interpolation for spline fallback too
-      const splineYLerp = 1 - Math.exp(-12 * dt);
+      const splineYLerp = 1 - Math.exp(-30 * dt);
       this.group.position.y += (nearestSpline.point.y - this.group.position.y) * splineYLerp;
 
       // Decay road alignment toward neutral when off road mesh
