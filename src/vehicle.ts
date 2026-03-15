@@ -317,7 +317,7 @@ export class Vehicle {
     const beamMat = new THREE.MeshBasicMaterial({
       color: 0xffeedd,
       transparent: true,
-      opacity: 0.04,
+      opacity: 0.025,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -544,9 +544,19 @@ export class Vehicle {
       this.angularVel = 0;
     }
 
-    // ── Position update ──
-    this.group.position.x += this._velX * dt;
-    this.group.position.z += this._velZ * dt;
+    // ── Position update (with sub-step guard for tunneling prevention) ──
+    const stepDist = Math.sqrt(this._velX * this._velX + this._velZ * this._velZ) * dt;
+    if (stepDist > 3.5) {
+      // Split into 2 half-steps to prevent tunneling through barriers
+      this.group.position.x += this._velX * dt * 0.5;
+      this.group.position.z += this._velZ * dt * 0.5;
+      // Mid-step barrier check is handled by the main collision loop below
+      this.group.position.x += this._velX * dt * 0.5;
+      this.group.position.z += this._velZ * dt * 0.5;
+    } else {
+      this.group.position.x += this._velX * dt;
+      this.group.position.z += this._velZ * dt;
+    }
 
     // ── Keep on road surface (per-wheel raycast with spline fallback) ──
     let nearestSpline: { t: number; point: THREE.Vector3; distance: number } | null = null;

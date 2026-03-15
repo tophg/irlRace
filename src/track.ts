@@ -812,7 +812,7 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
 
     // Add real PointLights to every 5th lamp for visible road illumination pools
     if (i % 5 === 0) {
-      const light = new THREE.PointLight(0xffdd88, 3, 18, 2);
+      const light = new THREE.PointLight(0xffdd88, 1.5, 14, 2);
       light.position.set(x, p.y + 5.8, z);
       group.add(light);
     }
