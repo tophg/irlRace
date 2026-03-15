@@ -980,12 +980,29 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
     const tangent = spline.getTangentAt(t).normalize();
     const rx = tangent.z, rz = -tangent.x;
     const side = rng() > 0.5 ? 1 : -1;
-    const offset = ROAD_WIDTH / 2 + 20 + rng() * 40; // Further from road than trees
-    const x = p.x + rx * offset * side;
-    const z = p.z + rz * offset * side;
+    const offset = ROAD_WIDTH / 2 + 50 + rng() * 60; // Far from road (57-117 units)
+    let x = p.x + rx * offset * side;
+    let z = p.z + rz * offset * side;
     const w = 4 + rng() * 8;
     const h = 8 + rng() * 20;
     const d = 4 + rng() * 6;
+
+    // Proximity check: ensure building doesn't land near any part of the track
+    let tooClose = false;
+    for (let s = 0; s < 20; s++) {
+      const sp = spline.getPointAt(s / 20);
+      const dx = x - sp.x;
+      const dz = z - sp.z;
+      if (dx * dx + dz * dz < 25 * 25) { // Must be > 25 units from any track point
+        tooClose = true;
+        break;
+      }
+    }
+    if (tooClose) {
+      // Push building further out
+      x = p.x + rx * (offset + 40) * side;
+      z = p.z + rz * (offset + 40) * side;
+    }
 
     _m.makeScale(w, h, d);
     _m.setPosition(x, p.y + h / 2, z);
