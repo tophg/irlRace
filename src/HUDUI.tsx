@@ -94,6 +94,15 @@ export const RacingHUD = () => {
         <div class={`dmg-zone dmg-left ${getDamageClass(damageState().left)}`} />
         <div class={`dmg-zone dmg-right ${getDamageClass(damageState().right)}`} />
         <div class="dmg-body" />
+        {damageState().front < 30 && (
+          <div class="dmg-warning" style="animation: dmg-flash 0.5s infinite alternate">⚠ ENGINE</div>
+        )}
+        {damageState().rear < 30 && (
+          <div class="dmg-warning" style="animation: dmg-flash 0.5s infinite alternate">⚠ BRAKES</div>
+        )}
+        {(damageState().left < 30 || damageState().right < 30) && (
+          <div class="dmg-warning" style="animation: dmg-flash 0.5s infinite alternate">⚠ HANDLING</div>
+        )}
       </div>
 
       <div class="hud-gap" id="hud-gap" innerHTML={`${gapInfo().ahead}<br/>${gapInfo().behind}`} />

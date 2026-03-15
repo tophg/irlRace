@@ -296,7 +296,7 @@ export class Vehicle {
     this.bodyGroup.add(hlR);
 
     // SpotLights aimed forward + downward to project headlight beams onto the road
-    const hlSpotL = new THREE.SpotLight(0xffeedd, 8, 25, Math.PI / 5, 0.8, 2);
+    const hlSpotL = new THREE.SpotLight(0xffeedd, 3.5, 20, Math.PI / 5, 0.8, 2);
     hlSpotL.position.set(-halfW, lightY, frontZ);
     const targetL = new THREE.Object3D();
     targetL.position.set(-halfW * 0.5, lightY - 1, frontZ + 12);
@@ -304,7 +304,7 @@ export class Vehicle {
     hlSpotL.target = targetL;
     this.bodyGroup.add(hlSpotL);
 
-    const hlSpotR = new THREE.SpotLight(0xffeedd, 8, 25, Math.PI / 5, 0.8, 2);
+    const hlSpotR = new THREE.SpotLight(0xffeedd, 3.5, 20, Math.PI / 5, 0.8, 2);
     hlSpotR.position.set(halfW, lightY, frontZ);
     const targetR = new THREE.Object3D();
     targetR.position.set(halfW * 0.5, lightY - 1, frontZ + 12);
@@ -387,19 +387,30 @@ export class Vehicle {
     const absSpeed = Math.abs(vForward);
     const speedRatio = Math.min(absSpeed / def.maxSpeed, 1);
 
-    // ── Damage penalties ──
+    // ── Damage penalties (realistic mechanical degradation) ──
     const dmg = this.damage;
-    const accelMult  = 1 - (1 - dmg.front.hp / 100) * 0.4;
-    const maxSpdMult = 1 - (1 - dmg.rear.hp / 100) * 0.2;
-    const steerBias  = ((1 - dmg.right.hp / 100) - (1 - dmg.left.hp / 100)) * 0.15;
-    const severeAny  = Math.min(dmg.front.hp, dmg.rear.hp, dmg.left.hp, dmg.right.hp) < 30;
-    const globalMult = severeAny ? 0.5 : 1;
+    const fHP = dmg.front.hp / 100;  // 1=pristine, 0=destroyed
+    const rHP = dmg.rear.hp  / 100;
+    const lHP = dmg.left.hp  / 100;
+    const riHP = dmg.right.hp / 100;
+    const avgHP = (fHP + rHP + lHP + riHP) / 4;
+    // Engine/radiator damage (front) → acceleration + max speed
+    const accelMult  = 0.7 + 0.3 * fHP;           // 70-100%
+    const maxSpdMult = 0.6 + 0.4 * fHP;           // 60-100%
+    // Asymmetric side damage → steering pull toward damaged side
+    const steerBias  = (lHP - riHP) * 0.15;
+    // Suspension damage (sides) → handling degradation
+    const handlingMult = 0.5 + 0.5 * Math.min(lHP, riHP); // 50-100%
+    // Rear damage → braking degradation
+    const brakeMult  = 0.65 + 0.35 * rHP;          // 65-100%
+    // Overall structural damage → global penalty
+    const globalMult = 0.7 + 0.3 * avgHP;          // 70-100%
 
     // ── Longitudinal forces ──
     // Tyre forces (throttle/brake) — used for friction circle
     let tyreForce = 0;
     if (this.throttle > 0) tyreForce += def.acceleration * this.throttle * accelMult * globalMult;
-    if (this.brake > 0)    tyreForce -= def.braking * this.brake * (weather?.brakingScale ?? 1);
+    if (this.brake > 0)    tyreForce -= def.braking * this.brake * brakeMult * (weather?.brakingScale ?? 1);
     // Aero/rolling resistance added separately (not part of tyre budget)
     const weatherDrag = vForward * (weather?.rollingResistance ?? 0);
     const dragForce = vForward * Math.abs(vForward) * 0.002 + vForward * 0.8 + weatherDrag;
@@ -410,7 +421,7 @@ export class Vehicle {
     const vLatRear  = vLateral - this.angularVel * AXLE_REAR;
     const vFwdClamped = Math.max(absSpeed, 1.5);
 
-    const maxSteerAngle = 0.35 * getSettings().steerSensitivity * (weather?.steerResponseScale ?? 1);
+    const maxSteerAngle = 0.35 * getSettings().steerSensitivity * handlingMult * (weather?.steerResponseScale ?? 1);
     const steerAngle = (this.steer + steerBias) * maxSteerAngle / (1 + absSpeed * 0.025);
     const signFwd = vForward >= 0 ? 1 : -1;
 
@@ -637,7 +648,7 @@ export class Vehicle {
       this.angularVel = 0;
     }
 
-    // ── Barrier collision (hard clamp + velocity reflection) ──
+    // ── Multi-corner barrier collision (4-corner probes) ──
     this.lastBarrierImpact = null; // Clear each frame
     if (spline) {
       if (!nearestSpline) {
@@ -645,47 +656,84 @@ export class Vehicle {
           ? getClosestSplinePoint(spline, this.group.position, bvh)
           : getClosestSplinePoint(spline, this.group.position, 200);
       }
-      const roadHalfWidth = 7;
-      // XZ-only distance so road banking doesn't false-trigger
-      _temp.set(
-        this.group.position.x - nearestSpline.point.x,
-        0,
-        this.group.position.z - nearestSpline.point.z,
-      );
-      const xzDist = _temp.length();
-      if (xzDist > roadHalfWidth) {
-        // Barrier normal (pointing inward toward road center)
-        _temp.normalize();
-        const normalX = -_temp.x;
-        const normalZ = -_temp.z;
+      const roadHalfWidth = 6.5; // Tighter — accounts for barrier wall thickness
 
+      // Vehicle corner offsets in local space
+      const cornerOffsets = [
+        { lx: -0.85, lz: -1.5, zone: 'front' as const },  // Front-Left
+        { lx:  0.85, lz: -1.5, zone: 'front' as const },  // Front-Right
+        { lx: -0.85, lz:  1.3, zone: 'rear'  as const },  // Rear-Left
+        { lx:  0.85, lz:  1.3, zone: 'rear'  as const },  // Rear-Right
+      ];
+
+      let worstOvershoot = 0;
+      let worstNormalX = 0;
+      let worstNormalZ = 0;
+      let worstCornerX = 0;
+      let worstCornerZ = 0;
+      let worstZone: 'front' | 'rear' = 'front';
+      let worstSide: 'left' | 'right' = 'left';
+
+      for (const corner of cornerOffsets) {
+        // Transform local offset to world space using heading
+        const worldX = this.group.position.x + cosH * corner.lx + sinH * corner.lz;
+        const worldZ = this.group.position.z - sinH * corner.lx + cosH * corner.lz;
+
+        // Find nearest spline point for this corner
+        _temp.set(worldX, this.group.position.y, worldZ);
+        const cornerNearest = bvh
+          ? getClosestSplinePoint(spline, _temp, bvh)
+          : getClosestSplinePoint(spline, _temp, 200);
+
+        // XZ-only distance
+        const dx = worldX - cornerNearest.point.x;
+        const dz = worldZ - cornerNearest.point.z;
+        const xzDist = Math.sqrt(dx * dx + dz * dz);
+
+        if (xzDist > roadHalfWidth) {
+          const overshoot = xzDist - roadHalfWidth;
+          if (overshoot > worstOvershoot) {
+            worstOvershoot = overshoot;
+            const invLen = 1 / xzDist;
+            worstNormalX = -dx * invLen; // inward
+            worstNormalZ = -dz * invLen;
+            worstCornerX = worldX;
+            worstCornerZ = worldZ;
+            worstZone = corner.zone;
+            worstSide = corner.lx < 0 ? 'left' : 'right';
+          }
+        }
+      }
+
+      if (worstOvershoot > 0) {
         // How fast the car is approaching the barrier
-        const approachSpeed = -(this._velX * normalX + this._velZ * normalZ);
+        const approachSpeed = -(this._velX * worstNormalX + this._velZ * worstNormalZ);
 
-        // Hard clamp: snap car back to road edge
-        const overshoot = xzDist - roadHalfWidth;
-        this.group.position.x += normalX * (overshoot + 0.05);
-        this.group.position.z += normalZ * (overshoot + 0.05);
+        // Hard clamp: snap car back to road edge (push entire car)
+        this.group.position.x += worstNormalX * (worstOvershoot + 0.05);
+        this.group.position.z += worstNormalZ * (worstOvershoot + 0.05);
 
         if (approachSpeed > 0) {
           // Reflect velocity off barrier normal with restitution
           const restitution = 0.3;
           const impulse = approachSpeed * (1 + restitution);
-          this._velX += normalX * impulse;
-          this._velZ += normalZ * impulse;
+          this._velX += worstNormalX * impulse;
+          this._velZ += worstNormalZ * impulse;
 
           // Friction along the barrier wall (scraping)
-          const tangentX = -normalZ;
-          const tangentZ = normalX;
+          const tangentX = -worstNormalZ;
+          const tangentZ = worstNormalX;
           const tangentSpeed = this._velX * tangentX + this._velZ * tangentZ;
           const frictionLoss = Math.min(Math.abs(tangentSpeed) * 0.15, Math.abs(approachSpeed) * 0.5);
           this._velX -= tangentX * frictionLoss * Math.sign(tangentSpeed);
           this._velZ -= tangentZ * frictionLoss * Math.sign(tangentSpeed);
 
-          // Angular velocity kick (spin on impact)
-          this.angularVel += (Math.random() - 0.5) * approachSpeed * 0.02;
+          // Angular velocity kick — corner-specific spin direction
+          const cornerLeverage = worstZone === 'front' ? 1 : -1;
+          const sideLeverage = worstSide === 'left' ? -1 : 1;
+          this.angularVel += cornerLeverage * sideLeverage * approachSpeed * 0.015;
         } else {
-          // Sliding along barrier — gentle push + friction
+          // Sliding along barrier — gentle friction
           this._velX *= 0.95;
           this._velZ *= 0.95;
         }
@@ -695,10 +743,10 @@ export class Vehicle {
         if (impactForce > 2) {
           this.lastBarrierImpact = {
             force: impactForce,
-            posX: this.group.position.x - normalX * 0.5,
+            posX: worstCornerX,
             posY: this.group.position.y + 0.5,
-            posZ: this.group.position.z - normalZ * 0.5,
-            normalX, normalZ,
+            posZ: worstCornerZ,
+            normalX: worstNormalX, normalZ: worstNormalZ,
           };
         }
       }
@@ -986,16 +1034,22 @@ export class Vehicle {
 
   /** Displace mesh vertices near the impact for visual crumple.
    * Permanent CPU-side deformation — vertices are moved and never restored.
-   * Uses quadratic falloff from impact point with randomized noise for
-   * realistic crumple patterns.
+   * Uses quadratic falloff with directional asymmetry and inward crush bias
+   * for realistic crumple patterns.
    */
   private deformMesh(impactDir: THREE.Vector3, force: number) {
     if (!this.model) return;
 
-    const radius = 2.5;
-    const strength = force * 0.01;
-    const maxDeformPerVertex = 0.8; // cap total displacement per vertex
+    // Force-scaled radius: bigger hits affect a larger area
+    const radius = Math.min(1.5 + force * 0.04, 3.5);
+    const strength = force * 0.012;
+    const maxDeformPerVertex = 1.2; // cap total displacement per vertex
     Vehicle._deformWorldImpact.copy(this.group.position).addScaledVector(impactDir, 2.5);
+
+    // Determine dominant impact axis for directional asymmetry
+    const absImpX = Math.abs(impactDir.x);
+    const absImpZ = Math.abs(impactDir.z);
+    const isFrontal = absImpZ > absImpX; // front/rear vs side hit
 
     this.model.traverse((child) => {
       if (!(child as THREE.Mesh).isMesh) return;
@@ -1022,13 +1076,23 @@ export class Vehicle {
         if (dist < radius) {
           const falloff = (1 - dist / radius) * (1 - dist / radius);
           const deform = Math.min(strength * falloff, maxDeformPerVertex);
+
+          // Directional asymmetry: frontal hits compress Z more, side hits compress X more
+          const xScale = isFrontal ? 0.25 : 0.6;
+          const zScale = isFrontal ? 0.6 : 0.25;
+
+          // Inward crush bias: vertices push toward car center (0,0,0 in local space)
+          const crushX = -positions[idx] * deform * 0.15;
+          const crushZ = -positions[idx + 2] * deform * 0.15;
+
           // Asymmetric noise for natural crumple
-          const nx = (Math.random() - 0.5) * deform * 0.4;
-          const ny = (Math.random() - 0.3) * deform * 0.25; // slightly downward bias
-          const nz = (Math.random() - 0.5) * deform * 0.4;
-          positions[idx]     += localDir.x * deform + nx;
-          positions[idx + 1] += localDir.y * deform + ny;
-          positions[idx + 2] += localDir.z * deform + nz;
+          const nx = (Math.random() - 0.5) * deform * 0.35;
+          const ny = (Math.random() - 0.3) * deform * 0.2; // slightly downward bias
+          const nz = (Math.random() - 0.5) * deform * 0.35;
+
+          positions[idx]     += localDir.x * deform * xScale + crushX + nx;
+          positions[idx + 1] += localDir.y * deform * 0.3 + ny;
+          positions[idx + 2] += localDir.z * deform * zScale + crushZ + nz;
           changed = true;
         }
       }
@@ -1040,3 +1104,4 @@ export class Vehicle {
     });
   }
 }
+

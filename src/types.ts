@@ -70,6 +70,7 @@ export const CAR_ROSTER: CarDef[] = [
 export interface DamageZone {
   hp: number;           // 0–100, 100 = pristine
   deformAmount: number; // accumulated deformation magnitude
+  glassBroken: boolean; // headlight/glass particles already emitted
 }
 
 export interface DamageState {
@@ -81,10 +82,10 @@ export interface DamageState {
 
 export function createDamageState(): DamageState {
   return {
-    front: { hp: 100, deformAmount: 0 },
-    rear:  { hp: 100, deformAmount: 0 },
-    left:  { hp: 100, deformAmount: 0 },
-    right: { hp: 100, deformAmount: 0 },
+    front: { hp: 100, deformAmount: 0, glassBroken: false },
+    rear:  { hp: 100, deformAmount: 0, glassBroken: false },
+    left:  { hp: 100, deformAmount: 0, glassBroken: false },
+    right: { hp: 100, deformAmount: 0, glassBroken: false },
   };
 }
 

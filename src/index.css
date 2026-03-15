@@ -557,6 +557,20 @@ canvas { display: block; }
 .dmg-rear  { bottom: 2px; left: 12px; width: 16px; height: 8px; border-radius: 2px 2px 4px 4px; }
 .dmg-left  { top: 16px; left: 2px; width: 6px; height: 32px; }
 .dmg-right { top: 16px; right: 2px; width: 6px; height: 32px; }
+.dmg-warning {
+  position: relative;
+  font-size: 9px;
+  font-weight: bold;
+  color: #ff4444;
+  text-align: center;
+  white-space: nowrap;
+  text-shadow: 0 0 4px rgba(255, 0, 0, 0.6);
+  margin-top: 1px;
+}
+@keyframes dmg-flash {
+  from { opacity: 1; }
+  to { opacity: 0.3; }
+}
 
 /* ── Settings Menu ── */
 .settings-overlay {

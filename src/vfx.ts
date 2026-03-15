@@ -2208,6 +2208,150 @@ export function updateVictoryConfetti(dt: number) {
   }
 }
 
+// ── Glass Shard Burst VFX ──
+interface GlassShard {
+  mesh: THREE.Mesh;
+  vx: number; vy: number; vz: number;
+  life: number;
+}
+const glassShards: GlassShard[] = [];
+let _glassScene: THREE.Scene | null = null;
+const _glassGeo = new THREE.PlaneGeometry(0.08, 0.08);
+const _glassMat = new THREE.MeshStandardMaterial({
+  color: 0xaaddff,
+  transparent: true,
+  opacity: 0.6,
+  side: THREE.DoubleSide,
+  roughness: 0.1,
+  metalness: 0.8,
+});
+
+export function triggerGlassShardBurst(scene: THREE.Scene, x: number, y: number, z: number) {
+  _glassScene = scene;
+  const SHARD_COUNT = 10;
+  for (let i = 0; i < SHARD_COUNT; i++) {
+    const mesh = new THREE.Mesh(_glassGeo, _glassMat.clone());
+    mesh.position.set(x, y, z);
+    mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+    mesh.scale.setScalar(0.5 + Math.random() * 1.5);
+    scene.add(mesh);
+    glassShards.push({
+      mesh,
+      vx: (Math.random() - 0.5) * 6,
+      vy: 2 + Math.random() * 4,
+      vz: (Math.random() - 0.5) * 6,
+      life: 1.5,
+    });
+  }
+}
+
+export function updateGlassShards(dt: number) {
+  for (let i = glassShards.length - 1; i >= 0; i--) {
+    const s = glassShards[i];
+    s.life -= dt;
+    if (s.life <= 0) {
+      if (_glassScene) _glassScene.remove(s.mesh);
+      s.mesh.geometry.dispose();
+      (s.mesh.material as THREE.Material).dispose();
+      glassShards.splice(i, 1);
+      continue;
+    }
+    s.vy -= 9.8 * dt; // gravity
+    s.mesh.position.x += s.vx * dt;
+    s.mesh.position.y += s.vy * dt;
+    s.mesh.position.z += s.vz * dt;
+    s.mesh.rotation.x += dt * 5;
+    s.mesh.rotation.z += dt * 3;
+    (s.mesh.material as THREE.MeshStandardMaterial).opacity = Math.min(0.6, s.life / 0.5);
+  }
+}
+
+// ── Engine Smoke VFX ──
+interface EngineSmokeParticle {
+  mesh: THREE.Mesh;
+  vx: number; vy: number; vz: number;
+  life: number;
+  maxLife: number;
+}
+const engineSmokeParticles: EngineSmokeParticle[] = [];
+let _smokeEngScene: THREE.Scene | null = null;
+const _smokeEngGeo = new THREE.PlaneGeometry(0.5, 0.5);
+const _smokeEngMat = new THREE.MeshStandardMaterial({
+  color: 0xcccccc,
+  transparent: true,
+  opacity: 0.2,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
+const SMOKE_POOL_MAX = 30;
+
+export function updateEngineSmoke(
+  scene: THREE.Scene,
+  dt: number,
+  frontHP: number,
+  carX: number, carY: number, carZ: number,
+  heading: number,
+) {
+  _smokeEngScene = scene;
+
+  // Emit new smoke if front HP < 30%
+  if (frontHP < 30 && engineSmokeParticles.length < SMOKE_POOL_MAX) {
+    const severity = 1 - frontHP / 30; // 0 at 30%, 1 at 0%
+    // Emit 1-3 particles per frame based on severity
+    const emitCount = Math.min(1 + Math.floor(severity * 2), 3);
+    const sinH = Math.sin(heading);
+    const cosH = Math.cos(heading);
+    // Hood position: slightly forward and up from CG
+    const hoodX = carX + sinH * (-1.0);
+    const hoodZ = carZ + cosH * (-1.0);
+    const hoodY = carY + 1.2;
+
+    for (let e = 0; e < emitCount; e++) {
+      const mesh = new THREE.Mesh(_smokeEngGeo, _smokeEngMat.clone());
+      mesh.position.set(
+        hoodX + (Math.random() - 0.5) * 0.4,
+        hoodY,
+        hoodZ + (Math.random() - 0.5) * 0.4,
+      );
+      mesh.rotation.z = Math.random() * Math.PI;
+      scene.add(mesh);
+      const maxLife = 1.0 + Math.random() * 0.8;
+      engineSmokeParticles.push({
+        mesh,
+        vx: (Math.random() - 0.5) * 0.8,
+        vy: 2 + Math.random() * 2,
+        vz: (Math.random() - 0.5) * 0.8,
+        life: maxLife,
+        maxLife,
+      });
+    }
+  }
+
+  // Update existing smoke
+  for (let i = engineSmokeParticles.length - 1; i >= 0; i--) {
+    const p = engineSmokeParticles[i];
+    p.life -= dt;
+    if (p.life <= 0) {
+      if (_smokeEngScene) _smokeEngScene.remove(p.mesh);
+      (p.mesh.material as THREE.Material).dispose();
+      engineSmokeParticles.splice(i, 1);
+      continue;
+    }
+    p.mesh.position.x += p.vx * dt;
+    p.mesh.position.y += p.vy * dt;
+    p.mesh.position.z += p.vz * dt;
+    // Grow over lifetime
+    const age = 1 - p.life / p.maxLife;
+    p.mesh.scale.setScalar(0.3 + age * 1.5);
+    // Fade out
+    const mat = p.mesh.material as THREE.MeshStandardMaterial;
+    mat.opacity = (1 - age) * 0.25;
+    // Grey-shift over time (white → dark grey)
+    const grey = 0.8 - age * 0.4;
+    mat.color.setRGB(grey, grey, grey);
+  }
+}
+
 /** Remove all VFX objects from the scene and DOM. Call between races. */
 export function destroyVFX() {
   const sceneRef = smokeScene;

@@ -44,6 +44,8 @@ import {
   initLightning, setLightningEnabled, updateLightning,
   initNearMissStreaks, triggerNearMiss, updateNearMissStreaks,
   initVictoryConfetti, spawnVictoryConfetti, updateVictoryConfetti,
+  triggerGlassShardBurst, updateGlassShards,
+  updateEngineSmoke,
 } from './vfx';
 import {
   initGPUParticles, updateGPUParticles, destroyGPUParticles,
@@ -260,7 +262,7 @@ async function startRace() {
   G.raceStarting = true;
 
   try {
-    G.gameState = GameState.COUNTDOWN;
+    // State stays at TITLE during loading — prevents physics from running on incomplete track
     showLoading();
 
     clearRaceObjects();
@@ -389,6 +391,8 @@ async function startRace() {
     showTouchControls(true);
     initAudio();
     hideLoading();
+    // NOW enter COUNTDOWN — track is fully built, all assets loaded
+    G.gameState = GameState.COUNTDOWN;
 
     // ── Synchronized start (multiplayer ready barrier) ──
     if (G.netPeer) {
@@ -1098,6 +1102,16 @@ function stepPhysics(dt: number, s: GameState) {
     G.playerVehicle.applyDamage(G._impactDir, b.force * 0.7);
     G.raceStats.collisionCount++;
     playCollisionSFX(Math.min(b.force / 25, 1));
+
+    // Glass shard burst: trigger when any zone drops below 40% HP for the first time
+    const zones: Array<'front' | 'rear' | 'left' | 'right'> = ['front', 'rear', 'left', 'right'];
+    for (const zone of zones) {
+      const z = G.playerVehicle.damage[zone];
+      if (z.hp < 40 && !z.glassBroken) {
+        z.glassBroken = true;
+        triggerGlassShardBurst(getScene(), b.posX, b.posY, b.posZ);
+      }
+    }
   }
   // AI barrier hits (sparks only, no camera shake)
   for (const ai of G.aiRacers) {
@@ -1106,6 +1120,18 @@ function stepPhysics(dt: number, s: GameState) {
       G._sparkPos.set(b.posX, b.posY, b.posZ);
       spawnCollisionSparks(G._sparkPos, b.force * 0.5);
     }
+  }
+
+  // Update glass shards (always, even when no new burst)
+  updateGlassShards(dt);
+
+  // Engine smoke (continuous when front damaged)
+  if (G.playerVehicle) {
+    const p = G.playerVehicle.group.position;
+    updateEngineSmoke(
+      getScene(), dt, G.playerVehicle.damage.front.hp,
+      p.x, p.y, p.z, G.playerVehicle.heading,
+    );
   }
 }
 
