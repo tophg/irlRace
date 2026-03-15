@@ -928,6 +928,191 @@ export function spawnTireBlowout(pos: THREE.Vector3) {
   }
 }
 
+// ── Rain Screen Droplets (canvas overlay with sliding water drops) ──
+
+let rainDropCanvas: HTMLCanvasElement | null = null;
+let rainDropCtx: CanvasRenderingContext2D | null = null;
+let rainDropResizeHandler: (() => void) | null = null;
+
+interface ScreenDroplet {
+  x: number; y: number;
+  speed: number;
+  size: number;
+  opacity: number;
+  streak: number; // tail length
+}
+const screenDroplets: ScreenDroplet[] = [];
+let rainDropActive = false;
+
+export function initRainDroplets(container: HTMLElement) {
+  rainDropCanvas = document.createElement('canvas');
+  rainDropCanvas.style.cssText = `
+    position:fixed;top:0;left:0;width:100%;height:100%;
+    pointer-events:none;z-index:11;opacity:0;
+  `;
+  rainDropCanvas.width = window.innerWidth;
+  rainDropCanvas.height = window.innerHeight;
+  container.appendChild(rainDropCanvas);
+  rainDropCtx = rainDropCanvas.getContext('2d')!;
+  screenDroplets.length = 0;
+  rainDropActive = false;
+
+  rainDropResizeHandler = () => {
+    if (rainDropCanvas) {
+      rainDropCanvas.width = window.innerWidth;
+      rainDropCanvas.height = window.innerHeight;
+    }
+  };
+  window.addEventListener('resize', rainDropResizeHandler);
+}
+
+/**
+ * Update rain screen droplets. Call every frame during rain.
+ * @param intensity 0 = no rain, 0.3 = light, 0.5 = heavy
+ * @param dt frame delta in seconds
+ */
+export function updateRainDroplets(intensity: number, dt: number) {
+  if (!rainDropCanvas || !rainDropCtx) return;
+
+  if (intensity <= 0) {
+    rainDropCanvas.style.opacity = '0';
+    rainDropActive = false;
+    screenDroplets.length = 0;
+    return;
+  }
+
+  rainDropActive = true;
+  rainDropCanvas.style.opacity = Math.min(intensity * 1.5, 0.7).toString();
+
+  const ctx = rainDropCtx;
+  const w = rainDropCanvas.width;
+  const h = rainDropCanvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  // Spawn new droplets
+  const spawnRate = intensity * 8; // drops per frame
+  for (let i = 0; i < spawnRate; i++) {
+    if (screenDroplets.length >= 80) break;
+    screenDroplets.push({
+      x: Math.random() * w,
+      y: -10 - Math.random() * 30,
+      speed: 150 + Math.random() * 250,
+      size: 1.5 + Math.random() * 3,
+      opacity: 0.3 + Math.random() * 0.5,
+      streak: 8 + Math.random() * 20,
+    });
+  }
+
+  // Update and draw droplets
+  let j = 0;
+  while (j < screenDroplets.length) {
+    const d = screenDroplets[j];
+    d.y += d.speed * dt;
+
+    // Slight horizontal wobble
+    d.x += (Math.random() - 0.5) * 0.5;
+
+    if (d.y > h + 20) {
+      screenDroplets[j] = screenDroplets[screenDroplets.length - 1];
+      screenDroplets.pop();
+      continue;
+    }
+
+    // Draw droplet body (circular highlight)
+    ctx.beginPath();
+    ctx.ellipse(d.x, d.y, d.size * 0.6, d.size, 0, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(180, 210, 255, ${d.opacity * 0.6})`;
+    ctx.fill();
+
+    // Draw streak (water trail behind droplet)
+    const grad = ctx.createLinearGradient(d.x, d.y - d.streak, d.x, d.y);
+    grad.addColorStop(0, `rgba(180, 210, 255, 0)`);
+    grad.addColorStop(1, `rgba(180, 210, 255, ${d.opacity * 0.3})`);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = d.size * 0.4;
+    ctx.beginPath();
+    ctx.moveTo(d.x, d.y - d.streak);
+    ctx.lineTo(d.x, d.y);
+    ctx.stroke();
+
+    // Highlight dot (refraction point)
+    ctx.beginPath();
+    ctx.arc(d.x - d.size * 0.2, d.y - d.size * 0.2, d.size * 0.2, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 255, 255, ${d.opacity * 0.5})`;
+    ctx.fill();
+
+    j++;
+  }
+}
+
+// ── Impact Flash Overlay (full-screen white flash on heavy collisions) ──
+
+let impactFlashDiv: HTMLDivElement | null = null;
+let impactFlashIntensity = 0;
+
+export function initImpactFlash(container: HTMLElement) {
+  impactFlashDiv = document.createElement('div');
+  impactFlashDiv.style.cssText = `
+    position:fixed;top:0;left:0;width:100%;height:100%;
+    pointer-events:none;z-index:13;
+    background:white;opacity:0;
+    transition:opacity 0.05s ease-out;
+  `;
+  container.appendChild(impactFlashDiv);
+  impactFlashIntensity = 0;
+}
+
+/**
+ * Trigger a screen flash on heavy impact.
+ * @param force — impact force (0..1)
+ */
+export function triggerImpactFlash(force: number) {
+  if (!impactFlashDiv || force < 0.3) return;
+  impactFlashIntensity = Math.min(force, 0.8);
+  impactFlashDiv.style.opacity = impactFlashIntensity.toString();
+}
+
+/** Call each frame to decay the flash. */
+export function updateImpactFlash(dt: number) {
+  if (!impactFlashDiv || impactFlashIntensity <= 0) return;
+  impactFlashIntensity *= Math.exp(-15 * dt); // fast exponential decay
+  if (impactFlashIntensity < 0.01) impactFlashIntensity = 0;
+  impactFlashDiv.style.opacity = impactFlashIntensity.toString();
+}
+
+// ── Neon Underglow (colored PointLight under car body) ──
+
+const UNDERGLOW_COLORS = [
+  0x00aaff, // Blue
+  0xff00aa, // Pink
+  0x00ffaa, // Cyan-green
+  0xff6600, // Orange
+  0xaa00ff, // Purple
+  0xff0044, // Red
+];
+
+export function createUnderglow(carGroup: THREE.Group, colorIndex: number): THREE.PointLight {
+  const color = UNDERGLOW_COLORS[colorIndex % UNDERGLOW_COLORS.length];
+  const light = new THREE.PointLight(color, 2.5, 8, 2);
+  light.position.set(0, -0.3, 0); // Under the car body
+  carGroup.add(light);
+  return light;
+}
+
+/**
+ * Update underglow pulsing effect.
+ * @param light — the PointLight from createUnderglow
+ * @param speed — current car speed (for intensity variation)
+ * @param time — current timestamp in seconds
+ */
+export function updateUnderglow(light: THREE.PointLight, speed: number, time: number) {
+  // Pulse intensity based on speed + gentle sine wave
+  const speedFactor = Math.min(Math.abs(speed) / 40, 1);
+  const pulse = 0.7 + Math.sin(time * 3) * 0.15 + Math.sin(time * 7.3) * 0.08;
+  light.intensity = (1.5 + speedFactor * 2.0) * pulse;
+  light.distance = 6 + speedFactor * 4;
+}
+
 /** Remove all VFX objects from the scene and DOM. Call between races. */
 export function destroyVFX() {
   const sceneRef = smokeScene;
@@ -992,5 +1177,25 @@ export function destroyVFX() {
     crackCanvas.remove();
     crackCanvas = null;
     crackCtx = null;
+  }
+
+  // Remove rain droplets overlay
+  screenDroplets.length = 0;
+  rainDropActive = false;
+  if (rainDropResizeHandler) {
+    window.removeEventListener('resize', rainDropResizeHandler);
+    rainDropResizeHandler = null;
+  }
+  if (rainDropCanvas) {
+    rainDropCanvas.remove();
+    rainDropCanvas = null;
+    rainDropCtx = null;
+  }
+
+  // Remove impact flash
+  impactFlashIntensity = 0;
+  if (impactFlashDiv) {
+    impactFlashDiv.remove();
+    impactFlashDiv = null;
   }
 }

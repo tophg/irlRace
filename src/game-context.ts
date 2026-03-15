@@ -93,6 +93,7 @@ export const G = {
   _flamePos: new THREE.Vector3(),
   _leftTireBlown: false,
   _rightTireBlown: false,
+  _playerUnderglow: null as any,
   remotePrevPos: new Map<string, { x: number; z: number }>(),
 
   // ── Replay ──

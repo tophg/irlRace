@@ -29,6 +29,9 @@ import {
   spawnDebris, spawnScrapeSparks, spawnDamageZoneSmoke,
   initWindshieldCracks, updateWindshieldCracks, resetWindshieldCracks,
   spawnTireBlowout,
+  initRainDroplets, updateRainDroplets,
+  initImpactFlash, triggerImpactFlash, updateImpactFlash,
+  createUnderglow, updateUnderglow,
 } from './vfx';
 import {
   initGPUParticles, updateGPUParticles, destroyGPUParticles,
@@ -277,6 +280,7 @@ async function startRace() {
     scene.add(G.playerVehicle.group);
     G.playerVehicle.setRoadMesh(G.trackData.roadMesh);
     G.playerVehicle.placeOnTrack(G.trackData.spline, 0, -3.5);
+    G._playerUnderglow = createUnderglow(G.playerVehicle.group, 0);
     G.raceEngine.addRacer('local');
 
     G.vehicleCamera = new VehicleCamera(camera);
@@ -286,6 +290,8 @@ async function startRace() {
     initSpeedLines(container);
     initSkidMarks(scene);
     initWindshieldCracks(container);
+    initRainDroplets(container);
+    initImpactFlash(container);
     await initGPUParticles(renderer, scene);
 
     // Initialize post-processing pipeline (bloom, chromatic aberration, vignette)
@@ -409,6 +415,7 @@ async function spawnAI(td: TrackData) {
     ai.place(G.trackData!.spline, startTs[i] ?? 0.02, laneOffsets[i] ?? 0, G.trackData!.bvh);
     ai.setSpeedProfile(G.trackData!.speedProfile);
     scene.add(ai.vehicle.group);
+    createUnderglow(ai.vehicle.group, i + 1); // Different color per AI
     G.aiRacers.push(ai);
   }
 }
@@ -1050,6 +1057,7 @@ function stepPhysics(dt: number, s: GameState) {
     G.vehicleCamera?.shake(Math.min(b.force / 30, 0.8));
     flashDamage(b.force / 25);
     setImpactIntensity(b.force / 25);
+    triggerImpactFlash(b.force / 30);
     G._impactDir.set(b.normalX, 0, b.normalZ);
     G.playerVehicle.applyDamage(G._impactDir, b.force * 0.7);
     G.raceStats.collisionCount++;
@@ -1283,6 +1291,19 @@ function gameLoop(timestamp: number) {
     }
     updateGPUParticles(renderer, frameDt);
     updateWeather(frameDt, G.playerVehicle.group.position);
+
+    // Rain screen droplets (intensity from weather type)
+    const weatherType = getCurrentWeather();
+    const rainIntensity = weatherType === 'heavy_rain' ? 0.5 : weatherType === 'light_rain' ? 0.25 : 0;
+    updateRainDroplets(rainIntensity, frameDt);
+
+    // Impact flash decay
+    updateImpactFlash(frameDt);
+
+    // Neon underglow pulse
+    if (G._playerUnderglow) {
+      updateUnderglow(G._playerUnderglow, G.playerVehicle.speed, timestamp / 1000);
+    }
     updateBoostFlame(s === GameState.RACING && G.playerVehicle.isNitroActive, G.playerVehicle.group.position, G.playerVehicle.heading, timestamp / 1000);
     const speedRatioForLines = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
     if (speedRatioForLines > 0.65) updateSpeedLines(speedRatioForLines);
