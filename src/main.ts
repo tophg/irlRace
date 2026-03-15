@@ -1226,7 +1226,7 @@ function gameLoop(timestamp: number) {
     // Update AI race progress (rendering-rate is fine for rankings)
     if (s === GameState.RACING) {
       for (const ai of G.aiRacers) {
-        G.raceEngine?.updateRacer(ai.id, ai.vehicle.group.position, ai.getCurrentT());
+        G.raceEngine?.updateRacer(ai.id, ai.vehicle.group.position, ai.getCurrentT(), ai.vehicle.heading);
       }
     }
 
@@ -1560,7 +1560,7 @@ function gameLoop(timestamp: number) {
     // Checkpoint detection (local player)
     if (s === GameState.RACING && G.raceEngine) {
       const localT = getClosestSplinePoint(G.trackData.spline, G.playerVehicle.group.position, G.trackData.bvh).t;
-      const event = G.raceEngine.updateRacer('local', G.playerVehicle.group.position, localT);
+      const event = G.raceEngine.updateRacer('local', G.playerVehicle.group.position, localT, G.playerVehicle.heading);
       const progress = G.raceEngine.getProgress('local');
 
       if (event === 'checkpoint') {

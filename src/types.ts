@@ -93,6 +93,7 @@ export interface Checkpoint {
   position: THREE.Vector3;
   tangent: THREE.Vector3;   // forward direction at this CP
   index: number;
+  t: number;                // spline parameter (0–1)
 }
 
 export interface TrackData {
@@ -129,7 +130,8 @@ export interface RacerProgress {
   finished: boolean;
   finishTime: number;
   position: THREE.Vector3;
-  trackT: number;       // spline parameter 0–1 (distance along track)
+  trackT: number;       // fractional progress within current checkpoint segment (0–1)
+  prevT: number;        // previous frame's raw spline t (for wraparound detection)
   dnf?: boolean;
   lapTimes: number[];
   lastLapStart: number;

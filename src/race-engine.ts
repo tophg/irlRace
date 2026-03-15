@@ -9,8 +9,12 @@ export class RaceEngine {
 
   private racers = new Map<string, RacerProgress>();
   private raceStartTime = 0;
-  private cpThreshold = 18; // distance to trigger checkpoint
+  private cpThreshold = 12; // distance to trigger checkpoint (reduced from 18)
   private cpTimestamps = new Map<string, Map<number, number>>(); // id → (globalCpIndex → time)
+  private graceMs = 1500; // ignore checkpoint triggers for first 1.5s after race start
+
+  // Reusable vector for direction checks
+  private static _moveDir = new THREE.Vector3();
 
   constructor(checkpoints: Checkpoint[], totalLaps = 3) {
     this.checkpoints = checkpoints;
@@ -27,6 +31,7 @@ export class RaceEngine {
       finishTime: 0,
       position: new THREE.Vector3(),
       trackT: 0,
+      prevT: 0,
       lapTimes: [],
       lastLapStart: 0,
     });
@@ -38,35 +43,74 @@ export class RaceEngine {
     this.raceStartTime = performance.now();
   }
 
+  /**
+   * Compute fractional progress within the current checkpoint segment.
+   * Returns a value 0–1 representing how far between the current CP and the next CP
+   * the racer is, based on raw spline t.
+   */
+  private computeFractionalT(rawT: number, cpIndex: number): number {
+    const N = this.checkpoints.length;
+    const cpT = this.checkpoints[cpIndex]?.t ?? 0;
+    const nextCpT = this.checkpoints[(cpIndex + 1) % N]?.t ?? 1;
+
+    // Handle wrapping (e.g., last CP at t=0.95 → first CP at t=0.05)
+    let segLen = nextCpT - cpT;
+    if (segLen <= 0) segLen += 1; // wrap
+    let offset = rawT - cpT;
+    if (offset < -0.5) offset += 1; // wrap
+    if (offset > 0.5) offset -= 1; // wrap
+
+    return Math.max(0, Math.min(1, offset / segLen));
+  }
+
   /** Update a racer's position and check for checkpoint crossings.
-   *  Returns event string if a checkpoint/lap/finish was hit, null otherwise. */
+   *  Returns event string if a checkpoint/lap/finish was hit, null otherwise.
+   *  @param heading — racer's heading in radians (for directional validation)
+   */
   updateRacer(
     id: string,
     worldPos: THREE.Vector3,
-    trackT?: number,
+    rawT?: number,
+    heading?: number,
   ): 'checkpoint' | 'lap' | 'finish' | null {
     const racer = this.racers.get(id);
     if (!racer || racer.finished) return null;
 
     racer.position.copy(worldPos);
-    if (trackT !== undefined) racer.trackT = trackT;
+    const now = performance.now() - this.raceStartTime;
 
+    // Update fractional trackT for sub-checkpoint positioning
+    if (rawT !== undefined) {
+      racer.trackT = this.computeFractionalT(rawT, racer.checkpointIndex);
+      racer.prevT = rawT;
+    }
+
+    // Grace period: skip checkpoint detection for first 1.5s to prevent instant triggers
+    if (now < this.graceMs) return null;
+
+    // ── Checkpoint proximity detection ──
     const nextCP = this.checkpoints[racer.checkpointIndex];
     if (!nextCP) return null;
 
     const dist = worldPos.distanceTo(nextCP.position);
     if (dist > this.cpThreshold) return null;
 
+    // Directional check: racer must be moving forward through checkpoint
+    if (heading !== undefined) {
+      RaceEngine._moveDir.set(Math.sin(heading), 0, Math.cos(heading));
+      if (RaceEngine._moveDir.dot(nextCP.tangent) < -0.2) return null; // wrong direction
+    }
+
     // Checkpoint hit!
     racer.checkpointIndex++;
 
     // Record timestamp for this checkpoint (global index)
     const globalCpIndex = racer.lapIndex * this.checkpoints.length + racer.checkpointIndex - 1;
-    const now = performance.now() - this.raceStartTime;
     const timestamps = this.cpTimestamps.get(id);
     if (timestamps) timestamps.set(globalCpIndex, now);
 
     if (racer.checkpointIndex >= this.checkpoints.length) {
+      // All checkpoints passed — lap complete
       racer.checkpointIndex = 0;
       racer.lapIndex++;
 
@@ -103,9 +147,14 @@ export class RaceEngine {
     }
   }
 
-  /** Get sorted rankings (finished first by time, then in-progress by laps/cp/distance, DNF last). */
+  /**
+   * Get sorted rankings (finished first by time, then in-progress by continuous progress, DNF last).
+   * Uses continuous progress = lapIndex * N + checkpointIndex + fractionalT
+   * This eliminates the t-wraparound bug entirely.
+   */
   getRankings(): RacerProgress[] {
     const all = Array.from(this.racers.values());
+    const N = this.checkpoints.length;
 
     return all.sort((a, b) => {
       // DNF always last
@@ -117,11 +166,10 @@ export class RaceEngine {
       if (!a.finished && b.finished) return 1;
       if (a.finished && b.finished) return a.finishTime - b.finishTime;
 
-      // Primary sort: lap index (checkpoint-based, always reliable)
-      if (a.lapIndex !== b.lapIndex) return b.lapIndex - a.lapIndex;
-
-      // Within same lap: use raw trackT for continuous positioning
-      return b.trackT - a.trackT;
+      // Continuous progress: lap * N + checkpoint + fractional
+      const progA = a.lapIndex * N + a.checkpointIndex + a.trackT;
+      const progB = b.lapIndex * N + b.checkpointIndex + b.trackT;
+      return progB - progA;
     });
   }
 
@@ -129,8 +177,6 @@ export class RaceEngine {
   getProgress(id: string): RacerProgress | undefined {
     return this.racers.get(id);
   }
-
-  private static _moveDir = new THREE.Vector3();
 
   /** Check wrong-way by comparing velocity direction to spline tangent. */
   isWrongWay(heading: number, splineTangent: THREE.Vector3): boolean {

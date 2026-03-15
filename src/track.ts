@@ -55,14 +55,14 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   const shoulderMesh = buildShoulders(finalSpline);
   const kerbGroup = buildKerbs(finalSpline, curvatures);
 
-  // ── 8. Place checkpoints ──
+  // ── 8. Place checkpoints (offset by half-segment so none sits at t=0 start/finish) ──
   const numCheckpoints = 10;
   const checkpoints: Checkpoint[] = [];
   for (let i = 0; i < numCheckpoints; i++) {
-    const t = i / numCheckpoints;
+    const t = (i + 0.5) / numCheckpoints;
     const position = finalSpline.getPointAt(t);
     const tangent = finalSpline.getTangentAt(t).normalize();
-    checkpoints.push({ position, tangent, index: i });
+    checkpoints.push({ position, tangent, index: i, t });
   }
 
   // ── 9. Scenery ──
