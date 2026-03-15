@@ -311,6 +311,28 @@ export class Vehicle {
     hlSpotR.target = targetR;
     this.bodyGroup.add(hlSpotR);
 
+    // ── Volumetric headlight beam cones (visible light shafts) ──
+    const beamGeo = new THREE.ConeGeometry(3.5, 15, 12, 1, true);
+    const beamMat = new THREE.MeshBasicMaterial({
+      color: 0xffeedd,
+      transparent: true,
+      opacity: 0.04,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+
+    // Left beam
+    const beamL = new THREE.Mesh(beamGeo, beamMat);
+    beamL.rotation.x = -Math.PI / 2 - 0.15; // Aim forward + slightly down
+    beamL.position.set(-halfW, lightY - 0.5, frontZ + 7);
+    this.bodyGroup.add(beamL);
+
+    // Right beam
+    const beamR = new THREE.Mesh(beamGeo, beamMat.clone());
+    beamR.rotation.x = -Math.PI / 2 - 0.15;
+    beamR.position.set(halfW, lightY - 0.5, frontZ + 7);
+    this.bodyGroup.add(beamR);
+
     // ── Taillights (rear, red emissive, intensity boosts on brake) ──
     const taillightGeo = new THREE.BoxGeometry(0.25, 0.08, 0.06);
 

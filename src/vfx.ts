@@ -1113,6 +1113,205 @@ export function updateUnderglow(light: THREE.PointLight, speed: number, time: nu
   light.distance = 6 + speedFactor * 4;
 }
 
+// ── Nitro Exhaust Trail (stream of fire particles during boost) ──
+
+const NITRO_TRAIL_POOL = 30;
+interface NitroParticle {
+  mesh: THREE.Mesh;
+  vx: number; vy: number; vz: number;
+  life: number; maxLife: number;
+}
+let nitroTrailPool: THREE.Mesh[] = [];
+const activeNitroTrail: NitroParticle[] = [];
+let nitroTrailScene: THREE.Scene | null = null;
+
+export function initNitroTrail(scene: THREE.Scene) {
+  nitroTrailScene = scene;
+  const geo = new THREE.SphereGeometry(0.12, 6, 4);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xff6600,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false,
+  });
+  nitroTrailPool = [];
+  for (let i = 0; i < NITRO_TRAIL_POOL; i++) {
+    const m = new THREE.Mesh(geo, mat.clone());
+    m.visible = false;
+    scene.add(m);
+    nitroTrailPool.push(m);
+  }
+}
+
+let nitroTrailIdx = 0;
+
+/**
+ * Spawn nitro trail fire particles.
+ * Call every frame while nitro is active.
+ */
+export function spawnNitroTrail(
+  carPos: THREE.Vector3,
+  heading: number,
+  speed: number,
+) {
+  if (!nitroTrailScene || nitroTrailPool.length === 0) return;
+
+  // Spawn 2 particles per frame for a dense trail
+  for (let i = 0; i < 2; i++) {
+    const mesh = nitroTrailPool[nitroTrailIdx % NITRO_TRAIL_POOL];
+    nitroTrailIdx++;
+
+    // Position at exhaust pipe (behind car)
+    const sinH = Math.sin(heading);
+    const cosH = Math.cos(heading);
+    const spread = (Math.random() - 0.5) * 0.4;
+    mesh.position.set(
+      carPos.x - sinH * 2.4 + cosH * spread,
+      carPos.y + 0.4 + Math.random() * 0.2,
+      carPos.z - cosH * 2.4 - sinH * spread,
+    );
+    mesh.scale.setScalar(0.8 + Math.random() * 0.5);
+    mesh.visible = true;
+
+    const maxLife = 0.3 + Math.random() * 0.3;
+    activeNitroTrail.push({
+      mesh,
+      vx: -sinH * (-speed * 0.3) + (Math.random() - 0.5) * 2,
+      vy: 1.5 + Math.random() * 2,
+      vz: -cosH * (-speed * 0.3) + (Math.random() - 0.5) * 2,
+      life: maxLife,
+      maxLife,
+    });
+  }
+}
+
+export function updateNitroTrail(dt: number) {
+  let j = 0;
+  while (j < activeNitroTrail.length) {
+    const p = activeNitroTrail[j];
+    p.life -= dt;
+    if (p.life <= 0) {
+      p.mesh.visible = false;
+      activeNitroTrail[j] = activeNitroTrail[activeNitroTrail.length - 1];
+      activeNitroTrail.pop();
+      continue;
+    }
+
+    // Physics: drag + slight gravity
+    p.vx *= 0.95;
+    p.vy -= 3 * dt;
+    p.vz *= 0.95;
+    p.mesh.position.x += p.vx * dt;
+    p.mesh.position.y += p.vy * dt;
+    p.mesh.position.z += p.vz * dt;
+
+    // Scale down over lifetime
+    const t = p.life / p.maxLife;
+    p.mesh.scale.setScalar(t * 0.8);
+
+    // Color: orange → yellow → white over lifetime
+    const mat = p.mesh.material as THREE.MeshBasicMaterial;
+    mat.opacity = t * 0.9;
+    mat.color.setRGB(1, 0.3 + (1 - t) * 0.7, (1 - t) * 0.6);
+
+    j++;
+  }
+}
+
+// ── Continuous Rim Sparks (persistent sparking on blown tires) ──
+
+const RIM_SPARK_POOL = 20;
+interface RimSpark {
+  mesh: THREE.Mesh;
+  vx: number; vy: number; vz: number;
+  life: number;
+}
+let rimSparkPool: THREE.Mesh[] = [];
+const activeRimSparks: RimSpark[] = [];
+let rimSparkScene: THREE.Scene | null = null;
+
+export function initRimSparks(scene: THREE.Scene) {
+  rimSparkScene = scene;
+  const geo = new THREE.SphereGeometry(0.04, 4, 3);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xffaa44,
+    transparent: true,
+    opacity: 1.0,
+    depthWrite: false,
+  });
+  rimSparkPool = [];
+  for (let i = 0; i < RIM_SPARK_POOL; i++) {
+    const m = new THREE.Mesh(geo, mat.clone());
+    m.visible = false;
+    scene.add(m);
+    rimSparkPool.push(m);
+  }
+}
+
+let rimSparkIdx = 0;
+
+/**
+ * Spawn continuous rim sparks at a blown tire position.
+ * Call every frame for each blown tire while car is moving.
+ */
+export function spawnRimSparks(pos: THREE.Vector3, speed: number) {
+  if (!rimSparkScene || rimSparkPool.length === 0 || Math.abs(speed) < 3) return;
+
+  // Spawn 2-3 sparks per frame based on speed
+  const count = Math.abs(speed) > 15 ? 3 : 2;
+  for (let i = 0; i < count; i++) {
+    const mesh = rimSparkPool[rimSparkIdx % RIM_SPARK_POOL];
+    rimSparkIdx++;
+
+    mesh.position.copy(pos);
+    mesh.position.y += 0.1;
+    mesh.scale.setScalar(0.6 + Math.random() * 0.8);
+    mesh.visible = true;
+
+    activeRimSparks.push({
+      mesh,
+      vx: (Math.random() - 0.5) * 6,
+      vy: 1 + Math.random() * 4,
+      vz: (Math.random() - 0.5) * 6,
+      life: 0.15 + Math.random() * 0.2,
+    });
+  }
+}
+
+export function updateRimSparks(dt: number) {
+  let j = 0;
+  while (j < activeRimSparks.length) {
+    const s = activeRimSparks[j];
+    s.life -= dt;
+    if (s.life <= 0) {
+      s.mesh.visible = false;
+      activeRimSparks[j] = activeRimSparks[activeRimSparks.length - 1];
+      activeRimSparks.pop();
+      continue;
+    }
+
+    // Physics: gravity + bounce
+    s.vy -= 15 * dt;
+    s.mesh.position.x += s.vx * dt;
+    s.mesh.position.y += s.vy * dt;
+    s.mesh.position.z += s.vz * dt;
+
+    // Bounce off ground
+    if (s.mesh.position.y < 0.05) {
+      s.mesh.position.y = 0.05;
+      s.vy = Math.abs(s.vy) * 0.3;
+    }
+
+    const mat = s.mesh.material as THREE.MeshBasicMaterial;
+    const t = s.life / 0.35;
+    mat.opacity = t;
+    // Orange → red as sparks cool
+    mat.color.setRGB(1, 0.4 * t + 0.2, 0.1 * t);
+
+    j++;
+  }
+}
+
 /** Remove all VFX objects from the scene and DOM. Call between races. */
 export function destroyVFX() {
   const sceneRef = smokeScene;
@@ -1198,4 +1397,32 @@ export function destroyVFX() {
     impactFlashDiv.remove();
     impactFlashDiv = null;
   }
+
+  // Clear nitro trail
+  for (const p of activeNitroTrail) p.mesh.visible = false;
+  activeNitroTrail.length = 0;
+  if (nitroTrailScene) {
+    for (const m of nitroTrailPool) {
+      nitroTrailScene.remove(m);
+      m.geometry?.dispose();
+      (m.material as THREE.Material)?.dispose();
+    }
+  }
+  nitroTrailPool = [];
+  nitroTrailIdx = 0;
+  nitroTrailScene = null;
+
+  // Clear rim sparks
+  for (const s of activeRimSparks) s.mesh.visible = false;
+  activeRimSparks.length = 0;
+  if (rimSparkScene) {
+    for (const m of rimSparkPool) {
+      rimSparkScene.remove(m);
+      m.geometry?.dispose();
+      (m.material as THREE.Material)?.dispose();
+    }
+  }
+  rimSparkPool = [];
+  rimSparkIdx = 0;
+  rimSparkScene = null;
 }

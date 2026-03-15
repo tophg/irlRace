@@ -32,6 +32,8 @@ import {
   initRainDroplets, updateRainDroplets,
   initImpactFlash, triggerImpactFlash, updateImpactFlash,
   createUnderglow, updateUnderglow,
+  initNitroTrail, spawnNitroTrail, updateNitroTrail,
+  initRimSparks, spawnRimSparks, updateRimSparks,
 } from './vfx';
 import {
   initGPUParticles, updateGPUParticles, destroyGPUParticles,
@@ -292,6 +294,8 @@ async function startRace() {
     initWindshieldCracks(container);
     initRainDroplets(container);
     initImpactFlash(container);
+    initNitroTrail(scene);
+    initRimSparks(scene);
     await initGPUParticles(renderer, scene);
 
     // Initialize post-processing pipeline (bloom, chromatic aberration, vignette)
@@ -1305,6 +1309,38 @@ function gameLoop(timestamp: number) {
       updateUnderglow(G._playerUnderglow, G.playerVehicle.speed, timestamp / 1000);
     }
     updateBoostFlame(s === GameState.RACING && G.playerVehicle.isNitroActive, G.playerVehicle.group.position, G.playerVehicle.heading, timestamp / 1000);
+
+    // Nitro exhaust trail (fire particles during boost)
+    if (s === GameState.RACING && G.playerVehicle.isNitroActive) {
+      spawnNitroTrail(G.playerVehicle.group.position, G.playerVehicle.heading, G.playerVehicle.speed);
+    }
+    updateNitroTrail(frameDt);
+
+    // Continuous rim sparks on blown tires
+    if (G._leftTireBlown && Math.abs(G.playerVehicle.speed) > 3) {
+      const cosH = Math.cos(G.playerVehicle.heading);
+      const sinH = Math.sin(G.playerVehicle.heading);
+      const pos = G.playerVehicle.group.position;
+      G._sparkPos.set(
+        pos.x + cosH * (-1.0),
+        pos.y + 0.1,
+        pos.z - sinH * (-1.0),
+      );
+      spawnRimSparks(G._sparkPos, G.playerVehicle.speed);
+    }
+    if (G._rightTireBlown && Math.abs(G.playerVehicle.speed) > 3) {
+      const cosH = Math.cos(G.playerVehicle.heading);
+      const sinH = Math.sin(G.playerVehicle.heading);
+      const pos = G.playerVehicle.group.position;
+      G._sparkPos.set(
+        pos.x + cosH * 1.0,
+        pos.y + 0.1,
+        pos.z - sinH * 1.0,
+      );
+      spawnRimSparks(G._sparkPos, G.playerVehicle.speed);
+    }
+    updateRimSparks(frameDt);
+
     const speedRatioForLines = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
     if (speedRatioForLines > 0.65) updateSpeedLines(speedRatioForLines);
 
