@@ -995,6 +995,27 @@ function stepPhysics(dt: number, s: GameState) {
       playCollisionSFX(Math.min(evt.impactForce / 30, 1));
     }
   }
+
+  // ── Barrier collision effects ──
+  // Player barrier hit
+  if (G.playerVehicle?.lastBarrierImpact) {
+    const b = G.playerVehicle.lastBarrierImpact;
+    G._sparkPos.set(b.posX, b.posY, b.posZ);
+    spawnCollisionSparks(G._sparkPos, b.force);
+    G.vehicleCamera?.shake(Math.min(b.force / 30, 0.8));
+    G._impactDir.set(b.normalX, 0, b.normalZ);
+    G.playerVehicle.applyDamage(G._impactDir, b.force * 0.7);
+    G.raceStats.collisionCount++;
+    playCollisionSFX(Math.min(b.force / 25, 1));
+  }
+  // AI barrier hits (sparks only, no camera shake)
+  for (const ai of G.aiRacers) {
+    if (ai.vehicle.lastBarrierImpact) {
+      const b = ai.vehicle.lastBarrierImpact;
+      G._sparkPos.set(b.posX, b.posY, b.posZ);
+      spawnCollisionSparks(G._sparkPos, b.force * 0.5);
+    }
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

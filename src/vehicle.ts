@@ -43,6 +43,9 @@ export class Vehicle {
   nitro = 50;          // 0–100 nitro meter
   private _nitroActive = false; // actual nitro burn state (requires nitro > 0)
 
+  /** Barrier impact info — polled by main loop for sparks/shake. Cleared each frame. */
+  lastBarrierImpact: { force: number; posX: number; posY: number; posZ: number; normalX: number; normalZ: number } | null = null;
+
   // Internal velocity vector on XZ plane
   private _velX = 0;
   private _velZ = 0;
@@ -543,7 +546,8 @@ export class Vehicle {
       this._roadRoll *= (1 - decayFactor);
     }
 
-    // Soft barrier (uses spline centerline distance)
+    // ── Barrier collision (hard clamp + velocity reflection) ──
+    this.lastBarrierImpact = null; // Clear each frame
     if (spline) {
       if (!nearestSpline) {
         nearestSpline = bvh
@@ -551,7 +555,7 @@ export class Vehicle {
           : getClosestSplinePoint(spline, this.group.position, 200);
       }
       const roadHalfWidth = 7;
-      // Use XZ-only distance so road banking doesn't trigger the barrier
+      // XZ-only distance so road banking doesn't false-trigger
       _temp.set(
         this.group.position.x - nearestSpline.point.x,
         0,
@@ -559,12 +563,53 @@ export class Vehicle {
       );
       const xzDist = _temp.length();
       if (xzDist > roadHalfWidth) {
-        const pushStrength = (xzDist - roadHalfWidth) * 0.5;
+        // Barrier normal (pointing inward toward road center)
         _temp.normalize();
-        this.group.position.x -= _temp.x * pushStrength;
-        this.group.position.z -= _temp.z * pushStrength;
-        this._velX *= 0.92;
-        this._velZ *= 0.92;
+        const normalX = -_temp.x;
+        const normalZ = -_temp.z;
+
+        // How fast the car is approaching the barrier
+        const approachSpeed = -(this._velX * normalX + this._velZ * normalZ);
+
+        // Hard clamp: snap car back to road edge
+        const overshoot = xzDist - roadHalfWidth;
+        this.group.position.x += normalX * (overshoot + 0.05);
+        this.group.position.z += normalZ * (overshoot + 0.05);
+
+        if (approachSpeed > 0) {
+          // Reflect velocity off barrier normal with restitution
+          const restitution = 0.3;
+          const impulse = approachSpeed * (1 + restitution);
+          this._velX += normalX * impulse;
+          this._velZ += normalZ * impulse;
+
+          // Friction along the barrier wall (scraping)
+          const tangentX = -normalZ;
+          const tangentZ = normalX;
+          const tangentSpeed = this._velX * tangentX + this._velZ * tangentZ;
+          const frictionLoss = Math.min(Math.abs(tangentSpeed) * 0.15, Math.abs(approachSpeed) * 0.5);
+          this._velX -= tangentX * frictionLoss * Math.sign(tangentSpeed);
+          this._velZ -= tangentZ * frictionLoss * Math.sign(tangentSpeed);
+
+          // Angular velocity kick (spin on impact)
+          this.angularVel += (Math.random() - 0.5) * approachSpeed * 0.02;
+        } else {
+          // Sliding along barrier — gentle push + friction
+          this._velX *= 0.95;
+          this._velZ *= 0.95;
+        }
+
+        // Signal impact to main loop (for sparks, camera shake, damage)
+        const impactForce = Math.abs(approachSpeed) * (def.mass / 1000);
+        if (impactForce > 2) {
+          this.lastBarrierImpact = {
+            force: impactForce,
+            posX: this.group.position.x - normalX * 0.5,
+            posY: this.group.position.y + 0.5,
+            posZ: this.group.position.z - normalZ * 0.5,
+            normalX, normalZ,
+          };
+        }
       }
     }
 
