@@ -232,10 +232,19 @@ async function showCar(index: number) {
   const nameEl = document.getElementById('garage-car-name');
   if (nameEl) nameEl.textContent = car.name;
 
+  // Determine tier from roster position
+  const tierInfo = index < 3 ? { label: 'ENTRY', color: '#6b8' }
+                 : index < 6 ? { label: 'MID', color: '#8af' }
+                 : index < 9 ? { label: 'EXOTIC', color: '#f8a' }
+                 :             { label: 'ELITE', color: '#fd4' };
+
   const statsEl = document.getElementById('garage-stats');
   if (statsEl) {
-    const maxStat = { speed: 80, accel: 36, handling: 3, drift: 0.5 };
+    const maxStat = { speed: 92, accel: 38, handling: 3.4, drift: 0.52, grip: 1.12 };
     statsEl.innerHTML = `
+      <div style="text-align:center;margin-bottom:8px">
+        <span style="background:${tierInfo.color};color:#111;padding:2px 10px;border-radius:3px;font-weight:700;font-size:11px;letter-spacing:1px">${tierInfo.label}</span>
+      </div>
       <div class="stat-bar">
         <div class="bar-track"><div class="bar-fill" style="width:${(car.maxSpeed / maxStat.speed) * 100}%"></div></div>
         <label>Speed</label>
@@ -247,6 +256,10 @@ async function showCar(index: number) {
       <div class="stat-bar">
         <div class="bar-track"><div class="bar-fill" style="width:${(car.handling / maxStat.handling) * 100}%"></div></div>
         <label>Handle</label>
+      </div>
+      <div class="stat-bar">
+        <div class="bar-track"><div class="bar-fill" style="width:${(car.gripCoeff / maxStat.grip) * 100}%"></div></div>
+        <label>Grip</label>
       </div>
       <div class="stat-bar">
         <div class="bar-track"><div class="bar-fill" style="width:${(car.driftFactor / maxStat.drift) * 100}%"></div></div>
