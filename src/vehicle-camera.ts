@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 
 let CHASE_DISTANCE = 1;
-const CHASE_HEIGHT_RATIO = 3.2;  // height proportional to distance
+let CHASE_HEIGHT_RATIO = 3.2;  // height proportional to distance (adjustable via Shift+scroll)
 const LOOK_AHEAD = 4;
 const POSITION_LERP = 0.06;
 const LOOK_LERP = 0.08;
@@ -17,15 +17,27 @@ const ORBIT_HEIGHT = 18;
 const ORBIT_SPEED = 0.15; // radians/s
 const SPECTATE_FOV = 65;
 
-// Mouse wheel zoom — adjusts chase distance at runtime
+// Mouse wheel controls — plain scroll = distance, Shift+scroll = tilt
 window.addEventListener('wheel', (e) => {
-  CHASE_DISTANCE += e.deltaY * 0.005;
-  CHASE_DISTANCE = Math.max(0.5, Math.min(20, CHASE_DISTANCE));
+  if (e.shiftKey) {
+    // Shift+scroll adjusts camera tilt (height ratio)
+    CHASE_HEIGHT_RATIO += e.deltaY * 0.01;
+    CHASE_HEIGHT_RATIO = Math.max(0.5, Math.min(8, CHASE_HEIGHT_RATIO));
+  } else {
+    // Plain scroll adjusts chase distance
+    CHASE_DISTANCE += e.deltaY * 0.005;
+    CHASE_DISTANCE = Math.max(0.5, Math.min(20, CHASE_DISTANCE));
+  }
 }, { passive: true });
 
 /** Set chase distance programmatically. */
 export function setChaseDistance(d: number) {
   CHASE_DISTANCE = Math.max(0.5, Math.min(20, d));
+}
+
+/** Set chase tilt (height ratio) programmatically. */
+export function setChaseTilt(ratio: number) {
+  CHASE_HEIGHT_RATIO = Math.max(0.5, Math.min(8, ratio));
 }
 
 // Reusable temps to avoid per-frame allocations
