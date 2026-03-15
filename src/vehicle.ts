@@ -531,9 +531,13 @@ export class Vehicle {
           targetY = this.group.position.y - 2;
         }
 
-        // Smooth Y interpolation (prevents snapping/jerky vertical movement)
-        const yLerp = 1 - Math.exp(-30 * dt);
-        this.group.position.y += (targetY - this.group.position.y) * yLerp;
+        // Asymmetric Y tracking: snap DOWN instantly, smooth UP to prevent jerky bumps
+        if (targetY <= this.group.position.y) {
+          this.group.position.y = targetY; // snap down — car must sit on road
+        } else {
+          const yLerp = 1 - Math.exp(-30 * dt);
+          this.group.position.y += (targetY - this.group.position.y) * yLerp;
+        }
 
         // Road surface pitch (positive = nose up)
         const frontAvgY = (fl + fr) / 2;
@@ -557,9 +561,13 @@ export class Vehicle {
         ? getClosestSplinePoint(spline, this.group.position, bvh)
         : getClosestSplinePoint(spline, this.group.position, 200);
 
-      // Smooth Y interpolation for spline fallback too
-      const splineYLerp = 1 - Math.exp(-30 * dt);
-      this.group.position.y += (nearestSpline.point.y - this.group.position.y) * splineYLerp;
+      // Asymmetric Y tracking for spline fallback too
+      if (nearestSpline.point.y <= this.group.position.y) {
+        this.group.position.y = nearestSpline.point.y;
+      } else {
+        const splineYLerp = 1 - Math.exp(-30 * dt);
+        this.group.position.y += (nearestSpline.point.y - this.group.position.y) * splineYLerp;
+      }
 
       // Decay road alignment toward neutral when off road mesh
       const decayFactor = 1 - Math.exp(-5 * dt);
