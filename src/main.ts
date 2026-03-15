@@ -1337,6 +1337,26 @@ function gameLoop(timestamp: number) {
       dp.mesh.rotation.x += dp.ax * frameDt;
       dp.mesh.rotation.y += dp.ay * frameDt;
       dp.mesh.rotation.z += dp.az * frameDt;
+
+      // Ground bounce
+      if (dp.mesh.position.y < 0.1) {
+        dp.mesh.position.y = 0.1;
+        dp.vy = Math.abs(dp.vy) * 0.3;
+        dp.vx *= 0.6;
+        dp.vz *= 0.6;
+        dp.ax *= 0.4;
+        dp.ay *= 0.4;
+        dp.az *= 0.4;
+      }
+
+      // Fade out in last 1.5s
+      if (dp.life < 1.5) {
+        const mat = dp.mesh.material as THREE.MeshStandardMaterial;
+        if (mat.transparent !== undefined) {
+          mat.transparent = true;
+          mat.opacity = dp.life / 1.5;
+        }
+      }
     }
 
     // Checkpoint detection (local player)

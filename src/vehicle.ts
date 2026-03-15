@@ -804,11 +804,46 @@ export class Vehicle {
     this.damage[zone].deformAmount += dmgAmount;
 
     this.deformMesh(impactDir, impactForce);
+    this.applyMaterialDamage(zone);
 
     // Detach a part when zone reaches 0 HP
     if (this.damage[zone].hp <= 0 && !this.detachedZones.has(zone)) {
       this.detachedZones.add(zone);
     }
+  }
+
+  /** Progressively darken and roughen materials on the damaged zone. */
+  private applyMaterialDamage(zone: 'front' | 'rear' | 'left' | 'right') {
+    if (!this.model) return;
+    const severity = 1 - this.damage[zone].hp / 100; // 0 = pristine, 1 = destroyed
+
+    this.model.traverse((child) => {
+      if (!(child as THREE.Mesh).isMesh) return;
+      const mesh = child as THREE.Mesh;
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      if (!mat.color) return;
+
+      // Only affect meshes whose center falls in the damaged zone
+      const localZ = mesh.position.z;
+      const localX = mesh.position.x;
+      let inZone = false;
+      if (zone === 'front' && localZ < -0.5) inZone = true;
+      else if (zone === 'rear' && localZ > 0.5) inZone = true;
+      else if (zone === 'left' && localX < -0.3) inZone = true;
+      else if (zone === 'right' && localX > 0.3) inZone = true;
+
+      if (!inZone) return;
+
+      // Darken color toward grey (simulates paint scraping to bare metal)
+      const darkFactor = 1 - severity * 0.4;
+      mat.color.multiplyScalar(Math.max(darkFactor, 0.5));
+
+      // Increase roughness (fresh paint → scraped metal)
+      mat.roughness = Math.min(0.3 + severity * 0.6, 0.9);
+
+      // Reduce metalness slightly (paint loss)
+      mat.metalness = Math.max(0.1, (mat.metalness || 0.5) - severity * 0.2);
+    });
   }
 
   /** Create a detached part mesh for a destroyed zone. Returns null if already detached. */
