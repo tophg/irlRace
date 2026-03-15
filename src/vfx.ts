@@ -1572,6 +1572,213 @@ export function updateShoulderDust(dt: number) {
   }
 }
 
+// ── Ambient Floating Particles (dust motes / embers drifting in scene) ──
+
+const AMBIENT_COUNT = 50;
+let ambientParticles: THREE.Points | null = null;
+let ambientPositions: Float32Array | null = null;
+let ambientVelocities: Float32Array | null = null;
+let ambientScene: THREE.Scene | null = null;
+
+export function initAmbientParticles(scene: THREE.Scene) {
+  ambientScene = scene;
+  const count = AMBIENT_COUNT;
+  ambientPositions = new Float32Array(count * 3);
+  ambientVelocities = new Float32Array(count * 3);
+
+  for (let i = 0; i < count; i++) {
+    ambientPositions[i * 3]     = (Math.random() - 0.5) * 80;
+    ambientPositions[i * 3 + 1] = 1 + Math.random() * 12;
+    ambientPositions[i * 3 + 2] = (Math.random() - 0.5) * 80;
+    // Gentle drift velocities
+    ambientVelocities[i * 3]     = (Math.random() - 0.5) * 0.8;
+    ambientVelocities[i * 3 + 1] = (Math.random() - 0.5) * 0.3;
+    ambientVelocities[i * 3 + 2] = (Math.random() - 0.5) * 0.8;
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(ambientPositions, 3));
+
+  const mat = new THREE.PointsMaterial({
+    color: 0xffaa66,
+    size: 0.15,
+    transparent: true,
+    opacity: 0.4,
+    depthWrite: false,
+    sizeAttenuation: true,
+  });
+
+  ambientParticles = new THREE.Points(geo, mat);
+  ambientParticles.frustumCulled = false;
+  scene.add(ambientParticles);
+}
+
+export function updateAmbientParticles(dt: number, playerPos: THREE.Vector3) {
+  if (!ambientPositions || !ambientVelocities || !ambientParticles) return;
+
+  const count = AMBIENT_COUNT;
+  for (let i = 0; i < count; i++) {
+    const idx = i * 3;
+    // Wind drift
+    ambientPositions[idx]     += ambientVelocities[idx] * dt;
+    ambientPositions[idx + 1] += ambientVelocities[idx + 1] * dt;
+    ambientPositions[idx + 2] += ambientVelocities[idx + 2] * dt;
+
+    // Add gentle sine wobble
+    ambientPositions[idx]     += Math.sin(Date.now() * 0.001 + i) * 0.02 * dt;
+    ambientPositions[idx + 1] += Math.cos(Date.now() * 0.0015 + i * 0.7) * 0.01 * dt;
+
+    // Reset if too far from player
+    const dx = ambientPositions[idx] - playerPos.x;
+    const dz = ambientPositions[idx + 2] - playerPos.z;
+    if (dx * dx + dz * dz > 50 * 50 || ambientPositions[idx + 1] < 0) {
+      ambientPositions[idx]     = playerPos.x + (Math.random() - 0.5) * 60;
+      ambientPositions[idx + 1] = 1 + Math.random() * 12;
+      ambientPositions[idx + 2] = playerPos.z + (Math.random() - 0.5) * 60;
+    }
+  }
+
+  (ambientParticles.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+}
+
+// ── Heat Shimmer (canvas overlay for exhaust distortion at high speed) ──
+
+let shimmerCanvas: HTMLCanvasElement | null = null;
+let shimmerCtx: CanvasRenderingContext2D | null = null;
+let shimmerResizeHandler: (() => void) | null = null;
+
+export function initHeatShimmer(container: HTMLElement) {
+  shimmerCanvas = document.createElement('canvas');
+  shimmerCanvas.style.cssText = `
+    position:fixed;top:0;left:0;width:100%;height:100%;
+    pointer-events:none;z-index:10;opacity:0;
+    mix-blend-mode:overlay;
+  `;
+  shimmerCanvas.width = window.innerWidth;
+  shimmerCanvas.height = window.innerHeight;
+  container.appendChild(shimmerCanvas);
+  shimmerCtx = shimmerCanvas.getContext('2d')!;
+
+  shimmerResizeHandler = () => {
+    if (shimmerCanvas) {
+      shimmerCanvas.width = window.innerWidth;
+      shimmerCanvas.height = window.innerHeight;
+    }
+  };
+  window.addEventListener('resize', shimmerResizeHandler);
+}
+
+/**
+ * Update heat shimmer overlay. Draws wavering distortion lines.
+ * @param speedRatio — 0..1 current speed / max speed
+ */
+export function updateHeatShimmer(speedRatio: number) {
+  if (!shimmerCanvas || !shimmerCtx) return;
+
+  if (speedRatio < 0.5) {
+    shimmerCanvas.style.opacity = '0';
+    return;
+  }
+
+  const intensity = (speedRatio - 0.5) * 2; // 0..1 over top half of speed
+  shimmerCanvas.style.opacity = (intensity * 0.15).toString();
+
+  const ctx = shimmerCtx;
+  const w = shimmerCanvas.width;
+  const h = shimmerCanvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  const time = Date.now() * 0.003;
+  const lineCount = 8 + Math.floor(intensity * 12);
+  const cx = w / 2;
+  const bottomY = h * 0.75;
+
+  for (let i = 0; i < lineCount; i++) {
+    const y = bottomY - i * (h * 0.05);
+    const amplitude = (3 + intensity * 8) * (1 - i / lineCount);
+    const freq = 0.02 + i * 0.005;
+
+    ctx.beginPath();
+    ctx.moveTo(cx - 120, y);
+    for (let x = cx - 120; x < cx + 120; x += 4) {
+      const waveY = y + Math.sin(x * freq + time + i * 1.3) * amplitude;
+      ctx.lineTo(x, waveY);
+    }
+    ctx.strokeStyle = `rgba(255, 245, 220, ${0.06 * (1 - i / lineCount)})`;
+    ctx.lineWidth = 2 + intensity * 2;
+    ctx.stroke();
+  }
+}
+
+// ── Lens Flare Sprites (billboard sprites at street light positions) ──
+
+let flareSprites: THREE.Sprite[] = [];
+let flareLightPositions: THREE.Vector3[] = [];
+
+export function initLensFlares(scene: THREE.Scene, lightPositions: THREE.Vector3[]) {
+  flareLightPositions = lightPositions;
+  flareSprites = [];
+
+  // Create canvas texture for flare
+  const flareCanvas = document.createElement('canvas');
+  flareCanvas.width = 64;
+  flareCanvas.height = 64;
+  const ctx = flareCanvas.getContext('2d')!;
+
+  // Radial gradient — bright center, soft falloff
+  const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(255, 240, 200, 0.9)');
+  grad.addColorStop(0.2, 'rgba(255, 220, 150, 0.4)');
+  grad.addColorStop(0.5, 'rgba(255, 200, 100, 0.1)');
+  grad.addColorStop(1, 'rgba(255, 180, 80, 0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 64, 64);
+
+  const flareTex = new THREE.CanvasTexture(flareCanvas);
+  const flareMat = new THREE.SpriteMaterial({
+    map: flareTex,
+    transparent: true,
+    opacity: 0.6,
+    depthWrite: false,
+    depthTest: false,
+    blending: THREE.AdditiveBlending,
+  });
+
+  for (const pos of lightPositions) {
+    const sprite = new THREE.Sprite(flareMat.clone());
+    sprite.position.copy(pos);
+    sprite.scale.set(4, 4, 1);
+    scene.add(sprite);
+    flareSprites.push(sprite);
+  }
+}
+
+/**
+ * Update lens flare intensity based on camera distance and angle.
+ */
+export function updateLensFlares(cameraPos: THREE.Vector3, time: number) {
+  for (let i = 0; i < flareSprites.length; i++) {
+    const sprite = flareSprites[i];
+    const pos = flareLightPositions[i];
+    const dx = cameraPos.x - pos.x;
+    const dy = cameraPos.y - pos.y;
+    const dz = cameraPos.z - pos.z;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    // Fade based on distance — brighter when closer
+    const distFade = Math.max(0, 1 - dist / 50);
+    // Gentle pulsing
+    const pulse = 0.8 + Math.sin(time * 2 + i * 1.7) * 0.15;
+
+    const mat = sprite.material as THREE.SpriteMaterial;
+    mat.opacity = distFade * pulse * 0.6;
+
+    // Scale up when closer for bloom effect
+    const scale = 3 + distFade * 4;
+    sprite.scale.set(scale, scale, 1);
+  }
+}
+
 /** Remove all VFX objects from the scene and DOM. Call between races. */
 export function destroyVFX() {
   const sceneRef = smokeScene;
@@ -1713,4 +1920,34 @@ export function destroyVFX() {
   dustPool = [];
   dustIdx = 0;
   dustScene = null;
+
+  // Clear ambient particles
+  if (ambientParticles && ambientScene) {
+    ambientScene.remove(ambientParticles);
+    ambientParticles.geometry?.dispose();
+    (ambientParticles.material as THREE.Material)?.dispose();
+  }
+  ambientParticles = null;
+  ambientPositions = null;
+  ambientVelocities = null;
+  ambientScene = null;
+
+  // Clear heat shimmer
+  if (shimmerResizeHandler) {
+    window.removeEventListener('resize', shimmerResizeHandler);
+    shimmerResizeHandler = null;
+  }
+  if (shimmerCanvas) {
+    shimmerCanvas.remove();
+    shimmerCanvas = null;
+    shimmerCtx = null;
+  }
+
+  // Clear lens flares
+  for (const sprite of flareSprites) {
+    sprite.parent?.remove(sprite);
+    (sprite.material as THREE.Material)?.dispose();
+  }
+  flareSprites = [];
+  flareLightPositions = [];
 }

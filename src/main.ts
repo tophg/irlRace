@@ -37,6 +37,9 @@ import {
   initBackfire, spawnBackfire, updateBackfire,
   createBrakeDiscs, updateBrakeDiscs,
   initShoulderDust, spawnShoulderDust, updateShoulderDust,
+  initAmbientParticles, updateAmbientParticles,
+  initHeatShimmer, updateHeatShimmer,
+  initLensFlares, updateLensFlares,
 } from './vfx';
 import {
   initGPUParticles, updateGPUParticles, destroyGPUParticles,
@@ -302,6 +305,17 @@ async function startRace() {
     initRimSparks(scene);
     initBackfire(scene);
     initShoulderDust(scene);
+    initAmbientParticles(scene);
+    initHeatShimmer(container);
+
+    // Collect street light positions for lens flares
+    const lightPositions: THREE.Vector3[] = [];
+    G.trackData.sceneryGroup.traverse((child: THREE.Object3D) => {
+      if ((child as any).isPointLight) {
+        lightPositions.push(child.position.clone());
+      }
+    });
+    initLensFlares(scene, lightPositions);
     await initGPUParticles(renderer, scene);
 
     // Initialize post-processing pipeline (bloom, chromatic aberration, vignette)
@@ -1365,6 +1379,16 @@ function gameLoop(timestamp: number) {
       spawnShoulderDust(G.playerVehicle.group.position, G.playerVehicle.speed, G.playerVehicle.heading);
     }
     updateShoulderDust(frameDt);
+
+    // Ambient floating particles (recentered around player)
+    updateAmbientParticles(frameDt, G.playerVehicle.group.position);
+
+    // Heat shimmer (canvas wavering at high speed)
+    const speedR = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
+    updateHeatShimmer(speedR);
+
+    // Lens flare sprites (distance fade from camera)
+    updateLensFlares(camera.position, timestamp / 1000);
 
     const speedRatioForLines = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
     if (speedRatioForLines > 0.65) updateSpeedLines(speedRatioForLines);
