@@ -43,6 +43,9 @@ export class Vehicle {
   nitro = 50;          // 0–100 nitro meter
   private _nitroActive = false; // actual nitro burn state (requires nitro > 0)
 
+  /** Whether nitro is currently being burned (read-only) */
+  get nitroActive(): boolean { return this._nitroActive; }
+
   /** Barrier impact info — polled by main loop for sparks/shake. Cleared each frame. */
   lastBarrierImpact: { force: number; posX: number; posY: number; posZ: number; normalX: number; normalZ: number } | null = null;
 

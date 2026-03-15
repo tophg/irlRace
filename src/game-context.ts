@@ -129,6 +129,9 @@ export const G = {
 
   // ── Physics Accumulator ──
   physicsAccumulator: 0,
+
+  // ── Post-Processing ──
+  postFXPipeline: null as any,
 };
 
 // ── Constants (not in G because they're truly immutable) ──

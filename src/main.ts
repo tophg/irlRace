@@ -40,6 +40,7 @@ import { loadSettings, getSettings, showSettings } from './settings';
 import { ReplayRecorder, ReplayPlayer } from './replay';
 import { resolveCarCollisions, CarCollider, CollisionEvent } from './bvh';
 import { getWeatherForSeed, initWeather, updateWeather, applyWetRoad, destroyWeather, getWeatherGripMultiplier, getWeatherDriftMultiplier, getCurrentWeather } from './weather';
+import { initPostFX, updatePostFX, setImpactIntensity, setBoostActive, getPostFXPipeline, destroyPostFX } from './post-fx';
 
 // ── Shared state ──
 import { G, PHYSICS_DT, PHYSICS_HZ, MAX_FRAME_DT, LB_UPDATE_INTERVAL, resetRaceStats } from './game-context';
@@ -282,6 +283,14 @@ async function startRace() {
     initSpeedLines(container);
     initSkidMarks(scene);
     await initGPUParticles(renderer, scene);
+
+    // Initialize post-processing pipeline (bloom, chromatic aberration, vignette)
+    try {
+      G.postFXPipeline = initPostFX(renderer, scene, camera);
+    } catch (e) {
+      console.warn('[PostFX] Pipeline init failed, rendering without post-processing:', e);
+      G.postFXPipeline = null;
+    }
     try {
       await initRapierWorld();
       addBarrierCollider(G.trackData.barrierLeft);
@@ -988,6 +997,7 @@ function stepPhysics(dt: number, s: GameState) {
       G.raceStats.collisionCount++;
       G.vehicleCamera?.shake(Math.min(evt.impactForce / 40, 1));
       flashDamage(evt.impactForce / 40);
+      setImpactIntensity(evt.impactForce / 40);
     }
     if (evt.idB === 'local' && G.playerVehicle) {
       G._impactDir.set(-evt.normalX, 0, -evt.normalZ);
@@ -995,6 +1005,7 @@ function stepPhysics(dt: number, s: GameState) {
       G.raceStats.collisionCount++;
       G.vehicleCamera?.shake(Math.min(evt.impactForce / 40, 1));
       flashDamage(evt.impactForce / 40);
+      setImpactIntensity(evt.impactForce / 40);
     }
     for (const ai of G.aiRacers) {
       if (evt.idA === ai.id) {
@@ -1029,6 +1040,7 @@ function stepPhysics(dt: number, s: GameState) {
     spawnCollisionSparks(G._sparkPos, b.force);
     G.vehicleCamera?.shake(Math.min(b.force / 30, 0.8));
     flashDamage(b.force / 25);
+    setImpactIntensity(b.force / 25);
     G._impactDir.set(b.normalX, 0, b.normalZ);
     G.playerVehicle.applyDamage(G._impactDir, b.force * 0.7);
     G.raceStats.collisionCount++;
@@ -1461,10 +1473,17 @@ function gameLoop(timestamp: number) {
     // Debug overlay
     updateDebugOverlay();
 
-    // Main render
-    // NOTE: post-processing (bloom/vignette) disabled — conflicts with scissored mirror render.
-    // TODO: re-enable with multi-pass approach that composites mirror after pipeline.
-    renderer.render(scene, camera);
+    // Main render — post-FX pipeline (bloom + chromatic aberration + vignette)
+    // Mirror renders AFTER with scissors on top
+    if (G.postFXPipeline) {
+      // Update post-FX uniforms
+      const speedRatio = G.playerVehicle ? Math.abs(G.playerVehicle.speed) / G.playerVehicle.def.maxSpeed : 0;
+      updatePostFX(Math.min(speedRatio, 1));
+      if (G.playerVehicle?.nitroActive) setBoostActive(true);
+      G.postFXPipeline.renderAsync();
+    } else {
+      renderer.render(scene, camera);
+    }
 
     // Rear-view mirror render (scissored viewport AFTER main render — zero GPU readback)
     if (G.mirrorCamera && G.playerVehicle && s === GameState.RACING) {
