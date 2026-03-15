@@ -34,13 +34,12 @@ import {
   initRapierWorld, addBarrierCollider, addCarBody,
   syncCarToRapier, stepRapierWorld, destroyRapierWorld,
 } from './rapier-world';
-import { rollbackManager, packInput, unpackInput } from './rollback-netcode';
+import { rollbackManager, packInput } from './rollback-netcode';
 import { initInput, showTouchControls, getInput } from './input';
 import { loadSettings, getSettings, showSettings } from './settings';
 import { ReplayRecorder, ReplayPlayer } from './replay';
 import { resolveCarCollisions, CarCollider, CollisionEvent } from './bvh';
 import { getWeatherForSeed, initWeather, updateWeather, applyWetRoad, destroyWeather, getWeatherGripMultiplier, getWeatherDriftMultiplier, getCurrentWeather } from './weather';
-import { initPostFX, updatePostFX, getPostFXPipeline, destroyPostFX } from './post-fx';
 
 // ── Shared state ──
 import { G, PHYSICS_DT, PHYSICS_HZ, MAX_FRAME_DT, LB_UPDATE_INTERVAL, resetRaceStats } from './game-context';
@@ -260,7 +259,6 @@ async function startRace() {
     initSpeedLines(container);
     initSkidMarks(scene);
     await initGPUParticles(renderer, scene);
-    initPostFX(renderer, scene, camera);
     try {
       await initRapierWorld();
       addBarrierCollider(G.trackData.barrierLeft);
@@ -537,7 +535,6 @@ function clearRaceObjects() {
   destroyGPUParticles();
   destroyRapierWorld();
   rollbackManager.reset();
-  destroyPostFX();
 
   // Stop audio
   stopAudio();
@@ -1409,16 +1406,10 @@ function gameLoop(timestamp: number) {
     // Debug overlay
     updateDebugOverlay();
 
-    // Main render (with post-processing if available)
-    const postFX = getPostFXPipeline();
-    if (postFX) {
-      // Update speed-driven vignette intensity
-      const speedRatio = G.playerVehicle ? Math.abs(G.playerVehicle.speed) / G.playerVehicle.def.maxSpeed : 0;
-      updatePostFX(Math.min(speedRatio, 1));
-      postFX.renderAsync();
-    } else {
-      renderer.render(scene, camera);
-    }
+    // Main render
+    // NOTE: post-processing (bloom/vignette) disabled — conflicts with scissored mirror render.
+    // TODO: re-enable with multi-pass approach that composites mirror after pipeline.
+    renderer.render(scene, camera);
 
     // Rear-view mirror render (scissored viewport AFTER main render — zero GPU readback)
     if (G.mirrorCamera && G.playerVehicle && s === GameState.RACING) {

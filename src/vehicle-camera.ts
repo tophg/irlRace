@@ -2,8 +2,8 @@
 
 import * as THREE from 'three';
 
-const CHASE_DISTANCE = 1;
-const CHASE_HEIGHT = 3.2;
+let CHASE_DISTANCE = 1;
+const CHASE_HEIGHT_RATIO = 3.2;  // height proportional to distance
 const LOOK_AHEAD = 4;
 const POSITION_LERP = 0.06;
 const LOOK_LERP = 0.08;
@@ -16,6 +16,17 @@ const ORBIT_RADIUS = 35;
 const ORBIT_HEIGHT = 18;
 const ORBIT_SPEED = 0.15; // radians/s
 const SPECTATE_FOV = 65;
+
+// Mouse wheel zoom — adjusts chase distance at runtime
+window.addEventListener('wheel', (e) => {
+  CHASE_DISTANCE += e.deltaY * 0.005;
+  CHASE_DISTANCE = Math.max(0.5, Math.min(20, CHASE_DISTANCE));
+}, { passive: true });
+
+/** Set chase distance programmatically. */
+export function setChaseDistance(d: number) {
+  CHASE_DISTANCE = Math.max(0.5, Math.min(20, d));
+}
 
 // Reusable temps to avoid per-frame allocations
 const _desired = new THREE.Vector3();
@@ -75,7 +86,7 @@ export class VehicleCamera {
     // Desired position: behind and above the vehicle
     _desired.set(
       targetPos.x - Math.sin(heading) * CHASE_DISTANCE,
-      targetPos.y + CHASE_HEIGHT,
+      targetPos.y + CHASE_HEIGHT_RATIO * Math.max(CHASE_DISTANCE, 1),
       targetPos.z - Math.cos(heading) * CHASE_DISTANCE,
     );
 

@@ -176,6 +176,7 @@ export class Vehicle {
     this.model = model;
     this.bodyGroup.add(model);
     this.buildWheels();
+    this.buildLights();
   }
 
   /** Set the road mesh used for per-wheel raycasting. */
@@ -242,8 +243,6 @@ export class Vehicle {
     this.wheelRL.position.set(-sideX, wheelY, rearZ);
     this.wheelRR.position.set(sideX, wheelY, rearZ);
     this.group.add(this.wheelFL, this.wheelFR, this.wheelRL, this.wheelRR);
-
-    this.buildLights();
   }
 
   // ── Car lights ──
@@ -251,8 +250,28 @@ export class Vehicle {
   private taillightMatR: THREE.MeshStandardMaterial | null = null;
 
   private buildLights() {
+    // Compute bounding box in bodyGroup-local space (NOT world space)
+    const box = new THREE.Box3();
+    if (this.model) {
+      // Temporarily reset model position to get accurate local bounds
+      this.model.updateMatrixWorld(true);
+      box.setFromObject(this.model);
+      // Convert from world space to bodyGroup local space
+      const invMatrix = new THREE.Matrix4().copy(this.bodyGroup.matrixWorld).invert();
+      box.applyMatrix4(invMatrix);
+    } else {
+      // Fallback if no model loaded
+      box.min.set(-0.9, 0, -2.2);
+      box.max.set(0.9, 1.4, 2.2);
+    }
+
+    const frontZ = box.max.z;       // front face of the car (+Z forward)
+    const rearZ = box.min.z;        // rear face of the car (-Z backward)
+    const halfW = (box.max.x - box.min.x) * 0.35; // inset from edges
+    const lightY = box.min.y + (box.max.y - box.min.y) * 0.35; // lower-mid height
+
     // ── Headlights (front, white, high emissive for bloom) ──
-    const headlightGeo = new THREE.SphereGeometry(0.12, 8, 6);
+    const headlightGeo = new THREE.SphereGeometry(0.1, 8, 6);
     const headlightMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0xffeedd,
@@ -262,24 +281,24 @@ export class Vehicle {
     });
 
     const hlL = new THREE.Mesh(headlightGeo, headlightMat);
-    hlL.position.set(-0.65, 0.55, -2.1);
-    this.group.add(hlL);
+    hlL.position.set(-halfW, lightY, frontZ - 0.05);
+    this.bodyGroup.add(hlL);
 
     const hlR = new THREE.Mesh(headlightGeo, headlightMat);
-    hlR.position.set(0.65, 0.55, -2.1);
-    this.group.add(hlR);
+    hlR.position.set(halfW, lightY, frontZ - 0.05);
+    this.bodyGroup.add(hlR);
 
     // Point lights for headlight illumination of road ahead
-    const hlPointL = new THREE.PointLight(0xffeedd, 8, 25, 2);
-    hlPointL.position.set(-0.65, 0.55, -2.5);
-    this.group.add(hlPointL);
+    const hlPointL = new THREE.PointLight(0xffeedd, 5, 20, 2);
+    hlPointL.position.set(-halfW, lightY, frontZ - 0.4);
+    this.bodyGroup.add(hlPointL);
 
-    const hlPointR = new THREE.PointLight(0xffeedd, 8, 25, 2);
-    hlPointR.position.set(0.65, 0.55, -2.5);
-    this.group.add(hlPointR);
+    const hlPointR = new THREE.PointLight(0xffeedd, 5, 20, 2);
+    hlPointR.position.set(halfW, lightY, frontZ - 0.4);
+    this.bodyGroup.add(hlPointR);
 
     // ── Taillights (rear, red emissive, intensity boosts on brake) ──
-    const taillightGeo = new THREE.BoxGeometry(0.3, 0.1, 0.08);
+    const taillightGeo = new THREE.BoxGeometry(0.25, 0.08, 0.06);
 
     this.taillightMatL = new THREE.MeshStandardMaterial({
       color: 0xff0000,
@@ -291,12 +310,12 @@ export class Vehicle {
     this.taillightMatR = this.taillightMatL.clone();
 
     const tlL = new THREE.Mesh(taillightGeo, this.taillightMatL);
-    tlL.position.set(-0.7, 0.55, 2.1);
-    this.group.add(tlL);
+    tlL.position.set(-halfW, lightY, rearZ + 0.05);
+    this.bodyGroup.add(tlL);
 
     const tlR = new THREE.Mesh(taillightGeo, this.taillightMatR);
-    tlR.position.set(0.7, 0.55, 2.1);
-    this.group.add(tlR);
+    tlR.position.set(halfW, lightY, rearZ + 0.05);
+    this.bodyGroup.add(tlR);
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
