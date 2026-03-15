@@ -984,28 +984,48 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
     const tangent = spline.getTangentAt(t).normalize();
     const rx = tangent.z, rz = -tangent.x;
     const side = rng() > 0.5 ? 1 : -1;
-    const offset = ROAD_WIDTH / 2 + 50 + rng() * 60; // Far from road (57-117 units)
+    let offset = ROAD_WIDTH / 2 + 50 + rng() * 60; // Far from road (57-117 units)
     let x = p.x + rx * offset * side;
     let z = p.z + rz * offset * side;
     const w = 4 + rng() * 8;
     const h = 8 + rng() * 20;
     const d = 4 + rng() * 6;
 
-    // Proximity check: ensure building doesn't land near any part of the track
-    let tooClose = false;
-    for (let s = 0; s < 20; s++) {
-      const sp = spline.getPointAt(s / 20);
-      const dx = x - sp.x;
-      const dz = z - sp.z;
-      if (dx * dx + dz * dz < 25 * 25) { // Must be > 25 units from any track point
-        tooClose = true;
+    // Proximity check: ensure building doesn't land near ANY part of the track
+    // Use 100 samples for dense coverage and 35-unit minimum clearance
+    const MIN_CLEARANCE = 35;
+    const MIN_CLEARANCE_SQ = MIN_CLEARANCE * MIN_CLEARANCE;
+    let placed = false;
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let tooClose = false;
+      for (let s = 0; s < 100; s++) {
+        const sp = spline.getPointAt(s / 100);
+        const dx = x - sp.x;
+        const dz = z - sp.z;
+        if (dx * dx + dz * dz < MIN_CLEARANCE_SQ) {
+          tooClose = true;
+          break;
+        }
+      }
+      if (!tooClose) {
+        placed = true;
         break;
       }
+      // Push building further out and retry
+      offset += 40;
+      x = p.x + rx * offset * side;
+      z = p.z + rz * offset * side;
     }
-    if (tooClose) {
-      // Push building further out
-      x = p.x + rx * (offset + 40) * side;
-      z = p.z + rz * (offset + 40) * side;
+
+    if (!placed) {
+      // Skip this building entirely — don't render it on the track
+      _m.makeScale(0, 0, 0);
+      _m.setPosition(0, -1000, 0);
+      buildingIM.setMatrixAt(i, _m);
+      _c.setRGB(0, 0, 0);
+      buildingIM.setColorAt(i, _c);
+      continue;
     }
 
     _m.makeScale(w, h, d);
