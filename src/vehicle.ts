@@ -76,6 +76,84 @@ export class Vehicle {
   damage: DamageState = createDamageState();
   detachedZones = new Set<string>();
 
+  // ── Fixed-timestep interpolation ──
+  // _prev: snapshot BEFORE all physics steps. _curr: snapshot AFTER all physics steps.
+  // lerpToRender modifies Three.js visuals to _prev + alpha * (_curr - _prev).
+  // restoreFromRender puts _curr back so the next frame's physics is correct.
+  private _prev = { px: 0, py: 0, pz: 0, heading: 0, roadPitch: 0, roadRoll: 0, bodyPX: 0, bodyRZ: 0, bodyYY: 0 };
+  private _curr = { px: 0, py: 0, pz: 0, heading: 0, roadPitch: 0, roadRoll: 0, bodyPX: 0, bodyRZ: 0, bodyYY: 0 };
+  private _snapValid = false;
+
+  /** Save current state as "previous". Call ONCE before the first physics sub-step. */
+  saveSnapshot() {
+    const p = this.group.position;
+    this._prev.px = p.x; this._prev.py = p.y; this._prev.pz = p.z;
+    this._prev.heading = this.heading;
+    this._prev.roadPitch = this._roadPitch;
+    this._prev.roadRoll = this._roadRoll;
+    this._prev.bodyPX = this.bodyGroup.rotation.x;
+    this._prev.bodyRZ = this.bodyGroup.rotation.z;
+    this._prev.bodyYY = this.bodyGroup.rotation.y;
+    this._snapValid = true;
+  }
+
+  /**
+   * Interpolate Three.js visual state between _prev and current physics state.
+   * Saves the actual physics state into _curr first so restoreFromRender can put it back.
+   * alpha ∈ [0,1]:  0 → show prev,  1 → show current.
+   */
+  lerpToRender(alpha: number) {
+    if (!this._snapValid) return;
+    const p = this.group.position;
+
+    // Save current (physics-authoritative) state
+    this._curr.px = p.x; this._curr.py = p.y; this._curr.pz = p.z;
+    this._curr.heading = this.heading;
+    this._curr.roadPitch = this._roadPitch;
+    this._curr.roadRoll = this._roadRoll;
+    this._curr.bodyPX = this.bodyGroup.rotation.x;
+    this._curr.bodyRZ = this.bodyGroup.rotation.z;
+    this._curr.bodyYY = this.bodyGroup.rotation.y;
+
+    const prev = this._prev;
+    const curr = this._curr;
+
+    // Interpolate position
+    p.x = prev.px + (curr.px - prev.px) * alpha;
+    p.y = prev.py + (curr.py - prev.py) * alpha;
+    p.z = prev.pz + (curr.pz - prev.pz) * alpha;
+
+    // Interpolate heading (with angle wrapping)
+    let dh = curr.heading - prev.heading;
+    if (dh > Math.PI) dh -= Math.PI * 2;
+    if (dh < -Math.PI) dh += Math.PI * 2;
+    this.group.rotation.y = prev.heading + dh * alpha;
+
+    // Interpolate road surface alignment
+    this.group.rotation.x = prev.roadPitch + (curr.roadPitch - prev.roadPitch) * alpha;
+    this.group.rotation.z = prev.roadRoll + (curr.roadRoll - prev.roadRoll) * alpha;
+
+    // Interpolate body cosmetic rotations
+    this.bodyGroup.rotation.x = prev.bodyPX + (curr.bodyPX - prev.bodyPX) * alpha;
+    this.bodyGroup.rotation.z = prev.bodyRZ + (curr.bodyRZ - prev.bodyRZ) * alpha;
+    this.bodyGroup.rotation.y = prev.bodyYY + (curr.bodyYY - prev.bodyYY) * alpha;
+  }
+
+  /** Restore physics-authoritative state after rendering, so next physics step is correct. */
+  restoreFromRender() {
+    if (!this._snapValid) return;
+    const c = this._curr;
+    const p = this.group.position;
+    p.x = c.px; p.y = c.py; p.z = c.pz;
+    this.group.rotation.y = c.heading;
+    this.group.rotation.x = c.roadPitch;
+    this.group.rotation.z = c.roadRoll;
+    this.bodyGroup.rotation.x = c.bodyPX;
+    this.bodyGroup.rotation.z = c.bodyRZ;
+    this.bodyGroup.rotation.y = c.bodyYY;
+  }
+
+
   // Debug telemetry (populated each frame for debug overlay)
   telemetry = {
     alphaFront: 0, alphaRear: 0,
@@ -164,6 +242,61 @@ export class Vehicle {
     this.wheelRL.position.set(-sideX, wheelY, rearZ);
     this.wheelRR.position.set(sideX, wheelY, rearZ);
     this.group.add(this.wheelFL, this.wheelFR, this.wheelRL, this.wheelRR);
+
+    this.buildLights();
+  }
+
+  // ── Car lights ──
+  private taillightMatL: THREE.MeshStandardMaterial | null = null;
+  private taillightMatR: THREE.MeshStandardMaterial | null = null;
+
+  private buildLights() {
+    // ── Headlights (front, white, high emissive for bloom) ──
+    const headlightGeo = new THREE.SphereGeometry(0.12, 8, 6);
+    const headlightMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      emissive: 0xffeedd,
+      emissiveIntensity: 3.0,
+      roughness: 0.1,
+      metalness: 0.0,
+    });
+
+    const hlL = new THREE.Mesh(headlightGeo, headlightMat);
+    hlL.position.set(-0.65, 0.55, -2.1);
+    this.group.add(hlL);
+
+    const hlR = new THREE.Mesh(headlightGeo, headlightMat);
+    hlR.position.set(0.65, 0.55, -2.1);
+    this.group.add(hlR);
+
+    // Point lights for headlight illumination of road ahead
+    const hlPointL = new THREE.PointLight(0xffeedd, 8, 25, 2);
+    hlPointL.position.set(-0.65, 0.55, -2.5);
+    this.group.add(hlPointL);
+
+    const hlPointR = new THREE.PointLight(0xffeedd, 8, 25, 2);
+    hlPointR.position.set(0.65, 0.55, -2.5);
+    this.group.add(hlPointR);
+
+    // ── Taillights (rear, red emissive, intensity boosts on brake) ──
+    const taillightGeo = new THREE.BoxGeometry(0.3, 0.1, 0.08);
+
+    this.taillightMatL = new THREE.MeshStandardMaterial({
+      color: 0xff0000,
+      emissive: 0xff2200,
+      emissiveIntensity: 1.5,
+      roughness: 0.2,
+      metalness: 0.0,
+    });
+    this.taillightMatR = this.taillightMatL.clone();
+
+    const tlL = new THREE.Mesh(taillightGeo, this.taillightMatL);
+    tlL.position.set(-0.7, 0.55, 2.1);
+    this.group.add(tlL);
+
+    const tlR = new THREE.Mesh(taillightGeo, this.taillightMatR);
+    tlR.position.set(0.7, 0.55, 2.1);
+    this.group.add(tlR);
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -435,6 +568,13 @@ export class Vehicle {
       if (this.wheelRL?.children[0]) this.wheelRL.children[0].rotation.x = this.wheelSpin;
       if (this.wheelRR?.children[0]) this.wheelRR.children[0].rotation.x = this.wheelSpin;
     }
+
+    // ── Brake light intensity ──
+    if (this.taillightMatL) {
+      const brakeGlow = this.brake > 0 ? 5.0 : 1.5;
+      this.taillightMatL.emissiveIntensity = brakeGlow;
+      this.taillightMatR!.emissiveIntensity = brakeGlow;
+    }
   }
 
   /** Add nitro from external source (slipstream, near-miss). */
@@ -444,6 +584,49 @@ export class Vehicle {
 
   /** Whether nitro boost is currently firing. */
   get isNitroActive(): boolean { return this._nitroActive; }
+
+  /** Serialize vehicle physics state for rollback snapshot. */
+  serializeState(): {
+    px: number; py: number; pz: number;
+    velX: number; velZ: number;
+    heading: number; angularVel: number;
+    speed: number; steer: number;
+    nitro: number; driftAngle: number;
+  } {
+    return {
+      px: this.group.position.x,
+      py: this.group.position.y,
+      pz: this.group.position.z,
+      velX: this._velX,
+      velZ: this._velZ,
+      heading: this.heading,
+      angularVel: this.angularVel,
+      speed: this.speed,
+      steer: this.steer,
+      nitro: this.nitro,
+      driftAngle: this.driftAngle,
+    };
+  }
+
+  /** Restore vehicle physics state from a rollback snapshot. */
+  deserializeState(snap: {
+    px: number; py: number; pz: number;
+    velX: number; velZ: number;
+    heading: number; angularVel: number;
+    speed: number; steer: number;
+    nitro: number; driftAngle: number;
+  }) {
+    this.group.position.set(snap.px, snap.py, snap.pz);
+    this._velX = snap.velX;
+    this._velZ = snap.velZ;
+    this.heading = snap.heading;
+    this.angularVel = snap.angularVel;
+    this.speed = snap.speed;
+    this.steer = snap.steer;
+    this.nitro = snap.nitro;
+    this.driftAngle = snap.driftAngle;
+    this.group.rotation.y = snap.heading;
+  }
 
   /** Get current state for network broadcasting. */
   getState(): VehicleState {

@@ -1,13 +1,13 @@
 /* ── Hood Racer — Garage / Car Selection Scene ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { CAR_ROSTER, CarDef } from './types';
 import { loadCarModel, loadCarModelWithProgress } from './loaders';
 
 let garageScene: THREE.Scene;
 let garageCamera: THREE.PerspectiveCamera;
-let garageRenderer: THREE.WebGLRenderer;
+let garageRenderer: THREE.WebGPURenderer;
 let currentIndex = 0;
 let currentModel: THREE.Group | null = null;
 let platform: THREE.Mesh;
@@ -22,7 +22,7 @@ let placeholderMesh: THREE.Mesh | null = null;
 let progressBarEl: HTMLElement | null = null;
 
 export function initGarage(
-  renderer: THREE.WebGLRenderer,
+  renderer: THREE.WebGPURenderer,
   overlay: HTMLElement,
   onSelect: (car: CarDef) => void,
 ) {

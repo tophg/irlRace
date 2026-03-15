@@ -27,417 +27,119 @@ import {
   initSkidMarks, updateSkidMarks, destroySkidMarks,
   spawnFlameParticle, spawnExplosion,
 } from './vfx';
+import {
+  initGPUParticles, updateGPUParticles, destroyGPUParticles,
+} from './gpu-particles';
+import {
+  initRapierWorld, addBarrierCollider, addCarBody,
+  syncCarToRapier, stepRapierWorld, destroyRapierWorld,
+} from './rapier-world';
+import { rollbackManager, packInput, unpackInput } from './rollback-netcode';
 import { initInput, showTouchControls, getInput } from './input';
 import { loadSettings, getSettings, showSettings } from './settings';
 import { ReplayRecorder, ReplayPlayer } from './replay';
 import { resolveCarCollisions, CarCollider, CollisionEvent } from './bvh';
 import { getWeatherForSeed, initWeather, updateWeather, applyWetRoad, destroyWeather, getWeatherGripMultiplier, getWeatherDriftMultiplier, getCurrentWeather } from './weather';
+import { initPostFX, updatePostFX, getPostFXPipeline, destroyPostFX } from './post-fx';
+
+// ── Shared state ──
+import { G, PHYSICS_DT, PHYSICS_HZ, MAX_FRAME_DT, LB_UPDATE_INTERVAL, resetRaceStats } from './game-context';
+import type { DetachedPart, RaceStats } from './game-context';
+
+// ── Extracted UI ──
+import {
+  showPositionCallout, showEmoteBubble, spawnConfetti,
+  updateDebugOverlay, togglePause, destroyPause,
+  showLoading, hideLoading, showRaceConfig, showControlsRef,
+  showTitleScreen as showTitleScreenUI,
+} from './ui-screens';
+
+// ── Extracted Multiplayer ──
+import {
+  initMultiplayerHandler, enterMultiplayerLobby,
+  broadcastPlayerList, wireNetworkCallbacks,
+} from './multiplayer-handler';
+
+// ── Event Bus ──
+import { bus } from './event-bus';
 
 // ── DOM ──
 const container = document.getElementById('game-container')!;
 const uiOverlay = document.getElementById('ui-overlay')!;
 
-// ── Scene ──
-const { renderer, scene, camera } = initScene(container);
-
-// ── Game State ──
-let gameState: GameState = GameState.TITLE;
-let totalLaps = 3;
-let selectedCar: CarDef = CAR_ROSTER[0];
-let trackSeed: number | null = null;
-let localPlayerName = localStorage.getItem('hr-player-name') || `Racer_${Math.floor(Math.random() * 9999)}`;
-
-// ── Player vehicle ──
-let playerVehicle: Vehicle | null = null;
-let vehicleCamera: VehicleCamera | null = null;
-
-// ── Track ──
-let trackData: TrackData | null = null;
-let checkpointMarkers: THREE.Group | null = null;
-
-// ── AI ──
-const aiRacers: AIRacer[] = [];
-
-// ── Rear-View Mirror ──
-let mirrorCamera: THREE.PerspectiveCamera | null = null;
-let mirrorBorder: HTMLElement | null = null;
-
-// ── Race engine ──
-let raceEngine: RaceEngine | null = null;
-
-// ── Race Stats ──
-interface RaceStats {
-  topSpeed: number;
-  totalDriftTime: number;
-  collisionCount: number;
-  avgPosition: number;
-  positionSampleCount: number;
-}
-let raceStats: RaceStats = { topSpeed: 0, totalDriftTime: 0, collisionCount: 0, avgPosition: 0, positionSampleCount: 0 };
-
-function resetRaceStats() {
-  raceStats = { topSpeed: 0, totalDriftTime: 0, collisionCount: 0, avgPosition: 0, positionSampleCount: 0 };
-}
-
-// ── Multiplayer ──
-let netPeer: NetPeer | null = null;
-const remoteMeshes = new Map<string, THREE.Group>();
-const remoteNameTags = new Map<string, THREE.Sprite>();
+// ── Scene (async — WebGPU renderer init) ──
+const { renderer, scene, camera } = await initScene(container);
 
 // ── Input ──
 const input = initInput();
 
+// ── Reusable temp (local to main.ts) ──
+const _rPos = new THREE.Vector3();
+
 // ── Keyboard listener for spectator cycling + emotes ──
 const EMOTE_MAP: Record<string, string> = { '1': '👍', '2': '😂', '3': '💨', '4': '🔥' };
 window.addEventListener('keydown', (e) => {
-  if (gameState === GameState.RESULTS && vehicleCamera?.mode === 'follow') {
+  if (G.gameState === GameState.RESULTS && G.vehicleCamera?.mode === 'follow') {
     if (e.key === 'ArrowLeft') cycleSpectateTarget(-1);
     else if (e.key === 'ArrowRight') cycleSpectateTarget(1);
   }
   // Quick emotes during racing (1-4 keys)
-  if (gameState === GameState.RACING && EMOTE_MAP[e.key]) {
+  if (G.gameState === GameState.RACING && EMOTE_MAP[e.key]) {
     const emoji = EMOTE_MAP[e.key];
-    netPeer?.broadcastEvent(EventType.EMOTE, { emoji });
+    G.netPeer?.broadcastEvent(EventType.EMOTE, { emoji });
     showEmoteBubble(emoji);
   }
 });
 
-// ── Timing ──
-let lastTime = 0;
-let raceStarting = false;
 
-// ── Collision ──
-const carHalf = new THREE.Vector3(1.0, 0.8, 2.2); // approximate car half-extents
 
-// ── Reusable temps (avoid per-frame allocations) ──
-const _rPos = new THREE.Vector3();
-const _defaultTangent = new THREE.Vector3(0, 0, 1);
-const _remoteRayOrigin = new THREE.Vector3();
-const _remoteRayDir = new THREE.Vector3(0, -1, 0);
-const _remoteRaycaster = new THREE.Raycaster();
-const _impactDir = new THREE.Vector3();
-const _sparkPos = new THREE.Vector3();
-let driftSfxCooldown = 0;
-const remotePrevPos = new Map<string, { x: number; z: number }>();
-let replayRecorder: ReplayRecorder | null = null;
-let replayPlayer: ReplayPlayer | null = null;
-let spectateTargetId: string | null = null;
 
-let posCalloutTimer: number | null = null;
-function showPositionCallout(gained: boolean, newRank: number) {
-  if (posCalloutTimer) clearTimeout(posCalloutTimer);
-  let el = document.getElementById('pos-callout');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'pos-callout';
-    uiOverlay.appendChild(el);
-  }
-  const suffix = newRank === 1 ? 'st' : newRank === 2 ? 'nd' : newRank === 3 ? 'rd' : 'th';
-  const arrow = gained ? '▲' : '▼';
-  el.className = `pos-callout ${gained ? 'pos-up' : 'pos-down'}`;
-  el.innerHTML = `<span class="pos-arrow">${arrow}</span> ${newRank}<sup>${suffix}</sup>`;
-  el.style.display = 'block';
-  posCalloutTimer = window.setTimeout(() => {
-    el!.style.display = 'none';
-    posCalloutTimer = null;
-  }, 1500);
-}
-const sessionWins = new Map<string, number>();
-let spectateHudEl: HTMLElement | null = null;
-let prevMyRank = 0;
-
-function showEmoteBubble(emoji: string, screenX?: number) {
-  const el = document.createElement('div');
-  el.className = 'emote-bubble';
-  el.textContent = emoji;
-  el.style.left = `${screenX ?? window.innerWidth / 2}px`;
-  el.style.top = `${window.innerHeight * 0.3}px`;
-  uiOverlay.appendChild(el);
-  setTimeout(() => el.remove(), 2100);
-}
-
-function spawnConfetti() {
-  const canvas = document.createElement('canvas');
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  canvas.style.cssText = 'position:fixed;top:0;left:0;z-index:100;pointer-events:none;';
-  document.body.appendChild(canvas);
-  const ctx = canvas.getContext('2d')!;
-
-  const particles: { x: number; y: number; vx: number; vy: number; color: string; size: number; rot: number; rv: number; }[] = [];
-  const colors = ['#ff6600', '#00e5ff', '#ffcc00', '#ff1744', '#76ff03', '#e040fb', '#ffffff'];
-  for (let i = 0; i < 120; i++) {
-    particles.push({
-      x: Math.random() * canvas.width,
-      y: -Math.random() * canvas.height * 0.3,
-      vx: (Math.random() - 0.5) * 6,
-      vy: Math.random() * 4 + 2,
-      color: colors[Math.floor(Math.random() * colors.length)],
-      size: Math.random() * 8 + 4,
-      rot: Math.random() * Math.PI * 2,
-      rv: (Math.random() - 0.5) * 0.2,
-    });
-  }
-
-  let frame = 0;
-  const animate = () => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    for (const p of particles) {
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += 0.06; // gravity
-      p.rot += p.rv;
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.rot);
-      ctx.fillStyle = p.color;
-      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.4);
-      ctx.restore();
-    }
-    frame++;
-    if (frame < 180) requestAnimationFrame(animate);
-    else canvas.remove();
-  };
-  requestAnimationFrame(animate);
-}
-
-// Detached car parts (tumbling debris)
-interface DetachedPart { mesh: THREE.Mesh; vx: number; vy: number; vz: number; ax: number; ay: number; az: number; life: number; }
-const detachedParts: DetachedPart[] = [];
-const _flamePos = new THREE.Vector3();
 
 // ── Debug Overlay ──
-let debugVisible = false;
-let debugEl: HTMLElement | null = null;
 
-let pauseOverlay: HTMLElement | null = null;
-let aiCount = 4;
-let aiDifficulty: 'easy' | 'medium' | 'hard' = 'medium';
 
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Backquote') {
-    debugVisible = !debugVisible;
-    if (debugEl) debugEl.style.display = debugVisible ? 'block' : 'none';
+    G.debugVisible = !G.debugVisible;
+    if (G.debugEl) G.debugEl.style.display = G.debugVisible ? 'block' : 'none';
   }
   if (e.code === 'Escape') {
-    if (gameState === GameState.RACING) togglePause();
-    else if (gameState === GameState.PAUSED) togglePause();
+    if (G.gameState === GameState.RACING || G.gameState === GameState.PAUSED) {
+      togglePause({ onRestart: () => startRace(), onQuit: () => showTitleScreen() });
+    }
   }
 });
 
-function updateDebugOverlay() {
-  if (!debugVisible || !playerVehicle) return;
-
-  if (!debugEl) {
-    debugEl = document.createElement('pre');
-    debugEl.id = 'debug-overlay';
-    debugEl.style.cssText = `
-      position:fixed; top:70px; left:24px; z-index:999;
-      background:rgba(0,0,0,0.75); color:#0f0; font:12px/1.5 monospace;
-      padding:10px 14px; border-radius:6px; pointer-events:none;
-      min-width:260px; white-space:pre;
-    `;
-    document.body.appendChild(debugEl);
-  }
-
-  const t = playerVehicle.telemetry;
-  const d = playerVehicle.damage;
-  const deg = (r: number) => (r * 180 / Math.PI).toFixed(1);
-  const f1 = (v: number) => v.toFixed(1);
-  const f2 = (v: number) => v.toFixed(2);
-  const pct = (v: number) => Math.round(v) + '%';
-
-  debugEl.textContent =
-`== PHYSICS TELEMETRY ==
-Speed:      ${f1(playerVehicle.speed)} u/s  (${Math.floor(Math.abs(playerVehicle.speed) * 2.5)} MPH)
-Steer:      ${f2(playerVehicle.steer)}
-AngVel:     ${f2(playerVehicle.driftAngle)} rad/s
-SlipAngle:  ${deg(t.slipAngle)}°
-
--- AXLE SLIP --
-Front α:    ${deg(t.alphaFront)}°
-Rear  α:    ${deg(t.alphaRear)}°
-
--- LATERAL FORCES --
-Front Lat:  ${f1(t.frontLatF)}
-Rear  Lat:  ${f1(t.rearLatF)}
-Yaw Torque: ${f1(t.yawTorque)}
-Long Force: ${f1(t.longForce)}
-
--- WEIGHT DIST --
-Front Grip: ${f2(t.frontGrip)}
-Rear  Grip: ${f2(t.rearGrip)}
-Kin Blend:  ${pct(t.kinBlend * 100)}
-
--- DAMAGE --
-Front HP:   ${pct(d.front.hp)}
-Rear  HP:   ${pct(d.rear.hp)}
-Left  HP:   ${pct(d.left.hp)}
-Right HP:   ${pct(d.right.hp)}`;
-}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // PAUSE MENU
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function togglePause() {
-  if (gameState === GameState.RACING) {
-    gameState = GameState.PAUSED;
-    pauseOverlay = document.createElement('div');
-    pauseOverlay.className = 'pause-overlay';
-    pauseOverlay.innerHTML = `
-      <div class="pause-title">PAUSED</div>
-      <div class="menu-buttons" style="width:240px;">
-        <button class="menu-btn" id="btn-resume">RESUME</button>
-        <button class="menu-btn" id="btn-restart">RESTART</button>
-        <button class="menu-btn" id="btn-quit">MAIN MENU</button>
-      </div>
-    `;
-    uiOverlay.appendChild(pauseOverlay);
 
-    document.getElementById('btn-resume')!.addEventListener('click', togglePause);
-    document.getElementById('btn-restart')!.addEventListener('click', () => {
-      destroyPause();
-      trackSeed = currentRaceSeed;
-      clearRaceObjects();
-      destroyLeaderboard();
-      startRace();
-    });
-    document.getElementById('btn-quit')!.addEventListener('click', () => {
-      destroyPause();
-      netPeer?.destroy();
-      netPeer = null;
-      clearRaceObjects();
-      destroyLeaderboard();
-      showTitleScreen();
-    });
-  } else if (gameState === GameState.PAUSED) {
-    destroyPause();
-    gameState = GameState.RACING;
-  }
-}
-
-function destroyPause() {
-  if (pauseOverlay) { pauseOverlay.remove(); pauseOverlay = null; }
-}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // LOADING SCREEN
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-let loadingEl: HTMLElement | null = null;
 
-function showLoading() {
-  loadingEl = document.createElement('div');
-  loadingEl.className = 'loading-overlay';
-  loadingEl.innerHTML = '<div class="loading-text">GENERATING TRACK...</div>';
-  uiOverlay.appendChild(loadingEl);
-}
 
-function hideLoading() {
-  if (loadingEl) { loadingEl.remove(); loadingEl = null; }
-}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // RACE CONFIGURATION (singleplayer only)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function showRaceConfig(onStart: (laps: number, ai: number, difficulty: 'easy' | 'medium' | 'hard', seed: string) => void) {
-  const el = document.createElement('div');
-  el.className = 'race-config-overlay';
-  el.innerHTML = `
-    <div class="settings-panel" style="max-width:360px;">
-      <div class="settings-title">RACE SETUP</div>
-      <label class="settings-row">
-        <span>Laps</span>
-        <select id="cfg-laps">
-          <option value="1">1</option>
-          <option value="3" selected>3</option>
-          <option value="5">5</option>
-          <option value="10">10</option>
-        </select>
-      </label>
-      <label class="settings-row">
-        <span>AI Opponents</span>
-        <select id="cfg-ai">
-          <option value="0">None</option>
-          <option value="2">2</option>
-          <option value="4" selected>4</option>
-        </select>
-      </label>
-      <label class="settings-row">
-        <span>AI Difficulty</span>
-        <select id="cfg-difficulty">
-          <option value="easy">Easy</option>
-          <option value="medium" selected>Medium</option>
-          <option value="hard">Hard</option>
-        </select>
-      </label>
-      <label class="settings-row">
-        <span>Track Seed</span>
-        <input type="text" id="cfg-seed" placeholder="Random" maxlength="5"
-               class="lobby-input" style="width:100px;font-size:14px;padding:4px 8px;letter-spacing:2px;">
-      </label>
-      <div style="display:flex;gap:12px;justify-content:center;margin-top:16px;">
-        <button class="select-btn" id="cfg-go">START RACE</button>
-        <button class="menu-btn" id="cfg-back" style="padding:10px 24px;">BACK</button>
-      </div>
-    </div>
-  `;
-  uiOverlay.appendChild(el);
-
-  document.getElementById('cfg-back')!.addEventListener('click', () => {
-    el.remove();
-    showTitleScreen();
-  });
-
-  document.getElementById('cfg-go')!.addEventListener('click', () => {
-    const laps = parseInt((el.querySelector('#cfg-laps') as HTMLSelectElement).value);
-    const ai = parseInt((el.querySelector('#cfg-ai') as HTMLSelectElement).value);
-    const difficulty = (el.querySelector('#cfg-difficulty') as HTMLSelectElement).value as 'easy' | 'medium' | 'hard';
-    const seed = (el.querySelector('#cfg-seed') as HTMLInputElement).value.trim();
-    el.remove();
-    onStart(laps, ai, difficulty, seed);
-  });
-}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // CONTROLS REFERENCE
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function showControlsRef() {
-  if (uiOverlay.querySelector('.controls-overlay')) return;
-  const el = document.createElement('div');
-  el.className = 'controls-overlay';
-  el.innerHTML = `
-    <div class="settings-panel" style="max-width:400px;">
-      <div class="settings-title">CONTROLS</div>
-      <div class="controls-section">
-        <div class="controls-heading">KEYBOARD</div>
-        <div class="controls-row"><span>Steer</span><span>WASD / Arrow Keys</span></div>
-        <div class="controls-row"><span>Boost</span><span>Shift / Space</span></div>
-        <div class="controls-row"><span>Pause</span><span>Escape</span></div>
-        <div class="controls-row"><span>Debug</span><span>Backtick (\`)</span></div>
-      </div>
-      <div class="controls-section">
-        <div class="controls-heading">MOBILE</div>
-        <div class="controls-row"><span>Steer</span><span>Drag left side of screen</span></div>
-        <div class="controls-row"><span>Gas / Brake / Boost</span><span>Right side buttons</span></div>
-        <div class="controls-row"><span>Tilt steering</span><span>Enable in Settings</span></div>
-      </div>
-      <button class="select-btn" id="ctrl-close" style="margin-top:16px;">CLOSE</button>
-    </div>
-  `;
-  uiOverlay.appendChild(el);
-  document.getElementById('ctrl-close')!.addEventListener('click', () => el.remove());
-}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // TITLE SCREEN
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function showTitleScreen() {
-  gameState = GameState.TITLE;
+  G.gameState = GameState.TITLE;
   showTouchControls(false);
 
   const titleEl = document.createElement('div');
@@ -469,7 +171,7 @@ function showTitleScreen() {
 
   document.getElementById('btn-settings')!.addEventListener('click', () => {
     showSettings(uiOverlay, () => {
-      localPlayerName = getSettings().playerName || localPlayerName;
+      G.localPlayerName = getSettings().playerName || G.localPlayerName;
       applySettingsToRenderer();
     });
   });
@@ -480,23 +182,23 @@ function showTitleScreen() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function enterGarage(mode: 'singleplayer' | 'multiplayer') {
-  gameState = GameState.GARAGE;
+  G.gameState = GameState.GARAGE;
 
   initGarage(renderer, uiOverlay, (car: CarDef) => {
-    selectedCar = car;
+    G.selectedCar = car;
     destroyGarage();
 
     if (mode === 'singleplayer') {
       showRaceConfig((laps, ai, difficulty, seed) => {
-        totalLaps = laps;
-        aiCount = ai;
-        aiDifficulty = difficulty;
+        G.totalLaps = laps;
+        G.aiCount = ai;
+        G.aiDifficulty = difficulty;
         if (seed.length > 0) {
           const parsed = parseInt(seed, 10);
-          trackSeed = Number.isNaN(parsed) ? Math.floor(Math.random() * 99999) : parsed;
+          G.trackSeed = Number.isNaN(parsed) ? Math.floor(Math.random() * 99999) : parsed;
         }
         startRace();
-      });
+      }, () => showTitleScreen());
     } else {
       enterMultiplayerLobby();
     }
@@ -504,472 +206,201 @@ function enterGarage(mode: 'singleplayer' | 'multiplayer') {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MULTIPLAYER LOBBY
+// MULTIPLAYER (→ multiplayer-handler.ts)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-function enterMultiplayerLobby() {
-  gameState = GameState.LOBBY;
-
-  // Show initial choose screen (no room code yet)
-  showLobby(uiOverlay, {
-    isHost: false,
-    roomCode: '',
-    onNameChange: (name: string) => { localPlayerName = name; },
-    onHost: async () => {
-      netPeer = new NetPeer();
-
-      // Wire callbacks BEFORE creating room (eager wiring pattern)
-      wireNetworkCallbacks();
-
-      const code = await netPeer.createRoom();
-      // playerName comes from module-level localPlayerName
-
-      destroyLobby();
-      showLobby(uiOverlay, {
-        isHost: true,
-        roomCode: code,
-        onHost: () => {},
-        onJoin: () => {},
-        onChat: (text) => {
-          netPeer?.broadcastEvent(EventType.CHAT, { text, name: localPlayerName });
-          appendChatMessage(localPlayerName, text);
-        },
-        onLapsChange: (laps) => { totalLaps = laps; },
-        onSeedChange: (seed) => {
-          if (seed.length > 0) {
-            const parsed = parseInt(seed, 10);
-            trackSeed = Number.isNaN(parsed) ? null : parsed;
-          } else {
-            trackSeed = null;
-          }
-        },
-        onKick: (id) => {
-          netPeer?.kickPlayer(id);
-        },
-        onStart: () => {
-          destroyLobby();
-          raceReadyCount = 0;
-          trackSeed = Math.floor(Math.random() * 99999);
-          const players = [{ id: netPeer!.getLocalId(), name: localPlayerName, carId: selectedCar.id }];
-          for (const rp of netPeer!.getRemotePlayers()) players.push({ id: rp.id, name: rp.name, carId: rp.carId });
-          mpPlayersList = players;
-          netPeer!.broadcastEvent(EventType.COUNTDOWN_START, { laps: totalLaps, seed: trackSeed, players });
-          startRace();
-        },
-        onBack: () => { netPeer?.destroy(); netPeer = null; destroyLobby(); showTitleScreen(); },
-      });
-
-      // Send initial player list to connected guests
-      broadcastPlayerList();
-    },
-
-    onJoin: async (code: string) => {
-      netPeer = new NetPeer();
-      wireNetworkCallbacks();
-
-      try {
-        showToast(uiOverlay, 'Connecting...');
-        await netPeer.joinRoom(code, localPlayerName, selectedCar.id);
-
-        destroyLobby();
-        showLobby(uiOverlay, {
-          isHost: false,
-          roomCode: code,
-          onHost: () => {},
-          onJoin: () => {},
-          onStart: () => {},
-          onChat: (text) => {
-            netPeer?.broadcastEvent(EventType.CHAT, { text, name: localPlayerName });
-            appendChatMessage(localPlayerName, text);
-          },
-          onReady: () => {
-            netPeer?.broadcastEvent(EventType.PLAYER_READY, { ready: true });
-          },
-          onBack: () => { netPeer?.destroy(); netPeer = null; destroyLobby(); showTitleScreen(); },
-        });
-
-        showToast(uiOverlay, 'Connected to room');
-      } catch (err) {
-        showToast(uiOverlay, `Could not connect: ${(err as Error).message}`);
-        destroyLobby();
-        enterMultiplayerLobby();
-      }
-    },
-
-    onStart: () => {},
-    onBack: () => { destroyLobby(); showTitleScreen(); },
-  });
-}
-
-function broadcastPlayerList() {
-  if (!netPeer?.getIsHost()) return;
-  const players = netPeer.getRemotePlayers().map(p => ({
-    id: p.id, name: p.name, ready: p.ready,
-  }));
-  netPeer.broadcastEvent(EventType.PLAYER_LIST, { players });
-}
-
-function wireNetworkCallbacks() {
-  if (!netPeer) return;
-
-  netPeer.onState = (fromId, snap) => {
-    netPeer!.addToBuffer(fromId, snap);
-  };
-
-  netPeer.onEvent = (fromId, type, data) => {
-    switch (type) {
-      case EventType.COUNTDOWN_START:
-        destroyLobby();
-        totalLaps = data.laps ?? 3;
-        trackSeed = data.seed ?? Math.floor(Math.random() * 99999);
-        // Store full player list for spawning (includes guests we don't have direct connections to)
-        mpPlayersList = data.players ?? [];
-        if (data.players) {
-          for (const p of data.players) {
-            const rp = netPeer!.getRemotePlayers().find(r => r.id === p.id);
-            if (rp) rp.carId = p.carId;
-          }
-        }
-        startRace();
-        break;
-
-      case EventType.CHECKPOINT_HIT:
-        raceEngine?.updateRemoteProgress(fromId, data.lap, data.cp);
-        break;
-
-      case EventType.LAP_COMPLETE:
-        raceEngine?.updateRemoteProgress(fromId, data.lap, 0);
-        break;
-
-      case EventType.REMATCH_REQUEST:
-        raceReadyCount = 0;
-        trackSeed = data.seed ?? Math.floor(Math.random() * 99999);
-        totalLaps = data.laps ?? totalLaps;
-        if (data.players) mpPlayersList = data.players;
-        destroyLeaderboard();
-        uiOverlay.querySelector('.results-overlay')?.remove();
-        startRace();
-        break;
-
-      case EventType.RACE_FINISH:
-        if (raceEngine) {
-          const racer = raceEngine.getProgress(fromId);
-          if (racer && !racer.finished) {
-            racer.finished = true;
-            racer.finishTime = data.finishTime ?? 0;
-            racer.lapIndex = totalLaps;
-            racer.checkpointIndex = 0;
-          }
-        }
-        break;
-
-      case EventType.PLAYER_READY:
-        netPeer!.setPlayerReady(fromId, data.ready ?? true);
-        updatePlayerList(netPeer!.getRemotePlayers().map(p => ({
-          id: p.id, name: p.name, ready: p.ready,
-        })));
-        broadcastPlayerList();
-        break;
-
-      case EventType.PLAYER_LIST:
-        if (data.players) {
-          updatePlayerList(data.players);
-        }
-        break;
-
-      case EventType.RACE_READY:
-        if (!netPeer?.getIsHost()) break;
-        raceReadyCount++;
-        if (raceReadyCount >= (netPeer?.getConnectionCount() ?? 0) && raceGoResolve) {
-          raceGoResolve();
-        }
-        break;
-
-      case EventType.RACE_GO:
-        if (raceGoResolve) raceGoResolve();
-        break;
-
-      case EventType.CAR_SELECT: {
-        const rp = netPeer!.getRemotePlayers().find(r => r.id === fromId);
-        if (rp && data.carId) {
-          rp.carId = data.carId;
-        }
-        break;
-      }
-
-      case EventType.REMATCH_ACCEPT:
-        if (netPeer!.getIsHost() && gameState === GameState.RESULTS) {
-          uiOverlay.querySelector('.results-overlay')?.remove();
-          if (postWinnerTimer) { clearTimeout(postWinnerTimer); postWinnerTimer = null; }
-          raceReadyCount = 0;
-          trackSeed = Math.floor(Math.random() * 99999);
-          const rematchPlayers = [{ id: netPeer!.getLocalId(), name: localPlayerName, carId: selectedCar.id }];
-          for (const rp of netPeer!.getRemotePlayers()) rematchPlayers.push({ id: rp.id, name: rp.name, carId: rp.carId });
-          mpPlayersList = rematchPlayers;
-          netPeer!.broadcastEvent(EventType.REMATCH_REQUEST, { seed: trackSeed, laps: totalLaps, players: rematchPlayers });
-          destroyLeaderboard();
-          startRace();
-        }
-        break;
-
-      case EventType.CHAT: {
-        const senderName = data.name || resolvePlayerName(fromId);
-        appendChatMessage(senderName, data.text ?? '');
-        break;
-      }
-
-      case EventType.KICK: {
-        // Guest was kicked by host — return to title
-        showToast(uiOverlay, 'You were kicked from the lobby');
-        netPeer?.destroy();
-        netPeer = null;
-        destroyLobby();
-        clearRaceObjects();
-        destroyLeaderboard();
-        destroySpectateHUD();
-        showTitleScreen();
-        break;
-      }
-
-      case EventType.EMOTE: {
-        const emoji = data.emoji ?? '👍';
-        showEmoteBubble(emoji, Math.random() * window.innerWidth * 0.6 + window.innerWidth * 0.2);
-        break;
-      }
-    }
-  };
-
-  netPeer.onPlayerJoin = (id, name) => {
-    showToast(uiOverlay, `${name} joined`);
-    updatePlayerList(netPeer!.getRemotePlayers().map(p => ({ id: p.id, name: p.name, ready: p.ready })));
-    broadcastPlayerList();
-  };
-
-  netPeer.onPlayerLeave = (id, disconnectedName) => {
-    const name = disconnectedName || 'Player';
-
-    // Mark as DNF if race is in progress
-    if (gameState === GameState.RACING || gameState === GameState.COUNTDOWN) {
-      raceEngine?.markDnf(id);
-      showToast(uiOverlay, `${name} disconnected (DNF)`);
-
-      // Auto-finish if all opponents are DNF (only in multiplayer with no AI)
-      if (raceEngine && netPeer && aiRacers.length === 0) {
-        const rankings = raceEngine.getRankings();
-        const allOpponentsDnf = rankings
-          .filter(r => r.id !== 'local')
-          .every(r => r.dnf);
-        if (allOpponentsDnf && gameState === GameState.RACING) {
-          destroyLeaderboard();
-          showResults();
-        }
-      }
-    } else {
-      showToast(uiOverlay, `${name} disconnected`);
-    }
-
-    // Clean up remote mesh and tracking data
-    const mesh = remoteMeshes.get(id);
-    if (mesh) { scene.remove(mesh); remoteMeshes.delete(id); }
-    remotePrevPos.delete(id);
-
-    const tag = remoteNameTags.get(id);
-    if (tag) { scene.remove(tag); remoteNameTags.delete(id); };
-  };
-
-  netPeer.onReconnecting = (id, name) => {
-    showToast(uiOverlay, `${name} reconnecting...`);
-  };
-
-  netPeer.onReconnected = (id, name) => {
-    showToast(uiOverlay, `${name} reconnected`);
-  };
-}
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // RACE SETUP
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-let currentRaceSeed = 0;
-let raceReadyCount = 0;
-let mpPlayersList: { id: string; name: string; carId: string }[] = [];
-let raceGoResolve: (() => void) | null = null;
 
 async function startRace() {
-  if (raceStarting) return;
-  raceStarting = true;
+  if (G.raceStarting) return;
+  G.raceStarting = true;
 
   try {
-    gameState = GameState.COUNTDOWN;
+    G.gameState = GameState.COUNTDOWN;
     showLoading();
 
     clearRaceObjects();
+    G.physicsAccumulator = 0; // prevent stale accumulation from loading
 
     // Generate track (preserve seed for restart)
-    const seed = trackSeed ?? Math.floor(Math.random() * 99999);
-    currentRaceSeed = seed;
-    trackSeed = null;
-    trackData = generateTrack(seed);
+    const seed = G.trackSeed ?? Math.floor(Math.random() * 99999);
+    G.currentRaceSeed = seed;
+    G.trackSeed = null;
+    G.trackData = generateTrack(seed);
     applyEnvironment(getEnvironmentForSeed(seed));
     initWeather(scene, getWeatherForSeed(seed));
-    if (getCurrentWeather() !== 'clear') applyWetRoad(trackData.roadMesh);
-    scene.add(trackData.roadMesh);
-    scene.add(trackData.barrierLeft);
-    scene.add(trackData.barrierRight);
-    scene.add(trackData.shoulderMesh);
-    scene.add(trackData.kerbGroup);
-    scene.add(trackData.sceneryGroup);
+    if (getCurrentWeather() !== 'clear') applyWetRoad(G.trackData.roadMesh);
+    scene.add(G.trackData.roadMesh);
+    scene.add(G.trackData.barrierLeft);
+    scene.add(G.trackData.barrierRight);
+    scene.add(G.trackData.shoulderMesh);
+    scene.add(G.trackData.kerbGroup);
+    scene.add(G.trackData.sceneryGroup);
 
-    checkpointMarkers = buildCheckpointMarkers(trackData.checkpoints);
-    scene.add(checkpointMarkers);
+    G.checkpointMarkers = buildCheckpointMarkers(G.trackData.checkpoints);
+    scene.add(G.checkpointMarkers);
 
-    raceEngine = new RaceEngine(trackData.checkpoints, totalLaps);
+    G.raceEngine = new RaceEngine(G.trackData.checkpoints, G.totalLaps);
 
-    const playerModel = await loadCarModel(selectedCar.file);
-    playerVehicle = new Vehicle(selectedCar);
-    playerVehicle.setModel(playerModel);
-    scene.add(playerVehicle.group);
-    playerVehicle.setRoadMesh(trackData.roadMesh);
-    playerVehicle.placeOnTrack(trackData.spline, 0, -3.5);
-    raceEngine.addRacer('local');
+    const playerModel = await loadCarModel(G.selectedCar.file);
+    G.playerVehicle = new Vehicle(G.selectedCar);
+    G.playerVehicle.setModel(playerModel);
+    scene.add(G.playerVehicle.group);
+    G.playerVehicle.setRoadMesh(G.trackData.roadMesh);
+    G.playerVehicle.placeOnTrack(G.trackData.spline, 0, -3.5);
+    G.raceEngine.addRacer('local');
 
-    vehicleCamera = new VehicleCamera(camera);
+    G.vehicleCamera = new VehicleCamera(camera);
 
     initVFX(scene);
     initBoostFlame(scene);
     initSpeedLines(container);
     initSkidMarks(scene);
+    await initGPUParticles(renderer, scene);
+    initPostFX(renderer, scene, camera);
+    try {
+      await initRapierWorld();
+      addBarrierCollider(G.trackData.barrierLeft);
+      addBarrierCollider(G.trackData.barrierRight);
+      const playerPos = G.playerVehicle.group.position;
+      addCarBody('local', playerPos.x, playerPos.y, playerPos.z, G.playerVehicle.heading);
+    } catch (e) {
+      console.warn('[Rapier] WASM init failed, running without enhanced collision:', e);
+    }
 
-    if (!netPeer) await spawnAI(trackData);
+    if (!G.netPeer) await spawnAI(G.trackData);
 
-    if (netPeer) {
+    if (G.netPeer) {
       await spawnRemoteVehicles();
 
-      netPeer.startBroadcasting(() => ({
-        x: playerVehicle!.group.position.x,
-        z: playerVehicle!.group.position.z,
-        heading: playerVehicle!.heading,
-        speed: playerVehicle!.speed,
-        dmgFront: playerVehicle!.damage.front.hp,
-        dmgRear: playerVehicle!.damage.rear.hp,
-        dmgLeft: playerVehicle!.damage.left.hp,
-        dmgRight: playerVehicle!.damage.right.hp,
+      G.netPeer.startBroadcasting(() => ({
+        x: G.playerVehicle!.group.position.x,
+        z: G.playerVehicle!.group.position.z,
+        heading: G.playerVehicle!.heading,
+        speed: G.playerVehicle!.speed,
+        dmgFront: G.playerVehicle!.damage.front.hp,
+        dmgRear: G.playerVehicle!.damage.rear.hp,
+        dmgLeft: G.playerVehicle!.damage.left.hp,
+        dmgRight: G.playerVehicle!.damage.right.hp,
       }));
 
-      netPeer.startPinging();
-      netPeer.startHeartbeat();
+      G.netPeer.startPinging();
+      G.netPeer.startHeartbeat();
     }
 
     createHUD(uiOverlay);
     showHUD(true);
 
     // Rear-view mirror
-    mirrorCamera = new THREE.PerspectiveCamera(50, 320 / 120, 0.5, 500);
-    mirrorBorder = document.createElement('div');
-    mirrorBorder.style.cssText = `
+    G.mirrorCamera = new THREE.PerspectiveCamera(50, 320 / 120, 0.5, 500);
+    G.mirrorBorder = document.createElement('div');
+    G.mirrorBorder.style.cssText = `
       position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
       width: 320px; height: 120px;
       border: 2px solid rgba(255,255,255,0.2); border-radius: 6px;
       pointer-events: none; z-index: 20; opacity: 0.85;
     `;
-    uiOverlay.appendChild(mirrorBorder);
+    uiOverlay.appendChild(G.mirrorBorder);
     showTouchControls(true);
     initAudio();
     hideLoading();
 
     // ── Synchronized start (multiplayer ready barrier) ──
-    if (netPeer) {
-      if (netPeer.getIsHost()) {
-        const guestCount = netPeer.getConnectionCount();
-        if (guestCount > 0 && raceReadyCount < guestCount) {
+    if (G.netPeer) {
+      if (G.netPeer.getIsHost()) {
+        const guestCount = G.netPeer.getConnectionCount();
+        if (guestCount > 0 && G.raceReadyCount < guestCount) {
           await Promise.race([
             new Promise<void>(resolve => {
-              raceGoResolve = resolve;
-              if (raceReadyCount >= guestCount) resolve();
+              G.raceGoResolve = resolve;
+              if (G.raceReadyCount >= guestCount) resolve();
             }),
             new Promise<void>(resolve => setTimeout(resolve, 10000)),
           ]);
-          raceGoResolve = null;
+          G.raceGoResolve = null;
         }
-        netPeer.broadcastEvent(EventType.RACE_GO, {});
+        G.netPeer.broadcastEvent(EventType.RACE_GO, {});
       } else {
-        netPeer.broadcastEvent(EventType.RACE_READY, {});
+        G.netPeer.broadcastEvent(EventType.RACE_READY, {});
         await Promise.race([
-          new Promise<void>(resolve => { raceGoResolve = resolve; }),
+          new Promise<void>(resolve => { G.raceGoResolve = resolve; }),
           new Promise<void>(resolve => setTimeout(resolve, 10000)),
         ]);
-        raceGoResolve = null;
+        G.raceGoResolve = null;
       }
     }
 
     await runCountdown(uiOverlay);
 
     resetRaceStats();
-    raceEngine.start();
-    replayRecorder = new ReplayRecorder();
-    replayRecorder.start();
-    gameState = GameState.RACING;
+    G.raceEngine.start();
+    G.replayRecorder = new ReplayRecorder();
+    G.replayRecorder.start();
+    G.gameState = GameState.RACING;
   } finally {
-    raceStarting = false;
+    G.raceStarting = false;
   }
 }
 
-async function spawnAI(trackData: TrackData) {
+async function spawnAI(td: TrackData) {
   // Defensive: clear any leftover AI from previous race
-  for (const ai of aiRacers) {
+  for (const ai of G.aiRacers) {
     scene.remove(ai.vehicle.group);
   }
-  aiRacers.length = 0;
+  G.aiRacers.length = 0;
 
-  const available = CAR_ROSTER.filter(c => c.id !== selectedCar.id);
-  const count = Math.min(aiCount, available.length);
+  const available = CAR_ROSTER.filter(c => c.id !== G.selectedCar.id);
+  const count = Math.min(G.aiCount, available.length);
   const aiCars = available.slice(0, count);
   const laneOffsets = [3.5, -3.5, 3.5, -3.5, 3.5, -3.5];
   const startTs = [0.02, 0.02, 0.04, 0.04, 0.06, 0.06];
 
-  console.log(`[spawnAI] aiCount=${aiCount}, spawning ${aiCars.length} AI racers`);
+  console.log(`[spawnAI] G.aiCount=${G.aiCount}, spawning ${aiCars.length} AI racers`);
 
   for (let i = 0; i < aiCars.length; i++) {
     const def = aiCars[i];
     const ai = new AIRacer(`ai_${i}`, { ...def }, i);
-    ai.applyDifficulty(aiDifficulty);
-    raceEngine!.addRacer(`ai_${i}`);
+    ai.applyDifficulty(G.aiDifficulty);
+    G.raceEngine!.addRacer(`ai_${i}`);
 
     try {
       const model = await loadCarModel(def.file);
       ai.vehicle.setModel(model);
     } catch {}
 
-    ai.vehicle.setRoadMesh(trackData!.roadMesh);
-    ai.place(trackData!.spline, startTs[i] ?? 0.02, laneOffsets[i] ?? 0, trackData!.bvh);
-    ai.setSpeedProfile(trackData!.speedProfile);
+    ai.vehicle.setRoadMesh(G.trackData!.roadMesh);
+    ai.place(G.trackData!.spline, startTs[i] ?? 0.02, laneOffsets[i] ?? 0, G.trackData!.bvh);
+    ai.setSpeedProfile(G.trackData!.speedProfile);
     scene.add(ai.vehicle.group);
-    aiRacers.push(ai);
+    G.aiRacers.push(ai);
   }
 }
 
 async function spawnRemoteVehicles() {
-  if (!netPeer || !trackData) return;
+  if (!G.netPeer || !G.trackData) return;
 
   // Use the full players list from COUNTDOWN_START (includes guests we have no direct connection to)
   // Filter out our own local ID
-  const localId = netPeer.getLocalId();
-  const allPlayers = mpPlayersList.length > 0
-    ? mpPlayersList.filter(p => p.id !== localId)
-    : netPeer.getRemotePlayers().map(r => ({ id: r.id, name: r.name, carId: r.carId }));
+  const localId = G.netPeer.getLocalId();
+  const allPlayers = G.mpPlayersList.length > 0
+    ? G.mpPlayersList.filter(p => p.id !== localId)
+    : G.netPeer.getRemotePlayers().map(r => ({ id: r.id, name: r.name, carId: r.carId }));
 
   const laneOffsets = [3.5, -3.5, 3.5, -3.5, 3.5, -3.5];
 
   for (let ri = 0; ri < allPlayers.length; ri++) {
     const player = allPlayers[ri];
-    if (remoteMeshes.has(player.id)) continue;
+    if (G.remoteMeshes.has(player.id)) continue;
 
     const def = CAR_ROSTER.find(c => c.id === player.carId) ?? CAR_ROSTER[0];
     try {
       const model = await loadCarModel(def.file);
       const startT = 0.02 + ri * 0.02;
-      const pt = trackData.spline.getPointAt(startT);
-      const tangent = trackData.spline.getTangentAt(startT).normalize();
+      const pt = G.trackData.spline.getPointAt(startT);
+      const tangent = G.trackData.spline.getTangentAt(startT).normalize();
       const right = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
       const lane = laneOffsets[ri % laneOffsets.length];
       model.position.copy(pt);
@@ -979,7 +410,7 @@ async function spawnRemoteVehicles() {
       // Snap to road surface via raycast
       const rayOrigin = new THREE.Vector3(model.position.x, model.position.y + 10, model.position.z);
       const rc = new THREE.Raycaster(rayOrigin, new THREE.Vector3(0, -1, 0), 0, 25);
-      const hits = rc.intersectObject(trackData.roadMesh, false);
+      const hits = rc.intersectObject(G.trackData.roadMesh, false);
       if (hits.length > 0) {
         model.position.y = hits[0].point.y;
       } else {
@@ -988,13 +419,13 @@ async function spawnRemoteVehicles() {
 
       model.rotation.y = Math.atan2(tangent.x, tangent.z);
       scene.add(model);
-      remoteMeshes.set(player.id, model);
+      G.remoteMeshes.set(player.id, model);
 
       const tag = createNameTag(player.name || 'Racer', scene);
-      remoteNameTags.set(player.id, tag);
+      G.remoteNameTags.set(player.id, tag);
     } catch {}
 
-    raceEngine!.addRacer(player.id);
+    G.raceEngine!.addRacer(player.id);
   }
 }
 
@@ -1025,62 +456,62 @@ function disposeMesh(obj: THREE.Object3D) {
 
 function clearRaceObjects() {
   // Stop network broadcasting before nulling vehicles
-  netPeer?.stopBroadcasting();
-  netPeer?.stopPinging();
-  netPeer?.clearBuffers();
+  G.netPeer?.stopBroadcasting();
+  G.netPeer?.stopPinging();
+  G.netPeer?.clearBuffers();
 
   // Stop replay recorder
-  replayRecorder?.stop();
-  replayRecorder = null;
+  G.replayRecorder?.stop();
+  G.replayRecorder = null;
 
   // Remove and dispose old track
-  if (trackData) {
+  if (G.trackData) {
     destroyWeather();
-    scene.remove(trackData.roadMesh);
-    scene.remove(trackData.barrierLeft);
-    scene.remove(trackData.barrierRight);
-    scene.remove(trackData.shoulderMesh);
-    scene.remove(trackData.kerbGroup);
-    scene.remove(trackData.sceneryGroup);
-    disposeMesh(trackData.roadMesh);
-    disposeMesh(trackData.barrierLeft);
-    disposeMesh(trackData.barrierRight);
-    disposeMesh(trackData.shoulderMesh);
-    disposeMesh(trackData.kerbGroup);
-    disposeMesh(trackData.sceneryGroup);
-    trackData = null;
+    scene.remove(G.trackData.roadMesh);
+    scene.remove(G.trackData.barrierLeft);
+    scene.remove(G.trackData.barrierRight);
+    scene.remove(G.trackData.shoulderMesh);
+    scene.remove(G.trackData.kerbGroup);
+    scene.remove(G.trackData.sceneryGroup);
+    disposeMesh(G.trackData.roadMesh);
+    disposeMesh(G.trackData.barrierLeft);
+    disposeMesh(G.trackData.barrierRight);
+    disposeMesh(G.trackData.shoulderMesh);
+    disposeMesh(G.trackData.kerbGroup);
+    disposeMesh(G.trackData.sceneryGroup);
+    G.trackData = null;
   }
-  if (checkpointMarkers) {
-    scene.remove(checkpointMarkers);
-    disposeMesh(checkpointMarkers);
-    checkpointMarkers = null;
+  if (G.checkpointMarkers) {
+    scene.remove(G.checkpointMarkers);
+    disposeMesh(G.checkpointMarkers);
+    G.checkpointMarkers = null;
   }
 
   // Destroy mirror
-  if (mirrorBorder) { mirrorBorder.remove(); mirrorBorder = null; }
-  mirrorCamera = null;
+  if (G.mirrorBorder) { G.mirrorBorder.remove(); G.mirrorBorder = null; }
+  G.mirrorCamera = null;
 
   // Remove player
-  if (playerVehicle) {
-    scene.remove(playerVehicle.group);
-    disposeMesh(playerVehicle.group);
-    playerVehicle = null;
+  if (G.playerVehicle) {
+    scene.remove(G.playerVehicle.group);
+    disposeMesh(G.playerVehicle.group);
+    G.playerVehicle = null;
   }
 
   // Remove AI
-  for (const ai of aiRacers) {
+  for (const ai of G.aiRacers) {
     scene.remove(ai.vehicle.group);
     disposeMesh(ai.vehicle.group);
   }
-  aiRacers.length = 0;
+  G.aiRacers.length = 0;
 
   // Remove remote meshes
-  for (const mesh of remoteMeshes.values()) {
+  for (const mesh of G.remoteMeshes.values()) {
     scene.remove(mesh);
     disposeMesh(mesh);
   }
-  remoteMeshes.clear();
-  for (const tag of remoteNameTags.values()) {
+  G.remoteMeshes.clear();
+  for (const tag of G.remoteNameTags.values()) {
     scene.remove(tag);
     if ((tag as THREE.Sprite).material) {
       const spMat = (tag as THREE.Sprite).material as THREE.SpriteMaterial;
@@ -1088,21 +519,25 @@ function clearRaceObjects() {
       spMat.dispose();
     }
   }
-  remoteNameTags.clear();
+  G.remoteNameTags.clear();
 
-  remotePrevPos.clear();
+  G.remotePrevPos.clear();
 
   // Clean up detached parts
-  for (const dp of detachedParts) {
+  for (const dp of G.detachedParts) {
     scene.remove(dp.mesh);
     dp.mesh.geometry?.dispose();
     (dp.mesh.material as THREE.Material)?.dispose();
   }
-  detachedParts.length = 0;
+  G.detachedParts.length = 0;
 
   // Clean up VFX (smoke, speed lines, boost flame, skid marks)
   destroyVFX();
   destroySkidMarks();
+  destroyGPUParticles();
+  destroyRapierWorld();
+  rollbackManager.reset();
+  destroyPostFX();
 
   // Stop audio
   stopAudio();
@@ -1111,85 +546,85 @@ function clearRaceObjects() {
   destroyLeaderboard();
 
   // Clean up debug overlay
-  if (debugEl) { debugEl.remove(); debugEl = null; }
+  if (G.debugEl) { G.debugEl.remove(); G.debugEl = null; }
 
   // Reset cooldowns
-  driftSfxCooldown = 0;
-  lbLastUpdate = 0;
-  spectateTargetId = null;
-  prevMyRank = 0;
+  G.driftSfxCooldown = 0;
+  G.lbLastUpdate = 0;
+  G.spectateTargetId = null;
+  G.prevMyRank = 0;
   destroySpectateHUD();
 }
 
 function enterSpectatorMode() {
-  if (!vehicleCamera || !raceEngine) return;
+  if (!G.vehicleCamera || !G.raceEngine) return;
 
   // Find the closest unfinished racer to follow
-  const rankings = raceEngine.getRankings();
+  const rankings = G.raceEngine.getRankings();
   const unfinished = rankings.filter(r => !r.finished && !r.dnf && r.id !== 'local');
 
   if (unfinished.length > 0) {
-    spectateTargetId = unfinished[0].id;
-    vehicleCamera.startFollow();
+    G.spectateTargetId = unfinished[0].id;
+    G.vehicleCamera.startFollow();
     showSpectateHUD();
   } else {
     // No one left to follow — orbit the track center
-    spectateTargetId = null;
-    if (playerVehicle) {
-      vehicleCamera.startOrbit(playerVehicle.group.position);
+    G.spectateTargetId = null;
+    if (G.playerVehicle) {
+      G.vehicleCamera.startOrbit(G.playerVehicle.group.position);
     }
   }
 }
 
 function cycleSpectateTarget(direction: 1 | -1) {
-  if (!raceEngine || !vehicleCamera) return;
-  const rankings = raceEngine.getRankings();
+  if (!G.raceEngine || !G.vehicleCamera) return;
+  const rankings = G.raceEngine.getRankings();
   const targets = rankings.filter(r => !r.finished && !r.dnf && r.id !== 'local');
   if (targets.length === 0) {
     // Everyone finished — switch to orbit
-    spectateTargetId = null;
-    vehicleCamera.startOrbit(playerVehicle!.group.position);
+    G.spectateTargetId = null;
+    G.vehicleCamera.startOrbit(G.playerVehicle!.group.position);
     destroySpectateHUD();
     return;
   }
 
-  const curIdx = targets.findIndex(r => r.id === spectateTargetId);
+  const curIdx = targets.findIndex(r => r.id === G.spectateTargetId);
   let nextIdx = curIdx + direction;
   if (nextIdx < 0) nextIdx = targets.length - 1;
   if (nextIdx >= targets.length) nextIdx = 0;
-  spectateTargetId = targets[nextIdx].id;
-  vehicleCamera.startFollow();
+  G.spectateTargetId = targets[nextIdx].id;
+  G.vehicleCamera.startFollow();
   updateSpectateHUD();
 }
 
 function showSpectateHUD() {
   destroySpectateHUD();
-  spectateHudEl = document.createElement('div');
-  spectateHudEl.className = 'spectate-hud';
-  uiOverlay.appendChild(spectateHudEl);
+  G.spectateHudEl = document.createElement('div');
+  G.spectateHudEl.className = 'spectate-hud';
+  uiOverlay.appendChild(G.spectateHudEl);
 
-  spectateHudEl.querySelector('.arrow-left')?.addEventListener('click', () => cycleSpectateTarget(-1));
-  spectateHudEl.querySelector('.arrow-right')?.addEventListener('click', () => cycleSpectateTarget(1));
+  G.spectateHudEl.querySelector('.arrow-left')?.addEventListener('click', () => cycleSpectateTarget(-1));
+  G.spectateHudEl.querySelector('.arrow-right')?.addEventListener('click', () => cycleSpectateTarget(1));
 
   updateSpectateHUD();
 }
 
 function updateSpectateHUD() {
-  if (!spectateHudEl || !spectateTargetId) return;
-  const name = resolvePlayerName(spectateTargetId);
-  spectateHudEl.innerHTML = `
+  if (!G.spectateHudEl || !G.spectateTargetId) return;
+  const name = resolvePlayerName(G.spectateTargetId);
+  G.spectateHudEl.innerHTML = `
     <span class="spectate-label">SPECTATING</span>
     <span class="arrow arrow-left" id="spec-left">◀</span>
     <span class="spectate-name">${name}</span>
     <span class="arrow arrow-right" id="spec-right">▶</span>
   `;
   // Re-wire click events after innerHTML update
-  spectateHudEl.querySelector('#spec-left')?.addEventListener('click', () => cycleSpectateTarget(-1));
-  spectateHudEl.querySelector('#spec-right')?.addEventListener('click', () => cycleSpectateTarget(1));
+  G.spectateHudEl.querySelector('#spec-left')?.addEventListener('click', () => cycleSpectateTarget(-1));
+  G.spectateHudEl.querySelector('#spec-right')?.addEventListener('click', () => cycleSpectateTarget(1));
 }
 
 function destroySpectateHUD() {
-  if (spectateHudEl) { spectateHudEl.remove(); spectateHudEl = null; }
+  if (G.spectateHudEl) { G.spectateHudEl.remove(); G.spectateHudEl = null; }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1199,50 +634,49 @@ function destroySpectateHUD() {
 function resolvePlayerName(id: string): string {
   if (id === 'local') return 'You';
   if (id.startsWith('ai_')) return `AI ${id.replace('ai_', '')}`;
-  const netName = netPeer?.getRemotePlayers().find(rp => rp.id === id)?.name;
+  const netName = G.netPeer?.getRemotePlayers().find(rp => rp.id === id)?.name;
   if (netName && netName !== 'Racer') return netName;
-  const mpName = mpPlayersList.find(p => p.id === id)?.name;
+  const mpName = G.mpPlayersList.find(p => p.id === id)?.name;
   return mpName || netName || id.slice(0, 8);
 }
 
-let postWinnerTimer: number | null = null;
 
 function showResults() {
-  gameState = GameState.RESULTS;
+  G.gameState = GameState.RESULTS;
 
   // Record session wins
-  const preRankings = raceEngine?.getRankings() ?? [];
+  const preRankings = G.raceEngine?.getRankings() ?? [];
   if (preRankings.length > 0 && !preRankings[0].dnf && preRankings[0].finished) {
     const winnerId = preRankings[0].id;
-    sessionWins.set(winnerId, (sessionWins.get(winnerId) || 0) + 1);
+    G.sessionWins.set(winnerId, (G.sessionWins.get(winnerId) || 0) + 1);
   }
-  netPeer?.stopBroadcasting();
-  netPeer?.stopPinging();
+  G.netPeer?.stopBroadcasting();
+  G.netPeer?.stopPinging();
   showTouchControls(false);
-  replayRecorder?.stop();
+  G.replayRecorder?.stop();
 
-  if (postWinnerTimer) clearTimeout(postWinnerTimer);
-  postWinnerTimer = window.setTimeout(() => {
-    if (raceEngine) {
-      for (const r of raceEngine.getRankings()) {
-        if (!r.finished) raceEngine.markDnf(r.id);
+  if (G.postWinnerTimer) clearTimeout(G.postWinnerTimer);
+  G.postWinnerTimer = window.setTimeout(() => {
+    if (G.raceEngine) {
+      for (const r of G.raceEngine.getRankings()) {
+        if (!r.finished) G.raceEngine.markDnf(r.id);
       }
     }
-    postWinnerTimer = null;
+    G.postWinnerTimer = null;
   }, 15000);
 
-  const rankings = raceEngine?.getRankings() ?? [];
+  const rankings = G.raceEngine?.getRankings() ?? [];
   const winner = rankings[0];
   const winnerName = winner ? resolvePlayerName(winner.id) : '???';
-  const isMultiplayer = !!netPeer;
-  const isHost = netPeer?.getIsHost() ?? false;
-  const hasReplay = replayRecorder?.hasData() ?? false;
+  const isMultiplayer = !!G.netPeer;
+  const isHost = G.netPeer?.getIsHost() ?? false;
+  const hasReplay = G.replayRecorder?.hasData() ?? false;
 
   const el = document.createElement('div');
   el.className = 'results-overlay';
   // Build per-lap breakdown for the local player
-  const localProgress = raceEngine?.getProgress('local');
-  const localBestLap = raceEngine?.getBestLap('local');
+  const localProgress = G.raceEngine?.getProgress('local');
+  const localBestLap = G.raceEngine?.getBestLap('local');
   const lapBreakdownHtml = localProgress && localProgress.lapTimes.length > 0
     ? `<div class="lap-breakdown">
         <div class="lap-breakdown-title">YOUR LAPS</div>
@@ -1271,9 +705,9 @@ function showResults() {
           const isDnf = r.dnf;
           const bestLap = r.lapTimes.length > 0 ? Math.min(...r.lapTimes) : null;
           const delayMs = (i + 1) * 150;
-          const wins = sessionWins.get(r.id) || 0;
+          const wins = G.sessionWins.get(r.id) || 0;
           const winsHtml = wins > 0 ? ` <span class="session-wins">${wins}W</span>` : '';
-          const crownHtml = sessionWins.size > 0 && wins === Math.max(...sessionWins.values()) && wins > 0 ? ' 👑' : '';
+          const crownHtml = G.sessionWins.size > 0 && wins === Math.max(...G.sessionWins.values()) && wins > 0 ? ' 👑' : '';
           return `
             <tr class="${isSelf ? 'local' : ''} ${isDnf ? 'dnf' : ''} ${i === 0 && !isDnf ? 'winner' : ''}" style="animation-delay:${delayMs}ms;">
               <td>${isDnf ? '—' : i + 1}</td>
@@ -1288,10 +722,10 @@ function showResults() {
     ${lapBreakdownHtml}
     <div class="lap-breakdown" style="margin-top:8px;">
       <div class="lap-breakdown-title">RACE STATS</div>
-      <div class="lap-breakdown-row"><span>Top Speed</span><span>${Math.floor(raceStats.topSpeed)} MPH</span></div>
-      <div class="lap-breakdown-row"><span>Drift Time</span><span>${raceStats.totalDriftTime.toFixed(1)}s</span></div>
-      <div class="lap-breakdown-row"><span>Avg Position</span><span>${raceStats.positionSampleCount > 0 ? (raceStats.avgPosition / raceStats.positionSampleCount).toFixed(1) : '—'}</span></div>
-      <div class="lap-breakdown-row"><span>Collisions</span><span>${raceStats.collisionCount}</span></div>
+      <div class="lap-breakdown-row"><span>Top Speed</span><span>${Math.floor(G.raceStats.topSpeed)} MPH</span></div>
+      <div class="lap-breakdown-row"><span>Drift Time</span><span>${G.raceStats.totalDriftTime.toFixed(1)}s</span></div>
+      <div class="lap-breakdown-row"><span>Avg Position</span><span>${G.raceStats.positionSampleCount > 0 ? (G.raceStats.avgPosition / G.raceStats.positionSampleCount).toFixed(1) : '—'}</span></div>
+      <div class="lap-breakdown-row"><span>Collisions</span><span>${G.raceStats.collisionCount}</span></div>
     </div>
     <div class="menu-buttons" style="width:240px; margin-top:8px;">
       ${hasReplay ? '<button class="menu-btn" id="btn-replay" style="border-color:var(--col-cyan);color:var(--col-cyan);">WATCH REPLAY</button>' : ''}
@@ -1309,49 +743,49 @@ function showResults() {
   });
   document.getElementById('btn-play-again')?.addEventListener('click', () => {
     el.remove();
-    if (postWinnerTimer) { clearTimeout(postWinnerTimer); postWinnerTimer = null; }
+    if (G.postWinnerTimer) { clearTimeout(G.postWinnerTimer); G.postWinnerTimer = null; }
     startRace();
   });
   document.getElementById('btn-rematch')?.addEventListener('click', () => {
     el.remove();
-    if (postWinnerTimer) { clearTimeout(postWinnerTimer); postWinnerTimer = null; }
+    if (G.postWinnerTimer) { clearTimeout(G.postWinnerTimer); G.postWinnerTimer = null; }
     if (isHost) {
-      raceReadyCount = 0;
-      trackSeed = Math.floor(Math.random() * 99999);
-      const rematchPlayers = [{ id: netPeer!.getLocalId(), name: localPlayerName, carId: selectedCar.id }];
-      for (const rp of netPeer!.getRemotePlayers()) rematchPlayers.push({ id: rp.id, name: rp.name, carId: rp.carId });
-      mpPlayersList = rematchPlayers;
-      netPeer!.broadcastEvent(EventType.REMATCH_REQUEST, { seed: trackSeed, laps: totalLaps, players: rematchPlayers });
+      G.raceReadyCount = 0;
+      G.trackSeed = Math.floor(Math.random() * 99999);
+      const rematchPlayers = [{ id: G.netPeer!.getLocalId(), name: G.localPlayerName, carId: G.selectedCar.id }];
+      for (const rp of G.netPeer!.getRemotePlayers()) rematchPlayers.push({ id: rp.id, name: rp.name, carId: rp.carId });
+      G.mpPlayersList = rematchPlayers;
+      G.netPeer!.broadcastEvent(EventType.REMATCH_REQUEST, { seed: G.trackSeed, laps: G.totalLaps, players: rematchPlayers });
       destroyLeaderboard();
       startRace();
     } else {
-      netPeer!.broadcastEvent(EventType.REMATCH_ACCEPT, {});
+      G.netPeer!.broadcastEvent(EventType.REMATCH_ACCEPT, {});
       showToast(uiOverlay, 'Rematch requested...');
     }
   });
   document.getElementById('btn-main-menu')!.addEventListener('click', () => {
     el.remove();
-    if (postWinnerTimer) { clearTimeout(postWinnerTimer); postWinnerTimer = null; }
-    netPeer?.destroy();
-    netPeer = null;
+    if (G.postWinnerTimer) { clearTimeout(G.postWinnerTimer); G.postWinnerTimer = null; }
+    G.netPeer?.destroy();
+    G.netPeer = null;
     clearRaceObjects();
     destroyLeaderboard();
     destroySpectateHUD();
-    sessionWins.clear();
+    G.sessionWins.clear();
     showTitleScreen();
   });
 }
 
 function startReplayPlayback() {
-  if (!replayRecorder || !trackData || !playerVehicle) return;
+  if (!G.replayRecorder || !G.trackData || !G.playerVehicle) return;
 
   // Build mesh map for replay (player + AI vehicles)
   const meshes = new Map<string, THREE.Group>();
-  meshes.set('local', playerVehicle.group);
-  for (const ai of aiRacers) meshes.set(ai.id, ai.vehicle.group);
+  meshes.set('local', G.playerVehicle.group);
+  for (const ai of G.aiRacers) meshes.set(ai.id, ai.vehicle.group);
 
-  replayPlayer = new ReplayPlayer(replayRecorder, camera, meshes);
-  replayPlayer.start();
+  G.replayPlayer = new ReplayPlayer(G.replayRecorder, camera, meshes);
+  G.replayPlayer.start();
   showHUD(false);
 
   // Show replay HUD with exit button
@@ -1376,9 +810,9 @@ function startReplayPlayback() {
 }
 
 function stopReplayPlayback() {
-  if (replayPlayer) {
-    replayPlayer.stop();
-    replayPlayer = null;
+  if (G.replayPlayer) {
+    G.replayPlayer.stop();
+    G.replayPlayer = null;
   }
   const hud = document.getElementById('replay-hud');
   if (hud) hud.remove();
@@ -1389,30 +823,27 @@ function stopReplayPlayback() {
 // LEADERBOARD HUD (in-race)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-let lbEl: HTMLElement | null = null;
-let lbLastUpdate = 0;
-const LB_UPDATE_INTERVAL = 250; // ms — 4Hz
 
 function updateLeaderboard() {
-  if (!raceEngine) return;
+  if (!G.raceEngine) return;
   const now = performance.now();
-  if (now - lbLastUpdate < LB_UPDATE_INTERVAL) return;
-  lbLastUpdate = now;
+  if (now - G.lbLastUpdate < LB_UPDATE_INTERVAL) return;
+  G.lbLastUpdate = now;
 
-  if (!lbEl) {
-    lbEl = document.createElement('div');
-    lbEl.className = 'leaderboard';
-    lbEl.id = 'leaderboard';
-    uiOverlay.appendChild(lbEl);
+  if (!G.lbEl) {
+    G.lbEl = document.createElement('div');
+    G.lbEl.className = 'leaderboard';
+    G.lbEl.id = 'leaderboard';
+    uiOverlay.appendChild(G.lbEl);
   }
 
-  const rankings = raceEngine.getRankings();
-  lbEl.innerHTML = rankings.map((r, i) => {
+  const rankings = G.raceEngine.getRankings();
+  G.lbEl.innerHTML = rankings.map((r, i) => {
     const name = r.id === 'local' ? 'YOU' : resolvePlayerName(r.id);
     const isSelf = r.id === 'local';
     let rttDot = '';
-    if (netPeer && !isSelf && !r.id.startsWith('ai_')) {
-      const peerRtt = netPeer.getPeerRtt(r.id);
+    if (G.netPeer && !isSelf && !r.id.startsWith('ai_')) {
+      const peerRtt = G.netPeer.getPeerRtt(r.id);
       const dotClass = peerRtt < 80 ? 'ping-good' : peerRtt < 150 ? 'ping-mid' : 'ping-bad';
       rttDot = `<span class="ping-dot ${dotClass}" style="margin-left:4px;"></span>`;
     }
@@ -1426,15 +857,139 @@ function updateLeaderboard() {
   }).join('');
 
   // Latency badge (multiplayer only)
-  if (netPeer) {
-    const rtt = netPeer.getRtt();
+  if (G.netPeer) {
+    const rtt = G.netPeer.getRtt();
     const color = rtt < 80 ? '#4caf50' : rtt < 150 ? '#ffcc00' : '#ff4444';
-    lbEl.innerHTML += `<div style="text-align:right;font-size:11px;color:${color};margin-top:4px;">${rtt}ms</div>`;
+    G.lbEl.innerHTML += `<div style="text-align:right;font-size:11px;color:${color};margin-top:4px;">${rtt}ms</div>`;
   }
 }
 
 function destroyLeaderboard() {
-  if (lbEl) { lbEl.remove(); lbEl = null; }
+  if (G.lbEl) { G.lbEl.remove(); G.lbEl = null; }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// FIXED-TIMESTEP PHYSICS (120Hz)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** One deterministic physics sub-step at fixed dt. Contains all gameplay simulation. */
+function stepPhysics(dt: number, s: GameState) {
+  if (!G.playerVehicle || !G.trackData) return;
+
+  // ── Countdown: zero-input physics so cars settle on road surface ──
+  if (s === GameState.COUNTDOWN) {
+    const neutralInput = { up: false, down: false, left: false, right: false, boost: false, steerAnalog: 0 };
+    G.playerVehicle.update(dt, neutralInput, G.trackData.spline, G.trackData.bvh);
+    for (const ai of G.aiRacers) {
+      ai.vehicle.update(dt, neutralInput, G.trackData.spline, G.trackData.bvh);
+    }
+    return;
+  }
+
+  if (s !== GameState.RACING) return;
+
+  // ── Player vehicle physics ──
+  if (G.vehicleCamera?.mode === 'chase') {
+    const origGrip = G.playerVehicle.def.gripCoeff;
+    const origDrift = G.playerVehicle.def.driftFactor;
+    G.playerVehicle.def.gripCoeff *= getWeatherGripMultiplier();
+    G.playerVehicle.def.driftFactor *= getWeatherDriftMultiplier();
+    G.playerVehicle.update(dt, getInput(), G.trackData.spline, G.trackData.bvh);
+    G.playerVehicle.def.gripCoeff = origGrip;
+    G.playerVehicle.def.driftFactor = origDrift;
+  }
+
+  // ── AI vehicle physics ──
+  const playerT = getClosestSplinePoint(G.trackData.spline, G.playerVehicle.group.position, G.trackData.bvh).t;
+  const allOpponents: OpponentInfo[] = [
+    { position: G.playerVehicle.group.position, t: playerT, id: 'local' },
+  ];
+  for (const ai of G.aiRacers) {
+    allOpponents.push({ position: ai.vehicle.group.position, t: ai.getCurrentT(), id: ai.id });
+  }
+
+  for (const ai of G.aiRacers) {
+    const opponents = allOpponents.filter(o => o.id !== ai.id);
+    const origGripAi = ai.vehicle.def.gripCoeff;
+    const origDriftAi = ai.vehicle.def.driftFactor;
+    ai.vehicle.def.gripCoeff *= getWeatherGripMultiplier();
+    ai.vehicle.def.driftFactor *= getWeatherDriftMultiplier();
+    ai.update(dt, opponents);
+    ai.vehicle.def.gripCoeff = origGripAi;
+    ai.vehicle.def.driftFactor = origDriftAi;
+  }
+
+  // ── Car-to-car collision (BVH broadphase + push-apart) ──
+  const colliders: CarCollider[] = [];
+  const velocities: { velX: number; velZ: number }[] = [];
+
+  colliders.push({
+    id: 'local',
+    position: G.playerVehicle.group.position,
+    halfExtents: G.carHalf,
+    heading: G.playerVehicle.heading,
+  });
+  velocities.push(G.playerVehicle);
+
+  for (const ai of G.aiRacers) {
+    colliders.push({
+      id: ai.id,
+      position: ai.vehicle.group.position,
+      halfExtents: G.carHalf,
+      heading: ai.vehicle.heading,
+    });
+    velocities.push(ai.vehicle);
+  }
+
+  for (const [id, mesh] of G.remoteMeshes) {
+    colliders.push({
+      id,
+      position: mesh.position,
+      halfExtents: G.carHalf,
+      heading: mesh.rotation.y,
+    });
+    velocities.push({ velX: 0, velZ: 0 });
+  }
+
+  const collisionEvents = resolveCarCollisions(colliders, velocities);
+
+  for (const evt of collisionEvents) {
+    if (evt.idA === 'local' && G.playerVehicle) {
+      G._impactDir.set(evt.normalX, 0, evt.normalZ);
+      G.playerVehicle.applyDamage(G._impactDir, evt.impactForce);
+      G.raceStats.collisionCount++;
+      G.vehicleCamera?.shake(Math.min(evt.impactForce / 40, 1));
+    }
+    if (evt.idB === 'local' && G.playerVehicle) {
+      G._impactDir.set(-evt.normalX, 0, -evt.normalZ);
+      G.playerVehicle.applyDamage(G._impactDir, evt.impactForce);
+      G.raceStats.collisionCount++;
+      G.vehicleCamera?.shake(Math.min(evt.impactForce / 40, 1));
+    }
+    for (const ai of G.aiRacers) {
+      if (evt.idA === ai.id) {
+        G._impactDir.set(evt.normalX, 0, evt.normalZ);
+        ai.vehicle.applyDamage(G._impactDir, evt.impactForce);
+      }
+      if (evt.idB === ai.id) {
+        G._impactDir.set(-evt.normalX, 0, -evt.normalZ);
+        ai.vehicle.applyDamage(G._impactDir, evt.impactForce);
+      }
+    }
+
+    if (evt.impactForce > 5) {
+      const cA = colliders.find(c => c.id === evt.idA)!;
+      const cB = colliders.find(c => c.id === evt.idB)!;
+      G._sparkPos.set(
+        (cA.position.x + cB.position.x) / 2,
+        (cA.position.y + cB.position.y) / 2 + 0.5,
+        (cA.position.z + cB.position.z) / 2,
+      );
+      spawnCollisionSparks(G._sparkPos, evt.impactForce);
+      if (evt.impactForce > 25) spawnExplosion(G._sparkPos, evt.impactForce);
+      playCollisionSFX(Math.min(evt.impactForce / 30, 1));
+    }
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1444,10 +999,10 @@ function destroyLeaderboard() {
 function gameLoop(timestamp: number) {
   requestAnimationFrame(gameLoop);
 
-  const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
-  lastTime = timestamp;
+  const frameDt = Math.min((timestamp - G.lastTime) / 1000, MAX_FRAME_DT);
+  G.lastTime = timestamp;
 
-  const s = gameState;
+  const s = G.gameState;
 
   // ── Garage render ──
   if (s === GameState.GARAGE) {
@@ -1462,11 +1017,11 @@ function gameLoop(timestamp: number) {
   }
 
   // ── Replay playback ──
-  if (replayPlayer) {
-    if (replayPlayer.isPlaying()) {
-      replayPlayer.update(dt);
+  if (G.replayPlayer) {
+    if (G.replayPlayer.isPlaying()) {
+      G.replayPlayer.update(frameDt);
       const bar = document.getElementById('replay-bar');
-      if (bar) bar.style.width = `${Math.round(replayPlayer.getProgress() * 100)}%`;
+      if (bar) bar.style.width = `${Math.round(G.replayPlayer.getProgress() * 100)}%`;
       renderer.render(scene, camera);
       return;
     } else {
@@ -1483,76 +1038,100 @@ function gameLoop(timestamp: number) {
 
   // ── Countdown / Racing / Results ──
   if (s === GameState.COUNTDOWN || s === GameState.RACING || s === GameState.RESULTS) {
-    if (!playerVehicle || !trackData) {
+    if (!G.playerVehicle || !G.trackData) {
       renderer.render(scene, camera);
       return;
     }
 
-    // ── Countdown: run physics with zero input so cars settle on road surface ──
-    if (s === GameState.COUNTDOWN) {
-      const neutralInput = { up: false, down: false, left: false, right: false, boost: false, steerAnalog: 0 };
-      playerVehicle.update(dt, neutralInput, trackData.spline, trackData.bvh);
-      for (const ai of aiRacers) {
-        ai.vehicle.update(dt, neutralInput, trackData.spline, trackData.bvh);
+    // ── FIXED-TIMESTEP PHYSICS ──
+    // Accumulate frame time, then step physics at a deterministic rate.
+    // Leftover accumulator fraction (`alpha`) is used to interpolate visuals.
+    G.physicsAccumulator += frameDt;
+
+    // Save pre-physics state for rendering interpolation
+    G.playerVehicle.saveSnapshot();
+    for (const ai of G.aiRacers) ai.vehicle.saveSnapshot();
+
+    // Run deterministic physics sub-steps
+    let physicsStepsThisFrame = 0;
+    while (G.physicsAccumulator >= PHYSICS_DT && physicsStepsThisFrame < 8) {
+      // ── Rollback: record local input + snapshot before this step ──
+      const currentInput = s === GameState.RACING ? getInput() : { up: false, down: false, left: false, right: false, boost: false, steerAnalog: 0 };
+      if (G.playerVehicle) {
+        rollbackManager.recordLocalFrame(currentInput, G.playerVehicle.serializeState());
       }
+
+      // Broadcast input to remote peers (multiplayer only)
+      if (G.netPeer && s === GameState.RACING) {
+        const packed = packInput(currentInput);
+        G.netPeer.broadcastInput(rollbackManager.frame, packed.bits, packed.steerI16);
+      }
+
+      stepPhysics(PHYSICS_DT, s);
+      rollbackManager.advanceFrame();
+      G.physicsAccumulator -= PHYSICS_DT;
+      physicsStepsThisFrame++;
     }
 
-    // Player update
-    if (s === GameState.RACING && vehicleCamera?.mode === 'chase') {
-      // Apply weather grip modifier
-      const origGrip = playerVehicle.def.gripCoeff;
-      const origDrift = playerVehicle.def.driftFactor;
-      playerVehicle.def.gripCoeff *= getWeatherGripMultiplier();
-      playerVehicle.def.driftFactor *= getWeatherDriftMultiplier();
-      playerVehicle.update(dt, getInput(), trackData.spline, trackData.bvh);
-      playerVehicle.def.gripCoeff = origGrip;
-      playerVehicle.def.driftFactor = origDrift;
+    // Clamp leftover to prevent runaway accumulation (spiral of death)
+    if (G.physicsAccumulator > PHYSICS_DT) G.physicsAccumulator = PHYSICS_DT;
 
-      // Slipstream detection: draft behind any AI car
-      const pp = playerVehicle.group.position;
-      const pH = playerVehicle.heading;
-      for (const ai of aiRacers) {
+    // Interpolate vehicle visuals between prev and curr physics state
+    const alpha = G.physicsAccumulator / PHYSICS_DT;
+    G.playerVehicle.lerpToRender(alpha);
+    for (const ai of G.aiRacers) ai.vehicle.lerpToRender(alpha);
+
+    // ── RENDERING-RATE CODE (runs once per frame, using interpolated positions) ──
+
+    // Slipstream detection (visual-rate, using interpolated positions)
+    if (s === GameState.RACING && G.vehicleCamera?.mode === 'chase') {
+      const pp = G.playerVehicle.group.position;
+      const pH = G.playerVehicle.heading;
+      for (const ai of G.aiRacers) {
         const aPos = ai.vehicle.group.position;
         const dx = aPos.x - pp.x;
         const dz = aPos.z - pp.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
         if (dist < 15 && dist > 2) {
-          // Check heading alignment (player is behind and facing same direction as AI)
           const toAiAngle = Math.atan2(dx, dz);
           let angleDiff = Math.abs(toAiAngle - pH);
           if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
-          if (angleDiff < 0.52) { // ~30° cone
-            // Closer = stronger draft
+          if (angleDiff < 0.52) {
             const draftStrength = (1 - dist / 15) * 20;
-            playerVehicle.addNitro(draftStrength * dt);
+            G.playerVehicle.addNitro(draftStrength * frameDt);
           }
         }
       }
 
-      // Nitro HUD update
-      updateNitroHUD(playerVehicle.nitro, playerVehicle.isNitroActive);
+      updateNitroHUD(G.playerVehicle.nitro, G.playerVehicle.isNitroActive);
+    }
+
+    // Update AI race progress (rendering-rate is fine for rankings)
+    if (s === GameState.RACING) {
+      for (const ai of G.aiRacers) {
+        G.raceEngine?.updateRacer(ai.id, ai.vehicle.group.position, ai.getCurrentT());
+      }
     }
 
     // Spectator orbit camera (during RESULTS)
-    if (s === GameState.RESULTS && vehicleCamera?.mode === 'orbit') {
-      vehicleCamera.updateOrbit(dt);
+    if (s === GameState.RESULTS && G.vehicleCamera?.mode === 'orbit') {
+      G.vehicleCamera.updateOrbit(frameDt);
     }
 
     // Camera
-    if (vehicleCamera && vehicleCamera.mode !== 'orbit') {
-      // Chase or follow mode — get the target
-      let camTarget = playerVehicle.group.position;
-      let camHeading = playerVehicle.heading;
-      let camSpeed = playerVehicle.speed;
-      let camMaxSpeed = selectedCar.maxSpeed;
+    if (G.vehicleCamera && G.vehicleCamera.mode !== 'orbit') {
+      let camTarget = G.playerVehicle.group.position;
+      let camHeading = G.playerVehicle.heading;
+      let camSpeed = G.playerVehicle.speed;
+      let camMaxSpeed = G.selectedCar.maxSpeed;
 
-      if (vehicleCamera.mode === 'follow' && spectateTargetId) {
-        const targetMesh = remoteMeshes.get(spectateTargetId);
-        const aiTarget = aiRacers.find(a => a.id === spectateTargetId);
+      if (G.vehicleCamera.mode === 'follow' && G.spectateTargetId) {
+        const targetMesh = G.remoteMeshes.get(G.spectateTargetId);
+        const aiTarget = G.aiRacers.find(a => a.id === G.spectateTargetId);
         if (targetMesh) {
           camTarget = targetMesh.position;
           camHeading = targetMesh.rotation.y;
-          const snap = netPeer?.getInterpolatedState(spectateTargetId);
+          const snap = G.netPeer?.getInterpolatedState(G.spectateTargetId);
           camSpeed = snap?.speed ?? 30;
           camMaxSpeed = 70;
         } else if (aiTarget) {
@@ -1563,149 +1142,49 @@ function gameLoop(timestamp: number) {
         }
       }
 
-      vehicleCamera.update(camTarget, camHeading, camSpeed, camMaxSpeed, playerVehicle.driftAngle);
-    }
-
-    // AI update
-    if (s === GameState.RACING) {
-      // Build opponent list for AI awareness (player + all other AIs)
-      const playerT = getClosestSplinePoint(trackData.spline, playerVehicle.group.position, trackData.bvh).t;
-      const allOpponents: OpponentInfo[] = [
-        { position: playerVehicle.group.position, t: playerT, id: 'local' },
-      ];
-      for (const ai of aiRacers) {
-        allOpponents.push({ position: ai.vehicle.group.position, t: ai.getCurrentT(), id: ai.id });
-      }
-
-      for (const ai of aiRacers) {
-        // Pass all opponents except self
-        const opponents = allOpponents.filter(o => o.id !== ai.id);
-        // Apply weather grip/drift penalty to AI (same as player)
-        const origGripAi = ai.vehicle.def.gripCoeff;
-        const origDriftAi = ai.vehicle.def.driftFactor;
-        ai.vehicle.def.gripCoeff *= getWeatherGripMultiplier();
-        ai.vehicle.def.driftFactor *= getWeatherDriftMultiplier();
-        ai.update(dt, opponents);
-        ai.vehicle.def.gripCoeff = origGripAi;
-        ai.vehicle.def.driftFactor = origDriftAi;
-        raceEngine?.updateRacer(ai.id, ai.vehicle.group.position, ai.getCurrentT());
-      }
-
-      // ── Car-to-car collision (BVH broadphase + push-apart) ──
-      const colliders: CarCollider[] = [];
-      const velocities: { velX: number; velZ: number }[] = [];
-
-      // Player collider
-      colliders.push({
-        id: 'local',
-        position: playerVehicle.group.position,
-        halfExtents: carHalf,
-        heading: playerVehicle.heading,
-      });
-      velocities.push(playerVehicle);
-
-      // AI colliders
-      for (const ai of aiRacers) {
-        colliders.push({
-          id: ai.id,
-          position: ai.vehicle.group.position,
-          halfExtents: carHalf,
-          heading: ai.vehicle.heading,
-        });
-        velocities.push(ai.vehicle);
-      }
-
-      // Remote multiplayer vehicle colliders (push-apart only)
-      for (const [id, mesh] of remoteMeshes) {
-        colliders.push({
-          id,
-          position: mesh.position,
-          halfExtents: carHalf,
-          heading: mesh.rotation.y,
-        });
-        velocities.push({ velX: 0, velZ: 0 });
-      }
-
-      const collisionEvents = resolveCarCollisions(colliders, velocities);
-
-      for (const evt of collisionEvents) {
-        if (evt.idA === 'local' && playerVehicle) {
-          _impactDir.set(evt.normalX, 0, evt.normalZ);
-          playerVehicle.applyDamage(_impactDir, evt.impactForce);
-          raceStats.collisionCount++;
-          vehicleCamera?.shake(Math.min(evt.impactForce / 40, 1));
-        }
-        if (evt.idB === 'local' && playerVehicle) {
-          _impactDir.set(-evt.normalX, 0, -evt.normalZ);
-          playerVehicle.applyDamage(_impactDir, evt.impactForce);
-          raceStats.collisionCount++;
-          vehicleCamera?.shake(Math.min(evt.impactForce / 40, 1));
-        }
-        for (const ai of aiRacers) {
-          if (evt.idA === ai.id) {
-            _impactDir.set(evt.normalX, 0, evt.normalZ);
-            ai.vehicle.applyDamage(_impactDir, evt.impactForce);
-          }
-          if (evt.idB === ai.id) {
-            _impactDir.set(-evt.normalX, 0, -evt.normalZ);
-            ai.vehicle.applyDamage(_impactDir, evt.impactForce);
-          }
-        }
-
-        if (evt.impactForce > 5) {
-          const cA = colliders.find(c => c.id === evt.idA)!;
-          const cB = colliders.find(c => c.id === evt.idB)!;
-          _sparkPos.set(
-            (cA.position.x + cB.position.x) / 2,
-            (cA.position.y + cB.position.y) / 2 + 0.5,
-            (cA.position.z + cB.position.z) / 2,
-          );
-          spawnCollisionSparks(_sparkPos, evt.impactForce);
-          if (evt.impactForce > 25) spawnExplosion(_sparkPos, evt.impactForce);
-          playCollisionSFX(Math.min(evt.impactForce / 30, 1));
-        }
-      }
+      G.vehicleCamera.update(camTarget, camHeading, camSpeed, camMaxSpeed, G.playerVehicle.driftAngle);
     }
 
     // VFX
-    const driftAbs = Math.abs(playerVehicle.driftAngle);
+    const driftAbs = Math.abs(G.playerVehicle.driftAngle);
     if (driftAbs > 0.15 && s === GameState.RACING) {
-      spawnTireSmoke(playerVehicle.group.position, driftAbs);
+      spawnTireSmoke(G.playerVehicle.group.position, driftAbs);
     }
     if (s === GameState.RACING) {
-      updateSkidMarks(playerVehicle.group.position, playerVehicle.heading, driftAbs, playerVehicle.group.position.y);
+      updateSkidMarks(G.playerVehicle.group.position, G.playerVehicle.heading, driftAbs, G.playerVehicle.group.position.y);
     }
-    updateVFX(dt);
-    updateWeather(dt, playerVehicle.group.position);
-    updateBoostFlame(s === GameState.RACING && playerVehicle.isNitroActive, playerVehicle.group.position, playerVehicle.heading, timestamp / 1000);
-    const speedRatioForLines = Math.abs(playerVehicle.speed) / selectedCar.maxSpeed;
+    updateVFX(frameDt);
+    updateGPUParticles(renderer, frameDt);
+    updateWeather(frameDt, G.playerVehicle.group.position);
+    updateBoostFlame(s === GameState.RACING && G.playerVehicle.isNitroActive, G.playerVehicle.group.position, G.playerVehicle.heading, timestamp / 1000);
+    const speedRatioForLines = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
     if (speedRatioForLines > 0.65) updateSpeedLines(speedRatioForLines);
 
     // ── Accumulate race stats ──
     if (s === GameState.RACING) {
-      const speedMph = Math.abs(playerVehicle.speed) * 2.5;
-      if (speedMph > raceStats.topSpeed) raceStats.topSpeed = speedMph;
-      if (driftAbs > 0.15) raceStats.totalDriftTime += dt;
+      const speedMph = Math.abs(G.playerVehicle.speed) * 2.5;
+      if (speedMph > G.raceStats.topSpeed) G.raceStats.topSpeed = speedMph;
+      if (driftAbs > 0.15) G.raceStats.totalDriftTime += frameDt;
     }
 
     // Audio
-    updateEngineAudio(playerVehicle.speed, selectedCar.maxSpeed);
-    driftSfxCooldown -= dt;
-    if (s === GameState.RACING && driftAbs > 0.3 && driftSfxCooldown <= 0) {
+    updateEngineAudio(G.playerVehicle.speed, G.selectedCar.maxSpeed);
+    G.driftSfxCooldown -= frameDt;
+    if (s === GameState.RACING && driftAbs > 0.3 && G.driftSfxCooldown <= 0) {
       playDriftSFX(driftAbs);
-      driftSfxCooldown = 0.12;
+      G.driftSfxCooldown = 0.12;
     }
 
     // Damage smoke + flames (emit when zones are heavily damaged)
-    if (s === GameState.RACING && playerVehicle) {
-      const dmg = playerVehicle.damage;
+    if (s === GameState.RACING && G.playerVehicle) {
+      const dmg = G.playerVehicle.damage;
       const worstHp = Math.min(dmg.front.hp, dmg.rear.hp, dmg.left.hp, dmg.right.hp);
-      if (worstHp < 50) spawnDamageSmoke(playerVehicle.group.position, 1 - worstHp / 50, dt);
+      if (worstHp < 50) spawnDamageSmoke(G.playerVehicle.group.position, 1 - worstHp / 50, frameDt);
 
       // Per-zone flames for critically damaged areas
-      const sinH = Math.sin(playerVehicle.heading);
-      const cosH = Math.cos(playerVehicle.heading);
-      const pp = playerVehicle.group.position;
+      const sinH = Math.sin(G.playerVehicle.heading);
+      const cosH = Math.cos(G.playerVehicle.heading);
+      const pp = G.playerVehicle.group.position;
       const zoneOffsets: [string, number, number, number][] = [
         ['front', 0, 1.0, -2.0],
         ['rear', 0, 0.8, 1.8],
@@ -1715,26 +1194,26 @@ function gameLoop(timestamp: number) {
       for (const [zone, lx, ly, lz] of zoneOffsets) {
         const hp = dmg[zone as keyof typeof dmg].hp;
         if (hp < 20) {
-          _flamePos.set(
+          G._flamePos.set(
             pp.x + cosH * lx + sinH * lz,
             pp.y + ly,
             pp.z - sinH * lx + cosH * lz,
           );
-          spawnFlameParticle(_flamePos, 1 - hp / 20, dt);
+          spawnFlameParticle(G._flamePos, 1 - hp / 20, frameDt);
         }
       }
 
       // Check for newly detached parts
       for (const zone of ['front', 'rear', 'left', 'right'] as const) {
-        if (playerVehicle.detachedZones.has(zone) && !detachedParts.some(dp => (dp as any).zone === zone && (dp as any).owner === 'local')) {
-          const partMesh = playerVehicle.createDetachedPart(zone);
+        if (G.playerVehicle.detachedZones.has(zone) && !G.detachedParts.some(dp => (dp as any).zone === zone && (dp as any).owner === 'local')) {
+          const partMesh = G.playerVehicle.createDetachedPart(zone);
           if (partMesh) {
             scene.add(partMesh);
-            detachedParts.push({
+            G.detachedParts.push({
               mesh: partMesh,
-              vx: playerVehicle.velX + (Math.random() - 0.5) * 8,
+              vx: G.playerVehicle.velX + (Math.random() - 0.5) * 8,
               vy: 3 + Math.random() * 5,
-              vz: playerVehicle.velZ + (Math.random() - 0.5) * 8,
+              vz: G.playerVehicle.velZ + (Math.random() - 0.5) * 8,
               ax: (Math.random() - 0.5) * 10,
               ay: (Math.random() - 0.5) * 10,
               az: (Math.random() - 0.5) * 10,
@@ -1748,145 +1227,141 @@ function gameLoop(timestamp: number) {
     }
 
     // Update detached parts physics
-    for (let i = detachedParts.length - 1; i >= 0; i--) {
-      const dp = detachedParts[i];
-      dp.life -= dt;
+    for (let i = G.detachedParts.length - 1; i >= 0; i--) {
+      const dp = G.detachedParts[i];
+      dp.life -= frameDt;
       if (dp.life <= 0 || dp.mesh.position.y < -10) {
         scene.remove(dp.mesh);
         dp.mesh.geometry?.dispose();
         (dp.mesh.material as THREE.Material)?.dispose();
-        detachedParts[i] = detachedParts[detachedParts.length - 1];
-        detachedParts.pop();
+        G.detachedParts[i] = G.detachedParts[G.detachedParts.length - 1];
+        G.detachedParts.pop();
         continue;
       }
-      dp.mesh.position.x += dp.vx * dt;
-      dp.mesh.position.y += dp.vy * dt;
-      dp.mesh.position.z += dp.vz * dt;
-      dp.vy -= 15 * dt; // gravity
-      dp.mesh.rotation.x += dp.ax * dt;
-      dp.mesh.rotation.y += dp.ay * dt;
-      dp.mesh.rotation.z += dp.az * dt;
+      dp.mesh.position.x += dp.vx * frameDt;
+      dp.mesh.position.y += dp.vy * frameDt;
+      dp.mesh.position.z += dp.vz * frameDt;
+      dp.vy -= 15 * frameDt; // gravity
+      dp.mesh.rotation.x += dp.ax * frameDt;
+      dp.mesh.rotation.y += dp.ay * frameDt;
+      dp.mesh.rotation.z += dp.az * frameDt;
     }
 
     // Checkpoint detection (local player)
-    if (s === GameState.RACING && raceEngine) {
-      const localT = getClosestSplinePoint(trackData.spline, playerVehicle.group.position, trackData.bvh).t;
-      const event = raceEngine.updateRacer('local', playerVehicle.group.position, localT);
-      const progress = raceEngine.getProgress('local');
+    if (s === GameState.RACING && G.raceEngine) {
+      const localT = getClosestSplinePoint(G.trackData.spline, G.playerVehicle.group.position, G.trackData.bvh).t;
+      const event = G.raceEngine.updateRacer('local', G.playerVehicle.group.position, localT);
+      const progress = G.raceEngine.getProgress('local');
 
       if (event === 'checkpoint') {
-        playCheckpointSFX();
-        netPeer?.broadcastEvent(EventType.CHECKPOINT_HIT, {
+        bus.emit('checkpoint', {
+          racerId: 'local',
+          index: progress?.checkpointIndex ?? 0,
           lap: progress?.lapIndex ?? 0,
-          cp: progress?.checkpointIndex ?? 0,
         });
       } else if (event === 'lap') {
-        playLapFanfare();
-        netPeer?.broadcastEvent(EventType.LAP_COMPLETE, { lap: progress?.lapIndex ?? 0 });
-        // Show lap completion overlay
-        if (progress) {
-          const lastLapTime = progress.lapTimes[progress.lapTimes.length - 1] ?? 0;
-          const bestLap = raceEngine.getBestLap('local');
-          const isBest = bestLap !== null && lastLapTime <= bestLap;
-          showLapOverlay(uiOverlay, progress.lapIndex, lastLapTime, isBest);
-        }
+        const lastLapTime = progress?.lapTimes[progress.lapTimes.length - 1] ?? 0;
+        const bestLap = G.raceEngine.getBestLap('local');
+        bus.emit('lap', {
+          racerId: 'local',
+          lapIndex: progress?.lapIndex ?? 0,
+          lapTime: lastLapTime,
+          isBest: bestLap !== null && lastLapTime <= bestLap,
+        });
       } else if (event === 'finish') {
-        const finishTime = raceEngine.getProgress('local')?.finishTime ?? 0;
-        netPeer?.broadcastEvent(EventType.RACE_FINISH, { finishTime });
-        destroyLeaderboard();
-        spawnConfetti();
-        enterSpectatorMode();
-        showResults();
+        const finishTime = G.raceEngine.getProgress('local')?.finishTime ?? 0;
+        bus.emit('finish', { racerId: 'local', finishTime });
       }
 
       // HUD update
-      const rankings = raceEngine.getRankings();
+      const rankings = G.raceEngine.getRankings();
       const myRank = rankings.findIndex(r => r.id === 'local') + 1;
 
       // Track average position
       if (myRank > 0) {
-        raceStats.avgPosition += myRank;
-        raceStats.positionSampleCount++;
+        G.raceStats.avgPosition += myRank;
+        G.raceStats.positionSampleCount++;
       }
 
 
       // Position change callout
-      if (prevMyRank > 0 && myRank !== prevMyRank && myRank > 0) {
-        const gained = myRank < prevMyRank;
-        showPositionCallout(gained, myRank);
-        playPositionSFX(gained);
+      if (G.prevMyRank > 0 && myRank !== G.prevMyRank && myRank > 0) {
+        const gained = myRank < G.prevMyRank;
+        bus.emit('position_change', {
+          racerId: 'local', oldRank: G.prevMyRank, newRank: myRank, gained,
+        });
       }
-      prevMyRank = myRank;
-      const wrongWay = raceEngine.isWrongWay(
-        playerVehicle.heading,
-        trackData.checkpoints[progress?.checkpointIndex ?? 0]?.tangent ?? _defaultTangent,
+      G.prevMyRank = myRank;
+      const wrongWay = G.raceEngine.isWrongWay(
+        G.playerVehicle.heading,
+        G.trackData.checkpoints[progress?.checkpointIndex ?? 0]?.tangent ?? G._defaultTangent,
       );
 
       updateHUD(
-        playerVehicle.speed,
+        G.playerVehicle.speed,
         progress?.lapIndex ?? 0,
-        totalLaps,
+        G.totalLaps,
         myRank,
         rankings.length,
         wrongWay,
-        raceEngine.getElapsedTime() * 1000,
-        playerVehicle.isNitroActive,
+        G.raceEngine.getElapsedTime() * 1000,
+        G.playerVehicle.isNitroActive,
       );
 
       // Minimap (per-player colors)
       const PEER_COLORS = ['#ff6600', '#e040fb', '#ffcc00', '#76ff03', '#ff1744', '#00bcd4'];
       const minimapDots: { pos: THREE.Vector3; color?: string }[] = [];
-      aiRacers.forEach(ai => minimapDots.push({ pos: ai.vehicle.group.position, color: '#ff6600' }));
+      G.aiRacers.forEach(ai => minimapDots.push({ pos: ai.vehicle.group.position, color: '#ff6600' }));
       let peerIdx = 0;
-      for (const mesh of remoteMeshes.values()) {
+      for (const mesh of G.remoteMeshes.values()) {
         minimapDots.push({ pos: mesh.position, color: PEER_COLORS[peerIdx % PEER_COLORS.length] });
         peerIdx++;
       }
-      updateMinimap(trackData.spline, playerVehicle.group.position, minimapDots);
+      updateMinimap(G.trackData.spline, G.playerVehicle.group.position, minimapDots);
 
       // Leaderboard
       updateLeaderboard();
 
       // Gap timer HUD
-      if (raceEngine) {
-        const gaps = raceEngine.getGaps('local');
+      if (G.raceEngine) {
+        const gaps = G.raceEngine.getGaps('local');
         updateGapHUD(gaps.ahead, gaps.behind);
       }
 
       // Record replay frames
-      if (replayRecorder) {
-        replayRecorder.record('local', playerVehicle.group.position, playerVehicle.heading, playerVehicle.speed);
-        for (const ai of aiRacers) {
-          replayRecorder.record(ai.id, ai.vehicle.group.position, ai.vehicle.heading, ai.vehicle.speed);
+      if (G.replayRecorder) {
+        G.replayRecorder.record('local', G.playerVehicle.group.position, G.playerVehicle.heading, G.playerVehicle.speed);
+        for (const ai of G.aiRacers) {
+          G.replayRecorder.record(ai.id, ai.vehicle.group.position, ai.vehicle.heading, ai.vehicle.speed);
         }
       }
 
       // Damage HUD
-      if (playerVehicle) updateDamageHUD(playerVehicle.damage);
+      if (G.playerVehicle) updateDamageHUD(G.playerVehicle.damage);
     }
 
     // Remote vehicle positions
-    if (netPeer) {
-      for (const [id, mesh] of remoteMeshes) {
-        const snap = netPeer.getInterpolatedState(id);
+    if (G.netPeer) {
+      for (const [id, mesh] of G.remoteMeshes) {
+        const snap = G.netPeer.getInterpolatedState(id);
         if (snap) {
           // Raycast against road mesh for accurate surface height
-          _remoteRayOrigin.set(snap.x, mesh.position.y + 15, snap.z);
-          _remoteRaycaster.set(_remoteRayOrigin, _remoteRayDir);
-          _remoteRaycaster.far = 30;
-          const remoteHits = _remoteRaycaster.intersectObject(trackData!.roadMesh, false);
+          G._remoteRayOrigin.set(snap.x, mesh.position.y + 15, snap.z);
+          G._remoteRaycaster.set(G._remoteRayOrigin, G._remoteRayDir);
+          G._remoteRaycaster.far = 30;
+          const remoteHits = G._remoteRaycaster.intersectObject(G.trackData!.roadMesh, false);
           if (remoteHits.length > 0) {
             mesh.position.set(snap.x, remoteHits[0].point.y, snap.z);
           } else {
             _rPos.set(snap.x, 0, snap.z);
-            const nearest = getClosestSplinePoint(trackData!.spline, _rPos, trackData!.bvh);
+            const nearest = getClosestSplinePoint(G.trackData!.spline, _rPos, G.trackData!.bvh);
             mesh.position.set(snap.x, nearest.point.y, snap.z);
           }
           mesh.rotation.y = snap.heading;
 
           // Remote VFX: tire smoke from approximate drift
           if (s === GameState.RACING) {
-            const prev = remotePrevPos.get(id);
+            const prev = G.remotePrevPos.get(id);
             if (prev) {
               const dx = snap.x - prev.x;
               const dz = snap.z - prev.z;
@@ -1899,7 +1374,7 @@ function gameLoop(timestamp: number) {
                 }
               }
             }
-            remotePrevPos.set(id, { x: snap.x, z: snap.z });
+            G.remotePrevPos.set(id, { x: snap.x, z: snap.z });
 
             // Remote damage smoke
             const worstHp = Math.min(
@@ -1907,20 +1382,20 @@ function gameLoop(timestamp: number) {
               snap.dmgLeft ?? 100, snap.dmgRight ?? 100,
             );
             if (worstHp < 50) {
-              spawnDamageSmoke(mesh.position, 1 - worstHp / 50, dt);
+              spawnDamageSmoke(mesh.position, 1 - worstHp / 50, frameDt);
             }
           }
         }
 
-        const tag = remoteNameTags.get(id);
+        const tag = G.remoteNameTags.get(id);
         if (tag) updateNameTag(tag, mesh.position);
       }
     }
 
     // Shadow camera follows player for sharper nearby shadows
-    if (playerVehicle) {
+    if (G.playerVehicle) {
       const dl = getDirLight();
-      const pp = playerVehicle.group.position;
+      const pp = G.playerVehicle.group.position;
       dl.position.set(pp.x + 50, 80, pp.z + 30);
       dl.target.position.set(pp.x, pp.y, pp.z);
       dl.target.updateMatrixWorld();
@@ -1934,17 +1409,25 @@ function gameLoop(timestamp: number) {
     // Debug overlay
     updateDebugOverlay();
 
-    // Main render
-    renderer.render(scene, camera);
+    // Main render (with post-processing if available)
+    const postFX = getPostFXPipeline();
+    if (postFX) {
+      // Update speed-driven vignette intensity
+      const speedRatio = G.playerVehicle ? Math.abs(G.playerVehicle.speed) / G.playerVehicle.def.maxSpeed : 0;
+      updatePostFX(Math.min(speedRatio, 1));
+      postFX.renderAsync();
+    } else {
+      renderer.render(scene, camera);
+    }
 
     // Rear-view mirror render (scissored viewport AFTER main render — zero GPU readback)
-    if (mirrorCamera && playerVehicle && s === GameState.RACING) {
-      const sinH = Math.sin(playerVehicle.heading);
-      const cosH = Math.cos(playerVehicle.heading);
-      const pp = playerVehicle.group.position;
+    if (G.mirrorCamera && G.playerVehicle && s === GameState.RACING) {
+      const sinH = Math.sin(G.playerVehicle.heading);
+      const cosH = Math.cos(G.playerVehicle.heading);
+      const pp = G.playerVehicle.group.position;
       // Position camera at car roof, looking backward
-      mirrorCamera.position.set(pp.x, pp.y + 2.5, pp.z);
-      mirrorCamera.lookAt(pp.x - sinH * 20, pp.y + 1.5, pp.z - cosH * 20);
+      G.mirrorCamera.position.set(pp.x, pp.y + 2.5, pp.z);
+      G.mirrorCamera.lookAt(pp.x - sinH * 20, pp.y + 1.5, pp.z - cosH * 20);
 
       // Render as a viewport in the top-center of the canvas
       const canvasW = renderer.domElement.width;
@@ -1952,18 +1435,23 @@ function gameLoop(timestamp: number) {
       const mirW = 320;
       const mirH = 120;
       const mirX = Math.floor((canvasW - mirW) / 2);
-      const mirY = canvasH - mirH - 14; // WebGL Y is bottom-up, 14px from top
+      const mirY = 14; // WebGPU viewport Y is top-down (not bottom-up like WebGL)
 
       renderer.autoClear = false;
       renderer.setScissorTest(true);
       renderer.setViewport(mirX, mirY, mirW, mirH);
       renderer.setScissor(mirX, mirY, mirW, mirH);
       renderer.clearDepth();
-      renderer.render(scene, mirrorCamera);
+      renderer.render(scene, G.mirrorCamera);
       renderer.setScissorTest(false);
       renderer.setViewport(0, 0, canvasW, canvasH);
       renderer.autoClear = true;
     }
+
+    // Restore physics-authoritative positions after rendering
+    // so the next frame's physics steps use the real state, not interpolated
+    G.playerVehicle.restoreFromRender();
+    for (const ai of G.aiRacers) ai.vehicle.restoreFromRender();
   }
 }
 
@@ -1986,9 +1474,49 @@ function applySettingsToRenderer() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 const savedSettings = loadSettings();
-if (savedSettings.playerName) localPlayerName = savedSettings.playerName;
+if (savedSettings.playerName) G.localPlayerName = savedSettings.playerName;
 applySettingsToRenderer();
 
-lastTime = performance.now();
+// Wire multiplayer handler with main orchestrator callbacks
+initMultiplayerHandler(uiOverlay, scene, {
+  startRace,
+  showTitleScreen,
+  showResults,
+  clearRaceObjects,
+  destroyLeaderboard,
+  destroySpectateHUD,
+  resolvePlayerName,
+});
+
+G.lastTime = performance.now();
 showTitleScreen();
+
+// ── Event Bus Consumer Registrations ──
+// Subscribers are registered once at boot. Producers in the game loop
+// just call bus.emit() — consumers react automatically.
+
+bus.on('checkpoint', (e) => {
+  playCheckpointSFX();
+  G.netPeer?.broadcastEvent(EventType.CHECKPOINT_HIT, { lap: e.lap, cp: e.index });
+});
+
+bus.on('lap', (e) => {
+  playLapFanfare();
+  G.netPeer?.broadcastEvent(EventType.LAP_COMPLETE, { lap: e.lapIndex });
+  showLapOverlay(uiOverlay, e.lapIndex, e.lapTime, e.isBest);
+});
+
+bus.on('finish', (e) => {
+  G.netPeer?.broadcastEvent(EventType.RACE_FINISH, { finishTime: e.finishTime });
+  destroyLeaderboard();
+  spawnConfetti();
+  enterSpectatorMode();
+  showResults();
+});
+
+bus.on('position_change', (e) => {
+  showPositionCallout(e.gained, e.newRank);
+  playPositionSFX(e.gained);
+});
+
 requestAnimationFrame(gameLoop);

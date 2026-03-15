@@ -2,8 +2,8 @@
 
 import * as THREE from 'three';
 
-const CHASE_DISTANCE = 10;
-const CHASE_HEIGHT = 4.5;
+const CHASE_DISTANCE = 1;
+const CHASE_HEIGHT = 3.2;
 const LOOK_AHEAD = 4;
 const POSITION_LERP = 0.06;
 const LOOK_LERP = 0.08;

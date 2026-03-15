@@ -34,6 +34,7 @@ export interface RemotePlayer {
 
 type StateCallback = (fromId: string, snap: StateSnapshot) => void;
 type EventCallback = (fromId: string, type: EventType, data: any) => void;
+type InputCallback = (fromId: string, frame: number, inputBits: number, steerI16: number) => void;
 
 export class NetPeer {
   private peer: Peer | null = null;
@@ -44,6 +45,7 @@ export class NetPeer {
 
   onState: StateCallback = () => {};
   onEvent: EventCallback = () => {};
+  onInput: InputCallback = () => {};
   onPlayerJoin: (id: string, name: string) => void = () => {};
   onPlayerLeave: (id: string, name?: string) => void = () => {};
   onReconnecting: (id: string, name: string) => void = () => {};
@@ -210,6 +212,40 @@ export class NetPeer {
     // FIX: Do NOT relay host's own state — guests already received it directly
   }
 
+  /** Send 8-byte input packet: [type(u8), frame(u32), bits(u8), steerI16(i16)] */
+  broadcastInput(frameNumber: number, inputBits: number, steerI16: number) {
+    const buf = new ArrayBuffer(8);
+    const view = new DataView(buf);
+    view.setUint8(0, PacketType.INPUT);
+    view.setUint32(1, frameNumber, true);
+    view.setUint8(5, inputBits);
+    view.setInt16(6, steerI16, true);
+
+    for (const remote of this.connections.values()) {
+      try { remote.conn.send(buf); } catch {}
+    }
+  }
+
+  /** Host: relay an input packet embedding the original sender ID. */
+  private relayInput(fromId: string, frameNumber: number, inputBits: number, steerI16: number) {
+    const idBytes = _encoder.encode(fromId);
+    const buf = new ArrayBuffer(1 + 1 + idBytes.length + 7);
+    const view = new DataView(buf);
+    view.setUint8(0, PacketType.INPUT_RELAY);
+    view.setUint8(1, idBytes.length);
+    new Uint8Array(buf, 2, idBytes.length).set(idBytes);
+    const offset = 2 + idBytes.length;
+    view.setUint32(offset, frameNumber, true);
+    view.setUint8(offset + 4, inputBits);
+    view.setInt16(offset + 5, steerI16, true);
+
+    for (const [id, remote] of this.connections) {
+      if (id !== fromId) {
+        try { remote.conn.send(buf); } catch {}
+      }
+    }
+  }
+
   /** Host: relay a guest's state to all other guests. */
   private relayState(fromId: string, state: {
     x: number; z: number; heading: number; speed: number;
@@ -366,6 +402,31 @@ export class NetPeer {
           dmgRight: data.byteLength >= offset + 18 ? view.getUint8(offset + 17) : undefined,
         };
         this.onState(actualFromId, snap);
+        break;
+      }
+
+      case PacketType.INPUT: {
+        const inputFrame = view.getUint32(1, true);
+        const inputBits = view.getUint8(5);
+        const steerI16 = view.getInt16(6, true);
+        this.onInput(fromId, inputFrame, inputBits, steerI16);
+
+        // Host relays input to other guests
+        if (this.isHost) {
+          this.relayInput(fromId, inputFrame, inputBits, steerI16);
+        }
+        break;
+      }
+
+      case PacketType.INPUT_RELAY: {
+        const idLen = view.getUint8(1);
+        const idBytes = new Uint8Array(data, 2, idLen);
+        const actualFromId = _decoder.decode(idBytes);
+        const offset = 2 + idLen;
+        const inputFrame = view.getUint32(offset, true);
+        const inputBits = view.getUint8(offset + 4);
+        const steerI16 = view.getInt16(offset + 5, true);
+        this.onInput(actualFromId, inputFrame, inputBits, steerI16);
         break;
       }
 

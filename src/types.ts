@@ -126,6 +126,8 @@ export enum PacketType {
   PONG = 4,
   STATE_RELAY = 5,
   EVENT_RELAY = 6,
+  INPUT = 7,
+  INPUT_RELAY = 8,
 }
 
 export enum EventType {

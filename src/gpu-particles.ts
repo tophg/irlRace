@@ -1,0 +1,350 @@
+/* ── Hood Racer — GPU Particle System ──
+ *
+ * All particle data lives on the GPU via StorageBufferAttribute.
+ * A TSL compute shader updates positions/velocities/lifetimes per frame.
+ * Rendering uses a single InstancedMesh with SpriteNodeMaterial.
+ *
+ * CPU only writes to a staging ring-buffer when spawning; the compute
+ * shader handles all per-frame simulation (gravity, fade, scale).
+ *
+ * Usage:
+ *   import { initGPUParticles, spawnGPUSmoke, updateGPUParticles } from './gpu-particles';
+ *   await initGPUParticles(renderer, scene);
+ *   spawnGPUSmoke(position, intensity);
+ *   updateGPUParticles(renderer, dt);
+ */
+
+import * as THREE from 'three/webgpu';
+import { SpriteNodeMaterial } from 'three/webgpu';
+import {
+  storage, uniform, instanceIndex, compute, Fn,
+  float, vec3, vec4, If,
+} from 'three/tsl';
+
+// ── Configuration ──
+const MAX_PARTICLES = 2048;
+
+// Particle type flags (stored in type channel)
+export const PType = { NONE: 0, SMOKE: 1, SPARK: 2, FLAME: 3 } as const;
+
+// ── GPU Storage Arrays ──
+// Each particle has: position(vec3), velocity(vec3), color(vec4), life(float), maxLife(float), type(float), size(float)
+let positionBuffer: THREE.StorageBufferAttribute;
+let velocityBuffer: THREE.StorageBufferAttribute;
+let colorBuffer: THREE.StorageBufferAttribute;
+let lifeBuffer: THREE.StorageBufferAttribute;
+let maxLifeBuffer: THREE.StorageBufferAttribute;
+let typeBuffer: THREE.StorageBufferAttribute;
+let sizeBuffer: THREE.StorageBufferAttribute;
+
+// CPU staging data for spawn writes
+const cpuPositions = new Float32Array(MAX_PARTICLES * 3);
+const cpuVelocities = new Float32Array(MAX_PARTICLES * 3);
+const cpuColors = new Float32Array(MAX_PARTICLES * 4);
+const cpuLife = new Float32Array(MAX_PARTICLES);
+const cpuMaxLife = new Float32Array(MAX_PARTICLES);
+const cpuType = new Float32Array(MAX_PARTICLES);
+const cpuSize = new Float32Array(MAX_PARTICLES);
+
+let spawnHead = 0;   // ring-buffer write head
+let instanceMesh: THREE.InstancedMesh | null = null;
+let computeNode: ReturnType<typeof compute> | null = null;
+let gpuScene: THREE.Scene | null = null;
+
+// Uniforms written each frame from CPU
+const uDt = uniform(0.016);
+const uGravity = uniform(9.8);
+
+// ── Init ──
+export async function initGPUParticles(
+  renderer: THREE.WebGPURenderer,
+  scene: THREE.Scene,
+) {
+  gpuScene = scene;
+
+  // Create storage buffers
+  positionBuffer = new THREE.StorageBufferAttribute(cpuPositions, 3);
+  velocityBuffer = new THREE.StorageBufferAttribute(cpuVelocities, 3);
+  colorBuffer = new THREE.StorageBufferAttribute(cpuColors, 4);
+  lifeBuffer = new THREE.StorageBufferAttribute(cpuLife, 1);
+  maxLifeBuffer = new THREE.StorageBufferAttribute(cpuMaxLife, 1);
+  typeBuffer = new THREE.StorageBufferAttribute(cpuType, 1);
+  sizeBuffer = new THREE.StorageBufferAttribute(cpuSize, 1);
+
+  // TSL storage nodes for compute shader access
+  const sPos = storage(positionBuffer, 'vec3', MAX_PARTICLES);
+  const sVel = storage(velocityBuffer, 'vec3', MAX_PARTICLES);
+  const sColor = storage(colorBuffer, 'vec4', MAX_PARTICLES);
+  const sLife = storage(lifeBuffer, 'float', MAX_PARTICLES);
+  const sMaxLife = storage(maxLifeBuffer, 'float', MAX_PARTICLES);
+  const sType = storage(typeBuffer, 'float', MAX_PARTICLES);
+  const sSize = storage(sizeBuffer, 'float', MAX_PARTICLES);
+
+  // ── Compute kernel: update all particles per frame ──
+  const updateParticles = Fn(() => {
+    const i = instanceIndex;
+
+    const life = sLife.element(i);
+    const maxLife_ = sMaxLife.element(i);
+    const pType = sType.element(i);
+
+    // Skip dead particles
+    If(life.greaterThan(0.0), () => {
+      const pos = sPos.element(i);
+      const vel = sVel.element(i);
+      const dt = uDt;
+
+      // Integrate position
+      pos.addAssign(vel.mul(dt));
+
+      // Gravity (sparks fall fast, smoke rises)
+      If(pType.equal(float(PType.SPARK)), () => {
+        vel.y.subAssign(uGravity.mul(dt).mul(1.5));
+      }).Else(() => {
+        vel.y.subAssign(uGravity.mul(dt).mul(-0.05)); // smoke rises slightly
+      });
+
+      // Drag
+      vel.mulAssign(float(1.0).sub(dt.mul(0.5)));
+
+      // Fade out: reduce life
+      life.subAssign(dt);
+
+      // Update color alpha based on remaining life fraction
+      const lifeFrac = life.div(maxLife_);
+      const col = sColor.element(i);
+      col.w.assign(lifeFrac.mul(col.w)); // progressive fade
+
+      // Update size: smoke grows, sparks shrink
+      const sz = sSize.element(i);
+      If(pType.equal(float(PType.SMOKE)), () => {
+        sz.assign(sz.mul(float(1.0).add(dt.mul(2.0)))); // grow
+      }).ElseIf(pType.equal(float(PType.SPARK)), () => {
+        sz.assign(sz.mul(float(1.0).sub(dt.mul(1.5)))); // shrink
+      });
+    });
+  });
+
+  computeNode = compute(updateParticles(), MAX_PARTICLES);
+
+  // ── Instanced sprite mesh for rendering ──
+  const mat = new SpriteNodeMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true,
+  });
+
+  // Per-instance position from storage buffer
+  mat.positionNode = sPos.toAttribute();
+  // Per-instance color from storage buffer
+  mat.colorNode = sColor.toAttribute();
+  // Per-instance scale from storage buffer (used as scaleNode)
+  // SpriteNodeMaterial uses scaleNode for size
+  mat.scaleNode = sSize.toAttribute();
+
+  const geo = new THREE.PlaneGeometry(1, 1);
+  instanceMesh = new THREE.InstancedMesh(geo, mat, MAX_PARTICLES);
+  instanceMesh.frustumCulled = false;
+  instanceMesh.count = MAX_PARTICLES;
+  scene.add(instanceMesh);
+
+  // Initial compute pass to zero everything out
+  await renderer.computeAsync(computeNode);
+}
+
+// ── Spawn helpers (CPU → GPU staging) ──
+
+function writeParticle(
+  px: number, py: number, pz: number,
+  vx: number, vy: number, vz: number,
+  r: number, g: number, b: number, a: number,
+  life: number, type: number, size: number,
+) {
+  const idx = spawnHead % MAX_PARTICLES;
+  const i3 = idx * 3;
+  const i4 = idx * 4;
+
+  cpuPositions[i3] = px; cpuPositions[i3 + 1] = py; cpuPositions[i3 + 2] = pz;
+  cpuVelocities[i3] = vx; cpuVelocities[i3 + 1] = vy; cpuVelocities[i3 + 2] = vz;
+  cpuColors[i4] = r; cpuColors[i4 + 1] = g; cpuColors[i4 + 2] = b; cpuColors[i4 + 3] = a;
+  cpuLife[idx] = life;
+  cpuMaxLife[idx] = life;
+  cpuType[idx] = type;
+  cpuSize[idx] = size;
+
+  spawnHead++;
+}
+
+function flushToGPU() {
+  positionBuffer.needsUpdate = true;
+  velocityBuffer.needsUpdate = true;
+  colorBuffer.needsUpdate = true;
+  lifeBuffer.needsUpdate = true;
+  maxLifeBuffer.needsUpdate = true;
+  typeBuffer.needsUpdate = true;
+  sizeBuffer.needsUpdate = true;
+}
+
+/** Spawn tire smoke particles at the given world position. */
+export function spawnGPUSmoke(pos: THREE.Vector3, driftIntensity: number) {
+  if (driftIntensity < 0.15) return;
+  const count = Math.floor(driftIntensity * 3);
+  for (let i = 0; i < count; i++) {
+    writeParticle(
+      pos.x + (Math.random() - 0.5) * 0.5,
+      pos.y + 0.1,
+      pos.z + (Math.random() - 0.5) * 0.5,
+      (Math.random() - 0.5) * 1.5,
+      0.4 + Math.random() * 0.6,
+      (Math.random() - 0.5) * 1.5,
+      0.8, 0.8, 0.8, 0.3,   // light gray, semi-transparent
+      0.8 + Math.random() * 0.6,
+      PType.SMOKE,
+      0.5 + Math.random() * 0.5,
+    );
+  }
+  flushToGPU();
+}
+
+/** Spawn collision spark particles at the given world position. */
+export function spawnGPUSparks(pos: THREE.Vector3, force: number) {
+  const count = Math.min(Math.floor(force * 0.8), 12);
+  for (let i = 0; i < count; i++) {
+    const isOrange = Math.random() > 0.5;
+    writeParticle(
+      pos.x, pos.y + 0.5, pos.z,
+      (Math.random() - 0.5) * 8,
+      1 + Math.random() * 4,
+      (Math.random() - 0.5) * 8,
+      1.0, isOrange ? 0.65 : 0.93, isOrange ? 0.2 : 0.4, 1.0,
+      0.3 + Math.random() * 0.3,
+      PType.SPARK,
+      0.15 + Math.random() * 0.1,
+    );
+  }
+  flushToGPU();
+}
+
+/** Spawn explosion burst particles (sparks + dark smoke). */
+export function spawnGPUExplosion(pos: THREE.Vector3, force: number) {
+  // Bright expanding sparks
+  const sparkCount = Math.min(Math.floor(force * 0.6), 20);
+  for (let i = 0; i < sparkCount; i++) {
+    const speed = 5 + Math.random() * 10;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.random() * Math.PI;
+    const brightness = Math.random();
+    writeParticle(
+      pos.x, pos.y + 0.5, pos.z,
+      Math.sin(phi) * Math.cos(theta) * speed,
+      Math.abs(Math.cos(phi)) * speed * 0.7 + 2,
+      Math.sin(phi) * Math.sin(theta) * speed,
+      1.0, 0.5 + brightness * 0.5, brightness * 0.3, 1.0,
+      0.4 + Math.random() * 0.3,
+      PType.SPARK,
+      0.3 + Math.random() * 0.3,
+    );
+  }
+
+  // Dark smoke cloud
+  for (let i = 0; i < 5; i++) {
+    writeParticle(
+      pos.x, pos.y + 0.5, pos.z,
+      (Math.random() - 0.5) * 3,
+      1 + Math.random() * 2,
+      (Math.random() - 0.5) * 3,
+      0.13, 0.13, 0.13, 0.5,
+      1.0,
+      PType.SMOKE,
+      1.5 + Math.random(),
+    );
+  }
+  flushToGPU();
+}
+
+/** Spawn damage smoke (throttled). */
+let damageSmokeCD = 0;
+export function spawnGPUDamageSmoke(pos: THREE.Vector3, intensity: number, dt = 0.016) {
+  if (intensity < 0.1) return;
+  damageSmokeCD -= dt;
+  if (damageSmokeCD > 0) return;
+  damageSmokeCD = 0.15 - intensity * 0.1;
+
+  writeParticle(
+    pos.x + (Math.random() - 0.5) * 0.8,
+    pos.y + 1.5,
+    pos.z + (Math.random() - 0.5) * 0.8,
+    (Math.random() - 0.5) * 0.5,
+    0.8 + Math.random() * 0.4,
+    (Math.random() - 0.5) * 0.5,
+    0.2, 0.2, 0.2, 0.3,
+    1.2,
+    PType.SMOKE,
+    0.6 + intensity * 0.5,
+  );
+  flushToGPU();
+}
+
+/** Spawn flame particles (fire on critical damage). */
+let flameCD = 0;
+export function spawnGPUFlame(pos: THREE.Vector3, intensity: number, dt = 0.016) {
+  if (intensity < 0.1) return;
+  flameCD -= dt;
+  if (flameCD > 0) return;
+  flameCD = 0.03;
+
+  const count = Math.ceil(intensity * 2);
+  for (let n = 0; n < count; n++) {
+    const g = 0.2 + Math.random() * 0.6;
+    writeParticle(
+      pos.x + (Math.random() - 0.5) * 0.6,
+      pos.y + 0.3 + Math.random() * 0.3,
+      pos.z + (Math.random() - 0.5) * 0.6,
+      (Math.random() - 0.5) * 1.5,
+      1.5 + Math.random() * 2.0,
+      (Math.random() - 0.5) * 1.5,
+      1.0, g, 0.0, 0.7,
+      0.3 + Math.random() * 0.2,
+      PType.FLAME,
+      0.3 + intensity * 0.3,
+    );
+  }
+  flushToGPU();
+}
+
+// ── Per-frame update ──
+
+export async function updateGPUParticles(
+  renderer: THREE.WebGPURenderer,
+  dt: number,
+) {
+  if (!computeNode) return;
+  uDt.value = dt;
+  await renderer.computeAsync(computeNode);
+}
+
+// ── Cleanup ──
+
+export function destroyGPUParticles() {
+  if (instanceMesh) {
+    instanceMesh.parent?.remove(instanceMesh);
+    instanceMesh.geometry.dispose();
+    (instanceMesh.material as THREE.Material).dispose();
+    instanceMesh = null;
+  }
+  computeNode = null;
+  gpuScene = null;
+  spawnHead = 0;
+  damageSmokeCD = 0;
+  flameCD = 0;
+
+  // Zero out CPU staging buffers
+  cpuPositions.fill(0);
+  cpuVelocities.fill(0);
+  cpuColors.fill(0);
+  cpuLife.fill(0);
+  cpuMaxLife.fill(0);
+  cpuType.fill(0);
+  cpuSize.fill(0);
+}

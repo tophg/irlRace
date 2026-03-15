@@ -1,6 +1,8 @@
 /* ── Hood Racer — VFX (Particles & Effects) ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { attribute, float, vec4, mul } from 'three/tsl';
 
 // ── Tire Smoke Pool ──
 const SMOKE_POOL_SIZE = 60;
@@ -237,26 +239,15 @@ export function initSkidMarks(scene: THREE.Scene) {
   geo.setAttribute('alpha', new THREE.BufferAttribute(skidAlphas, 1));
   geo.setDrawRange(0, 0);
 
-  const mat = new THREE.ShaderMaterial({
+  const skidMat = new MeshBasicNodeMaterial({
     transparent: true,
     depthWrite: false,
-    vertexShader: `
-      attribute float alpha;
-      varying float vAlpha;
-      void main() {
-        vAlpha = alpha;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      varying float vAlpha;
-      void main() {
-        gl_FragColor = vec4(0.08, 0.08, 0.08, vAlpha * 0.6);
-      }
-    `,
   });
+  const vertAlpha = float(attribute('alpha'));
+  skidMat.colorNode = vec4(0.08, 0.08, 0.08, 1.0);
+  skidMat.opacityNode = mul(vertAlpha, 0.6);
 
-  skidMesh = new THREE.Mesh(geo, mat);
+  skidMesh = new THREE.Mesh(geo, skidMat);
   skidMesh.frustumCulled = false;
   scene.add(skidMesh);
 }

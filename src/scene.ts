@@ -1,9 +1,15 @@
-/* ── Hood Racer — Scene Setup + Environment Presets ── */
+/* ── Hood Racer — Scene Setup + Environment Presets ──
+ *
+ * Uses WebGPURenderer (auto-fallback to WebGL2).
+ * Sky dome uses TSL NodeMaterial instead of raw GLSL.
+ */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import { MeshBasicNodeMaterial } from 'three/webgpu';
+import { mix, smoothstep, normalWorld, uniform, vec3 } from 'three/tsl';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
-let renderer: THREE.WebGLRenderer;
+let renderer: THREE.WebGPURenderer;
 let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
 
@@ -11,7 +17,11 @@ let camera: THREE.PerspectiveCamera;
 let hemiLight: THREE.HemisphereLight;
 let dirLight: THREE.DirectionalLight;
 let groundMesh: THREE.Mesh;
-let skyMat: THREE.ShaderMaterial;
+
+// Sky uniforms (mutable for environment preset changes)
+const uSkyTop = uniform(new THREE.Color(0x0d0d1a));
+const uSkyBottom = uniform(new THREE.Color(0x1a1a3a));
+const uSkyHorizon = uniform(new THREE.Color(0x2a1a30));
 
 // ── Environment Presets ──
 export interface EnvironmentPreset {
@@ -56,6 +66,22 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xffaa77, dirIntensity: 3.0, dirPosition: [-60, 25, 60],
     groundColor: 0x1a2030, exposure: 1.5,
   },
+  {
+    name: 'Neon City',
+    fogColor: 0x0a0a1e, fogDensity: 0.0004,
+    skyTop: 0x050510, skyBottom: 0x0a0a2a, skyHorizon: 0x1a0530,
+    hemiSky: 0x4488ff, hemiGround: 0x220044, hemiIntensity: 0.8,
+    dirColor: 0xcc44ff, dirIntensity: 2.0, dirPosition: [30, 60, -40],
+    groundColor: 0x0a0a14, exposure: 1.8,
+  },
+  {
+    name: 'Thunder Storm',
+    fogColor: 0x1a2020, fogDensity: 0.0005,
+    skyTop: 0x0a0f0f, skyBottom: 0x1a2525, skyHorizon: 0x2a3535,
+    hemiSky: 0x556666, hemiGround: 0x222222, hemiIntensity: 0.6,
+    dirColor: 0x8899aa, dirIntensity: 1.5, dirPosition: [40, 50, 20],
+    groundColor: 0x151a1a, exposure: 1.1,
+  },
 ];
 
 function createGroundTexture(): THREE.CanvasTexture {
@@ -86,14 +112,17 @@ function createGroundTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-export function initScene(container: HTMLElement) {
-  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+export async function initScene(container: HTMLElement) {
+  renderer = new THREE.WebGPURenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.4;
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  // Async init — requests GPU adapter/device (falls back to WebGL2 automatically)
+  await renderer.init();
+  console.log(`[scene] Renderer backend: ${renderer.backend?.constructor?.name ?? 'unknown'}`);
+
   container.appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
@@ -132,36 +161,17 @@ export function initScene(container: HTMLElement) {
   groundMesh.receiveShadow = true;
   scene.add(groundMesh);
 
+  // ── Sky dome (TSL NodeMaterial) ──
+  // Replaces the old GLSL ShaderMaterial with a TSL-based gradient
   const skyGeo = new THREE.SphereGeometry(800, 32, 16);
-  skyMat = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    fog: false,
-    uniforms: {
-      topColor: { value: new THREE.Color(0x0d0d1a) },
-      bottomColor: { value: new THREE.Color(0x1a1a3a) },
-      horizonColor: { value: new THREE.Color(0x2a1a30) },
-    },
-    vertexShader: `
-      varying vec3 vWorldPosition;
-      void main() {
-        vec4 worldPos = modelMatrix * vec4(position, 1.0);
-        vWorldPosition = worldPos.xyz;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }
-    `,
-    fragmentShader: `
-      uniform vec3 topColor;
-      uniform vec3 bottomColor;
-      uniform vec3 horizonColor;
-      varying vec3 vWorldPosition;
-      void main() {
-        float h = normalize(vWorldPosition).y;
-        vec3 col = mix(horizonColor, bottomColor, smoothstep(0.0, -0.3, h));
-        col = mix(col, topColor, smoothstep(0.0, 0.5, h));
-        gl_FragColor = vec4(col, 1.0);
-      }
-    `,
-  });
+  const skyMat = new MeshBasicNodeMaterial({ side: THREE.BackSide, fog: false });
+
+  // Use world-space normalized Y to blend between horizon, bottom, and top colors
+  const h = normalWorld.y;
+  const col1 = mix(uSkyHorizon, uSkyBottom, smoothstep(0.0, -0.3, h));
+  const skyColor = mix(col1, uSkyTop, smoothstep(0.0, 0.5, h));
+  skyMat.colorNode = skyColor;
+
   scene.add(new THREE.Mesh(skyGeo, skyMat));
 
   window.addEventListener('resize', () => {
@@ -175,15 +185,9 @@ export function initScene(container: HTMLElement) {
 
 /** Apply an environment preset to the scene. Call after initScene. */
 export function applyEnvironment(preset: EnvironmentPreset) {
-  // Fog disabled for now
-  // if (scene.fog) {
-  //   (scene.fog as THREE.FogExp2).color.setHex(preset.fogColor);
-  //   (scene.fog as THREE.FogExp2).density = preset.fogDensity;
-  // }
-
-  skyMat.uniforms.topColor.value.setHex(preset.skyTop);
-  skyMat.uniforms.bottomColor.value.setHex(preset.skyBottom);
-  skyMat.uniforms.horizonColor.value.setHex(preset.skyHorizon);
+  uSkyTop.value.setHex(preset.skyTop);
+  uSkyBottom.value.setHex(preset.skyBottom);
+  uSkyHorizon.value.setHex(preset.skyHorizon);
 
   hemiLight.color.setHex(preset.hemiSky);
   hemiLight.groundColor.setHex(preset.hemiGround);
