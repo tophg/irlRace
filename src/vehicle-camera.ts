@@ -2,10 +2,10 @@
 
 import * as THREE from 'three';
 
-let CHASE_DISTANCE = 1;
+let CHASE_DISTANCE = 0;
 let CHASE_HEIGHT_RATIO = 3.2;  // height proportional to distance (adjustable via Shift+scroll)
-const LOOK_AHEAD = 4;
-const POSITION_LERP = 0.06;
+const LOOK_AHEAD = 2;
+const POSITION_LERP = 0.14;
 const LOOK_LERP = 0.08;
 const FOV_MIN = 60;
 const FOV_MAX = 78;
@@ -26,7 +26,7 @@ window.addEventListener('wheel', (e) => {
     CHASE_HEIGHT_RATIO = Math.max(0.5, Math.min(8, CHASE_HEIGHT_RATIO));
   } else {
     CHASE_DISTANCE += e.deltaY * 0.005;
-    CHASE_DISTANCE = Math.max(0.5, Math.min(20, CHASE_DISTANCE));
+    CHASE_DISTANCE = Math.max(0, Math.min(20, CHASE_DISTANCE));
   }
 }, { passive: true });
 
@@ -71,7 +71,7 @@ window.addEventListener('touchend', () => { _twoFingerActive = false; }, { passi
 
 /** Set chase distance programmatically. */
 export function setChaseDistance(d: number) {
-  CHASE_DISTANCE = Math.max(0.5, Math.min(20, d));
+  CHASE_DISTANCE = Math.max(0, Math.min(20, d));
 }
 
 /** Set chase tilt (height ratio) programmatically. */
