@@ -227,16 +227,16 @@ export function applyWetRoad(roadMesh: THREE.Mesh) {
   const w = currentWeather;
 
   if (w === 'light_rain' || w === 'heavy_rain') {
-    mat.roughness = Math.max(0.2, mat.roughness - precipConfig.roadSpecular);
-    mat.metalness = Math.min(0.4, mat.metalness + precipConfig.roadSpecular * 0.3);
+    mat.roughness = Math.max(0.6, mat.roughness - precipConfig.roadSpecular * 0.5);
+    mat.metalness = Math.min(0.08, mat.metalness + precipConfig.roadSpecular * 0.05);
   } else if (w === 'snow' || w === 'blizzard') {
     // Snow-dusted road: slightly lighter, rougher
     mat.roughness = Math.min(0.95, mat.roughness + 0.15);
     mat.color.lerp(new THREE.Color(0xcccccc), 0.15);
   } else if (w === 'ice') {
-    // Mirror-glossy ice surface
-    mat.roughness = 0.05;
-    mat.metalness = 0.6;
+    // Slightly glossy ice surface (but not mirror-like)
+    mat.roughness = 0.35;
+    mat.metalness = 0.15;
     mat.color.lerp(new THREE.Color(0x88aacc), 0.2);
   }
 }

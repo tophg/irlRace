@@ -45,7 +45,7 @@ export async function loadCarModel(filename: string): Promise<THREE.Group> {
 
       const mat = mesh.material as THREE.MeshStandardMaterial;
       if (mat && mat.isMeshStandardMaterial) {
-        mat.envMapIntensity = 2.0;
+        mat.envMapIntensity = 1.2;
         mat.roughness = Math.max(mat.roughness * 0.7, 0.05);
         mat.needsUpdate = true;
       }
@@ -110,7 +110,7 @@ export function loadCarModelWithProgress(
             if (mesh.geometry) mesh.geometry.computeVertexNormals();
             const mat = mesh.material as THREE.MeshStandardMaterial;
             if (mat && mat.isMeshStandardMaterial) {
-              mat.envMapIntensity = 2.0;
+              mat.envMapIntensity = 1.2;
               mat.roughness = Math.max(mat.roughness * 0.7, 0.05);
               mat.needsUpdate = true;
             }
