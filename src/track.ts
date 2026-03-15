@@ -809,11 +809,55 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
 
     _m.setPosition(x, p.y + 6, z);
     fixIM.setMatrixAt(i, _m);
+
+    // Add real PointLights to every 5th lamp for visible road illumination pools
+    if (i % 5 === 0) {
+      const light = new THREE.PointLight(0xffdd88, 3, 18, 2);
+      light.position.set(x, p.y + 5.8, z);
+      group.add(light);
+    }
   }
   poleIM.instanceMatrix.needsUpdate = true;
   fixIM.instanceMatrix.needsUpdate = true;
   group.add(poleIM);
   group.add(fixIM);
+
+  // ── Start/Finish line ──
+  {
+    const t = 0;
+    const p = spline.getPointAt(t);
+    const tangent = spline.getTangentAt(t).normalize();
+    const right = new THREE.Vector3(tangent.z, 0, -tangent.x);
+
+    // Checkerboard pattern start line
+    const lineGeo = new THREE.PlaneGeometry(ROAD_WIDTH, 2);
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; canvas.height = 32;
+    const ctx = canvas.getContext('2d')!;
+    const sqW = 16, sqH = 16;
+    for (let row = 0; row < 2; row++) {
+      for (let col = 0; col < 8; col++) {
+        ctx.fillStyle = (row + col) % 2 === 0 ? '#ffffff' : '#111111';
+        ctx.fillRect(col * sqW, row * sqH, sqW, sqH);
+      }
+    }
+    const lineTex = new THREE.CanvasTexture(canvas);
+    const lineMat = new THREE.MeshStandardMaterial({
+      map: lineTex,
+      roughness: 0.6,
+      transparent: true,
+      depthWrite: false,
+    });
+    const lineMesh = new THREE.Mesh(lineGeo, lineMat);
+    lineMesh.position.copy(p);
+    lineMesh.position.y += 0.03; // Just above road surface
+    // Rotate plane to lie flat on the road, aligned with the track direction
+    lineMesh.quaternion.setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(right, new THREE.Vector3(0, 1, 0), tangent)
+    );
+    lineMesh.rotateX(-Math.PI / 2);
+    group.add(lineMesh);
+  }
 
   // ── Tire walls at tight corners (InstancedMesh) ──
   // Find sharp corners and place tire stacks outside them
