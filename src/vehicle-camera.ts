@@ -17,18 +17,57 @@ const ORBIT_HEIGHT = 18;
 const ORBIT_SPEED = 0.15; // radians/s
 const SPECTATE_FOV = 65;
 
-// Mouse wheel controls — plain scroll = distance, Shift+scroll = tilt
+// ── Camera controls ──
+// Scroll = distance, Shift+scroll = tilt, right-click drag = tilt, 2-finger swipe = tilt
+
 window.addEventListener('wheel', (e) => {
   if (e.shiftKey) {
-    // Shift+scroll adjusts camera tilt (height ratio)
     CHASE_HEIGHT_RATIO += e.deltaY * 0.01;
     CHASE_HEIGHT_RATIO = Math.max(0.5, Math.min(8, CHASE_HEIGHT_RATIO));
   } else {
-    // Plain scroll adjusts chase distance
     CHASE_DISTANCE += e.deltaY * 0.005;
     CHASE_DISTANCE = Math.max(0.5, Math.min(20, CHASE_DISTANCE));
   }
 }, { passive: true });
+
+// Right-click drag — vertical movement adjusts tilt
+let _rightDragging = false;
+let _rightDragLastY = 0;
+
+window.addEventListener('mousedown', (e) => {
+  if (e.button === 2) { _rightDragging = true; _rightDragLastY = e.clientY; }
+});
+window.addEventListener('mousemove', (e) => {
+  if (!_rightDragging) return;
+  const dy = e.clientY - _rightDragLastY;
+  _rightDragLastY = e.clientY;
+  CHASE_HEIGHT_RATIO += dy * 0.02;
+  CHASE_HEIGHT_RATIO = Math.max(0.5, Math.min(8, CHASE_HEIGHT_RATIO));
+});
+window.addEventListener('mouseup', (e) => {
+  if (e.button === 2) _rightDragging = false;
+});
+window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Two-finger vertical swipe (mobile) — adjusts tilt
+let _twoFingerLastY = 0;
+let _twoFingerActive = false;
+
+window.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 2) {
+    _twoFingerActive = true;
+    _twoFingerLastY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+  }
+}, { passive: true });
+window.addEventListener('touchmove', (e) => {
+  if (!_twoFingerActive || e.touches.length !== 2) return;
+  const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+  const dy = midY - _twoFingerLastY;
+  _twoFingerLastY = midY;
+  CHASE_HEIGHT_RATIO += dy * 0.02;
+  CHASE_HEIGHT_RATIO = Math.max(0.5, Math.min(8, CHASE_HEIGHT_RATIO));
+}, { passive: true });
+window.addEventListener('touchend', () => { _twoFingerActive = false; }, { passive: true });
 
 /** Set chase distance programmatically. */
 export function setChaseDistance(d: number) {
