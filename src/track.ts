@@ -50,8 +50,8 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
 
   // ── 7. Build meshes ──
   const roadMesh = buildRoadMesh(finalSpline, curvatures, rng);
-  const barrierLeft = buildBarrierMesh(finalSpline, -1);
-  const barrierRight = buildBarrierMesh(finalSpline, 1);
+  const barrierLeft = buildBarrierMesh(finalSpline, -1, curvatures);
+  const barrierRight = buildBarrierMesh(finalSpline, 1, curvatures);
   const shoulderMesh = buildShoulders(finalSpline);
   const kerbGroup = buildKerbs(finalSpline, curvatures);
 
@@ -503,7 +503,7 @@ function createRoadTexture(rng: () => number): THREE.CanvasTexture {
   return tex;
 }
 
-function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number): THREE.Mesh {
+function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number, curvatures: number[]): THREE.Mesh {
   const rawPoints = spline.getSpacedPoints(SPLINE_SAMPLES);
   const points = rawPoints.slice(0, rawPoints.length - 1);
   const vertices: number[] = [];
@@ -520,15 +520,24 @@ function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number): THREE.M
     _meshRight.crossVectors(tangent, _meshUp).normalize();
     const p = points[i];
 
+    // Apply banking to match road edge elevation
+    const kappa = curvatures[i % curvatures.length] || 0;
+    const bankAngle = clamp(kappa * BANK_SCALE, -MAX_BANK_ANGLE, MAX_BANK_ANGLE);
+    _meshBankQuat.setFromAxisAngle(tangent, -bankAngle);
+    _meshBankedRight.copy(_meshRight).applyQuaternion(_meshBankQuat);
+
+    // Road-edge Y offset from banking
+    const edgeYOffset = _meshBankedRight.y * (ROAD_WIDTH / 2) * side;
+
     // Base (wider)
     const bx = p.x + _meshRight.x * baseHalfW * side;
     const bz = p.z + _meshRight.z * baseHalfW * side;
-    vertices.push(bx, p.y, bz);
+    vertices.push(bx, p.y + edgeYOffset, bz);
 
     // Top (narrower — taper inward)
     const tx = p.x + _meshRight.x * topHalfW * side;
     const tz = p.z + _meshRight.z * topHalfW * side;
-    vertices.push(tx, p.y + BARRIER_HEIGHT, tz);
+    vertices.push(tx, p.y + edgeYOffset + BARRIER_HEIGHT, tz);
 
     const nx = -_meshRight.x * side;
     const nz = -_meshRight.z * side;
