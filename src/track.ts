@@ -946,6 +946,147 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
     group.add(board);
   }
 
+  // ── Procedural buildings (InstancedMesh cityscape backdrop) ──
+  const BUILDING_COUNT = 25;
+  const buildingGeo = new THREE.BoxGeometry(1, 1, 1);
+  const buildingTexCanvas = document.createElement('canvas');
+  buildingTexCanvas.width = 64; buildingTexCanvas.height = 128;
+  {
+    const ctx = buildingTexCanvas.getContext('2d')!;
+    ctx.fillStyle = '#2a2a35';
+    ctx.fillRect(0, 0, 64, 128);
+    // Draw window grid
+    for (let row = 0; row < 12; row++) {
+      for (let col = 0; col < 4; col++) {
+        const lit = rng() > 0.5;
+        ctx.fillStyle = lit ? `hsl(${40 + rng() * 20}, ${50 + rng() * 30}%, ${50 + rng() * 30}%)` : '#1a1a22';
+        ctx.fillRect(4 + col * 15, 4 + row * 10, 10, 7);
+      }
+    }
+  }
+  const buildingTex = new THREE.CanvasTexture(buildingTexCanvas);
+  buildingTex.wrapS = THREE.RepeatWrapping;
+  buildingTex.wrapT = THREE.RepeatWrapping;
+  const buildingMat = new THREE.MeshStandardMaterial({
+    map: buildingTex,
+    roughness: 0.85,
+    metalness: 0.1,
+  });
+  const buildingIM = new THREE.InstancedMesh(buildingGeo, buildingMat, BUILDING_COUNT);
+
+  for (let i = 0; i < BUILDING_COUNT; i++) {
+    const t = rng();
+    const p = spline.getPointAt(t);
+    const tangent = spline.getTangentAt(t).normalize();
+    const rx = tangent.z, rz = -tangent.x;
+    const side = rng() > 0.5 ? 1 : -1;
+    const offset = ROAD_WIDTH / 2 + 20 + rng() * 40; // Further from road than trees
+    const x = p.x + rx * offset * side;
+    const z = p.z + rz * offset * side;
+    const w = 4 + rng() * 8;
+    const h = 8 + rng() * 20;
+    const d = 4 + rng() * 6;
+
+    _m.makeScale(w, h, d);
+    _m.setPosition(x, p.y + h / 2, z);
+    buildingIM.setMatrixAt(i, _m);
+
+    // Vary building color per instance
+    const shade = 0.12 + rng() * 0.08;
+    _c.setRGB(shade, shade, shade * 1.1);
+    buildingIM.setColorAt(i, _c);
+  }
+  buildingIM.instanceMatrix.needsUpdate = true;
+  buildingIM.instanceColor!.needsUpdate = true;
+  group.add(buildingIM);
+
+  // ── Grandstand at start/finish ──
+  {
+    const startP = spline.getPointAt(0);
+    const startTan = spline.getTangentAt(0).normalize();
+    const right = new THREE.Vector3(startTan.z, 0, -startTan.x);
+    const grandstandOffset = ROAD_WIDTH / 2 + 8;
+
+    // Build stepped seating rows
+    const grandstandGroup = new THREE.Group();
+    const seatGeo = new THREE.BoxGeometry(12, 0.4, 1.5);
+
+    for (let row = 0; row < 5; row++) {
+      const seatMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color().setHSL(0.6 - row * 0.05, 0.5, 0.35 + row * 0.05),
+        roughness: 0.7,
+      });
+      const seat = new THREE.Mesh(seatGeo, seatMat);
+      seat.position.set(0, row * 0.8, -row * 1.6);
+      grandstandGroup.add(seat);
+    }
+
+    // Support structure
+    const supportGeo = new THREE.BoxGeometry(12, 4, 8);
+    const supportMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.8 });
+    const support = new THREE.Mesh(supportGeo, supportMat);
+    support.position.set(0, -1.5, -4);
+    grandstandGroup.add(support);
+
+    // Position and orient the grandstand
+    grandstandGroup.position.set(
+      startP.x + right.x * grandstandOffset,
+      startP.y,
+      startP.z + right.z * grandstandOffset,
+    );
+    grandstandGroup.lookAt(startP);
+    group.add(grandstandGroup);
+  }
+
+  // ── Road direction arrows (InstancedMesh decals on straight sections) ──
+  const ARROW_COUNT = 12;
+  const arrowCanvas = document.createElement('canvas');
+  arrowCanvas.width = 64; arrowCanvas.height = 128;
+  {
+    const ctx = arrowCanvas.getContext('2d')!;
+    ctx.clearRect(0, 0, 64, 128);
+    // Draw arrow shape
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.beginPath();
+    ctx.moveTo(32, 10);   // Arrow tip
+    ctx.lineTo(52, 50);
+    ctx.lineTo(38, 40);
+    ctx.lineTo(38, 118);
+    ctx.lineTo(26, 118);
+    ctx.lineTo(26, 40);
+    ctx.lineTo(12, 50);
+    ctx.closePath();
+    ctx.fill();
+  }
+  const arrowTex = new THREE.CanvasTexture(arrowCanvas);
+  const arrowGeo = new THREE.PlaneGeometry(2, 4);
+  const arrowMat = new THREE.MeshStandardMaterial({
+    map: arrowTex,
+    transparent: true,
+    depthWrite: false,
+    roughness: 0.8,
+  });
+
+  for (let i = 0; i < ARROW_COUNT; i++) {
+    const t = (i + 0.5) / ARROW_COUNT;
+    const kappa = estimateCurvature(spline, t);
+    // Only place arrows on relatively straight sections
+    if (Math.abs(kappa) < 0.02) {
+      const p = spline.getPointAt(t);
+      const tangent = spline.getTangentAt(t).normalize();
+      const arrow = new THREE.Mesh(arrowGeo, arrowMat);
+      arrow.position.copy(p);
+      arrow.position.y += 0.04; // Just above road
+      // Orient arrow to lie flat on road, pointing along track direction
+      const rightVec = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
+      arrow.quaternion.setFromRotationMatrix(
+        new THREE.Matrix4().makeBasis(rightVec, new THREE.Vector3(0, 1, 0), tangent)
+      );
+      arrow.rotateX(-Math.PI / 2);
+      group.add(arrow);
+    }
+  }
+
   return group;
 }
 
