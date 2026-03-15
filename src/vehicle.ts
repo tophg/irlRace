@@ -884,13 +884,18 @@ export class Vehicle {
   private static _deformLocalDir = new THREE.Vector3();
   private static _deformWorldImpact = new THREE.Vector3();
 
-  /** Displace mesh vertices near the impact for visual crumple. */
+  /** Displace mesh vertices near the impact for visual crumple.
+   * Permanent CPU-side deformation — vertices are moved and never restored.
+   * Uses quadratic falloff from impact point with randomized noise for
+   * realistic crumple patterns.
+   */
   private deformMesh(impactDir: THREE.Vector3, force: number) {
     if (!this.model) return;
 
-    const radius = 1.8;
-    const strength = force * 0.005;
-    Vehicle._deformWorldImpact.copy(this.group.position).addScaledVector(impactDir, 2);
+    const radius = 2.5;
+    const strength = force * 0.01;
+    const maxDeformPerVertex = 0.8; // cap total displacement per vertex
+    Vehicle._deformWorldImpact.copy(this.group.position).addScaledVector(impactDir, 2.5);
 
     this.model.traverse((child) => {
       if (!(child as THREE.Mesh).isMesh) return;
@@ -906,8 +911,8 @@ export class Vehicle {
       const localDir = Vehicle._deformLocalDir;
 
       let changed = false;
-      const maxVerts = Math.min(positions.length / 3, 500);
-      for (let i = 0; i < maxVerts; i++) {
+      const vertCount = positions.length / 3;
+      for (let i = 0; i < vertCount; i++) {
         const idx = i * 3;
         const dx = positions[idx] - localImpact.x;
         const dy = positions[idx + 1] - localImpact.y;
@@ -916,10 +921,14 @@ export class Vehicle {
 
         if (dist < radius) {
           const falloff = (1 - dist / radius) * (1 - dist / radius);
-          const deform = strength * falloff;
-          positions[idx]     += localDir.x * deform + (Math.random() - 0.5) * deform * 0.3;
-          positions[idx + 1] += localDir.y * deform + (Math.random() - 0.5) * deform * 0.2;
-          positions[idx + 2] += localDir.z * deform + (Math.random() - 0.5) * deform * 0.3;
+          const deform = Math.min(strength * falloff, maxDeformPerVertex);
+          // Asymmetric noise for natural crumple
+          const nx = (Math.random() - 0.5) * deform * 0.4;
+          const ny = (Math.random() - 0.3) * deform * 0.25; // slightly downward bias
+          const nz = (Math.random() - 0.5) * deform * 0.4;
+          positions[idx]     += localDir.x * deform + nx;
+          positions[idx + 1] += localDir.y * deform + ny;
+          positions[idx + 2] += localDir.z * deform + nz;
           changed = true;
         }
       }
