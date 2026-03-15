@@ -1,10 +1,11 @@
 /* ── Hood Racer — AI Racer (v2 — Curvature-Aware + Personalities) ── */
 
 import * as THREE from 'three';
+import { CarDef, InputState, VehicleState } from './types';
 import { Vehicle } from './vehicle';
-import { CarDef, InputState } from './types';
 import { getClosestSplinePoint, getSpeedProfileAt } from './track';
 import type { SplineBVH } from './bvh';
+import type { WeatherPhysics } from './weather';
 
 // ── AI Personality ──
 
@@ -112,7 +113,7 @@ export class AIRacer {
   }
 
   /** Main AI update. Call with opponent positions for awareness. */
-  update(dt: number, opponents?: OpponentInfo[]) {
+  update(dt: number, opponents?: OpponentInfo[], weather?: WeatherPhysics) {
     if (!this.spline) return;
 
     const p = this.personality;
@@ -128,7 +129,7 @@ export class AIRacer {
         up: true, down: false, left: false, right: false,
         boost: false, steerAnalog: 0,
       };
-      this.vehicle.update(dt, input, this.spline, this.bvh ?? undefined);
+      this.vehicle.update(dt, input, this.spline, this.bvh ?? undefined, weather);
       return;
     }
 
@@ -336,7 +337,7 @@ export class AIRacer {
       steerAnalog: steerInput,
     };
 
-    this.vehicle.update(dt, input, this.spline, this.bvh ?? undefined);
+    this.vehicle.update(dt, input, this.spline, this.bvh ?? undefined, weather);
   }
 
   getCurrentT(): number {

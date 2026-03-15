@@ -5,7 +5,7 @@ import './index.css';
 
 import { GameState, CAR_ROSTER, CarDef, EventType } from './types';
 import type { TrackData } from './types';
-import { initScene, getRenderer, getScene, getCamera, getDirLight, applyEnvironment, getEnvironmentForSeed } from './scene';
+import { initScene, getRenderer, getScene, getCamera, getDirLight, applyEnvironment, getEnvironmentForSeed, getEnvironmentByName } from './scene';
 import { loadCarModel } from './loaders';
 import { generateTrack, buildCheckpointMarkers, getClosestSplinePoint } from './track';
 import { Vehicle } from './vehicle';
@@ -56,7 +56,7 @@ import { initInput, showTouchControls, getInput } from './input';
 import { loadSettings, getSettings, showSettings } from './settings';
 import { ReplayRecorder, ReplayPlayer } from './replay';
 import { resolveCarCollisions, CarCollider, CollisionEvent } from './bvh';
-import { getWeatherForSeed, initWeather, updateWeather, applyWetRoad, destroyWeather, getWeatherGripMultiplier, getWeatherDriftMultiplier, getCurrentWeather } from './weather';
+import { getWeatherForSeed, initWeather, updateWeather, applyWetRoad, destroyWeather, getWeatherGripMultiplier, getWeatherDriftMultiplier, getCurrentWeather, getWeatherPhysics } from './weather';
 import { initPostFX, updatePostFX, setImpactIntensity, setBoostActive, getPostFXPipeline, destroyPostFX } from './post-fx';
 
 // ── Shared state ──
@@ -272,7 +272,14 @@ async function startRace() {
     G.trackData = generateTrack(seed);
     applyEnvironment(getEnvironmentForSeed(seed));
     initWeather(scene, getWeatherForSeed(seed));
-    if (getCurrentWeather() !== 'clear') applyWetRoad(G.trackData.roadMesh);
+
+    // Override env preset for cold weather types to match visuals
+    const w = getCurrentWeather();
+    if (w === 'snow') applyEnvironment(getEnvironmentByName('Alpine Snow'));
+    else if (w === 'blizzard') applyEnvironment(getEnvironmentByName('Blizzard'));
+    else if (w === 'ice') applyEnvironment(getEnvironmentByName('Black Ice'));
+
+    if (w !== 'clear') applyWetRoad(G.trackData.roadMesh);
     scene.add(G.trackData.roadMesh);
     scene.add(G.trackData.barrierLeft);
     scene.add(G.trackData.barrierRight);
@@ -778,7 +785,7 @@ function showResults() {
        </div>` : '';
 
   el.innerHTML = `
-    <div class="results-title">${winner?.dnf ? 'RACE COMPLETE' : `${winnerName.toUpperCase()} WINS!`}</div>
+    <div class="results-title">${winner?.dnf ? 'RACE COMPLETE' : `${winnerName.toUpperCase()} ${winner?.id === 'local' ? 'WIN' : 'WINS'}!`}</div>
     <table class="results-table">
       <thead><tr>
         <th>POS</th>
@@ -978,13 +985,8 @@ function stepPhysics(dt: number, s: GameState) {
 
   // ── Player vehicle physics ──
   if (G.vehicleCamera?.mode === 'chase') {
-    const origGrip = G.playerVehicle.def.gripCoeff;
-    const origDrift = G.playerVehicle.def.driftFactor;
-    G.playerVehicle.def.gripCoeff *= getWeatherGripMultiplier();
-    G.playerVehicle.def.driftFactor *= getWeatherDriftMultiplier();
-    G.playerVehicle.update(dt, getInput(), G.trackData.spline, G.trackData.bvh);
-    G.playerVehicle.def.gripCoeff = origGrip;
-    G.playerVehicle.def.driftFactor = origDrift;
+    const wp = getWeatherPhysics();
+    G.playerVehicle.update(dt, getInput(), G.trackData.spline, G.trackData.bvh, wp);
   }
 
   // ── AI vehicle physics ──
@@ -998,13 +1000,8 @@ function stepPhysics(dt: number, s: GameState) {
 
   for (const ai of G.aiRacers) {
     const opponents = allOpponents.filter(o => o.id !== ai.id);
-    const origGripAi = ai.vehicle.def.gripCoeff;
-    const origDriftAi = ai.vehicle.def.driftFactor;
-    ai.vehicle.def.gripCoeff *= getWeatherGripMultiplier();
-    ai.vehicle.def.driftFactor *= getWeatherDriftMultiplier();
-    ai.update(dt, opponents);
-    ai.vehicle.def.gripCoeff = origGripAi;
-    ai.vehicle.def.driftFactor = origDriftAi;
+    const wp = getWeatherPhysics();
+    ai.update(dt, opponents, wp);
   }
 
   // ── Car-to-car collision (BVH broadphase + push-apart) ──

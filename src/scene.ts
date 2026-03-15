@@ -82,6 +82,30 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0x8899aa, dirIntensity: 1.5, dirPosition: [40, 50, 20],
     groundColor: 0x151a1a, exposure: 1.1,
   },
+  {
+    name: 'Alpine Snow',
+    fogColor: 0xccccdd, fogDensity: 0.0004,
+    skyTop: 0x889099, skyBottom: 0xbbc0cc, skyHorizon: 0xdde0e8,
+    hemiSky: 0xccddee, hemiGround: 0x667788, hemiIntensity: 1.4,
+    dirColor: 0xeeeeff, dirIntensity: 2.0, dirPosition: [60, 40, 40],
+    groundColor: 0x334455, exposure: 1.3,
+  },
+  {
+    name: 'Blizzard',
+    fogColor: 0xaaaabb, fogDensity: 0.0008,
+    skyTop: 0x999aa5, skyBottom: 0xaaaaba, skyHorizon: 0xbbbbcc,
+    hemiSky: 0xaabbcc, hemiGround: 0x556677, hemiIntensity: 0.8,
+    dirColor: 0xccccdd, dirIntensity: 1.0, dirPosition: [30, 60, 20],
+    groundColor: 0x2a3040, exposure: 1.0,
+  },
+  {
+    name: 'Black Ice',
+    fogColor: 0x0a1020, fogDensity: 0.0003,
+    skyTop: 0x050810, skyBottom: 0x101828, skyHorizon: 0x1a2540,
+    hemiSky: 0x4466aa, hemiGround: 0x111122, hemiIntensity: 0.9,
+    dirColor: 0x88aadd, dirIntensity: 2.2, dirPosition: [50, 70, -30],
+    groundColor: 0x0a0e18, exposure: 1.5,
+  },
 ];
 
 function createGroundTexture(): THREE.CanvasTexture {
@@ -205,6 +229,10 @@ export function applyEnvironment(preset: EnvironmentPreset) {
 /** Pick environment deterministically from seed. */
 export function getEnvironmentForSeed(seed: number): EnvironmentPreset {
   return ENVIRONMENTS[seed % ENVIRONMENTS.length];
+}
+
+export function getEnvironmentByName(name: string): EnvironmentPreset {
+  return ENVIRONMENTS.find(e => e.name === name) ?? ENVIRONMENTS[0];
 }
 
 export function getRenderer() { return renderer; }

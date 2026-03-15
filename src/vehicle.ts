@@ -5,6 +5,7 @@ import { CarDef, InputState, VehicleState, DamageState, createDamageState } from
 import { getSettings } from './settings';
 import { getClosestSplinePoint } from './track';
 import type { SplineBVH } from './bvh';
+import type { WeatherPhysics } from './weather';
 
 // Reusable temps to avoid GC
 const _carForward = new THREE.Vector3();
@@ -358,7 +359,7 @@ export class Vehicle {
   // PHYSICS UPDATE — Friction Circle Model
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  update(dt: number, input: InputState, spline?: THREE.CatmullRomCurve3, bvh?: SplineBVH) {
+  update(dt: number, input: InputState, spline?: THREE.CatmullRomCurve3, bvh?: SplineBVH, weather?: WeatherPhysics) {
     dt = Math.min(dt, 0.05);
     const { def } = this;
 
@@ -398,9 +399,10 @@ export class Vehicle {
     // Tyre forces (throttle/brake) — used for friction circle
     let tyreForce = 0;
     if (this.throttle > 0) tyreForce += def.acceleration * this.throttle * accelMult * globalMult;
-    if (this.brake > 0)    tyreForce -= def.braking * this.brake;
+    if (this.brake > 0)    tyreForce -= def.braking * this.brake * (weather?.brakingScale ?? 1);
     // Aero/rolling resistance added separately (not part of tyre budget)
-    const dragForce = vForward * Math.abs(vForward) * 0.002 + vForward * 0.8;
+    const weatherDrag = vForward * (weather?.rollingResistance ?? 0);
+    const dragForce = vForward * Math.abs(vForward) * 0.002 + vForward * 0.8 + weatherDrag;
     const longForce = tyreForce - dragForce;
 
     // ── Per-axle slip angles (bicycle model) ──
@@ -408,7 +410,7 @@ export class Vehicle {
     const vLatRear  = vLateral - this.angularVel * AXLE_REAR;
     const vFwdClamped = Math.max(absSpeed, 1.5);
 
-    const maxSteerAngle = 0.35 * getSettings().steerSensitivity;
+    const maxSteerAngle = 0.35 * getSettings().steerSensitivity * (weather?.steerResponseScale ?? 1);
     const steerAngle = (this.steer + steerBias) * maxSteerAngle / (1 + absSpeed * 0.025);
     const signFwd = vForward >= 0 ? 1 : -1;
 
@@ -427,10 +429,18 @@ export class Vehicle {
     const latBudget = Math.sqrt(Math.max(0, 1 - longUsage * longUsage));
 
     // ── Pacejka lateral forces per axle ──
-    const B = def.latFriction * 1.4;
+    const B = def.latFriction * 1.4 * (weather?.corneringStiffness ?? 1);
     const C = 1.4;
-    const frontPeak = totalGrip * frontGrip * 2 * latBudget * globalMult;
-    const rearPeak  = totalGrip * rearGrip  * 2 * latBudget * globalMult;
+    let frontPeak = totalGrip * frontGrip * 2 * latBudget * globalMult * (weather?.gripScale ?? 1);
+    let rearPeak  = totalGrip * rearGrip  * 2 * latBudget * globalMult * (weather?.gripScale ?? 1);
+
+    // Aquaplaning: speed-dependent grip loss above threshold
+    if (weather?.aquaplaneSpeed && absSpeed > weather.aquaplaneSpeed) {
+      const aquaFactor = 1 - weather.aquaplaneGripLoss *
+        Math.min(1, (absSpeed - weather.aquaplaneSpeed) / 20);
+      frontPeak *= aquaFactor;
+      rearPeak  *= aquaFactor;
+    }
 
     const frontLatF = -pacejka(alphaFront, B, C, frontPeak);
     const rearLatF  = -pacejka(alphaRear,  B, C, rearPeak);
@@ -458,7 +468,8 @@ export class Vehicle {
       this.nitro = Math.min(100, this.nitro + 2 * dt);
     }
 
-    const boostedMax = this._nitroActive ? def.maxSpeed * 1.4 * maxSpdMult : def.maxSpeed * maxSpdMult;
+    const weatherMaxSpeed = def.maxSpeed * (weather?.topSpeedScale ?? 1);
+    const boostedMax = this._nitroActive ? weatherMaxSpeed * 1.4 * maxSpdMult : weatherMaxSpeed * maxSpdMult;
     const clampedFwd = Math.max(-def.maxSpeed * 0.3, Math.min(newVForward, boostedMax));
 
     const totalLatAccel = frontLatF + rearLatF;
@@ -492,8 +503,8 @@ export class Vehicle {
     const driftHeld = this._nitroActive ? 0.1 : 0.5;
     this.angularVel *= 1 - Math.min(1, 3.0 * driftHeld * slideAngle * dt);
 
-    // Angular damping (frame-rate independent)
-    this.angularVel *= Math.exp(-2.5 * dt);
+    // Angular damping (frame-rate independent, weather-affected)
+    this.angularVel *= Math.exp(-(weather?.yawDamping ?? 2.5) * dt);
 
     // Apply angular velocity to heading
     this.heading += this.angularVel * dt;
@@ -501,7 +512,15 @@ export class Vehicle {
     this.heading = ((this.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
 
     // ── Drift angle (for VFX / audio / visuals) ──
-    this.driftAngle = Math.atan2(-vLateral, Math.max(absSpeed, 1)) * def.driftFactor * 5;
+    this.driftAngle = Math.atan2(-vLateral, Math.max(absSpeed, 1)) * def.driftFactor * 5 * (weather?.driftScale ?? 1);
+
+    // ── Crosswind lateral push ──
+    if (weather?.crosswindForce && absSpeed > 3) {
+      const variance = 1 + Math.sin(Date.now() * 0.001) * (weather.crosswindVariance ?? 0);
+      const windForce = weather.crosswindForce * absSpeed * absSpeed * 0.0001 * variance;
+      this._velX += windForce * cosH * dt;
+      this._velZ -= windForce * sinH * dt;
+    }
 
     // ── Scalar speed (for HUD, network, audio) ──
     this.speed = this._velX * sinH + this._velZ * cosH;
@@ -600,6 +619,22 @@ export class Vehicle {
     // Hard floor: absolute minimum height to prevent sinking below ground
     if (this.group.position.y < -0.5) {
       this.group.position.y = -0.5;
+    }
+
+    // Safety teleport: if car is way too far from track, snap back to nearest spline point
+    if (spline && !nearestSpline) {
+      nearestSpline = bvh
+        ? getClosestSplinePoint(spline, this.group.position, bvh)
+        : getClosestSplinePoint(spline, this.group.position, 200);
+    }
+    if (nearestSpline && nearestSpline.distance > 30) {
+      // Car escaped the track — teleport back
+      this.group.position.x = nearestSpline.point.x;
+      this.group.position.z = nearestSpline.point.z;
+      this.group.position.y = nearestSpline.point.y;
+      this._velX *= 0.5;
+      this._velZ *= 0.5;
+      this.angularVel = 0;
     }
 
     // ── Barrier collision (hard clamp + velocity reflection) ──
