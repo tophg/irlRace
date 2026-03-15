@@ -27,6 +27,8 @@ import {
   initSkidMarks, updateSkidMarks, destroySkidMarks,
   spawnFlameParticle, spawnExplosion,
   spawnDebris, spawnScrapeSparks, spawnDamageZoneSmoke,
+  initWindshieldCracks, updateWindshieldCracks, resetWindshieldCracks,
+  spawnTireBlowout,
 } from './vfx';
 import {
   initGPUParticles, updateGPUParticles, destroyGPUParticles,
@@ -283,6 +285,7 @@ async function startRace() {
     initBoostFlame(scene);
     initSpeedLines(container);
     initSkidMarks(scene);
+    initWindshieldCracks(container);
     await initGPUParticles(renderer, scene);
 
     // Initialize post-processing pipeline (bloom, chromatic aberration, vignette)
@@ -562,7 +565,10 @@ function clearRaceObjects() {
   }
   G.detachedParts.length = 0;
 
-  // Clean up VFX (smoke, speed lines, boost flame, skid marks)
+  // Clean up VFX (smoke, speed lines, boost flame, skid marks, cracks)
+  G._leftTireBlown = false;
+  G._rightTireBlown = false;
+  resetWindshieldCracks();
   destroyVFX();
   destroySkidMarks();
   destroyGPUParticles();
@@ -1244,6 +1250,35 @@ function gameLoop(timestamp: number) {
           );
           spawnDamageZoneSmoke(G._sparkPos, severity, frameDt);
         }
+      }
+
+      // ── Windshield cracks (frontal damage) ──
+      const frontSeverity = 1 - G.playerVehicle.damage.front.hp / 100;
+      updateWindshieldCracks(frontSeverity);
+
+      // ── Tire blowout (side zone destruction) ──
+      const leftHP = G.playerVehicle.damage.left.hp;
+      const rightHP = G.playerVehicle.damage.right.hp;
+
+      if (leftHP <= 0 && !G._leftTireBlown) {
+        G._leftTireBlown = true;
+        G._sparkPos.set(
+          pp.x + cosH * (-1.0),
+          pp.y + 0.2,
+          pp.z - sinH * (-1.0),
+        );
+        spawnTireBlowout(G._sparkPos);
+        G.playerVehicle.flattenTire('left');
+      }
+      if (rightHP <= 0 && !G._rightTireBlown) {
+        G._rightTireBlown = true;
+        G._sparkPos.set(
+          pp.x + cosH * 1.0,
+          pp.y + 0.2,
+          pp.z - sinH * 1.0,
+        );
+        spawnTireBlowout(G._sparkPos);
+        G.playerVehicle.flattenTire('right');
       }
     }
     updateGPUParticles(renderer, frameDt);

@@ -91,6 +91,8 @@ export const G = {
   _impactDir: new THREE.Vector3(),
   _sparkPos: new THREE.Vector3(),
   _flamePos: new THREE.Vector3(),
+  _leftTireBlown: false,
+  _rightTireBlown: false,
   remotePrevPos: new Map<string, { x: number; z: number }>(),
 
   // ── Replay ──

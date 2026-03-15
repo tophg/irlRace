@@ -692,6 +692,18 @@ export class Vehicle {
   get isNitroActive(): boolean { return this._nitroActive; }
 
   /** Serialize vehicle physics state for rollback snapshot. */
+  /** Visually flatten tires on a side (for blowout VFX). */
+  flattenTire(side: 'left' | 'right') {
+    const scaleY = 0.3;
+    if (side === 'left') {
+      if (this.wheelFL) this.wheelFL.scale.y = scaleY;
+      if (this.wheelRL) this.wheelRL.scale.y = scaleY;
+    } else {
+      if (this.wheelFR) this.wheelFR.scale.y = scaleY;
+      if (this.wheelRR) this.wheelRR.scale.y = scaleY;
+    }
+  }
+
   serializeState(): {
     px: number; py: number; pz: number;
     velX: number; velZ: number;
