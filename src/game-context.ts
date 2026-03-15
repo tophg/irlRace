@@ -96,6 +96,7 @@ export const G = {
   _playerUnderglow: null as any,
   _playerBrakeDiscs: null as any,
   _prevSpeedRatio: 0,
+  _nearMissCooldowns: new Map<string, number>(),
   remotePrevPos: new Map<string, { x: number; z: number }>(),
 
   // ── Replay ──

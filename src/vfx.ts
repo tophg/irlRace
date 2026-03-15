@@ -1779,6 +1779,267 @@ export function updateLensFlares(cameraPos: THREE.Vector3, time: number) {
   }
 }
 
+// ── Lightning Flashes (screen + scene flash during storms) ──
+
+let lightningDiv: HTMLDivElement | null = null;
+let lightningIntensity = 0;
+let lightningTimer = 0;
+let lightningInterval = 5; // seconds between flashes
+let lightningEnabled = false;
+
+export function initLightning(container: HTMLElement) {
+  lightningDiv = document.createElement('div');
+  lightningDiv.style.cssText = `
+    position:fixed;top:0;left:0;width:100%;height:100%;
+    pointer-events:none;z-index:12;
+    background:rgba(200,210,255,0);opacity:0;
+  `;
+  container.appendChild(lightningDiv);
+  lightningIntensity = 0;
+  lightningTimer = 2 + Math.random() * 3;
+  lightningEnabled = false;
+}
+
+export function setLightningEnabled(enabled: boolean) {
+  lightningEnabled = enabled;
+  if (!enabled && lightningDiv) lightningDiv.style.opacity = '0';
+}
+
+/**
+ * Update lightning. Returns true momentarily when a flash occurs
+ * (so caller can boost scene lights if desired).
+ */
+export function updateLightning(dt: number): boolean {
+  if (!lightningDiv || !lightningEnabled) return false;
+
+  lightningTimer -= dt;
+  let flashed = false;
+
+  if (lightningTimer <= 0) {
+    // Flash!
+    lightningIntensity = 0.5 + Math.random() * 0.4;
+    lightningDiv.style.opacity = lightningIntensity.toString();
+    lightningDiv.style.background = `rgba(200, 210, 255, ${lightningIntensity})`;
+    lightningTimer = 3 + Math.random() * 5; // Next flash in 3-8 seconds
+    flashed = true;
+
+    // Double flash (common in real lightning)
+    if (Math.random() > 0.5) {
+      setTimeout(() => {
+        if (lightningDiv) {
+          lightningDiv.style.opacity = (lightningIntensity * 0.6).toString();
+        }
+      }, 80);
+    }
+  }
+
+  // Decay
+  if (lightningIntensity > 0) {
+    lightningIntensity *= Math.exp(-8 * dt);
+    if (lightningIntensity < 0.01) lightningIntensity = 0;
+    lightningDiv.style.opacity = lightningIntensity.toString();
+  }
+
+  return flashed;
+}
+
+// ── Near-Miss Screen Streaks (screen edge flash on close passes) ──
+
+let nearMissCanvas: HTMLCanvasElement | null = null;
+let nearMissCtx: CanvasRenderingContext2D | null = null;
+let nearMissResizeHandler: (() => void) | null = null;
+
+interface NearMissStreak {
+  side: 'left' | 'right';
+  intensity: number;
+  life: number;
+}
+const activeStreaks: NearMissStreak[] = [];
+
+export function initNearMissStreaks(container: HTMLElement) {
+  nearMissCanvas = document.createElement('canvas');
+  nearMissCanvas.style.cssText = `
+    position:fixed;top:0;left:0;width:100%;height:100%;
+    pointer-events:none;z-index:11;opacity:1;
+  `;
+  nearMissCanvas.width = window.innerWidth;
+  nearMissCanvas.height = window.innerHeight;
+  container.appendChild(nearMissCanvas);
+  nearMissCtx = nearMissCanvas.getContext('2d')!;
+  activeStreaks.length = 0;
+
+  nearMissResizeHandler = () => {
+    if (nearMissCanvas) {
+      nearMissCanvas.width = window.innerWidth;
+      nearMissCanvas.height = window.innerHeight;
+    }
+  };
+  window.addEventListener('resize', nearMissResizeHandler);
+}
+
+/**
+ * Trigger a near-miss streak on one side of the screen.
+ * @param side — which side the AI car passed on
+ */
+export function triggerNearMiss(side: 'left' | 'right') {
+  activeStreaks.push({
+    side,
+    intensity: 0.8 + Math.random() * 0.2,
+    life: 0.3,
+  });
+}
+
+export function updateNearMissStreaks(dt: number) {
+  if (!nearMissCanvas || !nearMissCtx) return;
+
+  const ctx = nearMissCtx;
+  const w = nearMissCanvas.width;
+  const h = nearMissCanvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  let j = 0;
+  while (j < activeStreaks.length) {
+    const s = activeStreaks[j];
+    s.life -= dt;
+    if (s.life <= 0) {
+      activeStreaks[j] = activeStreaks[activeStreaks.length - 1];
+      activeStreaks.pop();
+      continue;
+    }
+
+    const t = s.life / 0.3;
+    const alpha = t * s.intensity * 0.4;
+
+    // Draw gradient streak on the corresponding side
+    const gradient = s.side === 'left'
+      ? ctx.createLinearGradient(0, 0, w * 0.15, 0)
+      : ctx.createLinearGradient(w, 0, w * 0.85, 0);
+
+    gradient.addColorStop(0, `rgba(255, 220, 100, ${alpha})`);
+    gradient.addColorStop(0.5, `rgba(255, 200, 80, ${alpha * 0.3})`);
+    gradient.addColorStop(1, 'rgba(255, 200, 80, 0)');
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, w, h);
+
+    j++;
+  }
+}
+
+// ── Victory Confetti (colorful particles on race finish) ──
+
+const CONFETTI_COUNT = 80;
+interface ConfettiParticle {
+  mesh: THREE.Mesh;
+  vx: number; vy: number; vz: number;
+  spin: number; spinAxis: number;
+  life: number;
+}
+let confettiPool: THREE.Mesh[] = [];
+const activeConfetti: ConfettiParticle[] = [];
+let confettiScene: THREE.Scene | null = null;
+
+const CONFETTI_COLORS = [
+  0xff4444, 0x44ff44, 0x4488ff,
+  0xffaa00, 0xff44ff, 0x44ffff,
+  0xffff44, 0xff8800, 0x88ff44,
+];
+
+export function initVictoryConfetti(scene: THREE.Scene) {
+  confettiScene = scene;
+  const geo = new THREE.PlaneGeometry(0.15, 0.25);
+  confettiPool = [];
+
+  for (let i = 0; i < CONFETTI_COUNT; i++) {
+    const mat = new THREE.MeshBasicMaterial({
+      color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+      transparent: true,
+      opacity: 1.0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const m = new THREE.Mesh(geo, mat);
+    m.visible = false;
+    scene.add(m);
+    confettiPool.push(m);
+  }
+}
+
+/**
+ * Trigger confetti burst at a position (call once on race finish).
+ */
+export function spawnVictoryConfetti(pos: THREE.Vector3) {
+  if (!confettiScene) return;
+
+  for (let i = 0; i < CONFETTI_COUNT; i++) {
+    const mesh = confettiPool[i];
+    mesh.position.set(
+      pos.x + (Math.random() - 0.5) * 6,
+      pos.y + 2 + Math.random() * 3,
+      pos.z + (Math.random() - 0.5) * 6,
+    );
+    mesh.scale.setScalar(0.5 + Math.random() * 1.0);
+    mesh.visible = true;
+
+    const mat = mesh.material as THREE.MeshBasicMaterial;
+    mat.opacity = 1.0;
+    mat.color.setHex(CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)]);
+
+    activeConfetti.push({
+      mesh,
+      vx: (Math.random() - 0.5) * 8,
+      vy: 5 + Math.random() * 8,
+      vz: (Math.random() - 0.5) * 8,
+      spin: (Math.random() - 0.5) * 10,
+      spinAxis: Math.random() * 3,
+      life: 3 + Math.random() * 2,
+    });
+  }
+}
+
+export function updateVictoryConfetti(dt: number) {
+  let j = 0;
+  while (j < activeConfetti.length) {
+    const p = activeConfetti[j];
+    p.life -= dt;
+    if (p.life <= 0) {
+      p.mesh.visible = false;
+      activeConfetti[j] = activeConfetti[activeConfetti.length - 1];
+      activeConfetti.pop();
+      continue;
+    }
+
+    // Physics: gravity + air drag + flutter
+    p.vy -= 6 * dt;
+    p.vx *= 0.99;
+    p.vz *= 0.99;
+    // Flutter effect (confetti tumble)
+    p.vx += Math.sin(Date.now() * 0.005 + j) * 0.3 * dt;
+    p.vz += Math.cos(Date.now() * 0.004 + j * 0.7) * 0.3 * dt;
+
+    p.mesh.position.x += p.vx * dt;
+    p.mesh.position.y += p.vy * dt;
+    p.mesh.position.z += p.vz * dt;
+
+    // Spinning
+    if (p.spinAxis < 1) p.mesh.rotation.x += p.spin * dt;
+    else if (p.spinAxis < 2) p.mesh.rotation.y += p.spin * dt;
+    else p.mesh.rotation.z += p.spin * dt;
+
+    // Fade out in last second
+    const mat = p.mesh.material as THREE.MeshBasicMaterial;
+    mat.opacity = p.life < 1 ? p.life : 1;
+
+    // Floor bounce
+    if (p.mesh.position.y < 0.05) {
+      p.mesh.position.y = 0.05;
+      p.vy = Math.abs(p.vy) * 0.2;
+    }
+
+    j++;
+  }
+}
+
 /** Remove all VFX objects from the scene and DOM. Call between races. */
 export function destroyVFX() {
   const sceneRef = smokeScene;
@@ -1950,4 +2211,38 @@ export function destroyVFX() {
   }
   flareSprites = [];
   flareLightPositions = [];
+
+  // Clear lightning
+  lightningIntensity = 0;
+  lightningTimer = 0;
+  lightningEnabled = false;
+  if (lightningDiv) {
+    lightningDiv.remove();
+    lightningDiv = null;
+  }
+
+  // Clear near-miss streaks
+  activeStreaks.length = 0;
+  if (nearMissResizeHandler) {
+    window.removeEventListener('resize', nearMissResizeHandler);
+    nearMissResizeHandler = null;
+  }
+  if (nearMissCanvas) {
+    nearMissCanvas.remove();
+    nearMissCanvas = null;
+    nearMissCtx = null;
+  }
+
+  // Clear victory confetti
+  for (const p of activeConfetti) p.mesh.visible = false;
+  activeConfetti.length = 0;
+  if (confettiScene) {
+    for (const m of confettiPool) {
+      confettiScene.remove(m);
+      m.geometry?.dispose();
+      (m.material as THREE.Material)?.dispose();
+    }
+  }
+  confettiPool = [];
+  confettiScene = null;
 }

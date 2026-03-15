@@ -40,6 +40,9 @@ import {
   initAmbientParticles, updateAmbientParticles,
   initHeatShimmer, updateHeatShimmer,
   initLensFlares, updateLensFlares,
+  initLightning, setLightningEnabled, updateLightning,
+  initNearMissStreaks, triggerNearMiss, updateNearMissStreaks,
+  initVictoryConfetti, spawnVictoryConfetti, updateVictoryConfetti,
 } from './vfx';
 import {
   initGPUParticles, updateGPUParticles, destroyGPUParticles,
@@ -316,6 +319,12 @@ async function startRace() {
       }
     });
     initLensFlares(scene, lightPositions);
+    initLightning(container);
+    initNearMissStreaks(container);
+    initVictoryConfetti(scene);
+
+    // Enable lightning if storm weather
+    setLightningEnabled(getCurrentWeather() === 'heavy_rain');
     await initGPUParticles(renderer, scene);
 
     // Initialize post-processing pipeline (bloom, chromatic aberration, vignette)
@@ -718,6 +727,10 @@ function resolvePlayerName(id: string): string {
 
 function showResults() {
   G.gameState = GameState.RESULTS;
+  // Victory confetti burst!
+  if (G.playerVehicle) {
+    spawnVictoryConfetti(G.playerVehicle.group.position);
+  }
 
   // Record session wins
   const preRankings = G.raceEngine?.getRankings() ?? [];
@@ -1389,6 +1402,36 @@ function gameLoop(timestamp: number) {
 
     // Lens flare sprites (distance fade from camera)
     updateLensFlares(camera.position, timestamp / 1000);
+
+    // Lightning flashes (storm weather)
+    updateLightning(frameDt);
+
+    // Near-miss detection (within 3 units of any AI, 1s cooldown per AI)
+    if (s === GameState.RACING) {
+      const pPos = G.playerVehicle.group.position;
+      const now = timestamp / 1000;
+      for (const ai of G.aiRacers) {
+        const aPos = ai.vehicle.group.position;
+        const dx = pPos.x - aPos.x;
+        const dz = pPos.z - aPos.z;
+        const dist2 = dx * dx + dz * dz;
+        if (dist2 < 3 * 3 && dist2 > 0.5) {
+          const lastMiss = G._nearMissCooldowns?.get(ai.id) ?? 0;
+          if (now - lastMiss > 1.0) {
+            if (!G._nearMissCooldowns) G._nearMissCooldowns = new Map();
+            G._nearMissCooldowns.set(ai.id, now);
+            const cosH = Math.cos(G.playerVehicle.heading);
+            const sinH = Math.sin(G.playerVehicle.heading);
+            const cross = dx * cosH - dz * sinH;
+            triggerNearMiss(cross > 0 ? 'right' : 'left');
+          }
+        }
+      }
+    }
+    updateNearMissStreaks(frameDt);
+
+    // Victory confetti physics
+    updateVictoryConfetti(frameDt);
 
     const speedRatioForLines = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
     if (speedRatioForLines > 0.65) updateSpeedLines(speedRatioForLines);
