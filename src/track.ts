@@ -846,9 +846,13 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
       map: lineTex,
       roughness: 0.6,
       transparent: true,
-      depthWrite: false,
+      depthWrite: true,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
     });
     const lineMesh = new THREE.Mesh(lineGeo, lineMat);
+    lineMesh.renderOrder = -1; // Draw before vehicles
     lineMesh.position.copy(p);
     lineMesh.position.y += 0.03; // Just above road surface
     // Rotate plane to lie flat on the road, aligned with the track direction
