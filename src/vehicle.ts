@@ -288,14 +288,22 @@ export class Vehicle {
     hlR.position.set(halfW, lightY, frontZ - 0.05);
     this.bodyGroup.add(hlR);
 
-    // Point lights for headlight illumination of road ahead
-    const hlPointL = new THREE.PointLight(0xffeedd, 5, 20, 2);
-    hlPointL.position.set(-halfW, lightY, frontZ - 0.4);
-    this.bodyGroup.add(hlPointL);
+    // SpotLights aimed forward + downward to project headlight beams onto the road
+    const hlSpotL = new THREE.SpotLight(0xffeedd, 8, 25, Math.PI / 5, 0.8, 2);
+    hlSpotL.position.set(-halfW, lightY, frontZ);
+    const targetL = new THREE.Object3D();
+    targetL.position.set(-halfW * 0.5, lightY - 1, frontZ + 12);
+    this.bodyGroup.add(targetL);
+    hlSpotL.target = targetL;
+    this.bodyGroup.add(hlSpotL);
 
-    const hlPointR = new THREE.PointLight(0xffeedd, 5, 20, 2);
-    hlPointR.position.set(halfW, lightY, frontZ - 0.4);
-    this.bodyGroup.add(hlPointR);
+    const hlSpotR = new THREE.SpotLight(0xffeedd, 8, 25, Math.PI / 5, 0.8, 2);
+    hlSpotR.position.set(halfW, lightY, frontZ);
+    const targetR = new THREE.Object3D();
+    targetR.position.set(halfW * 0.5, lightY - 1, frontZ + 12);
+    this.bodyGroup.add(targetR);
+    hlSpotR.target = targetR;
+    this.bodyGroup.add(hlSpotR);
 
     // ── Taillights (rear, red emissive, intensity boosts on brake) ──
     const taillightGeo = new THREE.BoxGeometry(0.25, 0.08, 0.06);
