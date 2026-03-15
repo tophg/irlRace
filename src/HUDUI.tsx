@@ -64,16 +64,23 @@ export const RacingHUD = () => {
 
       <div classList={{ 'hud-boost': true, 'boost-active': isBoostActive() }} id="hud-boost">BOOST</div>
       
-      <div class="hud-nitro" id="hud-nitro">
-        <div class="hud-nitro-label">NITRO</div>
+      <div classList={{ 'hud-nitro': true, 'nitro-burning': isNitroActive() }} id="hud-nitro">
+        <div class="hud-nitro-label">{isNitroActive() ? '⚡ NITROUS' : 'NITROUS'}</div>
         <div class="hud-nitro-track">
           <div 
             class="hud-nitro-fill" 
             id="hud-nitro-fill"
             style={{ 
               width: `${Math.max(0, Math.min(100, nitroPct()))}%`,
-              background: getNitroGradient(),
-              "box-shadow": isNitroActive() ? '0 0 12px rgba(255, 100, 0, 0.8)' : 'none'
+              background: isNitroActive() 
+                ? 'linear-gradient(90deg, #00ccff, #4488ff, #8844ff)'
+                : getNitroGradient(),
+              "box-shadow": isNitroActive() 
+                ? '0 0 16px rgba(68, 136, 255, 0.9), 0 0 32px rgba(68, 136, 255, 0.4)'
+                : nitroPct() < 5 
+                  ? '0 0 8px rgba(255, 50, 50, 0.6)' 
+                  : 'none',
+              transition: 'box-shadow 0.2s, background 0.3s',
             }}
           />
         </div>

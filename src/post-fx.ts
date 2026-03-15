@@ -98,17 +98,24 @@ export function initPostFX(
 /**
  * Update per-frame effects.
  * @param speedRatio 0..1 (current speed / max speed)
+ * @param isNitroActive whether nitrous is currently burning
  */
-export function updatePostFX(speedRatio: number) {
-  // Speed vignette: ramps from 0.15 at rest to 0.55 at top speed
-  uVignetteStrength.value = 0.15 + speedRatio * 0.4;
+export function updatePostFX(speedRatio: number, isNitroActive = false) {
+  // Speed vignette: stronger during nitrous for tunnel vision
+  const baseVignette = 0.15 + speedRatio * 0.4;
+  uVignetteStrength.value = isNitroActive ? Math.max(baseVignette, 0.45 + speedRatio * 0.2) : baseVignette;
 
-  // Boost intensity for radial effect during nitro
+  // Boost intensity for radial effect during nitrous
   uBoostIntensity.value = Math.max(0, uBoostIntensity.value - 0.05); // decay per frame
 
   // Impact intensity auto-decay (exponential)
   uImpactIntensity.value *= 0.88;
   if (uImpactIntensity.value < 0.01) uImpactIntensity.value = 0;
+
+  // Subtle chromatic aberration during boost (adds cinematic feel)
+  if (isNitroActive && uImpactIntensity.value < 0.15) {
+    uImpactIntensity.value = 0.15;
+  }
 }
 
 /**
@@ -120,11 +127,11 @@ export function setImpactIntensity(intensity: number) {
 }
 
 /**
- * Signal nitro boost for radial blur effect.
- * @param active Whether nitro is currently active
+ * Signal nitrous boost for radial blur effect.
+ * @param active Whether nitrous is currently active
  */
 export function setBoostActive(active: boolean) {
-  if (active) uBoostIntensity.value = Math.min(uBoostIntensity.value + 0.1, 0.8);
+  if (active) uBoostIntensity.value = Math.min(uBoostIntensity.value + 0.2, 1.0);
 }
 
 /** Get the pipeline for rendering. */

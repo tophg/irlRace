@@ -33,6 +33,7 @@ import {
   initImpactFlash, triggerImpactFlash, updateImpactFlash,
   createUnderglow, updateUnderglow,
   initNitroTrail, spawnNitroTrail, updateNitroTrail,
+  initBoostShockwave, triggerBoostShockwave, updateBoostShockwave,
   initRimSparks, spawnRimSparks, updateRimSparks,
   initBackfire, spawnBackfire, updateBackfire,
   createBrakeDiscs, updateBrakeDiscs,
@@ -312,6 +313,7 @@ async function startRace() {
     initRainDroplets(container);
     initImpactFlash(container);
     initNitroTrail(scene);
+    initBoostShockwave(scene);
     initRimSparks(scene);
     initBackfire(scene);
     initShoulderDust(scene);
@@ -1334,11 +1336,25 @@ function gameLoop(timestamp: number) {
     // Impact flash decay
     updateImpactFlash(frameDt);
 
-    // Neon underglow pulse
+    // Neon underglow pulse (nitrous-synced)
     if (G._playerUnderglow) {
-      updateUnderglow(G._playerUnderglow, G.playerVehicle.speed, timestamp / 1000);
+      updateUnderglow(G._playerUnderglow, G.playerVehicle.speed, timestamp / 1000, G.playerVehicle.isNitroActive);
     }
     updateBoostFlame(s === GameState.RACING && G.playerVehicle.isNitroActive, G.playerVehicle.group.position, G.playerVehicle.heading, timestamp / 1000);
+
+    // Nitrous activation shockwave (rising edge detection)
+    const isNitroNow = s === GameState.RACING && G.playerVehicle.isNitroActive;
+    if (isNitroNow && !G._wasNitroActive) {
+      triggerBoostShockwave(G.playerVehicle.group.position, G.playerVehicle.heading);
+    }
+    G._wasNitroActive = isNitroNow;
+    updateBoostShockwave(frameDt);
+
+    // FOV punch during nitrous (smooth ramp)
+    const baseFOV = 75;
+    const targetFOV = isNitroNow ? baseFOV + 8 : baseFOV;
+    camera.fov += (targetFOV - camera.fov) * (1 - Math.exp(-(isNitroNow ? 12 : 5) * frameDt));
+    camera.updateProjectionMatrix();
 
     // Nitro exhaust trail (fire particles during boost)
     if (s === GameState.RACING && G.playerVehicle.isNitroActive) {
@@ -1431,7 +1447,8 @@ function gameLoop(timestamp: number) {
     updateVictoryConfetti(frameDt);
 
     const speedRatioForLines = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
-    if (speedRatioForLines > 0.65) updateSpeedLines(speedRatioForLines);
+    const nitroForLines = G.playerVehicle.isNitroActive;
+    if (speedRatioForLines > 0.3 || nitroForLines) updateSpeedLines(speedRatioForLines, nitroForLines);
 
     // ── Accumulate race stats ──
     if (s === GameState.RACING) {
@@ -1707,8 +1724,9 @@ function gameLoop(timestamp: number) {
     if (G.postFXPipeline) {
       // Update post-FX uniforms
       const speedRatio = G.playerVehicle ? Math.abs(G.playerVehicle.speed) / G.playerVehicle.def.maxSpeed : 0;
-      updatePostFX(Math.min(speedRatio, 1));
-      if (G.playerVehicle?.nitroActive) setBoostActive(true);
+      const isNitro = G.playerVehicle?.isNitroActive ?? false;
+      updatePostFX(Math.min(speedRatio, 1), isNitro);
+      if (isNitro) setBoostActive(true);
       G.postFXPipeline.renderAsync();
     } else {
       renderer.render(scene, camera);

@@ -146,11 +146,13 @@ export function initSpeedLines(container: HTMLElement) {
   window.addEventListener('resize', speedLinesResizeHandler);
 }
 
-export function updateSpeedLines(speedRatio: number) {
+export function updateSpeedLines(speedRatio: number, isNitroActive = false) {
   if (!speedLinesCanvas || !speedLinesCtx) return;
 
-  // Fade in/out based on speed
-  speedLinesCanvas.style.opacity = (speedRatio > 0.7 ? (speedRatio - 0.7) / 0.3 : 0).toString();
+  // Fade in/out based on speed (lower threshold during nitrous)
+  const threshold = isNitroActive ? 0.3 : 0.7;
+  const fadeRange = isNitroActive ? 0.2 : 0.3;
+  speedLinesCanvas.style.opacity = (speedRatio > threshold ? Math.min(1, (speedRatio - threshold) / fadeRange) : 0).toString();
 
   const ctx = speedLinesCtx;
   const w = speedLinesCanvas.width;
@@ -160,14 +162,21 @@ export function updateSpeedLines(speedRatio: number) {
 
   ctx.clearRect(0, 0, w, h);
 
-  const numLines = 30;
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-  ctx.lineWidth = 1;
+  // During nitrous: 2× density, cyan tint, 1.5× length, higher opacity
+  const numLines = isNitroActive ? 60 : 30;
+  const lineAlpha = isNitroActive ? 0.14 : 0.08;
+  const lengthMult = isNitroActive ? 1.5 : 1.0;
+  ctx.strokeStyle = isNitroActive
+    ? `rgba(100, 200, 255, ${lineAlpha})`
+    : `rgba(255, 255, 255, ${lineAlpha})`;
+  ctx.lineWidth = isNitroActive ? 1.5 : 1;
 
   for (let i = 0; i < numLines; i++) {
     const angle = (i / numLines) * Math.PI * 2 + Date.now() * 0.0005;
-    const innerR = 80 + Math.random() * 40;
-    const outerR = innerR + 80 + Math.random() * 160;
+    // During nitrous: wider inner radius (tunnel vision — clear center)
+    const baseInner = isNitroActive ? 60 : 80;
+    const innerR = baseInner + Math.random() * 40;
+    const outerR = innerR + (80 + Math.random() * 160) * lengthMult;
 
     ctx.beginPath();
     ctx.moveTo(cx + Math.cos(angle) * innerR, cy + Math.sin(angle) * innerR);
@@ -176,21 +185,41 @@ export function updateSpeedLines(speedRatio: number) {
   }
 }
 
-// ── Boost flame (emissive cone behind car) ──
-let boostFlame: THREE.Mesh | null = null;
+// ── Nitrous Afterburner (dual blue-purple exhaust cones + dynamic lights) ──
+let boostFlameL: THREE.Mesh | null = null;
+let boostFlameR: THREE.Mesh | null = null;
+let boostLightL: THREE.PointLight | null = null;
+let boostLightR: THREE.PointLight | null = null;
+let boostFlameScene: THREE.Scene | null = null;
 
 export function initBoostFlame(scene: THREE.Scene): THREE.Mesh {
-  const geo = new THREE.ConeGeometry(0.18, 1.2, 8);
-  const mat = new THREE.MeshBasicMaterial({
-    color: 0xff4400,
+  boostFlameScene = scene;
+  const geo = new THREE.ConeGeometry(0.15, 1.4, 8);
+  const matL = new THREE.MeshBasicMaterial({
+    color: 0x4488ff,
     transparent: true,
     opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
   });
-  boostFlame = new THREE.Mesh(geo, mat);
-  boostFlame.rotation.x = Math.PI / 2; // point backwards
-  boostFlame.visible = false;
-  scene.add(boostFlame);
-  return boostFlame;
+  const matR = matL.clone();
+
+  boostFlameL = new THREE.Mesh(geo, matL);
+  boostFlameR = new THREE.Mesh(geo, matR);
+  boostFlameL.rotation.x = Math.PI / 2;
+  boostFlameR.rotation.x = Math.PI / 2;
+  boostFlameL.visible = false;
+  boostFlameR.visible = false;
+  scene.add(boostFlameL);
+  scene.add(boostFlameR);
+
+  // Dynamic point lights at each exhaust
+  boostLightL = new THREE.PointLight(0x3388ff, 0, 6, 2);
+  boostLightR = new THREE.PointLight(0x3388ff, 0, 6, 2);
+  scene.add(boostLightL);
+  scene.add(boostLightR);
+
+  return boostFlameL; // backward compat — returns a mesh
 }
 
 export function updateBoostFlame(
@@ -199,29 +228,75 @@ export function updateBoostFlame(
   heading: number,
   time: number,
 ) {
-  if (!boostFlame) return;
+  if (!boostFlameL || !boostFlameR) return;
 
-  boostFlame.visible = active;
+  boostFlameL.visible = active;
+  boostFlameR.visible = active;
+  if (boostLightL) boostLightL.intensity = active ? 3 : 0;
+  if (boostLightR) boostLightR.intensity = active ? 3 : 0;
   if (!active) return;
 
-  // Position behind car
-  boostFlame.position.set(
-    carPos.x - Math.sin(heading) * 2.2,
-    carPos.y + 0.5,
-    carPos.z - Math.cos(heading) * 2.2,
+  const sinH = Math.sin(heading);
+  const cosH = Math.cos(heading);
+  const exhaust = 2.3; // distance behind car
+  const sideOffset = 0.4; // left/right offset
+
+  // Left exhaust
+  boostFlameL.position.set(
+    carPos.x - sinH * exhaust - cosH * sideOffset,
+    carPos.y + 0.45,
+    carPos.z - cosH * exhaust + sinH * sideOffset,
   );
-  boostFlame.rotation.y = heading;
+  boostFlameL.rotation.y = heading;
 
-  // Flicker
-  const flicker = 0.7 + Math.sin(time * 30) * 0.3;
-  boostFlame.scale.setScalar(flicker);
+  // Right exhaust
+  boostFlameR.position.set(
+    carPos.x - sinH * exhaust + cosH * sideOffset,
+    carPos.y + 0.45,
+    carPos.z - cosH * exhaust - sinH * sideOffset,
+  );
+  boostFlameR.rotation.y = heading;
 
-  const mat = boostFlame.material as THREE.MeshBasicMaterial;
-  mat.opacity = 0.7 * flicker;
-  // Cycle through orange/yellow/white
-  const r = 1;
-  const g = 0.2 + flicker * 0.6;
-  mat.color.setRGB(r, g, 0);
+  // Position lights at flame bases
+  if (boostLightL) boostLightL.position.copy(boostFlameL.position);
+  if (boostLightR) boostLightR.position.copy(boostFlameR.position);
+
+  // Aggressive 25Hz flicker
+  const flicker = 0.6 + Math.sin(time * 25) * 0.2 + Math.sin(time * 37) * 0.15;
+  boostFlameL.scale.set(flicker, flicker * (0.9 + Math.sin(time * 31) * 0.1), flicker);
+  boostFlameR.scale.set(flicker, flicker * (0.9 + Math.sin(time * 29) * 0.1), flicker);
+
+  // Color-over-lifetime: cycle white → cyan → blue → purple
+  const cycle = (time * 8) % 1;
+  let r: number, g: number, b: number;
+  if (cycle < 0.25) {
+    // White → cyan
+    const t = cycle / 0.25;
+    r = 1 - t * 0.7;  g = 1 - t * 0.1;  b = 1;
+  } else if (cycle < 0.5) {
+    // Cyan → blue
+    const t = (cycle - 0.25) / 0.25;
+    r = 0.3 - t * 0.1;  g = 0.9 - t * 0.5;  b = 1;
+  } else if (cycle < 0.75) {
+    // Blue → purple
+    const t = (cycle - 0.5) / 0.25;
+    r = 0.2 + t * 0.4;  g = 0.4 - t * 0.2;  b = 1 - t * 0.2;
+  } else {
+    // Purple → white (restart)
+    const t = (cycle - 0.75) / 0.25;
+    r = 0.6 + t * 0.4;  g = 0.2 + t * 0.8;  b = 0.8 + t * 0.2;
+  }
+
+  const matL = boostFlameL.material as THREE.MeshBasicMaterial;
+  const matR = boostFlameR.material as THREE.MeshBasicMaterial;
+  matL.opacity = 0.8 * flicker;
+  matR.opacity = 0.8 * flicker;
+  matL.color.setRGB(r, g, b);
+  matR.color.setRGB(r, g, b);
+
+  // Sync light color with flame
+  if (boostLightL) boostLightL.color.setRGB(r * 0.5, g * 0.5, b);
+  if (boostLightR) boostLightR.color.setRGB(r * 0.5, g * 0.5, b);
 }
 
 // ── Skid Marks (road-surface quads placed during drift) ──
@@ -1104,18 +1179,28 @@ export function createUnderglow(carGroup: THREE.Group, colorIndex: number): THRE
  * @param light — the PointLight from createUnderglow
  * @param speed — current car speed (for intensity variation)
  * @param time — current timestamp in seconds
+ * @param isNitroActive — whether nitrous is currently burning
  */
-export function updateUnderglow(light: THREE.PointLight, speed: number, time: number) {
-  // Pulse intensity based on speed + gentle sine wave
+export function updateUnderglow(light: THREE.PointLight, speed: number, time: number, isNitroActive = false) {
   const speedFactor = Math.min(Math.abs(speed) / 40, 1);
-  const pulse = 0.7 + Math.sin(time * 3) * 0.15 + Math.sin(time * 7.3) * 0.08;
-  light.intensity = (1.5 + speedFactor * 2.0) * pulse;
-  light.distance = 6 + speedFactor * 4;
+
+  if (isNitroActive) {
+    // Nitrous mode: shift to bright cyan-blue, 3× intensity, 8Hz rapid pulse
+    const pulse = 0.8 + Math.sin(time * 8) * 0.15 + Math.sin(time * 13) * 0.05;
+    light.intensity = (4.5 + speedFactor * 3.0) * pulse;
+    light.distance = 10 + speedFactor * 5;
+    light.color.lerp(new THREE.Color(0x44aaff), 0.15); // Smooth shift to cyan
+  } else {
+    // Normal mode: gentle pulse
+    const pulse = 0.7 + Math.sin(time * 3) * 0.15 + Math.sin(time * 7.3) * 0.08;
+    light.intensity = (1.5 + speedFactor * 2.0) * pulse;
+    light.distance = 6 + speedFactor * 4;
+  }
 }
 
-// ── Nitro Exhaust Trail (stream of fire particles during boost) ──
+// ── Nitrous Exhaust Trail (enhanced: 50 particles, color gradient, dual emission) ──
 
-const NITRO_TRAIL_POOL = 30;
+const NITRO_TRAIL_POOL = 50;
 interface NitroParticle {
   mesh: THREE.Mesh;
   vx: number; vy: number; vz: number;
@@ -1129,9 +1214,10 @@ export function initNitroTrail(scene: THREE.Scene) {
   nitroTrailScene = scene;
   const geo = new THREE.SphereGeometry(0.12, 6, 4);
   const mat = new THREE.MeshBasicMaterial({
-    color: 0xff6600,
+    color: 0x4488ff,
     transparent: true,
     opacity: 0.9,
+    blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
   nitroTrailPool = [];
@@ -1146,8 +1232,8 @@ export function initNitroTrail(scene: THREE.Scene) {
 let nitroTrailIdx = 0;
 
 /**
- * Spawn nitro trail fire particles.
- * Call every frame while nitro is active.
+ * Spawn nitrous trail fire particles from both exhaust pipes.
+ * Call every frame while nitrous is active.
  */
 export function spawnNitroTrail(
   carPos: THREE.Vector3,
@@ -1156,32 +1242,39 @@ export function spawnNitroTrail(
 ) {
   if (!nitroTrailScene || nitroTrailPool.length === 0) return;
 
-  // Spawn 2 particles per frame for a dense trail
-  for (let i = 0; i < 2; i++) {
-    const mesh = nitroTrailPool[nitroTrailIdx % NITRO_TRAIL_POOL];
-    nitroTrailIdx++;
+  const sinH = Math.sin(heading);
+  const cosH = Math.cos(heading);
+  const exhaust = 2.4;
+  const sideOffset = 0.4;
 
-    // Position at exhaust pipe (behind car)
-    const sinH = Math.sin(heading);
-    const cosH = Math.cos(heading);
-    const spread = (Math.random() - 0.5) * 0.4;
-    mesh.position.set(
-      carPos.x - sinH * 2.4 + cosH * spread,
-      carPos.y + 0.4 + Math.random() * 0.2,
-      carPos.z - cosH * 2.4 - sinH * spread,
-    );
-    mesh.scale.setScalar(0.8 + Math.random() * 0.5);
-    mesh.visible = true;
+  // Spawn from both exhaust pipes (3 particles per frame for dense trail)
+  for (let pipe = -1; pipe <= 1; pipe += 2) {
+    const count = speed > 30 ? 2 : 1; // More particles at high speed
+    for (let i = 0; i < count; i++) {
+      const mesh = nitroTrailPool[nitroTrailIdx % NITRO_TRAIL_POOL];
+      nitroTrailIdx++;
 
-    const maxLife = 0.3 + Math.random() * 0.3;
-    activeNitroTrail.push({
-      mesh,
-      vx: -sinH * (-speed * 0.3) + (Math.random() - 0.5) * 2,
-      vy: 1.5 + Math.random() * 2,
-      vz: -cosH * (-speed * 0.3) + (Math.random() - 0.5) * 2,
-      life: maxLife,
-      maxLife,
-    });
+      const spread = (Math.random() - 0.5) * 0.15;
+      mesh.position.set(
+        carPos.x - sinH * exhaust + cosH * (sideOffset * pipe + spread),
+        carPos.y + 0.4 + Math.random() * 0.15,
+        carPos.z - cosH * exhaust - sinH * (sideOffset * pipe + spread),
+      );
+      mesh.scale.setScalar(0.6 + Math.random() * 0.6);
+      mesh.visible = true;
+
+      const maxLife = 0.25 + Math.random() * 0.35;
+      // Velocity inherits from car speed for longer streaks at high speed
+      const speedFactor = Math.max(0.2, speed * 0.01);
+      activeNitroTrail.push({
+        mesh,
+        vx: -sinH * (-speed * 0.25 * speedFactor) + (Math.random() - 0.5) * 1.5,
+        vy: 1.2 + Math.random() * 1.5,
+        vz: -cosH * (-speed * 0.25 * speedFactor) + (Math.random() - 0.5) * 1.5,
+        life: maxLife,
+        maxLife,
+      });
+    }
   }
 }
 
@@ -1198,24 +1291,99 @@ export function updateNitroTrail(dt: number) {
     }
 
     // Physics: drag + slight gravity
-    p.vx *= 0.95;
-    p.vy -= 3 * dt;
-    p.vz *= 0.95;
+    p.vx *= 0.94;
+    p.vy -= 2.5 * dt;
+    p.vz *= 0.94;
     p.mesh.position.x += p.vx * dt;
     p.mesh.position.y += p.vy * dt;
     p.mesh.position.z += p.vz * dt;
 
-    // Scale down over lifetime
+    // Size-over-lifetime: grows then shrinks
     const t = p.life / p.maxLife;
-    p.mesh.scale.setScalar(t * 0.8);
+    const sizeCurve = t > 0.7 ? (1 - t) / 0.3 : t / 0.7; // ramp up then sustain
+    p.mesh.scale.setScalar(sizeCurve * 0.9);
 
-    // Color: orange → yellow → white over lifetime
+    // Color-over-lifetime: white → cyan → blue → purple → transparent
     const mat = p.mesh.material as THREE.MeshBasicMaterial;
-    mat.opacity = t * 0.9;
-    mat.color.setRGB(1, 0.3 + (1 - t) * 0.7, (1 - t) * 0.6);
+    mat.opacity = t * 0.85;
+    if (t > 0.75) {
+      // White core
+      mat.color.setRGB(1, 1, 1);
+    } else if (t > 0.5) {
+      // Cyan
+      const f = (t - 0.5) / 0.25;
+      mat.color.setRGB(0.3 + f * 0.7, 0.8 + f * 0.2, 1);
+    } else if (t > 0.25) {
+      // Blue
+      const f = (t - 0.25) / 0.25;
+      mat.color.setRGB(0.2 + f * 0.1, 0.4 + f * 0.4, 1);
+    } else {
+      // Purple → fade
+      const f = t / 0.25;
+      mat.color.setRGB(0.5 + (1 - f) * 0.1, 0.2 * f, 0.7 + f * 0.3);
+    }
 
     j++;
   }
+}
+
+// ── Nitrous Activation Shockwave Ring ──
+
+let shockwaveMesh: THREE.Mesh | null = null;
+let shockwaveLife = 0;
+const SHOCKWAVE_DURATION = 0.35;
+let shockwaveScene: THREE.Scene | null = null;
+
+export function initBoostShockwave(scene: THREE.Scene) {
+  shockwaveScene = scene;
+  const geo = new THREE.TorusGeometry(1, 0.06, 8, 32);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x66ccff,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  shockwaveMesh = new THREE.Mesh(geo, mat);
+  shockwaveMesh.rotation.x = -Math.PI / 2; // Lay flat
+  shockwaveMesh.visible = false;
+  scene.add(shockwaveMesh);
+}
+
+/** Trigger one-shot shockwave at car position. Call on nitrous activation only. */
+export function triggerBoostShockwave(carPos: THREE.Vector3, heading: number) {
+  if (!shockwaveMesh) return;
+  shockwaveMesh.position.set(
+    carPos.x - Math.sin(heading) * 1.5,
+    carPos.y + 0.3,
+    carPos.z - Math.cos(heading) * 1.5,
+  );
+  shockwaveMesh.visible = true;
+  shockwaveMesh.scale.setScalar(0.1);
+  shockwaveLife = SHOCKWAVE_DURATION;
+}
+
+export function updateBoostShockwave(dt: number) {
+  if (!shockwaveMesh || shockwaveLife <= 0) return;
+
+  shockwaveLife -= dt;
+  if (shockwaveLife <= 0) {
+    shockwaveMesh.visible = false;
+    return;
+  }
+
+  const t = 1 - shockwaveLife / SHOCKWAVE_DURATION; // 0→1
+  // Expand rapidly: ease-out curve
+  const scale = t * t * 4.0; // 0 → 4 radius
+  shockwaveMesh.scale.setScalar(scale);
+
+  // Fade out as it expands
+  const mat = shockwaveMesh.material as THREE.MeshBasicMaterial;
+  mat.opacity = (1 - t) * 0.7;
+
+  // Color shift: white → cyan as it expands
+  mat.color.setRGB(0.4 + (1 - t) * 0.6, 0.8 + (1 - t) * 0.2, 1);
 }
 
 // ── Continuous Rim Sparks (persistent sparking on blown tires) ──
@@ -2086,13 +2254,22 @@ export function destroyVFX() {
     speedLinesCtx = null;
   }
 
-  // Remove boost flame
-  if (boostFlame) {
-    boostFlame.parent?.remove(boostFlame);
-    boostFlame.geometry?.dispose();
-    (boostFlame.material as THREE.Material)?.dispose();
-    boostFlame = null;
+  // Remove boost flames + lights
+  for (const flame of [boostFlameL, boostFlameR]) {
+    if (flame) {
+      flame.parent?.remove(flame);
+      flame.geometry?.dispose();
+      (flame.material as THREE.Material)?.dispose();
+    }
   }
+  boostFlameL = null;
+  boostFlameR = null;
+  for (const light of [boostLightL, boostLightR]) {
+    if (light) light.parent?.remove(light);
+  }
+  boostLightL = null;
+  boostLightR = null;
+  boostFlameScene = null;
 
   // Remove windshield crack overlay
   resetWindshieldCracks();

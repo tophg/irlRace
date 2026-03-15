@@ -97,6 +97,7 @@ export const G = {
   _playerBrakeDiscs: null as any,
   _prevSpeedRatio: 0,
   _nearMissCooldowns: new Map<string, number>(),
+  _wasNitroActive: false,
   remotePrevPos: new Map<string, { x: number; z: number }>(),
 
   // ── Replay ──
