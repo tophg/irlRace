@@ -60,6 +60,10 @@ export class AIRacer {
   private laneOffset = 0;       // -1 (left) to 1 (right), 0 = center
   private targetLaneOffset = 0;
 
+  // Startup protection — prevents backwards driving on first frames
+  private startupFrames = 0;
+  private initialT = 0;
+
   constructor(id: string, def: CarDef, personalityIndex?: number) {
     this.id = id;
     this.vehicle = new Vehicle(def);
@@ -99,6 +103,8 @@ export class AIRacer {
     this.laneOffset = laneOffset / ROAD_HALF_WIDTH;
     this.targetLaneOffset = this.personality.preferredLine;
     this.overtakeTarget = null;
+    this.startupFrames = 30; // ~0.5s at 60fps
+    this.initialT = t;
   }
 
   setSpeedProfile(profile: number[]) {
@@ -110,6 +116,21 @@ export class AIRacer {
     if (!this.spline) return;
 
     const p = this.personality;
+
+    // ── Startup protection: enforce placed heading on first frames ──
+    // Prevents backwards driving caused by getClosestSplinePoint returning
+    // wrong t near the spline start/end junction.
+    if (this.startupFrames > 0) {
+      this.startupFrames--;
+      this.currentT = this.initialT;
+      // Gentle forward throttle, no steering — get the car rolling correctly
+      const input: InputState = {
+        up: true, down: false, left: false, right: false,
+        boost: false, steerAnalog: 0,
+      };
+      this.vehicle.update(dt, input, this.spline, this.bvh ?? undefined);
+      return;
+    }
 
     // ── Locate self on spline ──
     const nearest = this.bvh
@@ -153,35 +174,67 @@ export class AIRacer {
       steerInput = Math.max(-1, Math.min(1, steerInput));
     }
 
-    // ── Curvature-aware speed control ──
+    // ── Curvature-aware speed control with 3-point lookahead ──
     const absSpeed = Math.abs(this.vehicle.speed);
     let targetSpeed = this.vehicle.def.maxSpeed * p.topSpeedFactor;
 
+    // Detect upcoming curvature for racing line + braking
+    let curvatureAhead = 0; // 0 = straight, >0 = turning
+    let exitingCorner = false;
+
     if (this.speedProfile) {
-      // Look ahead for braking — check speed at current pos AND at brake lookahead
+      // 3-point lookahead: current, near brake point, far brake point
       const currentOptimal = getSpeedProfileAt(this.speedProfile, this.currentT);
-      const brakeT = (this.currentT + LA_BRAKE * (1.3 - p.aggression * 0.5)) % 1;
-      const brakeOptimal = getSpeedProfileAt(this.speedProfile, brakeT);
+
+      const nearBrakeT = (this.currentT + LA_BRAKE * 0.5 * (1.3 - p.aggression * 0.5)) % 1;
+      const farBrakeT = (this.currentT + LA_BRAKE * (1.3 - p.aggression * 0.5)) % 1;
+      const pastT = (this.currentT + LA_BRAKE * 1.5) % 1;
+
+      const nearOptimal = getSpeedProfileAt(this.speedProfile, nearBrakeT);
+      const farOptimal = getSpeedProfileAt(this.speedProfile, farBrakeT);
+      const pastOptimal = getSpeedProfileAt(this.speedProfile, pastT);
 
       // Aggressive drivers brake later (use less of the upcoming corner's speed limit)
       const brakeFactor = 0.7 + p.aggression * 0.3;
+
+      // Take the minimum of all 3 points for safety
       targetSpeed = Math.min(targetSpeed, currentOptimal * p.topSpeedFactor);
-      targetSpeed = Math.min(targetSpeed, brakeOptimal * brakeFactor * p.topSpeedFactor);
+      targetSpeed = Math.min(targetSpeed, nearOptimal * brakeFactor * p.topSpeedFactor);
+      targetSpeed = Math.min(targetSpeed, farOptimal * brakeFactor * p.topSpeedFactor);
+
+      // Curvature estimation: lower optimal speed = tighter corner
+      curvatureAhead = 1 - Math.min(farOptimal / this.vehicle.def.maxSpeed, 1);
+
+      // Corner exit: curvature is decreasing (past point is faster than far point)
+      exitingCorner = pastOptimal > farOptimal * 1.15;
     }
 
-    // Throttle/brake logic with proportional control
+    // Throttle/brake logic with trail braking
     let throttle: number;
     let brake: number;
 
     const speedError = targetSpeed - absSpeed;
     if (speedError > 2) {
-      throttle = Math.min(1, speedError / 10);
+      // Accelerating — proportional throttle
+      throttle = Math.min(1, 0.5 + speedError / 15);
       brake = 0;
-    } else if (speedError < -3) {
+    } else if (speedError < -1 && speedError > -5) {
+      // Trail braking zone — light brake + partial throttle for stability
+      throttle = 0.15 + p.aggression * 0.15; // aggressive drivers trail-brake with more throttle
+      brake = Math.min(0.5, Math.abs(speedError) / 8);
+    } else if (speedError < -5) {
+      // Hard braking
       throttle = 0;
-      brake = Math.min(1, Math.abs(speedError) / 15);
+      brake = Math.min(1, Math.abs(speedError) / 12);
     } else {
-      throttle = 0.4;
+      // Cruise zone — light throttle to maintain
+      throttle = 0.4 + (exitingCorner ? 0.3 : 0); // more throttle on corner exit
+      brake = 0;
+    }
+
+    // Corner exit boost: ramp throttle when past the apex
+    if (exitingCorner && speedError > -2) {
+      throttle = Math.min(1, throttle + 0.4);
       brake = 0;
     }
 
@@ -193,6 +246,78 @@ export class AIRacer {
         if (blockDist > 0 && blockDist < 0.015) {
           throttle *= 0.5;
           brake = Math.max(brake, 0.2);
+        }
+      }
+    }
+
+    // ── Barrier proximity avoidance ──
+    // When close to road edge, bias toward center to prevent wall scraping
+    const lateralPos = this.laneOffset; // -1 to 1
+    if (Math.abs(lateralPos) > 0.7) {
+      // Push toward center proportionally
+      const pushStrength = (Math.abs(lateralPos) - 0.7) / 0.3; // 0 at 0.7, 1 at 1.0
+      this.targetLaneOffset += -Math.sign(lateralPos) * pushStrength * 0.5;
+      this.targetLaneOffset = Math.max(-1, Math.min(1, this.targetLaneOffset));
+      // Also slow down if scraping the wall
+      if (Math.abs(lateralPos) > 0.9) {
+        throttle *= 0.7;
+      }
+    }
+
+    // ── Side-by-side awareness ──
+    if (opponents) {
+      for (const opp of opponents) {
+        const tDist = Math.abs(this.wrapDist(opp.t - this.currentT));
+        if (tDist < 0.008) { // nearly alongside
+          const dx = opp.position.x - this.vehicle.group.position.x;
+          const dz = opp.position.z - this.vehicle.group.position.z;
+          const lateralDist = Math.sqrt(dx * dx + dz * dz);
+          if (lateralDist < 5) {
+            // Lift off throttle slightly — don't try to muscle through
+            throttle *= 0.8;
+            // Steer away from opponent
+            const oppSide = dx * Math.cos(this.vehicle.heading) - dz * Math.sin(this.vehicle.heading);
+            steerInput -= Math.sign(oppSide) * 0.15 * (1 - tDist / 0.008);
+            steerInput = Math.max(-1, Math.min(1, steerInput));
+          }
+        }
+      }
+    }
+
+    // ── Dynamic racing line (curvature-based apex targeting) ──
+    if (curvatureAhead > 0.15 && !this.overtakeTarget) {
+      // Detect turn direction from spline tangent comparison
+      const aheadT = (this.currentT + 0.04) % 1;
+      const currentTangent = this.spline!.getTangentAt(this.currentT).normalize();
+      const aheadTangent = this.spline!.getTangentAt(aheadT).normalize();
+      // Cross product Y component tells us left vs right turn
+      const turnDir = currentTangent.x * aheadTangent.z - currentTangent.z * aheadTangent.x;
+
+      if (Math.abs(turnDir) > 0.01) {
+        // Shift to outside before corner, towards inside at apex
+        const outsideOffset = Math.sign(turnDir) * 0.6 * Math.min(curvatureAhead * 2, 1);
+        this.targetLaneOffset = outsideOffset + p.preferredLine * 0.2;
+        this.targetLaneOffset = Math.max(-1, Math.min(1, this.targetLaneOffset));
+      }
+    }
+
+    // ── Drafting / Slipstream ──
+    if (opponents && Math.abs(steerInput) < 0.15 && absSpeed > this.vehicle.def.maxSpeed * 0.5) {
+      for (const opp of opponents) {
+        const dist = this.wrapDist(opp.t - this.currentT);
+        if (dist > 0.005 && dist < 0.04) {
+          // Close behind on a straight — draft boost
+          const dx = opp.position.x - this.vehicle.group.position.x;
+          const dz = opp.position.z - this.vehicle.group.position.z;
+          const lateralDist = Math.abs(
+            dx * Math.cos(this.vehicle.heading) - dz * Math.sin(this.vehicle.heading)
+          );
+          if (lateralDist < 3) {
+            // In slipstream — 5% speed boost
+            targetSpeed *= 1.05;
+            throttle = Math.min(1, throttle + 0.15);
+            break;
+          }
         }
       }
     }
