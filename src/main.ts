@@ -66,6 +66,29 @@ import { bus } from './event-bus';
 const container = document.getElementById('game-container')!;
 const uiOverlay = document.getElementById('ui-overlay')!;
 
+// ── Damage flash overlay (red vignette on impacts) ──
+let _damageFlashEl: HTMLDivElement | null = null;
+let _damageFlashTimer = 0;
+
+function flashDamage(intensity: number) {
+  if (!_damageFlashEl) {
+    _damageFlashEl = document.createElement('div');
+    _damageFlashEl.style.cssText = `
+      position:fixed; top:0; left:0; width:100%; height:100%;
+      pointer-events:none; z-index:9999; opacity:0;
+      transition: opacity 0.3s ease-out;
+    `;
+    document.body.appendChild(_damageFlashEl);
+  }
+  const alpha = Math.min(intensity, 0.7);
+  _damageFlashEl.style.background = `radial-gradient(ellipse at center, transparent 40%, rgba(255,20,0,${alpha}) 100%)`;
+  _damageFlashEl.style.opacity = '1';
+  clearTimeout(_damageFlashTimer);
+  _damageFlashTimer = window.setTimeout(() => {
+    if (_damageFlashEl) _damageFlashEl.style.opacity = '0';
+  }, 80);
+}
+
 // ── Scene (async — WebGPU renderer init) ──
 const { renderer, scene, camera } = await initScene(container);
 
@@ -964,12 +987,14 @@ function stepPhysics(dt: number, s: GameState) {
       G.playerVehicle.applyDamage(G._impactDir, evt.impactForce);
       G.raceStats.collisionCount++;
       G.vehicleCamera?.shake(Math.min(evt.impactForce / 40, 1));
+      flashDamage(evt.impactForce / 40);
     }
     if (evt.idB === 'local' && G.playerVehicle) {
       G._impactDir.set(-evt.normalX, 0, -evt.normalZ);
       G.playerVehicle.applyDamage(G._impactDir, evt.impactForce);
       G.raceStats.collisionCount++;
       G.vehicleCamera?.shake(Math.min(evt.impactForce / 40, 1));
+      flashDamage(evt.impactForce / 40);
     }
     for (const ai of G.aiRacers) {
       if (evt.idA === ai.id) {
@@ -1003,6 +1028,7 @@ function stepPhysics(dt: number, s: GameState) {
     G._sparkPos.set(b.posX, b.posY, b.posZ);
     spawnCollisionSparks(G._sparkPos, b.force);
     G.vehicleCamera?.shake(Math.min(b.force / 30, 0.8));
+    flashDamage(b.force / 25);
     G._impactDir.set(b.normalX, 0, b.normalZ);
     G.playerVehicle.applyDamage(G._impactDir, b.force * 0.7);
     G.raceStats.collisionCount++;
