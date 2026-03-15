@@ -509,16 +509,31 @@ export class Vehicle {
       const hitCount = (flY !== null ? 1 : 0) + (frY !== null ? 1 : 0) +
                        (rlY !== null ? 1 : 0) + (rrY !== null ? 1 : 0);
 
-      if (hitCount >= 3) {
+      if (hitCount >= 2) {
         usedRaycast = true;
-        // Approximate any single missing wheel from its neighbor
-        const fl = flY ?? frY!;
-        const fr = frY ?? flY!;
-        const rl = rlY ?? rrY!;
-        const rr = rrY ?? rlY!;
+        // Approximate missing wheels from available neighbors
+        const validHits: number[] = [];
+        if (flY !== null) validHits.push(flY);
+        if (frY !== null) validHits.push(frY);
+        if (rlY !== null) validHits.push(rlY);
+        if (rrY !== null) validHits.push(rrY);
 
-        // Car body height from 4 contact points
-        this.group.position.y = (fl + fr + rl + rr) / 4;
+        const fl = flY ?? validHits[0];
+        const fr = frY ?? validHits[0];
+        const rl = rlY ?? validHits[validHits.length - 1];
+        const rr = rrY ?? validHits[validHits.length - 1];
+
+        // Car body target height from contact points
+        let targetY = (fl + fr + rl + rr) / 4;
+
+        // Defensive: don't allow sudden drops > 2 units (prevents sinking through gaps)
+        if (targetY < this.group.position.y - 2) {
+          targetY = this.group.position.y - 2;
+        }
+
+        // Smooth Y interpolation (prevents snapping/jerky vertical movement)
+        const yLerp = 1 - Math.exp(-12 * dt);
+        this.group.position.y += (targetY - this.group.position.y) * yLerp;
 
         // Road surface pitch (positive = nose up)
         const frontAvgY = (fl + fr) / 2;
@@ -541,12 +556,20 @@ export class Vehicle {
       nearestSpline = bvh
         ? getClosestSplinePoint(spline, this.group.position, bvh)
         : getClosestSplinePoint(spline, this.group.position, 200);
-      this.group.position.y = nearestSpline.point.y;
+
+      // Smooth Y interpolation for spline fallback too
+      const splineYLerp = 1 - Math.exp(-12 * dt);
+      this.group.position.y += (nearestSpline.point.y - this.group.position.y) * splineYLerp;
 
       // Decay road alignment toward neutral when off road mesh
       const decayFactor = 1 - Math.exp(-5 * dt);
       this._roadPitch *= (1 - decayFactor);
       this._roadRoll *= (1 - decayFactor);
+    }
+
+    // Hard floor: absolute minimum height to prevent sinking below ground
+    if (this.group.position.y < -0.5) {
+      this.group.position.y = -0.5;
     }
 
     // ── Barrier collision (hard clamp + velocity reflection) ──
