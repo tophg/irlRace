@@ -94,6 +94,8 @@ export const G = {
   _leftTireBlown: false,
   _rightTireBlown: false,
   _playerUnderglow: null as any,
+  _playerBrakeDiscs: null as any,
+  _prevSpeedRatio: 0,
   remotePrevPos: new Map<string, { x: number; z: number }>(),
 
   // ── Replay ──

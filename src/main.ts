@@ -34,6 +34,9 @@ import {
   createUnderglow, updateUnderglow,
   initNitroTrail, spawnNitroTrail, updateNitroTrail,
   initRimSparks, spawnRimSparks, updateRimSparks,
+  initBackfire, spawnBackfire, updateBackfire,
+  createBrakeDiscs, updateBrakeDiscs,
+  initShoulderDust, spawnShoulderDust, updateShoulderDust,
 } from './vfx';
 import {
   initGPUParticles, updateGPUParticles, destroyGPUParticles,
@@ -283,6 +286,7 @@ async function startRace() {
     G.playerVehicle.setRoadMesh(G.trackData.roadMesh);
     G.playerVehicle.placeOnTrack(G.trackData.spline, 0, -3.5);
     G._playerUnderglow = createUnderglow(G.playerVehicle.group, 0);
+    G._playerBrakeDiscs = createBrakeDiscs(G.playerVehicle.group.children[0] as THREE.Group);
     G.raceEngine.addRacer('local');
 
     G.vehicleCamera = new VehicleCamera(camera);
@@ -296,6 +300,8 @@ async function startRace() {
     initImpactFlash(container);
     initNitroTrail(scene);
     initRimSparks(scene);
+    initBackfire(scene);
+    initShoulderDust(scene);
     await initGPUParticles(renderer, scene);
 
     // Initialize post-processing pipeline (bloom, chromatic aberration, vignette)
@@ -1340,6 +1346,25 @@ function gameLoop(timestamp: number) {
       spawnRimSparks(G._sparkPos, G.playerVehicle.speed);
     }
     updateRimSparks(frameDt);
+
+    // Exhaust backfire on deceleration
+    const currentSpeedRatio = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
+    if (G._prevSpeedRatio - currentSpeedRatio > 0.15 && Math.abs(G.playerVehicle.speed) > 15) {
+      spawnBackfire(G.playerVehicle.group.position, G.playerVehicle.heading);
+    }
+    G._prevSpeedRatio = currentSpeedRatio;
+    updateBackfire(frameDt);
+
+    // Brake disc glow
+    if (G._playerBrakeDiscs) {
+      updateBrakeDiscs(G._playerBrakeDiscs, G.playerVehicle.brake, G.playerVehicle.speed);
+    }
+
+    // Shoulder dust (near barriers = near road edge)
+    if (G.playerVehicle.lastBarrierImpact && Math.abs(G.playerVehicle.speed) > 8) {
+      spawnShoulderDust(G.playerVehicle.group.position, G.playerVehicle.speed, G.playerVehicle.heading);
+    }
+    updateShoulderDust(frameDt);
 
     const speedRatioForLines = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
     if (speedRatioForLines > 0.65) updateSpeedLines(speedRatioForLines);
