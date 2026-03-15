@@ -22,10 +22,10 @@ import {
 } from 'three/tsl';
 
 // ── Configuration ──
-const MAX_PARTICLES = 2048;
+const MAX_PARTICLES = 8192;
 
 // Particle type flags (stored in type channel)
-export const PType = { NONE: 0, SMOKE: 1, SPARK: 2, FLAME: 3 } as const;
+export const PType = { NONE: 0, SMOKE: 1, SPARK: 2, FLAME: 3, GLASS: 4, DUST: 5, AMBIENT: 6 } as const;
 
 // ── GPU Storage Arrays ──
 // Each particle has: position(vec3), velocity(vec3), color(vec4), life(float), maxLife(float), type(float), size(float)
@@ -308,6 +308,139 @@ export function spawnGPUFlame(pos: THREE.Vector3, intensity: number, dt = 0.016)
       0.3 + Math.random() * 0.2,
       PType.FLAME,
       0.3 + intensity * 0.3,
+    );
+  }
+  flushToGPU();
+}
+
+/** Spawn scrape sparks along a barrier contact line. */
+export function spawnGPUScrapeSparks(pos: THREE.Vector3, speed: number, heading: number) {
+  const count = Math.min(Math.floor(Math.abs(speed) * 0.15), 6);
+  const sinH = Math.sin(heading);
+  const cosH = Math.cos(heading);
+  for (let i = 0; i < count; i++) {
+    const isOrange = Math.random() > 0.4;
+    writeParticle(
+      pos.x + (Math.random() - 0.5) * 0.5,
+      pos.y + 0.3 + Math.random() * 0.3,
+      pos.z + (Math.random() - 0.5) * 0.5,
+      (Math.random() - 0.5) * 6 + sinH * 2,
+      1 + Math.random() * 3,
+      (Math.random() - 0.5) * 6 + cosH * 2,
+      1.0, isOrange ? 0.6 : 0.9, isOrange ? 0.15 : 0.35, 1.0,
+      0.25 + Math.random() * 0.2,
+      PType.SPARK,
+      0.1 + Math.random() * 0.08,
+    );
+  }
+  flushToGPU();
+}
+
+/** Spawn glass shard burst (translucent blue shards with gravity). */
+export function spawnGPUGlassShards(pos: THREE.Vector3) {
+  for (let i = 0; i < 10; i++) {
+    const speed = 3 + Math.random() * 5;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.random() * Math.PI * 0.6;
+    writeParticle(
+      pos.x, pos.y + 0.5, pos.z,
+      Math.sin(phi) * Math.cos(theta) * speed,
+      Math.abs(Math.cos(phi)) * speed * 0.5 + 2,
+      Math.sin(phi) * Math.sin(theta) * speed,
+      0.6, 0.8, 1.0, 0.5,
+      1.0 + Math.random() * 0.5,
+      PType.GLASS,
+      0.08 + Math.random() * 0.06,
+    );
+  }
+  flushToGPU();
+}
+
+/** Spawn shoulder dust when near barriers at speed. */
+export function spawnGPUShoulderDust(pos: THREE.Vector3, speed: number, heading: number) {
+  const count = Math.min(Math.floor(Math.abs(speed) * 0.08), 4);
+  const sinH = Math.sin(heading);
+  const cosH = Math.cos(heading);
+  for (let i = 0; i < count; i++) {
+    writeParticle(
+      pos.x + (Math.random() - 0.5) * 2,
+      pos.y + 0.1 + Math.random() * 0.3,
+      pos.z + (Math.random() - 0.5) * 2,
+      -sinH * Math.abs(speed) * 0.15 + (Math.random() - 0.5) * 2,
+      0.3 + Math.random() * 0.5,
+      -cosH * Math.abs(speed) * 0.15 + (Math.random() - 0.5) * 2,
+      0.65, 0.55, 0.4, 0.25,
+      0.8 + Math.random() * 0.4,
+      PType.DUST,
+      0.4 + Math.random() * 0.3,
+    );
+  }
+  flushToGPU();
+}
+
+/** Spawn nitro exhaust trail particles. */
+export function spawnGPUNitroTrail(pos: THREE.Vector3, heading: number, speed: number) {
+  const sinH = Math.sin(heading);
+  const cosH = Math.cos(heading);
+  const count = 2;
+  for (let i = 0; i < count; i++) {
+    const g = 0.3 + Math.random() * 0.5;
+    writeParticle(
+      pos.x - sinH * 2.2 + (Math.random() - 0.5) * 0.3,
+      pos.y + 0.4 + Math.random() * 0.2,
+      pos.z - cosH * 2.2 + (Math.random() - 0.5) * 0.3,
+      -sinH * Math.abs(speed) * 0.3 + (Math.random() - 0.5) * 1.5,
+      0.5 + Math.random() * 1.0,
+      -cosH * Math.abs(speed) * 0.3 + (Math.random() - 0.5) * 1.5,
+      0.2, 0.5, 1.0, 0.8,
+      0.3 + Math.random() * 0.2,
+      PType.FLAME,
+      0.25 + Math.random() * 0.15,
+    );
+  }
+  flushToGPU();
+}
+
+/** Spawn rim sparks for blown-out tires. */
+export function spawnGPURimSparks(pos: THREE.Vector3, speed: number) {
+  const count = Math.min(Math.ceil(Math.abs(speed) * 0.1), 3);
+  for (let i = 0; i < count; i++) {
+    const isOrange = Math.random() > 0.3;
+    writeParticle(
+      pos.x + (Math.random() - 0.5) * 0.3,
+      pos.y + 0.05,
+      pos.z + (Math.random() - 0.5) * 0.3,
+      (Math.random() - 0.5) * 5,
+      0.5 + Math.random() * 2,
+      (Math.random() - 0.5) * 5,
+      1.0, isOrange ? 0.55 : 0.85, isOrange ? 0.1 : 0.3, 1.0,
+      0.2 + Math.random() * 0.15,
+      PType.SPARK,
+      0.06 + Math.random() * 0.04,
+    );
+  }
+  flushToGPU();
+}
+
+/** Spawn backfire exhaust pop. */
+export function spawnGPUBackfire(carPos: THREE.Vector3, heading: number) {
+  const sinH = Math.sin(heading);
+  const cosH = Math.cos(heading);
+  for (let i = 0; i < 5; i++) {
+    const isFlame = i < 3;
+    const g = isFlame ? (0.2 + Math.random() * 0.5) : 0.13;
+    const a = isFlame ? 0.7 : 0.4;
+    writeParticle(
+      carPos.x - sinH * 2.4 + (Math.random() - 0.5) * 0.3,
+      carPos.y + 0.35,
+      carPos.z - cosH * 2.4 + (Math.random() - 0.5) * 0.3,
+      -sinH * (4 + Math.random() * 3) + (Math.random() - 0.5) * 2,
+      0.3 + Math.random() * 1.0,
+      -cosH * (4 + Math.random() * 3) + (Math.random() - 0.5) * 2,
+      1.0, g, 0.0, a,
+      0.2 + Math.random() * 0.15,
+      isFlame ? PType.FLAME : PType.SMOKE,
+      isFlame ? 0.2 + Math.random() * 0.1 : 0.3 + Math.random() * 0.2,
     );
   }
   flushToGPU();

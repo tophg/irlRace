@@ -23,32 +23,27 @@ import {
   initSpeedLines, updateSpeedLines,
   initBoostFlame, updateBoostFlame,
   createNameTag, updateNameTag,
-  destroyVFX, spawnCollisionSparks, spawnDamageSmoke,
+  destroyVFX, spawnDamageSmoke,
   initSkidMarks, updateSkidMarks, destroySkidMarks,
-  spawnFlameParticle, spawnExplosion,
-  spawnDebris, spawnScrapeSparks, spawnDamageZoneSmoke,
+  spawnFlameParticle,
+  spawnDamageZoneSmoke,
   initWindshieldCracks, updateWindshieldCracks, resetWindshieldCracks,
-  spawnTireBlowout,
   initRainDroplets, updateRainDroplets,
   initImpactFlash, triggerImpactFlash, updateImpactFlash,
   createUnderglow, updateUnderglow,
-  initNitroTrail, spawnNitroTrail, updateNitroTrail,
   initBoostShockwave, triggerBoostShockwave, updateBoostShockwave,
-  initRimSparks, spawnRimSparks, updateRimSparks,
-  initBackfire, spawnBackfire, updateBackfire,
   createBrakeDiscs, updateBrakeDiscs,
-  initShoulderDust, spawnShoulderDust, updateShoulderDust,
-  initAmbientParticles, updateAmbientParticles,
   initHeatShimmer, updateHeatShimmer,
   initLensFlares, updateLensFlares,
   initLightning, setLightningEnabled, updateLightning,
   initNearMissStreaks, triggerNearMiss, updateNearMissStreaks,
   initVictoryConfetti, spawnVictoryConfetti, updateVictoryConfetti,
-  triggerGlassShardBurst, updateGlassShards,
-  updateEngineSmoke,
 } from './vfx';
 import {
   initGPUParticles, updateGPUParticles, destroyGPUParticles,
+  spawnGPUSparks, spawnGPUExplosion, spawnGPUDamageSmoke, spawnGPUFlame,
+  spawnGPUScrapeSparks, spawnGPUGlassShards, spawnGPUShoulderDust,
+  spawnGPUNitroTrail, spawnGPURimSparks, spawnGPUBackfire,
 } from './gpu-particles';
 import {
   initRapierWorld, addBarrierCollider, addCarBody,
@@ -314,12 +309,7 @@ async function startRace() {
     initWindshieldCracks(container);
     initRainDroplets(container);
     initImpactFlash(container);
-    initNitroTrail(scene);
     initBoostShockwave(scene);
-    initRimSparks(scene);
-    initBackfire(scene);
-    initShoulderDust(scene);
-    initAmbientParticles(scene);
     initHeatShimmer(container);
 
     // Collect street light positions for lens flares
@@ -1080,9 +1070,8 @@ function stepPhysics(dt: number, s: GameState) {
         (cA.position.y + cB.position.y) / 2 + 0.5,
         (cA.position.z + cB.position.z) / 2,
       );
-      spawnCollisionSparks(G._sparkPos, evt.impactForce);
-      if (evt.impactForce > 20) spawnDebris(G._sparkPos, evt.impactForce);
-      if (evt.impactForce > 25) spawnExplosion(G._sparkPos, evt.impactForce);
+      spawnGPUSparks(G._sparkPos, evt.impactForce);
+      if (evt.impactForce > 20) spawnGPUExplosion(G._sparkPos, evt.impactForce);
       playCollisionSFX(Math.min(evt.impactForce / 30, 1));
     }
   }
@@ -1092,8 +1081,8 @@ function stepPhysics(dt: number, s: GameState) {
   if (G.playerVehicle?.lastBarrierImpact) {
     const b = G.playerVehicle.lastBarrierImpact;
     G._sparkPos.set(b.posX, b.posY, b.posZ);
-    spawnCollisionSparks(G._sparkPos, b.force);
-    if (b.force > 20) spawnDebris(G._sparkPos, b.force, G.playerVehicle.speed * Math.sin(G.playerVehicle.heading), G.playerVehicle.speed * Math.cos(G.playerVehicle.heading));
+    spawnGPUSparks(G._sparkPos, b.force);
+    if (b.force > 20) spawnGPUExplosion(G._sparkPos, b.force);
     G.vehicleCamera?.shake(Math.min(b.force / 30, 0.8));
     flashDamage(b.force / 25);
     setImpactIntensity(b.force / 25);
@@ -1109,7 +1098,8 @@ function stepPhysics(dt: number, s: GameState) {
       const z = G.playerVehicle.damage[zone];
       if (z.hp < 40 && !z.glassBroken) {
         z.glassBroken = true;
-        triggerGlassShardBurst(getScene(), b.posX, b.posY, b.posZ);
+        G._sparkPos.set(b.posX, b.posY, b.posZ);
+        spawnGPUGlassShards(G._sparkPos);
       }
     }
   }
@@ -1118,20 +1108,17 @@ function stepPhysics(dt: number, s: GameState) {
     if (ai.vehicle.lastBarrierImpact) {
       const b = ai.vehicle.lastBarrierImpact;
       G._sparkPos.set(b.posX, b.posY, b.posZ);
-      spawnCollisionSparks(G._sparkPos, b.force * 0.5);
+      spawnGPUSparks(G._sparkPos, b.force * 0.5);
     }
   }
 
-  // Update glass shards (always, even when no new burst)
-  updateGlassShards(dt);
-
-  // Engine smoke (continuous when front damaged)
-  if (G.playerVehicle) {
+  // Engine smoke via GPU particles (continuous when front damaged)
+  if (G.playerVehicle && G.playerVehicle.damage.front.hp < 30) {
     const p = G.playerVehicle.group.position;
-    updateEngineSmoke(
-      getScene(), dt, G.playerVehicle.damage.front.hp,
-      p.x, p.y, p.z, G.playerVehicle.heading,
-    );
+    const sinH = Math.sin(G.playerVehicle.heading);
+    const cosH = Math.cos(G.playerVehicle.heading);
+    G._sparkPos.set(p.x + sinH * 1.5, p.y + 1.0, p.z + cosH * 1.5);
+    spawnGPUDamageSmoke(G._sparkPos, 1 - G.playerVehicle.damage.front.hp / 30, dt);
   }
 }
 
@@ -1197,7 +1184,7 @@ function gameLoop(timestamp: number) {
 
     // Run deterministic physics sub-steps
     let physicsStepsThisFrame = 0;
-    while (G.physicsAccumulator >= PHYSICS_DT && physicsStepsThisFrame < 8) {
+    while (G.physicsAccumulator >= PHYSICS_DT && physicsStepsThisFrame < 4) {
       // ── Rollback: record local input + snapshot before this step ──
       const currentInput = s === GameState.RACING ? getInput() : { up: false, down: false, left: false, right: false, boost: false, steerAnalog: 0 };
       if (G.playerVehicle) {
@@ -1337,7 +1324,7 @@ function gameLoop(timestamp: number) {
           pp.y + 0.2,
           pp.z - sinH * (-1.0),
         );
-        spawnTireBlowout(G._sparkPos);
+        spawnGPUExplosion(G._sparkPos, 25);
         G.playerVehicle.flattenTire('left');
       }
       if (rightHP <= 0 && !G._rightTireBlown) {
@@ -1347,7 +1334,7 @@ function gameLoop(timestamp: number) {
           pp.y + 0.2,
           pp.z - sinH * 1.0,
         );
-        spawnTireBlowout(G._sparkPos);
+        spawnGPUExplosion(G._sparkPos, 25);
         G.playerVehicle.flattenTire('right');
       }
     }
@@ -1384,9 +1371,8 @@ function gameLoop(timestamp: number) {
 
     // Nitro exhaust trail (fire particles during boost)
     if (s === GameState.RACING && G.playerVehicle.isNitroActive) {
-      spawnNitroTrail(G.playerVehicle.group.position, G.playerVehicle.heading, G.playerVehicle.speed);
+      spawnGPUNitroTrail(G.playerVehicle.group.position, G.playerVehicle.heading, G.playerVehicle.speed);
     }
-    updateNitroTrail(frameDt);
 
     // Continuous rim sparks on blown tires
     if (G._leftTireBlown && Math.abs(G.playerVehicle.speed) > 3) {
@@ -1398,7 +1384,7 @@ function gameLoop(timestamp: number) {
         pos.y + 0.1,
         pos.z - sinH * (-1.0),
       );
-      spawnRimSparks(G._sparkPos, G.playerVehicle.speed);
+      spawnGPURimSparks(G._sparkPos, G.playerVehicle.speed);
     }
     if (G._rightTireBlown && Math.abs(G.playerVehicle.speed) > 3) {
       const cosH = Math.cos(G.playerVehicle.heading);
@@ -1409,17 +1395,15 @@ function gameLoop(timestamp: number) {
         pos.y + 0.1,
         pos.z - sinH * 1.0,
       );
-      spawnRimSparks(G._sparkPos, G.playerVehicle.speed);
+      spawnGPURimSparks(G._sparkPos, G.playerVehicle.speed);
     }
-    updateRimSparks(frameDt);
 
     // Exhaust backfire on deceleration
     const currentSpeedRatio = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
     if (G._prevSpeedRatio - currentSpeedRatio > 0.15 && Math.abs(G.playerVehicle.speed) > 15) {
-      spawnBackfire(G.playerVehicle.group.position, G.playerVehicle.heading);
+      spawnGPUBackfire(G.playerVehicle.group.position, G.playerVehicle.heading);
     }
     G._prevSpeedRatio = currentSpeedRatio;
-    updateBackfire(frameDt);
 
     // Brake disc glow
     if (G._playerBrakeDiscs) {
@@ -1428,12 +1412,8 @@ function gameLoop(timestamp: number) {
 
     // Shoulder dust (near barriers = near road edge)
     if (G.playerVehicle.lastBarrierImpact && Math.abs(G.playerVehicle.speed) > 8) {
-      spawnShoulderDust(G.playerVehicle.group.position, G.playerVehicle.speed, G.playerVehicle.heading);
+      spawnGPUShoulderDust(G.playerVehicle.group.position, G.playerVehicle.speed, G.playerVehicle.heading);
     }
-    updateShoulderDust(frameDt);
-
-    // Ambient floating particles (recentered around player)
-    updateAmbientParticles(frameDt, G.playerVehicle.group.position);
 
     // Heat shimmer (canvas wavering at high speed)
     const speedR = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
@@ -1536,7 +1516,7 @@ function gameLoop(timestamp: number) {
               life: 4.0,
             });
             // Spawn explosion at detach point
-            spawnExplosion(partMesh.position, 30);
+            spawnGPUExplosion(partMesh.position, 30);
           }
         }
       }
@@ -1735,11 +1715,17 @@ function gameLoop(timestamp: number) {
       dl.position.set(pp.x + 50, 80, pp.z + 30);
       dl.target.position.set(pp.x, pp.y, pp.z);
       dl.target.updateMatrixWorld();
-      dl.shadow.camera.left = -40;
-      dl.shadow.camera.right = 40;
-      dl.shadow.camera.top = 40;
-      dl.shadow.camera.bottom = -40;
-      dl.shadow.camera.updateProjectionMatrix();
+      const dx = pp.x - (G._lastShadowX ?? -999);
+      const dz = pp.z - (G._lastShadowZ ?? -999);
+      if (dx * dx + dz * dz > 64) { // Only recalculate when player moves > 8 units
+        dl.shadow.camera.left = -40;
+        dl.shadow.camera.right = 40;
+        dl.shadow.camera.top = 40;
+        dl.shadow.camera.bottom = -40;
+        dl.shadow.camera.updateProjectionMatrix();
+        G._lastShadowX = pp.x;
+        G._lastShadowZ = pp.z;
+      }
     }
 
     // Debug overlay
@@ -1758,8 +1744,9 @@ function gameLoop(timestamp: number) {
       renderer.render(scene, camera);
     }
 
-    // Rear-view mirror render (scissored viewport AFTER main render — zero GPU readback)
-    if (G.mirrorCamera && G.playerVehicle && s === GameState.RACING) {
+    // Rear-view mirror render (scissored, every other frame for performance)
+    G._mirrorFrame++;
+    if (G.mirrorCamera && G.playerVehicle && s === GameState.RACING && G._mirrorFrame % 2 === 0) {
       const sinH = Math.sin(G.playerVehicle.heading);
       const cosH = Math.cos(G.playerVehicle.heading);
       const pp = G.playerVehicle.group.position;
@@ -1770,10 +1757,10 @@ function gameLoop(timestamp: number) {
       // Render as a viewport in the top-center of the canvas
       const canvasW = renderer.domElement.width;
       const canvasH = renderer.domElement.height;
-      const mirW = 320;
-      const mirH = 120;
+      const mirW = 160;
+      const mirH = 60;
       const mirX = Math.floor((canvasW - mirW) / 2);
-      const mirY = 14; // WebGPU viewport Y is top-down (not bottom-up like WebGL)
+      const mirY = 14;
 
       renderer.autoClear = false;
       renderer.setScissorTest(true);
@@ -1784,6 +1771,22 @@ function gameLoop(timestamp: number) {
       renderer.setScissorTest(false);
       renderer.setViewport(0, 0, canvasW, canvasH);
       renderer.autoClear = true;
+    }
+
+    // ── Dynamic Resolution Scaling ──
+    // Monitors rolling FPS average; reduces pixel ratio when dropping below target
+    G._drsFrameTimes.push(frameDt);
+    if (G._drsFrameTimes.length > 30) G._drsFrameTimes.shift();
+    if (G._drsFrameTimes.length === 30) {
+      const avgDt = G._drsFrameTimes.reduce((a, b) => a + b, 0) / 30;
+      const avgFps = 1 / avgDt;
+      const currentPR = renderer.getPixelRatio();
+      const basePR = Math.min(window.devicePixelRatio, 2);
+      if (avgFps < 45 && currentPR > 0.5) {
+        renderer.setPixelRatio(Math.max(currentPR - 0.15, 0.5));
+      } else if (avgFps > 56 && currentPR < basePR) {
+        renderer.setPixelRatio(Math.min(currentPR + 0.05, basePR));
+      }
     }
 
     // Restore physics-authoritative positions after rendering

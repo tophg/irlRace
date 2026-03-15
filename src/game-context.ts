@@ -139,10 +139,16 @@ export const G = {
 
   // ── Post-Processing ──
   postFXPipeline: null as any,
+
+  // ── Performance ──
+  _lastShadowX: -999,
+  _lastShadowZ: -999,
+  _mirrorFrame: 0,
+  _drsFrameTimes: [] as number[],
 };
 
 // ── Constants (not in G because they're truly immutable) ──
-export const PHYSICS_HZ = 120;
+export const PHYSICS_HZ = 60;
 export const PHYSICS_DT = 1 / PHYSICS_HZ;
 export const MAX_FRAME_DT = 0.1;
 export const LB_UPDATE_INTERVAL = 250; // ms — 4Hz
