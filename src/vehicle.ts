@@ -307,7 +307,7 @@ export class Vehicle {
     const headlightMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0xffeedd,
-      emissiveIntensity: 3.0,
+      emissiveIntensity: 1.5,
       roughness: 0.1,
       metalness: 0.0,
     });
@@ -321,7 +321,7 @@ export class Vehicle {
     this.bodyGroup.add(hlR);
 
     // SpotLights aimed forward + downward to project headlight beams onto the road
-    const hlSpotL = new THREE.SpotLight(0xffeedd, 3.5, 20, Math.PI / 5, 0.8, 2);
+    const hlSpotL = new THREE.SpotLight(0xffeedd, 2.0, 20, Math.PI / 5, 0.8, 2);
     hlSpotL.position.set(-halfW, lightY, frontZ);
     const targetL = new THREE.Object3D();
     targetL.position.set(-halfW * 0.5, lightY - 1, frontZ + 12);
@@ -329,7 +329,7 @@ export class Vehicle {
     hlSpotL.target = targetL;
     this.bodyGroup.add(hlSpotL);
 
-    const hlSpotR = new THREE.SpotLight(0xffeedd, 3.5, 20, Math.PI / 5, 0.8, 2);
+    const hlSpotR = new THREE.SpotLight(0xffeedd, 2.0, 20, Math.PI / 5, 0.8, 2);
     hlSpotR.position.set(halfW, lightY, frontZ);
     const targetR = new THREE.Object3D();
     targetR.position.set(halfW * 0.5, lightY - 1, frontZ + 12);
@@ -365,7 +365,7 @@ export class Vehicle {
     this.taillightMatL = new THREE.MeshStandardMaterial({
       color: 0xff0000,
       emissive: 0xff2200,
-      emissiveIntensity: 1.5,
+      emissiveIntensity: 0.8,
       roughness: 0.2,
       metalness: 0.0,
     });

@@ -870,7 +870,7 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
 
   // Fixtures (emissive glow — replaces PointLight)
   const fixGeo = new THREE.SphereGeometry(0.3, 8, 6);
-  const fixMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffdd66, emissiveIntensity: 1.5, roughness: 0.2 });
+  const fixMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffdd66, emissiveIntensity: 0.8, roughness: 0.2 });
   const fixIM = new THREE.InstancedMesh(fixGeo, fixMat, LIGHT_COUNT);
 
   for (let i = 0; i < LIGHT_COUNT; i++) {
@@ -924,7 +924,7 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
     const lineTex = new THREE.CanvasTexture(canvas);
     const lineMat = new THREE.MeshStandardMaterial({
       map: lineTex,
-      roughness: 0.6,
+      roughness: 0.7,
       transparent: true,
       depthWrite: true,
       polygonOffset: true,

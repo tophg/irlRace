@@ -2251,7 +2251,7 @@ export function initLensFlares(scene: THREE.Scene, lightPositions: THREE.Vector3
   const flareMat = new THREE.SpriteMaterial({
     map: flareTex,
     transparent: true,
-    opacity: 0.6,
+    opacity: 0.3,
     depthWrite: false,
     depthTest: false,
     blending: THREE.AdditiveBlending,
@@ -2284,10 +2284,10 @@ export function updateLensFlares(cameraPos: THREE.Vector3, time: number) {
     const pulse = 0.8 + Math.sin(time * 2 + i * 1.7) * 0.15;
 
     const mat = sprite.material as THREE.SpriteMaterial;
-    mat.opacity = distFade * pulse * 0.6;
+    mat.opacity = distFade * pulse * 0.3;
 
     // Scale up when closer for bloom effect
-    const scale = 3 + distFade * 4;
+    const scale = 2 + distFade * 2.5;
     sprite.scale.set(scale, scale, 1);
   }
 }
