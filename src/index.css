@@ -814,9 +814,7 @@ canvas { display: block; }
 .loading-overlay {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  background:
-    linear-gradient(180deg, rgba(10,10,15,0.5) 0%, rgba(10,10,15,0.7) 50%, rgba(10,10,15,0.9) 100%),
-    url('/title-bg.jpg') center/cover no-repeat;
+  background: rgb(10,10,15);
   z-index: 95;
 }
 .loading-text {
