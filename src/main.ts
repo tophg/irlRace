@@ -399,15 +399,23 @@ async function startRace() {
     createHUD(uiOverlay);
     showHUD(true);
 
-    // Rear-view mirror
+    // Rear-view mirror (RenderTarget + canvas overlay — WebGPU-compatible)
     G.mirrorCamera = new THREE.PerspectiveCamera(50, 320 / 120, 0.5, 500);
+    G.mirrorRT = new THREE.RenderTarget(320, 120, { depthBuffer: true });
     G.mirrorBorder = document.createElement('div');
     G.mirrorBorder.style.cssText = `
       position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
       width: 320px; height: 120px;
       border: 2px solid rgba(255,255,255,0.2); border-radius: 6px;
       pointer-events: none; z-index: 20; opacity: 0.85;
+      overflow: hidden;
     `;
+    const mirrorCanvas = document.createElement('canvas');
+    mirrorCanvas.width = 320;
+    mirrorCanvas.height = 120;
+    mirrorCanvas.style.cssText = 'width:100%;height:100%;display:block;';
+    G.mirrorBorder.appendChild(mirrorCanvas);
+    G.mirrorCanvas = mirrorCanvas;
     uiOverlay.appendChild(G.mirrorBorder);
     showTouchControls(true);
     initAudio();
@@ -628,7 +636,10 @@ function clearRaceObjects() {
 
   // Destroy mirror
   if (G.mirrorBorder) { G.mirrorBorder.remove(); G.mirrorBorder = null; }
+  if (G.mirrorRT) { G.mirrorRT.dispose(); G.mirrorRT = null; }
+  G.mirrorCanvas = null;
   G.mirrorCamera = null;
+  G._mirrorReading = false;
 
   // Remove player
   if (G.playerVehicle) {
@@ -1878,9 +1889,9 @@ function gameLoop(timestamp: number) {
       renderer.render(scene, camera);
     }
 
-    // Rear-view mirror render (scissored, every other frame for performance)
+    // Rear-view mirror render (RenderTarget + canvas overlay, every other frame)
     G._mirrorFrame++;
-    if (G.mirrorCamera && G.playerVehicle && s === GameState.RACING && G._mirrorFrame % 2 === 0) {
+    if (G.mirrorCamera && G.mirrorRT && G.mirrorCanvas && G.playerVehicle && s === GameState.RACING && G._mirrorFrame % 2 === 0) {
       const sinH = Math.sin(G.playerVehicle.heading);
       const cosH = Math.cos(G.playerVehicle.heading);
       const pp = G.playerVehicle.group.position;
@@ -1888,23 +1899,29 @@ function gameLoop(timestamp: number) {
       G.mirrorCamera.position.set(pp.x, pp.y + 2.5, pp.z);
       G.mirrorCamera.lookAt(pp.x - sinH * 20, pp.y + 1.5, pp.z - cosH * 20);
 
-      // Render as a viewport in the top-center of the canvas
-      const canvasW = renderer.domElement.width;
-      const canvasH = renderer.domElement.height;
-      const mirW = 320;
-      const mirH = 120;
-      const mirX = Math.floor((canvasW - mirW) / 2);
-      const mirY = 14;
-
-      renderer.autoClear = false;
-      renderer.setScissorTest(true);
-      renderer.setViewport(mirX, mirY, mirW, mirH);
-      renderer.setScissor(mirX, mirY, mirW, mirH);
-      renderer.clearDepth();
+      // Render to off-screen target
+      renderer.setRenderTarget(G.mirrorRT);
       renderer.render(scene, G.mirrorCamera);
-      renderer.setScissorTest(false);
-      renderer.setViewport(0, 0, canvasW, canvasH);
-      renderer.autoClear = true;
+      renderer.setRenderTarget(null);
+
+      // Async pixel readback — fire-and-forget, draws to canvas when ready
+      if (!G._mirrorReading) {
+        G._mirrorReading = true;
+        const w = 320, h = 120;
+        const canvas = G.mirrorCanvas;
+        renderer.readRenderTargetPixelsAsync(G.mirrorRT, 0, 0, w, h).then((buf) => {
+          const ctx = canvas.getContext('2d')!;
+          const imgData = ctx.createImageData(w, h);
+          // Flip Y (GPU render targets are bottom-up)
+          for (let row = 0; row < h; row++) {
+            const srcOffset = (h - 1 - row) * w * 4;
+            const dstOffset = row * w * 4;
+            imgData.data.set(buf.subarray(srcOffset, srcOffset + w * 4), dstOffset);
+          }
+          ctx.putImageData(imgData, 0, 0);
+          G._mirrorReading = false;
+        }).catch(() => { G._mirrorReading = false; });
+      }
     }
 
     // ── Dynamic Resolution Scaling ──
