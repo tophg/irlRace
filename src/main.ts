@@ -1358,26 +1358,6 @@ function gameLoop(timestamp: number) {
         }
       }
 
-      // Near-miss detection (close pass without collision)
-      const pSpeed = Math.abs(G.playerVehicle.speed);
-      if (pSpeed > 15) {
-        for (const ai of G.aiRacers) {
-          const aPos = ai.vehicle.group.position;
-          const dx2 = aPos.x - pp.x;
-          const dz2 = aPos.z - pp.z;
-          const dist2 = Math.sqrt(dx2 * dx2 + dz2 * dz2);
-          if (dist2 < 3.5 && dist2 > 1.5) {
-            const lastNearMiss = (ai as any)._lastNearMiss ?? 0;
-            if (timestamp - lastNearMiss > 3000) { // 3s cooldown per AI
-              (ai as any)._lastNearMiss = timestamp;
-              G.playerVehicle.addNitro(5);
-              G.raceStats.nearMissCount = (G.raceStats.nearMissCount ?? 0) + 1;
-              // Brief popup
-              showNearMissPopup();
-            }
-          }
-        }
-      }
 
       updateNitroHUD(G.playerVehicle.nitro, G.playerVehicle.isNitroActive);
     }
@@ -1588,7 +1568,8 @@ function gameLoop(timestamp: number) {
     updateLightning(frameDt);
 
     // Near-miss detection (within 3 units of any AI, 1s cooldown per AI)
-    if (s === GameState.RACING) {
+    // Awards nitro, increments stats, and triggers directional streak VFX
+    if (s === GameState.RACING && Math.abs(G.playerVehicle.speed) > 15) {
       const pPos = G.playerVehicle.group.position;
       const now = timestamp / 1000;
       for (const ai of G.aiRacers) {
@@ -1596,15 +1577,19 @@ function gameLoop(timestamp: number) {
         const dx = pPos.x - aPos.x;
         const dz = pPos.z - aPos.z;
         const dist2 = dx * dx + dz * dz;
-        if (dist2 < 3 * 3 && dist2 > 0.5) {
+        if (dist2 < 3.5 * 3.5 && dist2 > 1.5 * 1.5) {
           const lastMiss = G._nearMissCooldowns?.get(ai.id) ?? 0;
           if (now - lastMiss > 1.0) {
             if (!G._nearMissCooldowns) G._nearMissCooldowns = new Map();
             G._nearMissCooldowns.set(ai.id, now);
+            // Directional streak VFX
             const cosH = Math.cos(G.playerVehicle.heading);
             const sinH = Math.sin(G.playerVehicle.heading);
             const cross = dx * cosH - dz * sinH;
             triggerNearMiss(cross > 0 ? 'right' : 'left');
+            // Nitro reward + stat tracking
+            G.playerVehicle.addNitro(5);
+            G.raceStats.nearMissCount = (G.raceStats.nearMissCount ?? 0) + 1;
           }
         }
       }

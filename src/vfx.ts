@@ -1799,8 +1799,8 @@ export function updateAmbientParticles(dt: number, playerPos: THREE.Vector3) {
     ambientPositions[idx + 2] += ambientVelocities[idx + 2] * dt;
 
     // Add gentle sine wobble
-    ambientPositions[idx]     += Math.sin(Date.now() * 0.001 + i) * 0.02 * dt;
-    ambientPositions[idx + 1] += Math.cos(Date.now() * 0.0015 + i * 0.7) * 0.01 * dt;
+    ambientPositions[idx]     += Math.sin(performance.now() * 0.001 + i) * 0.02 * dt;
+    ambientPositions[idx + 1] += Math.cos(performance.now() * 0.0015 + i * 0.7) * 0.01 * dt;
 
     // Reset if too far from player
     const dx = ambientPositions[idx] - playerPos.x;
@@ -1862,7 +1862,7 @@ export function updateHeatShimmer(speedRatio: number) {
   const h = shimmerCanvas.height;
   ctx.clearRect(0, 0, w, h);
 
-  const time = Date.now() * 0.003;
+  const time = performance.now() * 0.003;
   const lineCount = 8 + Math.floor(intensity * 12);
   const cx = w / 2;
   const bottomY = h * 0.75;
@@ -2188,8 +2188,8 @@ export function updateVictoryConfetti(dt: number) {
     p.vx *= 0.99;
     p.vz *= 0.99;
     // Flutter effect (confetti tumble)
-    p.vx += Math.sin(Date.now() * 0.005 + j) * 0.3 * dt;
-    p.vz += Math.cos(Date.now() * 0.004 + j * 0.7) * 0.3 * dt;
+    p.vx += Math.sin(performance.now() * 0.005 + j) * 0.3 * dt;
+    p.vz += Math.cos(performance.now() * 0.004 + j * 0.7) * 0.3 * dt;
 
     p.mesh.position.x += p.vx * dt;
     p.mesh.position.y += p.vy * dt;
