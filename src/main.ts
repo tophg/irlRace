@@ -484,7 +484,7 @@ async function spawnAI(td: TrackData) {
   const count = Math.min(G.aiCount, available.length);
   const aiCars = available.slice(0, count);
   const laneOffsets = [3.5, -3.5, 3.5, -3.5, 3.5, -3.5];
-  const startTs = [0.02, 0.02, 0.04, 0.04, 0.06, 0.06];
+  const startTs = [0.005, 0.005, 0.012, 0.012, 0.019, 0.019];
 
   console.log(`[spawnAI] G.aiCount=${G.aiCount}, spawning ${aiCars.length} AI racers`);
 

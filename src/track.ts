@@ -1231,35 +1231,8 @@ function createCheckpointArch(isStart: boolean): THREE.Group {
   beam.position.set(0, height, 0);
   arch.add(beam);
 
+
   if (isStart) {
-    // Checkered banner with START/FINISH text
-    const bannerGeo = new THREE.PlaneGeometry(width, 2.0);
-    const bannerCanvas = document.createElement('canvas');
-    bannerCanvas.width = 512; bannerCanvas.height = 128;
-    const ctx = bannerCanvas.getContext('2d')!;
-    const sq = 32;
-    for (let r = 0; r < 4; r++) {
-      for (let c = 0; c < 16; c++) {
-        ctx.fillStyle = (r + c) % 2 === 0 ? '#ffffff' : '#111111';
-        ctx.fillRect(c * sq, r * sq, sq, sq);
-      }
-    }
-    // Overlay "START / FINISH" text
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(100, 36, 312, 56);
-    ctx.fillStyle = '#ffcc00';
-    ctx.font = 'bold 36px Outfit, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('START / FINISH', 256, 64);
-
-    const bannerTex = new THREE.CanvasTexture(bannerCanvas);
-    const bannerMat = new THREE.MeshBasicMaterial({ map: bannerTex, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
-    const banner = new THREE.Mesh(bannerGeo, bannerMat);
-    banner.position.set(0, height - 1.5, 0);
-    banner.rotation.y = Math.PI; // Flip so text reads facing oncoming cars
-    arch.add(banner);
-
     // Overhead floodlights on the gantry beam
     const lightPositions = [-width * 0.35, -width * 0.12, width * 0.12, width * 0.35];
     for (const lx of lightPositions) {
