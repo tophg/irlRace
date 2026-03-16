@@ -610,6 +610,7 @@ export class Vehicle {
         // Car body target height from contact points
         let targetY = (fl + fr + rl + rr) / 4;
 
+
         // Defensive: don't allow sudden drops > 2 units (prevents sinking through gaps)
         if (targetY < this.group.position.y - 2) {
           targetY = this.group.position.y - 2;

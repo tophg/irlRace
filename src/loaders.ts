@@ -53,7 +53,7 @@ function processCarModel(model: THREE.Group): THREE.Group {
   // Center the model and set bottom to Y=0
   box.setFromObject(model);
   const center = box.getCenter(new THREE.Vector3());
-  model.position.set(-center.x, -box.min.y - 0.05, -center.z); // -0.05 sink for tire weight
+  model.position.set(-center.x, -box.min.y - 0.35, -center.z); // sink to align tire contact with road (undercarriage geo extends below wheels)
 
   // Material enhancements
   model.traverse((child) => {
