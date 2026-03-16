@@ -311,9 +311,20 @@ export function wireNetworkCallbacks() {
       showToast(_uiOverlay, `${name} disconnected`);
     }
 
-    // Clean up remote mesh and tracking data
+    // Clean up remote mesh and tracking data (dispose GPU resources)
     const mesh = G.remoteMeshes.get(id);
-    if (mesh) { _scene.remove(mesh); G.remoteMeshes.delete(id); }
+    if (mesh) {
+      _scene.remove(mesh);
+      mesh.traverse((child: any) => {
+        if (child.isMesh) {
+          child.geometry?.dispose();
+          const mat = child.material;
+          if (Array.isArray(mat)) mat.forEach((m: any) => m.dispose());
+          else if (mat) mat.dispose();
+        }
+      });
+      G.remoteMeshes.delete(id);
+    }
     G.remotePrevPos.delete(id);
 
     const tag = G.remoteNameTags.get(id);

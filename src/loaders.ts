@@ -63,13 +63,19 @@ export async function loadCarModel(filename: string): Promise<THREE.Group> {
   return deepCloneGroup(wrapper);
 }
 
-/** Deep-clone a group, duplicating geometry so deformation doesn't corrupt the cache. */
+/** Deep-clone a group, duplicating geometry AND materials so deformation/damage
+ *  color changes don't corrupt the cache. */
 function deepCloneGroup(source: THREE.Group): THREE.Group {
   const cloned = source.clone(true);
   cloned.traverse((child) => {
     if ((child as THREE.Mesh).isMesh) {
       const mesh = child as THREE.Mesh;
       mesh.geometry = mesh.geometry.clone();
+      if (Array.isArray(mesh.material)) {
+        mesh.material = mesh.material.map(m => m.clone());
+      } else if (mesh.material) {
+        mesh.material = mesh.material.clone();
+      }
     }
   });
   return cloned;

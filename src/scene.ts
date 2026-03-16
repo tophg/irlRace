@@ -209,6 +209,9 @@ export async function initScene(container: HTMLElement) {
 
 /** Apply an environment preset to the scene. Call after initScene. */
 export function applyEnvironment(preset: EnvironmentPreset) {
+  // Configure fog from preset
+  scene.fog = new THREE.FogExp2(preset.fogColor, preset.fogDensity);
+
   uSkyTop.value.setHex(preset.skyTop);
   uSkyBottom.value.setHex(preset.skyBottom);
   uSkyHorizon.value.setHex(preset.skyHorizon);
