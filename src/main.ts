@@ -48,6 +48,7 @@ import {
 import { initTrackRadar, updateTrackRadar, destroyTrackRadar } from './minimap';
 import { initMusic, updateMusicIntensity, pauseMusic, resumeMusic, stopMusic } from './music';
 import { loadProgress, processRaceRewards, getProgress, levelProgress, xpToNextLevel, type RaceResult } from './progression';
+import { startGhostRecording, sampleGhostFrame, finalizeGhostLap, loadGhostForSeed, startGhostPlayback, updateGhostPlayback, destroyGhost, getGhostBestTime } from './ghost';
 import {
   initRapierWorld, addBarrierCollider, addCarBody,
   syncCarToRapier, stepRapierWorld, destroyRapierWorld,
@@ -440,6 +441,14 @@ async function startRace() {
     G.replayRecorder = new ReplayRecorder();
     G.replayRecorder.start();
     G.gameState = GameState.RACING;
+
+    // Ghost car: spawn ghost playback if one exists for this seed
+    const ghostData = loadGhostForSeed(G.currentRaceSeed);
+    if (ghostData) {
+      startGhostPlayback(getScene(), ghostData);
+    }
+    // Start recording ghost for the first lap
+    startGhostRecording(G.playerVehicle.group.position, G.playerVehicle.heading);
   } finally {
     G.raceStarting = false;
   }
@@ -654,6 +663,7 @@ function clearRaceObjects() {
 
   destroyHUD();
   destroyTrackRadar();
+  destroyGhost(getScene());
   destroyLeaderboard();
 
   // Clean up debug overlay
@@ -1400,6 +1410,9 @@ function gameLoop(timestamp: number) {
     }
     if (s === GameState.RACING) {
       updateSkidMarks(G.playerVehicle.group.position, G.playerVehicle.heading, driftAbs, G.playerVehicle.group.position.y);
+      // Ghost car: sample position + update playback
+      sampleGhostFrame(G.playerVehicle.group.position, G.playerVehicle.heading);
+      updateGhostPlayback();
     }
     updateVFX(frameDt);
 
@@ -1710,6 +1723,10 @@ function gameLoop(timestamp: number) {
       } else if (event === 'lap') {
         const lastLapTime = progress?.lapTimes[progress.lapTimes.length - 1] ?? 0;
         const bestLap = G.raceEngine.getBestLap('local');
+        // Finalize ghost recording for this lap
+        finalizeGhostLap(lastLapTime, G.currentRaceSeed, G.selectedCar?.id ?? '');
+        // Start recording the next lap
+        startGhostRecording(G.playerVehicle.group.position, G.playerVehicle.heading);
         bus.emit('lap', {
           racerId: 'local',
           lapIndex: progress?.lapIndex ?? 0,
