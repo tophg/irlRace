@@ -5,6 +5,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { CAR_ROSTER, CarDef } from './types';
 import { loadCarModel, loadCarModelWithProgress } from './loaders';
 import { isCarUnlocked, getUnlockCost, unlockCar, getProgress } from './progression';
+import { getSettings, saveSettings } from './settings';
 
 let garageScene: THREE.Scene;
 let garageCamera: THREE.PerspectiveCamera;
@@ -203,6 +204,13 @@ function buildGarageUI(overlay: HTMLElement) {
       <button class="select-btn" id="garage-select">SELECT</button>
       <button class="car-nav-btn" id="garage-next">▶</button>
     </div>
+    <div style="margin-top:10px;text-align:center;">
+      <label style="font-size:11px;color:rgba(255,255,255,0.6);letter-spacing:1px;">PAINT COLOR</label>
+      <input type="range" min="0" max="360" value="${getSettings().paintHue >= 0 ? getSettings().paintHue : 180}" id="garage-paint"
+             style="width:160px;-webkit-appearance:none;height:8px;border-radius:4px;
+                    background:linear-gradient(to right,hsl(0,85%,45%),hsl(60,85%,45%),hsl(120,85%,45%),hsl(180,85%,45%),hsl(240,85%,45%),hsl(300,85%,45%),hsl(360,85%,45%));">
+      <button id="garage-paint-reset" style="font-size:10px;background:none;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.5);padding:2px 8px;border-radius:4px;cursor:pointer;margin-left:6px;">RESET</button>
+    </div>
   `;
 
   overlay.appendChild(uiEl);
@@ -227,6 +235,30 @@ function buildGarageUI(overlay: HTMLElement) {
       return;
     }
     if (onSelectCallback) onSelectCallback(car);
+  });
+
+  // Paint hue slider — live preview
+  const paintSlider = uiEl.querySelector('#garage-paint') as HTMLInputElement;
+  if (paintSlider) {
+    paintSlider.addEventListener('input', () => {
+      const hue = parseInt(paintSlider.value);
+      // Persist immediately
+      const s = getSettings();
+      s.paintHue = hue;
+      saveSettings(s);
+      // Recolor the current model in the garage
+      applyPaintToGarageModel(hue);
+    });
+  }
+
+  // Reset paint
+  uiEl.querySelector('#garage-paint-reset')?.addEventListener('click', () => {
+    const s = getSettings();
+    s.paintHue = -1;
+    saveSettings(s);
+    if (paintSlider) paintSlider.value = '180';
+    // Reload model to restore original colors
+    showCar(currentIndex);
   });
 
   progressBarEl = uiEl.querySelector('#garage-progress-bar') as HTMLElement;
@@ -319,6 +351,10 @@ async function showCar(index: number) {
 
     // Start lazy preloading neighbors + rest after first car loads
     lazyPreloadModels(index);
+
+    // Apply saved paint color if set
+    const savedHue = getSettings().paintHue;
+    if (savedHue >= 0) applyPaintToGarageModel(savedHue);
   } catch (err) {
     if (requestId === showCarRequestId) {
       hidePlaceholder();
@@ -326,6 +362,26 @@ async function showCar(index: number) {
       if (nameEl) nameEl.textContent = `${car.name}  (load failed)`;
     }
   }
+}
+
+/** Recolor the current garage model's body panels with a hue (0–360). */
+function applyPaintToGarageModel(hue: number) {
+  if (!currentModel) return;
+  const color = new THREE.Color().setHSL(hue / 360, 0.85, 0.45);
+  currentModel.traverse((child: any) => {
+    if (!(child instanceof THREE.Mesh)) return;
+    const mat = child.material;
+    if (!mat || Array.isArray(mat)) return;
+    if (mat.transparent && mat.opacity < 0.9) return;
+    if (mat.color) {
+      const hsl = { h: 0, s: 0, l: 0 };
+      mat.color.getHSL(hsl);
+      if (hsl.l > 0.1 && hsl.l < 0.9) {
+        mat.color.copy(color);
+        if (mat.emissive) mat.emissive.copy(color).multiplyScalar(0.1);
+      }
+    }
+  });
 }
 
 function showPlaceholder() {

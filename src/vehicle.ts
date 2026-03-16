@@ -186,6 +186,31 @@ export class Vehicle {
     this.buildLights();
   }
 
+  /** Recolor the car body with a new hue (0–360). Preserves metalness/roughness. */
+  setPaintColor(hue: number) {
+    if (!this.model) return;
+    const color = new THREE.Color().setHSL(hue / 360, 0.85, 0.45);
+    this.model.traverse((child) => {
+      if (!(child instanceof THREE.Mesh)) return;
+      const mat = child.material;
+      if (!mat || Array.isArray(mat)) return;
+      // Skip dark materials (wheels, rubber, trim) and transparent (glass)
+      if (mat.transparent && mat.opacity < 0.9) return;
+      if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial) {
+        const hsl = { h: 0, s: 0, l: 0 };
+        mat.color.getHSL(hsl);
+        // Only recolor materials that have some saturation or lightness (body panels)
+        // Skip very dark (l < 0.1) materials like tires, and very light (> 0.9) like chrome
+        if (hsl.l > 0.1 && hsl.l < 0.9) {
+          mat.color.copy(color);
+          if (mat.emissive) {
+            mat.emissive.copy(color).multiplyScalar(0.1);
+          }
+        }
+      }
+    });
+  }
+
   /** Set the road mesh used for per-wheel raycasting. */
   setRoadMesh(mesh: THREE.Mesh) {
     this.roadMesh = mesh;

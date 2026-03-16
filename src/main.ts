@@ -310,6 +310,9 @@ async function startRace() {
     const playerModel = await loadCarModel(G.selectedCar.file);
     G.playerVehicle = new Vehicle(G.selectedCar);
     G.playerVehicle.setModel(playerModel);
+    // Apply custom paint if set
+    const paintHue = getSettings().paintHue;
+    if (paintHue >= 0) G.playerVehicle.setPaintColor(paintHue);
     scene.add(G.playerVehicle.group);
     G.playerVehicle.setRoadMesh(G.trackData.roadMesh);
     G.playerVehicle.placeOnTrack(G.trackData.spline, 0, -3.5);
