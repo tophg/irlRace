@@ -175,6 +175,7 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
       paintHue: getSettings().paintHue, // Preserved; paint is set in garage
     });
     destroySettings();
+    import('./audio').then(m => m.updateMusicVolume());
   });
 
   settingsEl.querySelector('#set-cancel')!.addEventListener('click', destroySettings);

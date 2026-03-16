@@ -5,6 +5,63 @@ import { getSettings } from './settings';
 let audioCtx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
 
+// ── Predefined Music Tracks ──
+let titleMusicAudio: HTMLAudioElement | null = null;
+let gameMusicAudio: HTMLAudioElement | null = null;
+
+function getTitleMusic() {
+  if (!titleMusicAudio) {
+    titleMusicAudio = new Audio('/audio/title-theme.wav');
+    titleMusicAudio.loop = true;
+  }
+  return titleMusicAudio;
+}
+
+function getGameMusic() {
+  if (!gameMusicAudio) {
+    gameMusicAudio = new Audio('/audio/game-music.wav');
+    gameMusicAudio.loop = true;
+  }
+  return gameMusicAudio;
+}
+
+export function playTitleMusic() {
+  const s = getSettings();
+  const m = getTitleMusic();
+  m.volume = s.masterVolume * 0.6; // scaled slightly
+  m.play().catch(() => console.warn('Browser blocked autoplay build-up'));
+  if (gameMusicAudio && !gameMusicAudio.paused) gameMusicAudio.pause();
+}
+
+export function playGameMusic() {
+  const s = getSettings();
+  const m = getGameMusic();
+  m.volume = s.masterVolume * 0.4; // scaled slightly
+  m.play().catch(() => {});
+  if (titleMusicAudio && !titleMusicAudio.paused) titleMusicAudio.pause();
+}
+
+export function pauseMusic() {
+  if (titleMusicAudio && !titleMusicAudio.paused) titleMusicAudio.pause();
+  if (gameMusicAudio && !gameMusicAudio.paused) gameMusicAudio.pause();
+}
+
+export function resumeMusic() {
+  // We only resume game music, since we only pause during a race
+  if (gameMusicAudio) gameMusicAudio.play().catch(() => {});
+}
+
+export function stopAllMusic() {
+  if (titleMusicAudio) { titleMusicAudio.pause(); titleMusicAudio.currentTime = 0; }
+  if (gameMusicAudio) { gameMusicAudio.pause(); gameMusicAudio.currentTime = 0; }
+}
+
+export function updateMusicVolume() {
+  const s = getSettings();
+  if (titleMusicAudio) titleMusicAudio.volume = s.masterVolume * 0.6;
+  if (gameMusicAudio) gameMusicAudio.volume = s.masterVolume * 0.4;
+}
+
 // Multi-oscillator engine (fundamental + 2 harmonics)
 let engineOscs: OscillatorNode[] = [];
 let engineGains: GainNode[] = [];

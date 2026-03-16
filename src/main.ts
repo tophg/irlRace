@@ -46,6 +46,7 @@ import {
   spawnGPUNitroTrail, spawnGPURimSparks, spawnGPUBackfire,
 } from './gpu-particles';
 import { initTrackRadar, updateTrackRadar, destroyTrackRadar } from './minimap';
+import { playTitleMusic, playGameMusic, pauseMusic, resumeMusic, stopAllMusic } from './audio';
 import { loadProgress, processRaceRewards, getProgress, levelProgress, xpToNextLevel, type RaceResult } from './progression';
 import { startGhostRecording, sampleGhostFrame, finalizeGhostLap, loadGhostForSeed, startGhostPlayback, updateGhostPlayback, destroyGhost, getGhostBestTime } from './ghost';
 import {
@@ -147,6 +148,8 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
     if (G.gameState === GameState.RACING || G.gameState === GameState.PAUSED) {
       togglePause({ onRestart: () => startRace(), onQuit: () => showTitleScreen() });
+      if (G.gameState === GameState.PAUSED) pauseMusic();
+      else resumeMusic();
     }
   }
 });
@@ -182,6 +185,7 @@ window.addEventListener('keydown', (e) => {
 function showTitleScreen() {
   G.gameState = GameState.TITLE;
   showTouchControls(false);
+  playTitleMusic();
 
   const titleEl = document.createElement('div');
   titleEl.className = 'title-screen';
@@ -443,6 +447,7 @@ async function startRace() {
     }
 
     await runCountdown(uiOverlay);
+    playGameMusic();
 
     resetRaceStats();
     G.raceEngine.start();
