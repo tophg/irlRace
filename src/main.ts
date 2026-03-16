@@ -46,7 +46,6 @@ import {
   spawnGPUNitroTrail, spawnGPURimSparks, spawnGPUBackfire,
 } from './gpu-particles';
 import { initTrackRadar, updateTrackRadar, destroyTrackRadar } from './minimap';
-import { initMusic, updateMusicIntensity, pauseMusic, resumeMusic, stopMusic } from './music';
 import { loadProgress, processRaceRewards, getProgress, levelProgress, xpToNextLevel, type RaceResult } from './progression';
 import { startGhostRecording, sampleGhostFrame, finalizeGhostLap, loadGhostForSeed, startGhostPlayback, updateGhostPlayback, destroyGhost, getGhostBestTime } from './ghost';
 import {
@@ -148,8 +147,6 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
     if (G.gameState === GameState.RACING || G.gameState === GameState.PAUSED) {
       togglePause({ onRestart: () => startRace(), onQuit: () => showTitleScreen() });
-      if (G.gameState === GameState.PAUSED) pauseMusic();
-      else resumeMusic();
     }
   }
 });
@@ -404,7 +401,6 @@ async function startRace() {
     uiOverlay.appendChild(G.mirrorBorder);
     showTouchControls(true);
     initAudio();
-    initMusic();
 
     // ── Robust Pre-Render ──
     // Force shaders to compile and textures to upload to the GPU *now* by explicitly rendering once.
@@ -671,7 +667,6 @@ function clearRaceObjects() {
 
   // Stop audio
   stopAudio();
-  stopMusic();
 
   destroyHUD();
   destroyTrackRadar();
@@ -1561,7 +1556,6 @@ function gameLoop(timestamp: number) {
     // Heat shimmer (canvas wavering at high speed)
     const speedR = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
     updateHeatShimmer(speedR);
-    updateMusicIntensity(speedR);
 
     // Track radar minimap
     if (G.playerVehicle) {

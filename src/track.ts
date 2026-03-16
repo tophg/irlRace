@@ -55,14 +55,16 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   const shoulderMesh = buildShoulders(finalSpline);
   const kerbGroup = buildKerbs(finalSpline, curvatures);
 
-  // ── 8. Place checkpoints (offset by half-segment so none sits at t=0 start/finish) ──
+  // ── 8. Place checkpoints (distributed from t > 0 to t=1.0 for precise lap completion) ──
   const numCheckpoints = 10;
   const checkpoints: Checkpoint[] = [];
-  for (let i = 0; i < numCheckpoints; i++) {
-    const t = (i + 0.5) / numCheckpoints;
-    const position = finalSpline.getPointAt(t);
-    const tangent = finalSpline.getTangentAt(t).normalize();
-    checkpoints.push({ position, tangent, index: i, t });
+  for (let i = 1; i <= numCheckpoints; i++) {
+    const t = i / numCheckpoints; // e.g. 0.1, 0.2 ... 1.0
+    // Use t=0 for geometry evaluation if t=1, since the spline loops perfectly
+    const evalT = t === 1.0 ? 0 : t;
+    const position = finalSpline.getPointAt(evalT);
+    const tangent = finalSpline.getTangentAt(evalT).normalize();
+    checkpoints.push({ position, tangent, index: i - 1, t });
   }
 
   // ── 9. Scenery ──
@@ -1255,6 +1257,7 @@ function createCheckpointArch(isStart: boolean): THREE.Group {
     const bannerMat = new THREE.MeshBasicMaterial({ map: bannerTex, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
     const banner = new THREE.Mesh(bannerGeo, bannerMat);
     banner.position.set(0, height - 1.5, 0);
+    banner.rotation.y = Math.PI; // Flip so text reads facing oncoming cars
     arch.add(banner);
 
     // Overhead floodlights on the gantry beam
@@ -1270,25 +1273,6 @@ function createCheckpointArch(isStart: boolean): THREE.Group {
       housing.position.set(lx, height - 0.15, 0);
       arch.add(housing);
     }
-
-    // Ground checkered strip
-    const stripGeo = new THREE.PlaneGeometry(width, 2.5);
-    const stripCanvas = document.createElement('canvas');
-    stripCanvas.width = 256; stripCanvas.height = 64;
-    const sCtx = stripCanvas.getContext('2d')!;
-    const ssq = 16;
-    for (let r = 0; r < 4; r++) {
-      for (let c = 0; c < 16; c++) {
-        sCtx.fillStyle = (r + c) % 2 === 0 ? '#ffffff' : '#222222';
-        sCtx.fillRect(c * ssq, r * ssq, ssq, ssq);
-      }
-    }
-    const stripTex = new THREE.CanvasTexture(stripCanvas);
-    const stripMat = new THREE.MeshBasicMaterial({ map: stripTex, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
-    const strip = new THREE.Mesh(stripGeo, stripMat);
-    strip.rotation.x = -Math.PI / 2;
-    strip.position.set(0, 0.08, 0);
-    arch.add(strip);
   }
 
   return arch;
