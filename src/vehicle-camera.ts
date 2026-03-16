@@ -3,7 +3,7 @@
 import * as THREE from 'three';
 
 let CHASE_DISTANCE = 0;
-let CHASE_HEIGHT_RATIO = 3.2;  // height proportional to distance (adjustable via Shift+scroll)
+let CHASE_HEIGHT_RATIO = 1.8;  // height proportional to distance (adjustable via Shift+scroll)
 const LOOK_AHEAD = 2;
 const POSITION_LERP = 0.14;
 const LOOK_LERP = 0.08;

@@ -405,6 +405,12 @@ async function startRace() {
     showTouchControls(true);
     initAudio();
     initMusic();
+
+    // Force shader compilation while loading screen is still up to prevent first-frame freeze
+    renderer.compile(scene, camera);
+    // Yield to the browser so it can repaint and process the compilation before countdown starts
+    await new Promise(resolve => setTimeout(resolve, 100));
+
     hideLoading();
     // NOW enter COUNTDOWN — track is fully built, all assets loaded
     G.gameState = GameState.COUNTDOWN;
