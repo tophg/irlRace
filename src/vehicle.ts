@@ -292,16 +292,15 @@ export class Vehicle {
 
     let hlLPos: [number, number, number], hlRPos: [number, number, number];
     let tlLPos: [number, number, number], tlRPos: [number, number, number];
-    let hlRadius: number, tlSize: [number, number, number];
+    let hlSize: [number, number], tlSize: [number, number];
     let spotI: number, spotD: number, beamLen: number, beamRad: number;
 
     if (ld) {
-      // Use pre-computed per-model coordinates
       hlLPos = ld.headlightL;
       hlRPos = ld.headlightR;
       tlLPos = ld.taillightL;
       tlRPos = ld.taillightR;
-      hlRadius = ld.headlightRadius;
+      hlSize = ld.headlightSize;
       tlSize = ld.taillightSize;
       spotI = ld.spotIntensity;
       spotD = ld.spotDistance;
@@ -323,34 +322,34 @@ export class Vehicle {
       const rearZ = box.min.z;
       const halfW = (box.max.x - box.min.x) * 0.35;
       const lightY = box.min.y + (box.max.y - box.min.y) * 0.35;
-      hlLPos = [-halfW, lightY, frontZ - 0.05];
-      hlRPos = [ halfW, lightY, frontZ - 0.05];
-      tlLPos = [-halfW, lightY, rearZ + 0.05];
-      tlRPos = [ halfW, lightY, rearZ + 0.05];
-      hlRadius = 0.1;
-      tlSize = [0.25, 0.08, 0.06];
+      hlLPos = [-halfW, lightY, frontZ];
+      hlRPos = [ halfW, lightY, frontZ];
+      tlLPos = [-halfW, lightY, rearZ];
+      tlRPos = [ halfW, lightY, rearZ];
+      hlSize = [0.22, 0.14];
+      tlSize = [0.28, 0.10];
       spotI = 2.0;
       spotD = 20;
       beamLen = 15;
       beamRad = 3.5;
     }
 
-    // ── Headlights (emissive spheres for bloom) ──
-    const headlightGeo = new THREE.SphereGeometry(hlRadius, 8, 6);
-    const headlightMat = new THREE.MeshStandardMaterial({
+    // ── Headlight decals (flat planes flush on front face, facing +Z) ──
+    const hlGeo = new THREE.PlaneGeometry(hlSize[0], hlSize[1]);
+    const hlMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0xffeedd,
-      emissiveIntensity: 1.5,
-      roughness: 0.1,
+      emissiveIntensity: 3.0,
+      roughness: 0.05,
       metalness: 0.0,
     });
 
-    const hlL = new THREE.Mesh(headlightGeo, headlightMat);
-    hlL.position.set(...hlLPos);
+    const hlL = new THREE.Mesh(hlGeo, hlMat);
+    hlL.position.set(hlLPos[0], hlLPos[1], hlLPos[2] + 0.01); // tiny offset to prevent z-fighting
     this.bodyGroup.add(hlL);
 
-    const hlR = new THREE.Mesh(headlightGeo, headlightMat);
-    hlR.position.set(...hlRPos);
+    const hlR = new THREE.Mesh(hlGeo, hlMat.clone());
+    hlR.position.set(hlRPos[0], hlRPos[1], hlRPos[2] + 0.01);
     this.bodyGroup.add(hlR);
 
     // SpotLights for road illumination
@@ -390,23 +389,26 @@ export class Vehicle {
     beamR.position.set(hlRPos[0], hlRPos[1] - 0.5, hlRPos[2] + beamLen / 2);
     this.bodyGroup.add(beamR);
 
-    // ── Taillights (emissive boxes, brake-modulated) ──
-    const taillightGeo = new THREE.BoxGeometry(...tlSize);
+    // ── Taillight decals (flat planes flush on rear face, facing -Z) ──
+    const tlGeo = new THREE.PlaneGeometry(tlSize[0], tlSize[1]);
+
     this.taillightMatL = new THREE.MeshStandardMaterial({
-      color: 0xff0000,
+      color: 0xff1111,
       emissive: 0xff2200,
-      emissiveIntensity: 0.8,
-      roughness: 0.2,
+      emissiveIntensity: 0.6,
+      roughness: 0.1,
       metalness: 0.0,
     });
     this.taillightMatR = this.taillightMatL.clone();
 
-    const tlL = new THREE.Mesh(taillightGeo, this.taillightMatL);
-    tlL.position.set(...tlLPos);
+    const tlL = new THREE.Mesh(tlGeo, this.taillightMatL);
+    tlL.position.set(tlLPos[0], tlLPos[1], tlLPos[2] - 0.01);
+    tlL.rotation.y = Math.PI; // face backward (-Z)
     this.bodyGroup.add(tlL);
 
-    const tlR = new THREE.Mesh(taillightGeo, this.taillightMatR);
-    tlR.position.set(...tlRPos);
+    const tlR = new THREE.Mesh(tlGeo, this.taillightMatR);
+    tlR.position.set(tlRPos[0], tlRPos[1], tlRPos[2] - 0.01);
+    tlR.rotation.y = Math.PI;
     this.bodyGroup.add(tlR);
   }
 

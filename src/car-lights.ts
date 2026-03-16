@@ -10,15 +10,15 @@
  */
 
 export interface CarLightDef {
-  // ── Headlights ──
+  // ── Headlights (flat decals on front face) ──
   headlightL: [number, number, number]; // [x, y, z] position
   headlightR: [number, number, number];
-  headlightRadius: number;              // SphereGeometry radius
+  headlightSize: [number, number];      // [width, height] of decal plane
 
-  // ── Taillights ──
+  // ── Taillights (flat decals on rear face) ──
   taillightL: [number, number, number]; // [x, y, z] position
   taillightR: [number, number, number];
-  taillightSize: [number, number, number]; // BoxGeometry [w, h, d]
+  taillightSize: [number, number];      // [width, height] of decal plane
 
   // ── Beam parameters ──
   spotIntensity: number;  // SpotLight intensity
@@ -29,19 +29,18 @@ export interface CarLightDef {
 
 /**
  * Static light definitions per model filename.
- * Each entry was computed from the model's post-processed bounding box:
- *   frontZ, rearZ, halfW, lightY
- * with lights placed on the car surface.
+ * Headlights: warm-white flat decals flush against the front bumper.
+ * Taillights: red flat decals flush against the rear bumper.
  */
 export const CAR_LIGHT_MAP: Record<string, CarLightDef> = {
   // ── ENTRY TIER ──
   'white_camry.glb': {
     headlightL: [-0.62, 0.44, 1.95],
     headlightR: [ 0.62, 0.44, 1.95],
-    headlightRadius: 0.09,
+    headlightSize: [0.22, 0.14],
     taillightL: [-0.62, 0.44, -1.95],
     taillightR: [ 0.62, 0.44, -1.95],
-    taillightSize: [0.24, 0.08, 0.06],
+    taillightSize: [0.28, 0.10],
     spotIntensity: 2.0,
     spotDistance: 20,
     beamLength: 15,
@@ -52,10 +51,10 @@ export const CAR_LIGHT_MAP: Record<string, CarLightDef> = {
   'Nissan_Altima.glb': {
     headlightL: [-0.63, 0.45, 1.96],
     headlightR: [ 0.63, 0.45, 1.96],
-    headlightRadius: 0.09,
+    headlightSize: [0.24, 0.13],
     taillightL: [-0.63, 0.45, -1.95],
     taillightR: [ 0.63, 0.45, -1.95],
-    taillightSize: [0.26, 0.07, 0.06],
+    taillightSize: [0.30, 0.09],
     spotIntensity: 2.0,
     spotDistance: 20,
     beamLength: 15,
@@ -65,10 +64,10 @@ export const CAR_LIGHT_MAP: Record<string, CarLightDef> = {
   'Nissan_Maxima.glb': {
     headlightL: [-0.67, 0.42, 1.96],
     headlightR: [ 0.67, 0.42, 1.96],
-    headlightRadius: 0.10,
+    headlightSize: [0.26, 0.14],
     taillightL: [-0.67, 0.42, -1.96],
     taillightR: [ 0.67, 0.42, -1.96],
-    taillightSize: [0.28, 0.08, 0.06],
+    taillightSize: [0.32, 0.10],
     spotIntensity: 2.2,
     spotDistance: 22,
     beamLength: 16,
@@ -77,15 +76,12 @@ export const CAR_LIGHT_MAP: Record<string, CarLightDef> = {
 
   // ── EXOTIC TIER ──
   'Ferrari.glb': {
-    // Low-slung body — lights sit lower (lightY ≈ -0.08 from probe, but
-    // the car sits on the road at y=0 in game, so actual light height is
-    // relative to the bounding box. We use 0.30 as visual sweet-spot.)
     headlightL: [-0.66, 0.30, 1.96],
     headlightR: [ 0.66, 0.30, 1.96],
-    headlightRadius: 0.08,
+    headlightSize: [0.20, 0.08],
     taillightL: [-0.66, 0.30, -1.95],
     taillightR: [ 0.66, 0.30, -1.95],
-    taillightSize: [0.30, 0.06, 0.06],
+    taillightSize: [0.34, 0.06],
     spotIntensity: 2.5,
     spotDistance: 24,
     beamLength: 17,
@@ -95,10 +91,10 @@ export const CAR_LIGHT_MAP: Record<string, CarLightDef> = {
   'Porsche_911.glb': {
     headlightL: [-0.65, 0.41, 1.97],
     headlightR: [ 0.65, 0.41, 1.97],
-    headlightRadius: 0.08,
+    headlightSize: [0.18, 0.10],
     taillightL: [-0.65, 0.41, -1.95],
     taillightR: [ 0.65, 0.41, -1.95],
-    taillightSize: [0.30, 0.06, 0.05],
+    taillightSize: [0.36, 0.06],
     spotIntensity: 2.4,
     spotDistance: 22,
     beamLength: 16,
@@ -108,10 +104,10 @@ export const CAR_LIGHT_MAP: Record<string, CarLightDef> = {
   'Subaru_WRX3.glb': {
     headlightL: [-0.63, 0.45, 1.97],
     headlightR: [ 0.63, 0.45, 1.97],
-    headlightRadius: 0.09,
+    headlightSize: [0.22, 0.14],
     taillightL: [-0.63, 0.45, -1.95],
     taillightR: [ 0.63, 0.45, -1.95],
-    taillightSize: [0.24, 0.08, 0.06],
+    taillightSize: [0.26, 0.10],
     spotIntensity: 2.2,
     spotDistance: 20,
     beamLength: 15,
@@ -122,10 +118,10 @@ export const CAR_LIGHT_MAP: Record<string, CarLightDef> = {
   'Lamborghini.glb': {
     headlightL: [-0.70, 0.29, 1.97],
     headlightR: [ 0.70, 0.29, 1.97],
-    headlightRadius: 0.07,
+    headlightSize: [0.16, 0.06],
     taillightL: [-0.70, 0.29, -1.95],
     taillightR: [ 0.70, 0.29, -1.95],
-    taillightSize: [0.32, 0.05, 0.05],
+    taillightSize: [0.38, 0.04],
     spotIntensity: 2.8,
     spotDistance: 26,
     beamLength: 18,
