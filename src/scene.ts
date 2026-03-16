@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { mix, smoothstep, normalWorld, uniform, vec3 } from 'three/tsl';
-// RoomEnvironment removed — its IBL reflections caused excessive white saturation
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 let renderer: THREE.WebGPURenderer;
 let scene: THREE.Scene;
@@ -46,65 +46,65 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     name: 'Urban Night',
     fogColor: 0x1a1a2e, fogDensity: 0.0003,
     skyTop: 0x0d0d1a, skyBottom: 0x1a1a3a, skyHorizon: 0x2a1a30,
-    hemiSky: 0x88aacc, hemiGround: 0x444422, hemiIntensity: 0.8,
-    dirColor: 0xffeedd, dirIntensity: 1.8, dirPosition: [50, 80, 30],
-    groundColor: 0x222228, exposure: 1.0,
+    hemiSky: 0x88aacc, hemiGround: 0x444422, hemiIntensity: 1.0,
+    dirColor: 0xffeedd, dirIntensity: 2.0, dirPosition: [50, 80, 30],
+    groundColor: 0x222228, exposure: 1.15,
   },
   {
     name: 'Desert Dawn',
     fogColor: 0xccaa66, fogDensity: 0.00025,
     skyTop: 0x1a0a2e, skyBottom: 0xff6633, skyHorizon: 0xffaa44,
-    hemiSky: 0xffddaa, hemiGround: 0x886633, hemiIntensity: 1.0,
-    dirColor: 0xffcc88, dirIntensity: 2.0, dirPosition: [80, 30, 50],
-    groundColor: 0x3a3530, exposure: 1.1,
+    hemiSky: 0xffddaa, hemiGround: 0x886633, hemiIntensity: 1.2,
+    dirColor: 0xffcc88, dirIntensity: 2.2, dirPosition: [80, 30, 50],
+    groundColor: 0x3a3530, exposure: 1.3,
   },
   {
     name: 'Coastal Sunset',
     fogColor: 0x445577, fogDensity: 0.0003,
     skyTop: 0x0a1628, skyBottom: 0x2244aa, skyHorizon: 0xff6644,
-    hemiSky: 0xaabbdd, hemiGround: 0x445566, hemiIntensity: 0.9,
-    dirColor: 0xffaa77, dirIntensity: 2.0, dirPosition: [-60, 25, 60],
-    groundColor: 0x1a2030, exposure: 1.1,
+    hemiSky: 0xaabbdd, hemiGround: 0x445566, hemiIntensity: 1.1,
+    dirColor: 0xffaa77, dirIntensity: 2.2, dirPosition: [-60, 25, 60],
+    groundColor: 0x1a2030, exposure: 1.25,
   },
   {
     name: 'Neon City',
     fogColor: 0x0a0a1e, fogDensity: 0.0004,
     skyTop: 0x050510, skyBottom: 0x0a0a2a, skyHorizon: 0x1a0530,
-    hemiSky: 0x4488ff, hemiGround: 0x220044, hemiIntensity: 0.6,
-    dirColor: 0xcc44ff, dirIntensity: 1.5, dirPosition: [30, 60, -40],
-    groundColor: 0x0a0a14, exposure: 1.3,
+    hemiSky: 0x4488ff, hemiGround: 0x220044, hemiIntensity: 0.7,
+    dirColor: 0xcc44ff, dirIntensity: 1.8, dirPosition: [30, 60, -40],
+    groundColor: 0x0a0a14, exposure: 1.5,
   },
   {
     name: 'Thunder Storm',
     fogColor: 0x1a2020, fogDensity: 0.0005,
     skyTop: 0x0a0f0f, skyBottom: 0x1a2525, skyHorizon: 0x2a3535,
-    hemiSky: 0x556666, hemiGround: 0x222222, hemiIntensity: 0.5,
-    dirColor: 0x8899aa, dirIntensity: 1.2, dirPosition: [40, 50, 20],
-    groundColor: 0x151a1a, exposure: 0.9,
+    hemiSky: 0x556666, hemiGround: 0x222222, hemiIntensity: 0.55,
+    dirColor: 0x8899aa, dirIntensity: 1.3, dirPosition: [40, 50, 20],
+    groundColor: 0x151a1a, exposure: 1.0,
   },
   {
     name: 'Alpine Snow',
     fogColor: 0xccccdd, fogDensity: 0.0004,
     skyTop: 0x889099, skyBottom: 0xbbc0cc, skyHorizon: 0xdde0e8,
-    hemiSky: 0xccddee, hemiGround: 0x667788, hemiIntensity: 0.9,
-    dirColor: 0xeeeeff, dirIntensity: 1.5, dirPosition: [60, 40, 40],
-    groundColor: 0x334455, exposure: 1.0,
+    hemiSky: 0xccddee, hemiGround: 0x667788, hemiIntensity: 1.1,
+    dirColor: 0xeeeeff, dirIntensity: 1.6, dirPosition: [60, 40, 40],
+    groundColor: 0x334455, exposure: 1.1,
   },
   {
     name: 'Blizzard',
     fogColor: 0xaaaabb, fogDensity: 0.0008,
     skyTop: 0x999aa5, skyBottom: 0xaaaaba, skyHorizon: 0xbbbbcc,
-    hemiSky: 0xaabbcc, hemiGround: 0x556677, hemiIntensity: 0.6,
-    dirColor: 0xccccdd, dirIntensity: 0.8, dirPosition: [30, 60, 20],
-    groundColor: 0x2a3040, exposure: 0.8,
+    hemiSky: 0xaabbcc, hemiGround: 0x556677, hemiIntensity: 0.7,
+    dirColor: 0xccccdd, dirIntensity: 0.9, dirPosition: [30, 60, 20],
+    groundColor: 0x2a3040, exposure: 0.9,
   },
   {
     name: 'Black Ice',
     fogColor: 0x0a1020, fogDensity: 0.0003,
     skyTop: 0x050810, skyBottom: 0x101828, skyHorizon: 0x1a2540,
-    hemiSky: 0x4466aa, hemiGround: 0x111122, hemiIntensity: 0.7,
-    dirColor: 0x88aadd, dirIntensity: 1.6, dirPosition: [50, 70, -30],
-    groundColor: 0x0a0e18, exposure: 1.1,
+    hemiSky: 0x4466aa, hemiGround: 0x111122, hemiIntensity: 0.8,
+    dirColor: 0x88aadd, dirIntensity: 1.8, dirPosition: [50, 70, -30],
+    groundColor: 0x0a0e18, exposure: 1.2,
   },
 ];
 
@@ -141,7 +141,7 @@ export async function initScene(container: HTMLElement) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  renderer.toneMappingExposure = 1.15;
 
   // Async init — requests GPU adapter/device (falls back to WebGL2 automatically)
   await renderer.init();
@@ -155,13 +155,17 @@ export async function initScene(container: HTMLElement) {
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
   camera.position.set(0, 10, 20);
 
-  // No IBL environment map — prevents excessive white reflections on all surfaces
-  scene.environment = null;
+  // Subtle IBL for material reflections (low intensity to avoid white wash)
+  const pmremGenerator = new THREE.PMREMGenerator(renderer);
+  const envMap = pmremGenerator.fromScene(new RoomEnvironment()).texture;
+  scene.environment = envMap;
+  scene.environmentIntensity = 0.35;
+  pmremGenerator.dispose();
 
-  hemiLight = new THREE.HemisphereLight(0x88aacc, 0x444422, 0.8);
+  hemiLight = new THREE.HemisphereLight(0x88aacc, 0x444422, 1.0);
   scene.add(hemiLight);
 
-  dirLight = new THREE.DirectionalLight(0xffeedd, 1.8);
+  dirLight = new THREE.DirectionalLight(0xffeedd, 2.0);
   dirLight.position.set(50, 80, 30);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.set(2048, 2048);

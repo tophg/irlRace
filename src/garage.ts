@@ -374,7 +374,11 @@ function applyPaintToGarageModel(hue: number) {
     if (!mat || Array.isArray(mat)) return;
     if (mat.transparent && mat.opacity < 0.9) return;
     // Skip emissive-dominant meshes (headlights, taillights, indicators)
-    if (mat.emissiveIntensity && mat.emissiveIntensity > 0.5) return;
+    // Check actual emissive color luminance, not just emissiveIntensity (defaults to 1.0)
+    if (mat.emissive && mat.emissiveIntensity > 0.3) {
+      const eLum = mat.emissive.r * 0.299 + mat.emissive.g * 0.587 + mat.emissive.b * 0.114;
+      if (eLum > 0.1) return; // genuinely emissive — skip
+    }
     if (mat.color) {
       const hsl = { h: 0, s: 0, l: 0 };
       mat.color.getHSL(hsl);

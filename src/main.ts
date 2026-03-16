@@ -274,6 +274,8 @@ function enterGarage(mode: 'singleplayer' | 'multiplayer') {
 
   initGarage(renderer, uiOverlay, (car: CarDef) => {
     G.selectedCar = car;
+    // Show loading overlay FIRST to cover the transition (prevents empty scene flash)
+    showLoading();
     destroyGarage();
 
     if (mode === 'singleplayer') {
@@ -1964,13 +1966,13 @@ function gameLoop(timestamp: number) {
         renderer.readRenderTargetPixelsAsync(G.mirrorRT, 0, 0, w, h).then((buf) => {
           const ctx = canvas.getContext('2d')!;
           const imgData = ctx.createImageData(w, h);
-          // Flip Y (GPU render targets are bottom-up)
-          for (let row = 0; row < h; row++) {
-            const srcOffset = (h - 1 - row) * w * 4;
-            const dstOffset = row * w * 4;
-            imgData.data.set(buf.subarray(srcOffset, srcOffset + w * 4), dstOffset);
-          }
-          ctx.putImageData(imgData, 0, 0);
+          // WebGPU returns top-down pixels — copy directly (no Y flip needed)
+          imgData.data.set(new Uint8ClampedArray(buf.buffer, buf.byteOffset, buf.byteLength));
+          // Flip horizontally for rearview mirror effect
+          ctx.save();
+          ctx.scale(-1, 1);
+          ctx.putImageData(imgData, -w, 0);
+          ctx.restore();
           G._mirrorReading = false;
         }).catch(() => { G._mirrorReading = false; });
       }

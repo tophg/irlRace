@@ -55,6 +55,7 @@ function processCarModel(model: THREE.Group): THREE.Group {
   const center = box.getCenter(new THREE.Vector3());
   model.position.sub(center);
   model.position.y -= box.min.y; // sit on ground
+  model.position.y -= 0.15;       // nudge down to close wheel-road gap
 
   // Material enhancements
   model.traverse((child) => {
@@ -69,7 +70,7 @@ function processCarModel(model: THREE.Group): THREE.Group {
 
       const mat = mesh.material as THREE.MeshStandardMaterial;
       if (mat && mat.isMeshStandardMaterial) {
-        mat.envMapIntensity = 1.2;
+        mat.envMapIntensity = 0.6;
         mat.roughness = Math.max(mat.roughness * 0.7, 0.05);
         mat.needsUpdate = true;
       }
