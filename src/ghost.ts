@@ -186,6 +186,22 @@ export function getGhostBestTime(seed: number): string | null {
 export function destroyGhost(scene: THREE.Scene) {
   if (ghostMesh) {
     scene.remove(ghostMesh);
+    
+    // Dispose explicitly to prevent memory leaks across lap restarts
+    ghostMesh.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        mesh.geometry?.dispose();
+        if (mesh.material) {
+          if (Array.isArray(mesh.material)) {
+            mesh.material.forEach(m => m.dispose());
+          } else {
+            mesh.material.dispose();
+          }
+        }
+      }
+    });
+
     ghostMesh = null;
   }
   playbackActive = false;

@@ -559,6 +559,10 @@ function disposeMaterial(mat: THREE.Material) {
   if (std.normalMap) std.normalMap.dispose();
   if (std.aoMap) std.aoMap.dispose();
   if (std.emissiveMap) std.emissiveMap.dispose();
+  if (std.envMap) std.envMap.dispose();
+  if (std.roughnessMap) std.roughnessMap.dispose();
+  if (std.metalnessMap) std.metalnessMap.dispose();
+  if (std.alphaMap) std.alphaMap.dispose();
   mat.dispose();
 }
 

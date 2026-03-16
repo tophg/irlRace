@@ -58,6 +58,7 @@ export class AIRacer {
 
   // Overtake state
   private overtakeTarget: string | null = null;
+  private stuckTimer = 0;
   private laneOffset = 0;       // -1 (left) to 1 (right), 0 = center
   private targetLaneOffset = 0;
 
@@ -138,6 +139,30 @@ export class AIRacer {
       ? getClosestSplinePoint(this.spline, this.vehicle.group.position, this.bvh)
       : getClosestSplinePoint(this.spline, this.vehicle.group.position, 200);
     this.currentT = nearest.t;
+
+    // ── Stuck Detection & Recovery ──
+    // If AI is moving very slowly, they might be pinned against a wall or spun around.
+    if (Math.abs(this.vehicle.speed) < 2) {
+      this.stuckTimer += dt;
+      if (this.stuckTimer > 3.0) { // Stuck for 3 seconds
+        // Respawn AI on the track at current T, facing forward
+        const respawnPt = this.spline.getPointAt(this.currentT);
+        const respawnDir = this.spline.getTangentAt(this.currentT).normalize();
+        
+        // Reset physics body
+        this.vehicle.group.position.copy(respawnPt);
+        this.vehicle.group.position.y += 0.5; // Drop slightly above track
+        this.vehicle.heading = Math.atan2(respawnDir.x, respawnDir.z);
+        this.vehicle.group.rotation.y = this.vehicle.heading;
+        this.vehicle.speed = 10; // Give them a rolling start
+        
+        // Reset stuck timer
+        this.stuckTimer = 0;
+        return; // Skip rest of update this frame
+      }
+    } else {
+      this.stuckTimer = 0; // Reset if moving
+    }
 
     // ── Opponent awareness + overtaking ──
     if (opponents && opponents.length > 0) {
