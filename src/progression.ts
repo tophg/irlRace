@@ -19,7 +19,7 @@ const UNLOCK_COSTS: Record<string, number> = {
   // Entry tier — free
   civic: 0,
   haven: 0,
-  drifter: 0,
+
   // Mid tier
   phantom: 500,
   monarch: 600,
@@ -58,7 +58,7 @@ function defaultProgress(): PlayerProgress {
     bestLapTime: 0,
     totalDistance: 0,
     totalDriftTime: 0,
-    unlockedCars: ['civic', 'haven', 'drifter'], // Entry tier free
+    unlockedCars: ['civic', 'haven'], // Entry tier free
   };
 }
 

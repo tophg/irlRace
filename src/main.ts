@@ -273,6 +273,10 @@ async function startRace() {
 
     clearRaceObjects();
     G.physicsAccumulator = 0; // prevent stale accumulation from loading
+    G._drsFrameTimes.length = 0; // clear stale DRS data from previous race
+    // Reset pixel ratio to native (DRS may have reduced it in previous race)
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
 
     // Generate track (preserve seed for restart)
     const seed = G.trackSeed ?? Math.floor(Math.random() * 99999);

@@ -40,8 +40,7 @@ export const CAR_ROSTER: CarDef[] = [
   { id: 'civic',       name: 'Civic',       file: 'blue_camry.glb',    maxSpeed: 68, acceleration: 28, handling: 2.4, braking: 45, driftFactor: 0.28, gripCoeff: 0.85, latFriction: 5.5, suspStiffness: 0.04, steerSpeed: 3.0,  driftThreshold: 0.12, mass: 1500, cgHeight: 0.12, frontBias: 0.54 },
   // Haven — beginner-friendly, forgiving grip, smooth ride
   { id: 'haven',       name: 'Haven',       file: 'white_camry.glb',   maxSpeed: 65, acceleration: 30, handling: 2.6, braking: 48, driftFactor: 0.20, gripCoeff: 0.95, latFriction: 6.5, suspStiffness: 0.03, steerSpeed: 3.2,  driftThreshold: 0.15, mass: 1480, cgHeight: 0.11, frontBias: 0.53 },
-  // Drifter — slide-happy, low grip, huge fun factor
-  { id: 'drifter',     name: 'Drifter',     file: 'Subaru_WRX2.glb',   maxSpeed: 66, acceleration: 29, handling: 2.5, braking: 44, driftFactor: 0.52, gripCoeff: 0.65, latFriction: 3.2, suspStiffness: 0.06, steerSpeed: 2.5,  driftThreshold: 0.08, mass: 1400, cgHeight: 0.14, frontBias: 0.50 },
+
 
   // ── MID TIER ──
   // Phantom — loose rear, rewards aggression, high mid-tier speed
