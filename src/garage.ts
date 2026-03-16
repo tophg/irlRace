@@ -452,10 +452,10 @@ function buildGarageUI(overlay: HTMLElement) {
     </div>
     <div class="paint-shop" id="paint-shop">
       <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px">
-        <div id="paint-swatch" style="width:28px;height:28px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);background:hsl(180,85%,45%)"></div>
+        <div id="paint-swatch" style="width:28px;height:28px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);background:hsl(180,90%,22%)"></div>
         <input type="range" min="0" max="360" value="${getSettings().paintHue >= 0 ? getSettings().paintHue : 180}" id="garage-paint"
                style="width:140px;-webkit-appearance:none;height:8px;border-radius:4px;
-                      background:linear-gradient(to right,hsl(0,85%,45%),hsl(60,85%,45%),hsl(120,85%,45%),hsl(180,85%,45%),hsl(240,85%,45%),hsl(300,85%,45%),hsl(360,85%,45%))">
+                      background:linear-gradient(to right,hsl(0,90%,22%),hsl(60,90%,22%),hsl(120,90%,22%),hsl(180,90%,22%),hsl(240,90%,22%),hsl(300,90%,22%),hsl(360,90%,22%))">
       </div>
       <div style="display:flex;align-items:center;justify-content:center;gap:8px">
         <button id="garage-paint-buy" style="font-size:11px;padding:5px 14px;border-radius:4px;border:none;
@@ -524,7 +524,7 @@ function buildGarageUI(overlay: HTMLElement) {
     paintSlider.addEventListener('input', () => {
       _previewHue = parseInt(paintSlider.value);
       applyPaintToGarageModel(_previewHue);
-      paintSwatch.style.background = `hsl(${_previewHue},85%,45%)`;
+      paintSwatch.style.background = `hsl(${_previewHue},90%,22%)`;
     });
   }
 
@@ -556,7 +556,7 @@ function buildGarageUI(overlay: HTMLElement) {
     saveSettings(s);
     _previewHue = 180;
     if (paintSlider) paintSlider.value = '180';
-    paintSwatch.style.background = 'hsl(180,85%,45%)';
+    paintSwatch.style.background = 'hsl(180,90%,22%)';
     restoreOriginalColors();
     showPaintToast('Paint reset!', '#aaaaaa');
   });
@@ -711,7 +711,7 @@ async function showCar(index: number) {
       const slider = document.getElementById('garage-paint') as HTMLInputElement;
       const swatch = document.getElementById('paint-swatch');
       if (slider) slider.value = String(savedHue);
-      if (swatch) swatch.style.background = `hsl(${savedHue},85%,45%)`;
+      if (swatch) swatch.style.background = `hsl(${savedHue},90%,22%)`;
     }
     // Update paint balance display
     const balEl = document.getElementById('paint-balance');
@@ -753,7 +753,7 @@ function storeOriginal(mat: any) {
 /** Recolor the current garage model's body panels with a hue (0–360). */
 function applyPaintToGarageModel(hue: number) {
   if (!currentModel) return;
-  const color = new THREE.Color().setHSL(hue / 360, 0.85, 0.45);
+  const color = new THREE.Color().setHSL(hue / 360, 0.90, 0.22);
   currentModel.traverse((child: any) => {
     if (!child.isMesh) return;
     if (!child.material) return;
