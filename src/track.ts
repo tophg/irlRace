@@ -1250,3 +1250,50 @@ function createCheckpointArch(isStart: boolean): THREE.Group {
 
   return arch;
 }
+
+/**
+ * Highlight the next checkpoint and dim passed ones.
+ * Call every frame with the group from `buildCheckpointMarkers()`.
+ */
+export function updateCheckpointHighlight(
+  markerGroup: THREE.Group,
+  nextCpIndex: number,
+  time: number,
+) {
+  const cpCount = markerGroup.children.length;
+  for (let i = 0; i < cpCount; i++) {
+    const arch = markerGroup.children[i] as THREE.Group;
+    const isNext = i === nextCpIndex;
+    const isPassed = i < nextCpIndex || (nextCpIndex === 0 && i > 0);
+
+    // Pulse scale for the next checkpoint
+    if (isNext) {
+      const pulse = 1.0 + Math.sin(time * 4) * 0.08;
+      arch.scale.setScalar(pulse);
+    } else {
+      // Lerp scale back to 1 (in case it was just crossed)
+      arch.scale.lerp(_scaleOne, 0.1);
+    }
+
+    // Set opacity: next = bright, passed = dim, future = medium
+    arch.traverse((child: THREE.Object3D) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+        if (mat.transparent !== undefined) {
+          if (isNext) {
+            mat.opacity = 0.85 + Math.sin(time * 6) * 0.15;
+            mat.emissiveIntensity = 0.5 + Math.sin(time * 4) * 0.3;
+          } else if (isPassed) {
+            mat.opacity = Math.max(mat.opacity - 0.02, 0.15);
+            mat.emissiveIntensity = 0.1;
+          } else {
+            mat.opacity = 0.4;
+            mat.emissiveIntensity = 0.2;
+          }
+        }
+      }
+    });
+  }
+}
+
+const _scaleOne = new THREE.Vector3(1, 1, 1);

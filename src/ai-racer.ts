@@ -175,9 +175,30 @@ export class AIRacer {
       steerInput = Math.max(-1, Math.min(1, steerInput));
     }
 
+    // ── Rubber-banding: adjust speed factor based on gap to player ──
+    let rubberBand = 0;
+    if (opponents && opponents.length > 0) {
+      // Find the player (assumed to be 'local') or first opponent as reference
+      const playerOpp = opponents.find(o => o.id === 'local') ?? opponents[0];
+      if (playerOpp) {
+        // Gap in spline t: positive = AI is behind player
+        let tGap = playerOpp.t - this.currentT;
+        if (tGap > 0.5) tGap -= 1;
+        if (tGap < -0.5) tGap += 1;
+        // tGap > 0 means AI is behind, tGap < 0 means AI is ahead
+        if (tGap > 0.02) {
+          // Behind: boost up to +8% based on gap
+          rubberBand = Math.min(tGap * 1.6, 0.08);
+        } else if (tGap < -0.05) {
+          // Ahead: slight penalty up to -5%
+          rubberBand = Math.max(tGap * 0.5, -0.05);
+        }
+      }
+    }
+
     // ── Curvature-aware speed control with 3-point lookahead ──
     const absSpeed = Math.abs(this.vehicle.speed);
-    let targetSpeed = this.vehicle.def.maxSpeed * p.topSpeedFactor;
+    let targetSpeed = this.vehicle.def.maxSpeed * (p.topSpeedFactor + rubberBand);
 
     // Detect upcoming curvature for racing line + braking
     let curvatureAhead = 0; // 0 = straight, >0 = turning

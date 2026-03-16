@@ -7,7 +7,7 @@ import { GameState, CAR_ROSTER, CarDef, EventType } from './types';
 import type { TrackData } from './types';
 import { initScene, getRenderer, getScene, getCamera, getDirLight, applyEnvironment, getEnvironmentForSeed, getEnvironmentByName } from './scene';
 import { loadCarModel } from './loaders';
-import { generateTrack, buildCheckpointMarkers, getClosestSplinePoint } from './track';
+import { generateTrack, buildCheckpointMarkers, getClosestSplinePoint, updateCheckpointHighlight } from './track';
 import { Vehicle } from './vehicle';
 import { VehicleCamera } from './vehicle-camera';
 import { RaceEngine } from './race-engine';
@@ -45,6 +45,7 @@ import {
   spawnGPUScrapeSparks, spawnGPUGlassShards, spawnGPUShoulderDust,
   spawnGPUNitroTrail, spawnGPURimSparks, spawnGPUBackfire,
 } from './gpu-particles';
+import { initTrackRadar, updateTrackRadar, destroyTrackRadar } from './minimap';
 import {
   initRapierWorld, addBarrierCollider, addCarBody,
   syncCarToRapier, stepRapierWorld, destroyRapierWorld,
@@ -227,10 +228,11 @@ function enterGarage(mode: 'singleplayer' | 'multiplayer') {
     destroyGarage();
 
     if (mode === 'singleplayer') {
-      showRaceConfig((laps, ai, difficulty, seed) => {
+      showRaceConfig((laps, ai, difficulty, seed, weather) => {
         G.totalLaps = laps;
         G.aiCount = ai;
         G.aiDifficulty = difficulty;
+        (G as any)._selectedWeather = weather;
         if (seed.length > 0) {
           const parsed = parseInt(seed, 10);
           G.trackSeed = Number.isNaN(parsed) ? Math.floor(Math.random() * 99999) : parsed;
@@ -269,7 +271,12 @@ async function startRace() {
     G.trackSeed = null;
     G.trackData = generateTrack(seed);
     applyEnvironment(getEnvironmentForSeed(seed));
-    initWeather(scene, getWeatherForSeed(seed));
+    // Weather: use player-selected weather if not 'random', else seed-based
+    const selectedW = (G as any)._selectedWeather as string;
+    const weatherType = (selectedW && selectedW !== 'random')
+      ? selectedW as any
+      : getWeatherForSeed(seed);
+    initWeather(scene, weatherType);
 
     // Override env preset for cold weather types to match visuals
     const w = getCurrentWeather();
@@ -311,6 +318,9 @@ async function startRace() {
     initImpactFlash(container);
     initBoostShockwave(scene);
     initHeatShimmer(container);
+
+    // Track radar minimap
+    initTrackRadar(G.trackData.spline, document.getElementById('ui-overlay')!);
 
     // Collect street light positions for lens flares
     const lightPositions: THREE.Vector3[] = [];
@@ -622,6 +632,7 @@ function clearRaceObjects() {
   stopAudio();
 
   destroyHUD();
+  destroyTrackRadar();
   destroyLeaderboard();
 
   // Clean up debug overlay
@@ -1419,6 +1430,19 @@ function gameLoop(timestamp: number) {
     const speedR = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
     updateHeatShimmer(speedR);
 
+    // Track radar minimap
+    if (G.playerVehicle) {
+      const aiDots = G.aiRacers.map(a => ({ pos: a.vehicle.group.position, id: a.id }));
+      updateTrackRadar(G.playerVehicle.group.position, G.playerVehicle.heading, aiDots);
+
+      // Checkpoint gate highlight (pulse next, dim passed)
+      if (G.checkpointMarkers) {
+        const localProgress = G.raceEngine?.getProgress('local');
+        const nextCp = localProgress ? localProgress.checkpointIndex : 0;
+        updateCheckpointHighlight(G.checkpointMarkers, nextCp, timestamp / 1000);
+      }
+    }
+
     // Lens flare sprites (distance fade from camera)
     updateLensFlares(camera.position, timestamp / 1000);
 
@@ -1757,8 +1781,8 @@ function gameLoop(timestamp: number) {
       // Render as a viewport in the top-center of the canvas
       const canvasW = renderer.domElement.width;
       const canvasH = renderer.domElement.height;
-      const mirW = 160;
-      const mirH = 60;
+      const mirW = 320;
+      const mirH = 120;
       const mirX = Math.floor((canvasW - mirW) / 2);
       const mirY = 14;
 

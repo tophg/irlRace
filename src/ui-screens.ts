@@ -224,7 +224,7 @@ export function hideLoading() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export function showRaceConfig(
-  onStart: (laps: number, ai: number, difficulty: 'easy' | 'medium' | 'hard', seed: string) => void,
+  onStart: (laps: number, ai: number, difficulty: 'easy' | 'medium' | 'hard', seed: string, weather: string) => void,
   onBack: () => void,
 ) {
   const uiOverlay = document.getElementById('ui-overlay')!;
@@ -259,6 +259,18 @@ export function showRaceConfig(
         </select>
       </label>
       <label class="settings-row">
+        <span>Weather</span>
+        <select id="cfg-weather">
+          <option value="random" selected>Random</option>
+          <option value="clear">☀️ Clear</option>
+          <option value="light_rain">🌦️ Light Rain</option>
+          <option value="heavy_rain">🌧️ Heavy Rain</option>
+          <option value="snow">❄️ Snow</option>
+          <option value="blizzard">🌨️ Blizzard</option>
+          <option value="ice">🧊 Ice</option>
+        </select>
+      </label>
+      <label class="settings-row">
         <span>Track Seed</span>
         <input type="text" id="cfg-seed" placeholder="Random" maxlength="5"
                class="lobby-input" style="width:100px;font-size:14px;padding:4px 8px;letter-spacing:2px;">
@@ -281,8 +293,9 @@ export function showRaceConfig(
     const ai = parseInt((el.querySelector('#cfg-ai') as HTMLSelectElement).value);
     const difficulty = (el.querySelector('#cfg-difficulty') as HTMLSelectElement).value as 'easy' | 'medium' | 'hard';
     const seed = (el.querySelector('#cfg-seed') as HTMLInputElement).value.trim();
+    const weather = (el.querySelector('#cfg-weather') as HTMLSelectElement).value;
     el.remove();
-    onStart(laps, ai, difficulty, seed);
+    onStart(laps, ai, difficulty, seed, weather);
   });
 }
 
