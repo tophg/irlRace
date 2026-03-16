@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { CAR_ROSTER, CarDef } from './types';
 import { loadCarModel, loadCarModelWithProgress } from './loaders';
+import { isCarUnlocked, getUnlockCost, unlockCar, getProgress } from './progression';
 
 let garageScene: THREE.Scene;
 let garageCamera: THREE.PerspectiveCamera;
@@ -217,7 +218,15 @@ function buildGarageUI(overlay: HTMLElement) {
   });
 
   uiEl.querySelector('#garage-select')!.addEventListener('click', () => {
-    if (onSelectCallback) onSelectCallback(CAR_ROSTER[currentIndex]);
+    const car = CAR_ROSTER[currentIndex];
+    if (!isCarUnlocked(car.id)) {
+      // Try to unlock
+      if (unlockCar(car.id)) {
+        showCar(currentIndex); // Refresh display
+      }
+      return;
+    }
+    if (onSelectCallback) onSelectCallback(car);
   });
 
   progressBarEl = uiEl.querySelector('#garage-progress-bar') as HTMLElement;
@@ -241,9 +250,16 @@ async function showCar(index: number) {
   const statsEl = document.getElementById('garage-stats');
   if (statsEl) {
     const maxStat = { speed: 92, accel: 38, handling: 3.4, drift: 0.52, grip: 1.12 };
+    const locked = !isCarUnlocked(car.id);
+    const unlockCost = getUnlockCost(car.id);
+    const lockLabel = locked ? `🔒 ${unlockCost} CR` : 'UNLOCKED';
+    const lockColor = locked ? '#ff4444' : tierInfo.color;
+    const prog = getProgress();
+
     statsEl.innerHTML = `
       <div style="text-align:center;margin-bottom:8px">
         <span style="background:${tierInfo.color};color:#111;padding:2px 10px;border-radius:3px;font-weight:700;font-size:11px;letter-spacing:1px">${tierInfo.label}</span>
+        <span style="background:${lockColor};color:#fff;padding:2px 8px;border-radius:3px;font-weight:700;font-size:10px;letter-spacing:1px;margin-left:6px">${lockLabel}</span>
       </div>
       <div class="stat-bar">
         <div class="bar-track"><div class="bar-fill" style="width:${(car.maxSpeed / maxStat.speed) * 100}%"></div></div>
@@ -265,7 +281,17 @@ async function showCar(index: number) {
         <div class="bar-track"><div class="bar-fill" style="width:${(car.driftFactor / maxStat.drift) * 100}%"></div></div>
         <label>Drift</label>
       </div>
+      <div style="text-align:center;margin-top:6px;font-size:11px;color:rgba(255,255,255,0.5)">
+        Credits: <span style="color:#ffcc00;font-weight:700">${prog.credits} CR</span>
+      </div>
     `;
+
+    // Update select button label
+    const selectBtn = document.getElementById('garage-select');
+    if (selectBtn) {
+      selectBtn.textContent = locked ? `UNLOCK ${unlockCost} CR` : 'SELECT';
+      selectBtn.style.opacity = (locked && prog.credits < unlockCost) ? '0.5' : '1';
+    }
   }
 
   if (currentModel) {

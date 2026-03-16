@@ -47,6 +47,7 @@ import {
 } from './gpu-particles';
 import { initTrackRadar, updateTrackRadar, destroyTrackRadar } from './minimap';
 import { initMusic, updateMusicIntensity, pauseMusic, resumeMusic, stopMusic } from './music';
+import { loadProgress, processRaceRewards, getProgress, levelProgress, xpToNextLevel, type RaceResult } from './progression';
 import {
   initRapierWorld, addBarrierCollider, addCarBody,
   syncCarToRapier, stepRapierWorld, destroyRapierWorld,
@@ -749,6 +750,40 @@ function resolvePlayerName(id: string): string {
   return mpName || netName || id.slice(0, 8);
 }
 
+function buildRewardHTML(rankings: any[], localProgress: any): string {
+  // Process rewards via progression system
+  const localRank = rankings.findIndex((r: any) => r.id === 'local') + 1;
+  const bestLap = localProgress?.lapTimes?.length > 0 ? Math.min(...localProgress.lapTimes) : 0;
+  const raceResult: RaceResult = {
+    placement: localRank || 1,
+    totalRacers: rankings.length,
+    lapTimes: localProgress?.lapTimes ?? [],
+    bestLap: bestLap / 1000, // convert to seconds
+    collisionCount: G.raceStats.collisionCount,
+    driftTime: G.raceStats.totalDriftTime,
+    topSpeed: G.raceStats.topSpeed,
+    trackLength: G.trackData?.totalLength ?? 500,
+    lapsCompleted: localProgress?.lapTimes?.length ?? 0,
+  };
+  const rewards = processRaceRewards(raceResult);
+  const prog = getProgress();
+  const lvlPct = Math.round(levelProgress() * 100);
+
+  let html = `<div class="lap-breakdown" style="margin-top:8px;">
+    <div class="lap-breakdown-title">REWARDS</div>
+    <div class="lap-breakdown-row"><span>Race Complete</span><span>+${rewards.baseXP} XP / +${rewards.baseCredits} CR</span></div>`;
+  if (rewards.winBonus > 0) html += `<div class="lap-breakdown-row best"><span>🏆 Victory!</span><span>+${rewards.winBonus} XP / +${rewards.winCreditsBonus} CR</span></div>`;
+  if (rewards.podiumBonus > 0) html += `<div class="lap-breakdown-row"><span>🥇 Podium</span><span>+${rewards.podiumBonus} XP / +${rewards.podiumCreditsBonus} CR</span></div>`;
+  if (rewards.cleanBonus > 0) html += `<div class="lap-breakdown-row"><span>✨ Clean Race</span><span>+${rewards.cleanBonus} XP</span></div>`;
+  if (rewards.driftBonus > 0) html += `<div class="lap-breakdown-row"><span>🔥 Drift Bonus</span><span>+${rewards.driftBonus} XP</span></div>`;
+  html += `<div class="lap-breakdown-row" style="border-top:1px solid rgba(255,255,255,0.15);padding-top:4px;font-weight:700;"><span>Total</span><span>+${rewards.totalXP} XP / +${rewards.totalCredits} CR</span></div>`;
+  if (rewards.leveledUp) html += `<div class="lap-breakdown-row best" style="color:#ffcc00;font-weight:700;"><span>⬆ LEVEL UP!</span><span>Level ${rewards.newLevel}</span></div>`;
+  html += `<div class="lap-breakdown-row" style="margin-top:6px;"><span>Level ${prog.level}</span><span>${xpToNextLevel()} XP to next</span></div>`;
+  html += `<div style="background:rgba(255,255,255,0.1);border-radius:4px;height:6px;margin:4px 0;"><div style="background:var(--col-orange);border-radius:4px;height:100%;width:${lvlPct}%;transition:width 0.5s;"></div></div>`;
+  html += `<div class="lap-breakdown-row"><span>Credits</span><span style="color:#ffcc00;font-weight:700;">${prog.credits} CR</span></div>`;
+  html += `</div>`;
+  return html;
+}
 
 function showResults() {
   G.gameState = GameState.RESULTS;
@@ -840,6 +875,7 @@ function showResults() {
       <div class="lap-breakdown-row"><span>Avg Position</span><span>${G.raceStats.positionSampleCount > 0 ? (G.raceStats.avgPosition / G.raceStats.positionSampleCount).toFixed(1) : '—'}</span></div>
       <div class="lap-breakdown-row"><span>Collisions</span><span>${G.raceStats.collisionCount}</span></div>
     </div>
+    ${buildRewardHTML(rankings, localProgress)}
     <div class="menu-buttons" style="width:240px; margin-top:8px;">
       ${hasReplay ? '<button class="menu-btn" id="btn-replay" style="border-color:var(--col-cyan);color:var(--col-cyan);">WATCH REPLAY</button>' : ''}
       ${isMultiplayer ? '<button class="menu-btn" id="btn-rematch" style="background:var(--col-green);">REMATCH</button>' : ''}
@@ -1857,6 +1893,7 @@ function applySettingsToRenderer() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 const savedSettings = loadSettings();
+loadProgress();
 if (savedSettings.playerName) G.localPlayerName = savedSettings.playerName;
 applySettingsToRenderer();
 
