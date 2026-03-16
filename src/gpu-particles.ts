@@ -47,6 +47,8 @@ const cpuType = new Float32Array(MAX_PARTICLES);
 const cpuSize = new Float32Array(MAX_PARTICLES);
 
 let spawnHead = 0;   // ring-buffer write head
+let lastSpawnTime = 0; // for idle skip
+const MAX_PARTICLE_LIFETIME = 3.0; // seconds — longest any particle lives
 let instanceMesh: THREE.InstancedMesh | null = null;
 let computeNode: ReturnType<typeof compute> | null = null;
 let gpuScene: THREE.Scene | null = null;
@@ -174,6 +176,7 @@ function writeParticle(
   cpuSize[idx] = size;
 
   spawnHead++;
+  lastSpawnTime = performance.now() / 1000;
 }
 
 function flushToGPU() {
@@ -453,6 +456,9 @@ export async function updateGPUParticles(
   dt: number,
 ) {
   if (!computeNode) return;
+  // Skip compute dispatch if no particles are alive
+  const now = performance.now() / 1000;
+  if (lastSpawnTime > 0 && (now - lastSpawnTime) > MAX_PARTICLE_LIFETIME) return;
   uDt.value = dt;
   await renderer.computeAsync(computeNode);
 }

@@ -8,6 +8,7 @@ export class RaceEngine {
   totalLaps = 3;
 
   private racers = new Map<string, RacerProgress>();
+  private _racersList: RacerProgress[] = []; // pre-allocated for getRankings()
   private raceStartTime = 0;
   private cpThreshold = 12; // distance to trigger checkpoint (reduced from 18)
   private cpTimestamps = new Map<string, Map<number, number>>(); // id → (globalCpIndex → time)
@@ -35,6 +36,7 @@ export class RaceEngine {
       lapTimes: [],
       lastLapStart: 0,
     });
+    this._racersList = Array.from(this.racers.values());
     this.cpTimestamps.set(id, new Map());
   }
 
@@ -153,10 +155,10 @@ export class RaceEngine {
    * This eliminates the t-wraparound bug entirely.
    */
   getRankings(): RacerProgress[] {
-    const all = Array.from(this.racers.values());
+    const list = this._racersList;
     const N = this.checkpoints.length;
 
-    return all.sort((a, b) => {
+    return list.sort((a, b) => {
       // DNF always last
       if (a.dnf && !b.dnf) return 1;
       if (!a.dnf && b.dnf) return -1;

@@ -158,7 +158,11 @@ export function updateSpeedLines(speedRatio: number, isNitroActive = false) {
   // Fade in/out based on speed (lower threshold during nitrous)
   const threshold = isNitroActive ? 0.3 : 0.7;
   const fadeRange = isNitroActive ? 0.2 : 0.3;
-  speedLinesCanvas.style.opacity = (speedRatio > threshold ? Math.min(1, (speedRatio - threshold) / fadeRange) : 0).toString();
+  const opacity = speedRatio > threshold ? Math.min(1, (speedRatio - threshold) / fadeRange) : 0;
+  speedLinesCanvas.style.opacity = opacity.toString();
+
+  // Skip canvas work when invisible
+  if (opacity <= 0) return;
 
   const ctx = speedLinesCtx;
   const w = speedLinesCanvas.width;
