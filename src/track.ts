@@ -904,7 +904,14 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
     const t = 0;
     const p = spline.getPointAt(t);
     const tangent = spline.getTangentAt(t).normalize();
-    const right = new THREE.Vector3(tangent.z, 0, -tangent.x);
+    
+    // Calculate properly banked orthonormal basis
+    const right = new THREE.Vector3(tangent.z, 0, -tangent.x).normalize();
+    const kappa = estimateCurvature(spline, t);
+    const bankQuat = new THREE.Quaternion().setFromAxisAngle(tangent, -kappa * 2.5);
+    right.applyQuaternion(bankQuat);
+    
+    const up = new THREE.Vector3().crossVectors(right, tangent).normalize();
 
     // Checkerboard pattern start line
     const lineGeo = new THREE.PlaneGeometry(ROAD_WIDTH, 2);
@@ -932,9 +939,9 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
     lineMesh.renderOrder = -1; // Draw before vehicles
     lineMesh.position.copy(p);
     lineMesh.position.y += 0.005; // Barely above road surface
-    // Rotate plane to lie flat on the road, aligned with the track direction
+    // Rotate plane to lie flat on the road, properly aligned with pitched and banked track
     lineMesh.quaternion.setFromRotationMatrix(
-      new THREE.Matrix4().makeBasis(right, new THREE.Vector3(0, 1, 0), tangent)
+      new THREE.Matrix4().makeBasis(right, up, tangent)
     );
     lineMesh.rotateX(-Math.PI / 2);
     group.add(lineMesh);
