@@ -406,10 +406,16 @@ async function startRace() {
     initAudio();
     initMusic();
 
-    // Force shader compilation while loading screen is still up to prevent first-frame freeze
-    renderer.compile(scene, camera);
-    // Yield to the browser so it can repaint and process the compilation before countdown starts
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // ── Robust Pre-Render ──
+    // Force shaders to compile and textures to upload to the GPU *now* by explicitly rendering once.
+    // This will block the main thread for hundreds of milliseconds on the first run.
+    renderer.render(scene, camera);
+
+    // Yield to the browser's render pipeline. We wait for TWO animation frames to guarantee
+    // the blocking render has fully flushed to the screen and the browser has recovered to 60fps
+    // before we hide the loading screen and start the time-sensitive countdown.
+    await new Promise(resolve => requestAnimationFrame(resolve));
+    await new Promise(resolve => requestAnimationFrame(resolve));
 
     hideLoading();
     // NOW enter COUNTDOWN — track is fully built, all assets loaded
