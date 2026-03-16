@@ -189,7 +189,7 @@ export class Vehicle {
   /** Recolor the car body with a new hue (0–360). Preserves metalness/roughness. */
   setPaintColor(hue: number) {
     if (!this.model) return;
-    const color = new THREE.Color().setHSL(hue / 360, 0.90, 0.22);
+    const color = new THREE.Color().setHSL(hue / 360, 0.90, 0.15);
     this.model.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
       const mats = Array.isArray(child.material) ? child.material : [child.material];
