@@ -17,7 +17,7 @@ export async function loadCarModel(filename: string): Promise<THREE.Group> {
   if (cached) return deepCloneGroup(cached);
 
   const gltf = await gltfLoader.loadAsync(`/models/${filename}`);
-  const wrapper = processCarModel(gltf.scene);
+  const wrapper = processCarModel(gltf.scene, filename);
 
   modelCache.set(filename, wrapper);
   return deepCloneGroup(wrapper);
@@ -42,7 +42,7 @@ function deepCloneGroup(source: THREE.Group): THREE.Group {
 }
 
 /** Shared model post-processing: scale, center, material enhance, orientation wrap. */
-function processCarModel(model: THREE.Group): THREE.Group {
+function processCarModel(model: THREE.Group, filename = 'unknown'): THREE.Group {
   // Normalize scale — target ~4 units long
   const box = new THREE.Box3().setFromObject(model);
   const size = box.getSize(new THREE.Vector3());
@@ -144,7 +144,7 @@ export function loadCarModelWithProgress(
     gltfLoader.load(
       `/models/${filename}`,
       (gltf) => {
-        const wrapper = processCarModel(gltf.scene);
+        const wrapper = processCarModel(gltf.scene, filename);
         modelCache.set(filename, wrapper);
         onProgress?.(1);
         resolve(deepCloneGroup(wrapper));
