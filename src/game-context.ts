@@ -32,12 +32,13 @@ export interface RaceStats {
   topSpeed: number;
   totalDriftTime: number;
   collisionCount: number;
+  nearMissCount: number;
   avgPosition: number;
   positionSampleCount: number;
 }
 
 function freshRaceStats(): RaceStats {
-  return { topSpeed: 0, totalDriftTime: 0, collisionCount: 0, avgPosition: 0, positionSampleCount: 0 };
+  return { topSpeed: 0, totalDriftTime: 0, collisionCount: 0, nearMissCount: 0, avgPosition: 0, positionSampleCount: 0 };
 }
 
 /** The single shared game context. Import `G` everywhere. */

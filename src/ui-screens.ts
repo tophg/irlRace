@@ -224,7 +224,7 @@ export function hideLoading() {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export function showRaceConfig(
-  onStart: (laps: number, ai: number, difficulty: 'easy' | 'medium' | 'hard', seed: string, weather: string) => void,
+  onStart: (laps: number, ai: number, difficulty: 'easy' | 'medium' | 'hard', seed: string, weather: string, environment: string) => void,
   onBack: () => void,
 ) {
   const uiOverlay = document.getElementById('ui-overlay')!;
@@ -275,6 +275,20 @@ export function showRaceConfig(
         <input type="text" id="cfg-seed" placeholder="Random" maxlength="5"
                class="lobby-input" style="width:100px;font-size:14px;padding:4px 8px;letter-spacing:2px;">
       </label>
+      <label class="settings-row">
+        <span>Environment</span>
+        <select id="cfg-env">
+          <option value="random" selected>Random</option>
+          <option value="Urban Night">🌃 Urban Night</option>
+          <option value="Desert Dawn">🏜️ Desert Dawn</option>
+          <option value="Coastal Sunset">🌅 Coastal Sunset</option>
+          <option value="Neon City">🌆 Neon City</option>
+          <option value="Thunder Storm">⛈️ Thunder Storm</option>
+          <option value="Alpine Snow">🏔️ Alpine Snow</option>
+          <option value="Blizzard">🌨️ Blizzard</option>
+          <option value="Black Ice">🧊 Black Ice</option>
+        </select>
+      </label>
       <div style="display:flex;gap:12px;justify-content:center;margin-top:16px;">
         <button class="select-btn" id="cfg-go">START RACE</button>
         <button class="menu-btn" id="cfg-back" style="padding:10px 24px;">BACK</button>
@@ -294,8 +308,9 @@ export function showRaceConfig(
     const difficulty = (el.querySelector('#cfg-difficulty') as HTMLSelectElement).value as 'easy' | 'medium' | 'hard';
     const seed = (el.querySelector('#cfg-seed') as HTMLInputElement).value.trim();
     const weather = (el.querySelector('#cfg-weather') as HTMLSelectElement).value;
+    const environment = (el.querySelector('#cfg-env') as HTMLSelectElement).value;
     el.remove();
-    onStart(laps, ai, difficulty, seed, weather);
+    onStart(laps, ai, difficulty, seed, weather, environment);
   });
 }
 

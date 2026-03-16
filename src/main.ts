@@ -232,11 +232,12 @@ function enterGarage(mode: 'singleplayer' | 'multiplayer') {
     destroyGarage();
 
     if (mode === 'singleplayer') {
-      showRaceConfig((laps, ai, difficulty, seed, weather) => {
+      showRaceConfig((laps, ai, difficulty, seed, weather, environment) => {
         G.totalLaps = laps;
         G.aiCount = ai;
         G.aiDifficulty = difficulty;
         (G as any)._selectedWeather = weather;
+        (G as any)._selectedEnvironment = environment;
         if (seed.length > 0) {
           const parsed = parseInt(seed, 10);
           G.trackSeed = Number.isNaN(parsed) ? Math.floor(Math.random() * 99999) : parsed;
@@ -274,7 +275,12 @@ async function startRace() {
     G.currentRaceSeed = seed;
     G.trackSeed = null;
     G.trackData = generateTrack(seed);
-    applyEnvironment(getEnvironmentForSeed(seed));
+    // Environment: use player-selected environment if not 'random', else seed-based
+    const selectedEnv = (G as any)._selectedEnvironment as string;
+    const envPreset = (selectedEnv && selectedEnv !== 'random')
+      ? getEnvironmentByName(selectedEnv)
+      : getEnvironmentForSeed(seed);
+    applyEnvironment(envPreset);
     // Weather: use player-selected weather if not 'random', else seed-based
     const selectedW = (G as any)._selectedWeather as string;
     const weatherType = (selectedW && selectedW !== 'random')
@@ -738,6 +744,29 @@ const AI_DRIVER_NAMES = [
   'Turbo', 'Clutch', 'Drift', 'Razor', 'Burn', 'Apex',
 ];
 
+/** Brief popup for near-miss events. */
+function showNearMissPopup() {
+  const uiOverlay = document.getElementById('ui-overlay');
+  if (!uiOverlay) return;
+  const popup = document.createElement('div');
+  popup.textContent = 'NEAR MISS! +5 NOS';
+  popup.style.cssText = `
+    position:fixed; left:50%; top:40%; transform:translateX(-50%);
+    color:#ff6600; font-family:Outfit,sans-serif; font-size:18px; font-weight:700;
+    text-shadow:0 0 8px rgba(255,102,0,0.6); pointer-events:none; z-index:60;
+    animation: nearMissAnim 1s ease-out forwards;
+  `;
+  // Inject keyframes if not present
+  if (!document.getElementById('nearmiss-style')) {
+    const style = document.createElement('style');
+    style.id = 'nearmiss-style';
+    style.textContent = `@keyframes nearMissAnim { 0%{opacity:1;transform:translateX(-50%) translateY(0)} 100%{opacity:0;transform:translateX(-50%) translateY(-40px)} }`;
+    document.head.appendChild(style);
+  }
+  uiOverlay.appendChild(popup);
+  setTimeout(() => popup.remove(), 1100);
+}
+
 function resolvePlayerName(id: string): string {
   if (id === 'local') return 'You';
   if (id.startsWith('ai_')) {
@@ -874,6 +903,7 @@ function showResults() {
       <div class="lap-breakdown-row"><span>Drift Time</span><span>${G.raceStats.totalDriftTime.toFixed(1)}s</span></div>
       <div class="lap-breakdown-row"><span>Avg Position</span><span>${G.raceStats.positionSampleCount > 0 ? (G.raceStats.avgPosition / G.raceStats.positionSampleCount).toFixed(1) : '—'}</span></div>
       <div class="lap-breakdown-row"><span>Collisions</span><span>${G.raceStats.collisionCount}</span></div>
+      <div class="lap-breakdown-row"><span>Near Misses</span><span>${G.raceStats.nearMissCount}</span></div>
     </div>
     ${buildRewardHTML(rankings, localProgress)}
     <div class="menu-buttons" style="width:240px; margin-top:8px;">
@@ -1293,6 +1323,27 @@ function gameLoop(timestamp: number) {
           if (angleDiff < 0.52) {
             const draftStrength = (1 - dist / 15) * 20;
             G.playerVehicle.addNitro(draftStrength * frameDt);
+          }
+        }
+      }
+
+      // Near-miss detection (close pass without collision)
+      const pSpeed = Math.abs(G.playerVehicle.speed);
+      if (pSpeed > 15) {
+        for (const ai of G.aiRacers) {
+          const aPos = ai.vehicle.group.position;
+          const dx2 = aPos.x - pp.x;
+          const dz2 = aPos.z - pp.z;
+          const dist2 = Math.sqrt(dx2 * dx2 + dz2 * dz2);
+          if (dist2 < 3.5 && dist2 > 1.5) {
+            const lastNearMiss = (ai as any)._lastNearMiss ?? 0;
+            if (timestamp - lastNearMiss > 3000) { // 3s cooldown per AI
+              (ai as any)._lastNearMiss = timestamp;
+              G.playerVehicle.addNitro(5);
+              G.raceStats.nearMissCount = (G.raceStats.nearMissCount ?? 0) + 1;
+              // Brief popup
+              showNearMissPopup();
+            }
           }
         }
       }

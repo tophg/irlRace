@@ -1207,14 +1207,14 @@ export function buildCheckpointMarkers(checkpoints: Checkpoint[]): THREE.Group {
 
 function createCheckpointArch(isStart: boolean): THREE.Group {
   const arch = new THREE.Group();
-  const height = 5;
+  const height = isStart ? 7 : 5;
   const width = ROAD_WIDTH;
   const color = isStart ? 0xffcc00 : 0xff6600;
 
-  const pillarGeo = new THREE.BoxGeometry(0.3, height, 0.3);
+  const pillarGeo = new THREE.BoxGeometry(isStart ? 0.5 : 0.3, height, isStart ? 0.5 : 0.3);
   const pillarMat = new THREE.MeshStandardMaterial({
-    color, transparent: true, opacity: 0.6,
-    emissive: new THREE.Color(color), emissiveIntensity: 0.3,
+    color, transparent: true, opacity: isStart ? 0.85 : 0.6,
+    emissive: new THREE.Color(color), emissiveIntensity: isStart ? 0.5 : 0.3,
   });
   const leftPillar = new THREE.Mesh(pillarGeo, pillarMat);
   leftPillar.position.set(-width / 2, height / 2, 0);
@@ -1224,28 +1224,71 @@ function createCheckpointArch(isStart: boolean): THREE.Group {
   rightPillar.position.set(width / 2, height / 2, 0);
   arch.add(rightPillar);
 
-  const beamGeo = new THREE.BoxGeometry(width + 0.3, 0.3, 0.3);
+  const beamGeo = new THREE.BoxGeometry(width + 0.5, isStart ? 0.5 : 0.3, isStart ? 0.5 : 0.3);
   const beam = new THREE.Mesh(beamGeo, pillarMat.clone());
   beam.position.set(0, height, 0);
   arch.add(beam);
 
   if (isStart) {
-    const bannerGeo = new THREE.PlaneGeometry(width, 1.5);
+    // Checkered banner with START/FINISH text
+    const bannerGeo = new THREE.PlaneGeometry(width, 2.0);
     const bannerCanvas = document.createElement('canvas');
-    bannerCanvas.width = 512; bannerCanvas.height = 96;
+    bannerCanvas.width = 512; bannerCanvas.height = 128;
     const ctx = bannerCanvas.getContext('2d')!;
     const sq = 32;
-    for (let r = 0; r < 3; r++) {
+    for (let r = 0; r < 4; r++) {
       for (let c = 0; c < 16; c++) {
         ctx.fillStyle = (r + c) % 2 === 0 ? '#ffffff' : '#111111';
         ctx.fillRect(c * sq, r * sq, sq, sq);
       }
     }
+    // Overlay "START / FINISH" text
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(100, 36, 312, 56);
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = 'bold 36px Outfit, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('START / FINISH', 256, 64);
+
     const bannerTex = new THREE.CanvasTexture(bannerCanvas);
-    const bannerMat = new THREE.MeshBasicMaterial({ map: bannerTex, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+    const bannerMat = new THREE.MeshBasicMaterial({ map: bannerTex, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
     const banner = new THREE.Mesh(bannerGeo, bannerMat);
-    banner.position.set(0, height - 1, 0);
+    banner.position.set(0, height - 1.5, 0);
     arch.add(banner);
+
+    // Overhead floodlights on the gantry beam
+    const lightPositions = [-width * 0.35, -width * 0.12, width * 0.12, width * 0.35];
+    for (const lx of lightPositions) {
+      const light = new THREE.PointLight(0xffeecc, 3, 25, 1.5);
+      light.position.set(lx, height - 0.3, 0);
+      arch.add(light);
+      // Small light housing mesh
+      const housGeo = new THREE.BoxGeometry(0.3, 0.2, 0.3);
+      const housMat = new THREE.MeshStandardMaterial({ color: 0x333333, emissive: new THREE.Color(0xffeecc), emissiveIntensity: 1.0 });
+      const housing = new THREE.Mesh(housGeo, housMat);
+      housing.position.set(lx, height - 0.15, 0);
+      arch.add(housing);
+    }
+
+    // Ground checkered strip
+    const stripGeo = new THREE.PlaneGeometry(width, 2.5);
+    const stripCanvas = document.createElement('canvas');
+    stripCanvas.width = 256; stripCanvas.height = 64;
+    const sCtx = stripCanvas.getContext('2d')!;
+    const ssq = 16;
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 16; c++) {
+        sCtx.fillStyle = (r + c) % 2 === 0 ? '#ffffff' : '#222222';
+        sCtx.fillRect(c * ssq, r * ssq, ssq, ssq);
+      }
+    }
+    const stripTex = new THREE.CanvasTexture(stripCanvas);
+    const stripMat = new THREE.MeshBasicMaterial({ map: stripTex, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+    const strip = new THREE.Mesh(stripGeo, stripMat);
+    strip.rotation.x = -Math.PI / 2;
+    strip.position.set(0, 0.08, 0);
+    arch.add(strip);
   }
 
   return arch;
