@@ -82,7 +82,7 @@ export const G = {
   driftSfxCooldown: 0,
 
   // ── Collision half-extents ──
-  carHalf: new THREE.Vector3(1.0, 0.8, 2.2),
+  carHalf: new THREE.Vector3(0.85, 0.8, 2.2),
 
   // ── Reusable temp vectors (avoid per-frame GC) ──
   _defaultTangent: new THREE.Vector3(0, 0, 1),

@@ -411,9 +411,78 @@ export interface CollisionEvent {
   impactForce: number;
 }
 
+// ── OBB Separating Axis Test (SAT) ──
+// Tests overlap of two oriented bounding boxes on the XZ plane using 4
+// separating axes (2 from each car's heading). Returns the minimum
+// translation vector (MTV) if overlapping, or null if separated.
+
+interface OBBResult {
+  overlap: number;  // penetration depth along MTV
+  nx: number;       // MTV direction X (A→B push)
+  nz: number;       // MTV direction Z
+}
+
+function obbOverlap(a: CarCollider, b: CarCollider): OBBResult | null {
+  // Local axes for car A (forward = Z in car space, right = X)
+  const cosA = Math.cos(a.heading);
+  const sinA = Math.sin(a.heading);
+  // A's axes: right = (cosA, -sinA), forward = (sinA, cosA) in XZ
+  const aRX = cosA, aRZ = -sinA;     // A's local X (right)
+  const aFX = sinA, aFZ = cosA;      // A's local Z (forward)
+
+  // Local axes for car B
+  const cosB = Math.cos(b.heading);
+  const sinB = Math.sin(b.heading);
+  const bRX = cosB, bRZ = -sinB;
+  const bFX = sinB, bFZ = cosB;
+
+  // Centre-to-centre vector
+  const dx = b.position.x - a.position.x;
+  const dz = b.position.z - a.position.z;
+
+  // Test 4 separating axes: A.right, A.forward, B.right, B.forward
+  // For each axis, project distance and combined half-extents
+  const axes = [
+    { ax: aRX, az: aRZ }, // A's right
+    { ax: aFX, az: aFZ }, // A's forward
+    { ax: bRX, az: bRZ }, // B's right
+    { ax: bFX, az: bFZ }, // B's forward
+  ];
+
+  let minOverlap = Infinity;
+  let mtvX = 0, mtvZ = 0;
+
+  for (const { ax, az } of axes) {
+    // Project distance onto this axis
+    const dist = Math.abs(dx * ax + dz * az);
+
+    // Project A's half-extents onto this axis
+    const projA = a.halfExtents.x * Math.abs(aRX * ax + aRZ * az)
+                + a.halfExtents.z * Math.abs(aFX * ax + aFZ * az);
+
+    // Project B's half-extents onto this axis
+    const projB = b.halfExtents.x * Math.abs(bRX * ax + bRZ * az)
+                + b.halfExtents.z * Math.abs(bFX * ax + bFZ * az);
+
+    const gap = dist - (projA + projB);
+    if (gap > 0) return null; // Separated on this axis → no collision
+
+    const overlap = -gap;
+    if (overlap < minOverlap) {
+      minOverlap = overlap;
+      // MTV direction along this axis, pointing A→B
+      const sign = (dx * ax + dz * az) >= 0 ? 1 : -1;
+      mtvX = ax * sign;
+      mtvZ = az * sign;
+    }
+  }
+
+  return { overlap: minOverlap, nx: mtvX, nz: mtvZ };
+}
+
 /**
  * Detect and resolve car-to-car overlaps using AABB broadphase,
- * circle narrow phase, and minimum-translation-vector push-apart.
+ * OBB narrow phase (Separating Axis Test), and minimum-translation-vector push-apart.
  * Returns collision events for damage/VFX processing.
  */
 export function resolveCarCollisions(
@@ -431,29 +500,24 @@ export function resolveCarCollisions(
       const b = colliders[j];
       const bBox = carAABB(b);
 
+      // Broadphase: AABB overlap check
       if (!aabbOverlaps(aBox, bBox)) continue;
 
-      const dx = b.position.x - a.position.x;
-      const dz = b.position.z - a.position.z;
-      const distSq = dx * dx + dz * dz;
-      const rA = Math.max(a.halfExtents.x, a.halfExtents.z);
-      const rB = Math.max(b.halfExtents.x, b.halfExtents.z);
-      const minDist = rA + rB;
+      // Narrowphase: OBB SAT overlap test
+      const sat = obbOverlap(a, b);
+      if (!sat) continue;
 
-      if (distSq >= minDist * minDist) continue;
+      const { overlap, nx, nz } = sat;
 
-      if (distSq < 0.001) {
+      // Degenerate case: cars directly on top of each other
+      if (overlap < 0.001 && nx === 0 && nz === 0) {
         a.position.x -= 0.5;
         b.position.x += 0.5;
         continue;
       }
 
-      const dist = Math.sqrt(distSq);
-      const overlap = minDist - dist;
-      const nx = dx / dist;
-      const nz = dz / dist;
+      // Push apart along MTV
       const pushAmount = overlap * 0.5;
-
       a.position.x -= nx * pushAmount;
       a.position.z -= nz * pushAmount;
       b.position.x += nx * pushAmount;
