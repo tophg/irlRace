@@ -127,6 +127,12 @@ let speedLinesCtx: CanvasRenderingContext2D | null = null;
 let speedLinesResizeHandler: (() => void) | null = null;
 
 export function initSpeedLines(container: HTMLElement) {
+  // Clean up any existing handler first (safety against re-init without destroy)
+  if (speedLinesResizeHandler) {
+    window.removeEventListener('resize', speedLinesResizeHandler);
+  }
+  if (speedLinesCanvas) speedLinesCanvas.remove();
+
   speedLinesCanvas = document.createElement('canvas');
   speedLinesCanvas.style.cssText = `
     position: absolute; inset: 0; pointer-events: none;
@@ -172,7 +178,7 @@ export function updateSpeedLines(speedRatio: number, isNitroActive = false) {
   ctx.lineWidth = isNitroActive ? 1.5 : 1;
 
   for (let i = 0; i < numLines; i++) {
-    const angle = (i / numLines) * Math.PI * 2 + Date.now() * 0.0005;
+    const angle = (i / numLines) * Math.PI * 2 + performance.now() * 0.0005;
     // During nitrous: wider inner radius (tunnel vision — clear center)
     const baseInner = isNitroActive ? 60 : 80;
     const innerR = baseInner + Math.random() * 40;

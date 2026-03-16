@@ -17,8 +17,32 @@ export async function loadCarModel(filename: string): Promise<THREE.Group> {
   if (cached) return deepCloneGroup(cached);
 
   const gltf = await gltfLoader.loadAsync(`/models/${filename}`);
-  const model = gltf.scene;
+  const wrapper = processCarModel(gltf.scene);
 
+  modelCache.set(filename, wrapper);
+  return deepCloneGroup(wrapper);
+}
+
+/** Deep-clone a group, duplicating geometry AND materials so deformation/damage
+ *  color changes don't corrupt the cache. */
+function deepCloneGroup(source: THREE.Group): THREE.Group {
+  const cloned = source.clone(true);
+  cloned.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) {
+      const mesh = child as THREE.Mesh;
+      mesh.geometry = mesh.geometry.clone();
+      if (Array.isArray(mesh.material)) {
+        mesh.material = mesh.material.map(m => m.clone());
+      } else if (mesh.material) {
+        mesh.material = mesh.material.clone();
+      }
+    }
+  });
+  return cloned;
+}
+
+/** Shared model post-processing: scale, center, material enhance, orientation wrap. */
+function processCarModel(model: THREE.Group): THREE.Group {
   // Normalize scale — target ~4 units long
   const box = new THREE.Box3().setFromObject(model);
   const size = box.getSize(new THREE.Vector3());
@@ -52,33 +76,11 @@ export async function loadCarModel(filename: string): Promise<THREE.Group> {
     }
   });
 
-  // ── Orientation fix ──
-  // GLTF car models have their forward along +X; our physics uses +Z as forward.
-  // Wrap the raw model in a group rotated 90° on Y to align it correctly.
+  // Orientation fix: GLTF cars are +X forward; physics uses +Z
   const wrapper = new THREE.Group();
   model.rotation.y = Math.PI / 2;
   wrapper.add(model);
-
-  modelCache.set(filename, wrapper);
-  return deepCloneGroup(wrapper);
-}
-
-/** Deep-clone a group, duplicating geometry AND materials so deformation/damage
- *  color changes don't corrupt the cache. */
-function deepCloneGroup(source: THREE.Group): THREE.Group {
-  const cloned = source.clone(true);
-  cloned.traverse((child) => {
-    if ((child as THREE.Mesh).isMesh) {
-      const mesh = child as THREE.Mesh;
-      mesh.geometry = mesh.geometry.clone();
-      if (Array.isArray(mesh.material)) {
-        mesh.material = mesh.material.map(m => m.clone());
-      } else if (mesh.material) {
-        mesh.material = mesh.material.clone();
-      }
-    }
-  });
-  return cloned;
+  return wrapper;
 }
 
 /** Load a GLB model with download progress callback. */
@@ -96,36 +98,7 @@ export function loadCarModelWithProgress(
     gltfLoader.load(
       `/models/${filename}`,
       (gltf) => {
-        const model = gltf.scene;
-        // Same processing as loadCarModel
-        const box = new THREE.Box3().setFromObject(model);
-        const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        const scale = 4.0 / maxDim;
-        model.scale.setScalar(scale);
-        box.setFromObject(model);
-        const center = box.getCenter(new THREE.Vector3());
-        model.position.sub(center);
-        model.position.y -= box.min.y;
-
-        model.traverse((child) => {
-          if ((child as THREE.Mesh).isMesh) {
-            const mesh = child as THREE.Mesh;
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
-            if (mesh.geometry) mesh.geometry.computeVertexNormals();
-            const mat = mesh.material as THREE.MeshStandardMaterial;
-            if (mat && mat.isMeshStandardMaterial) {
-              mat.envMapIntensity = 1.2;
-              mat.roughness = Math.max(mat.roughness * 0.7, 0.05);
-              mat.needsUpdate = true;
-            }
-          }
-        });
-
-        const wrapper = new THREE.Group();
-        model.rotation.y = Math.PI / 2;
-        wrapper.add(model);
+        const wrapper = processCarModel(gltf.scene);
         modelCache.set(filename, wrapper);
         onProgress?.(1);
         resolve(deepCloneGroup(wrapper));
