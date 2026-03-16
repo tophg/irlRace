@@ -200,6 +200,37 @@ canvas { display: block; }
 }
 .select-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 30px rgba(255,77,0,0.6); }
 
+/* ── Garage Dot Indicators ── */
+.garage-dots {
+  display: flex; gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
+}
+.garage-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  border: 1.5px solid rgba(255,255,255,0.3);
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+.garage-dot.active {
+  background: var(--col-accent);
+  border-color: var(--col-accent);
+  box-shadow: 0 0 8px rgba(255,77,0,0.6);
+  transform: scale(1.3);
+}
+.garage-dot.locked {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.15);
+  border-style: dashed;
+}
+.garage-dot.locked.active {
+  background: rgba(255,77,0,0.3);
+  border-color: var(--col-accent);
+  border-style: solid;
+}
+
 /* ── HUD ── */
 .hud {
   position: absolute; inset: 0;

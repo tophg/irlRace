@@ -17,6 +17,36 @@ let rotationAngle = 0;
 let onSelectCallback: ((car: CarDef) => void) | null = null;
 let uiEl: HTMLElement | null = null;
 
+// Showroom environment objects
+let ringMesh: THREE.Mesh | null = null;
+let ringMat: THREE.MeshBasicMaterial | null = null;
+let bokehPoints: THREE.Points | null = null;
+let backdropGroup: THREE.Group | null = null;
+let ringTime = 0;
+let currentTierColor = new THREE.Color(0x44cc88);
+let targetTierColor = new THREE.Color(0x44cc88);
+
+// Interactive camera orbit
+let orbitAngle = 0;
+let orbitVelocity = 0;
+let isDragging = false;
+let lastPointerX = 0;
+let lastInteractionTime = 0;
+const AUTO_ROTATE_RESUME_DELAY = 3000; // ms
+const AUTO_ROTATE_SPEED = 0.005;
+const ORBIT_DAMPING = 0.92;
+const ORBIT_RADIUS = 7.5;
+const ORBIT_HEIGHT = 2.8;
+const ORBIT_LOOK_Y = 0.8;
+
+// Swipe navigation
+let swipeTouchId: number | null = null;
+let swipeStartX = 0;
+const SWIPE_THRESHOLD = 60;
+
+// Dot indicator element
+let dotContainerEl: HTMLElement | null = null;
+
 // Original material colors — stored on first paint so RESET is instant
 const originalColors = new WeakMap<THREE.Material, THREE.Color>();
 
@@ -106,20 +136,36 @@ export function initGarage(
   platform.receiveShadow = true;
   garageScene.add(platform);
 
-  // Platform edge ring (neon accent)
-  const ringGeo = new THREE.TorusGeometry(3.65, 0.03, 8, 64);
-  const ringMat = new THREE.MeshBasicMaterial({ color: 0xff6a2a });
-  const ring = new THREE.Mesh(ringGeo, ringMat);
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.01;
-  garageScene.add(ring);
+  // ── Animated Neon Ring (tier-colored) ──
+  const ringGeo = new THREE.TorusGeometry(3.65, 0.04, 12, 96);
+  ringMat = new THREE.MeshBasicMaterial({ color: 0x44cc88, transparent: true, opacity: 0.8 });
+  ringMesh = new THREE.Mesh(ringGeo, ringMat);
+  ringMesh.rotation.x = -Math.PI / 2;
+  ringMesh.position.y = 0.01;
+  garageScene.add(ringMesh);
 
-  // Floor — large dark reflective surface
-  const floorGeo = new THREE.PlaneGeometry(40, 40);
+  // ── Reflective Floor with Radial Gradient Fade ──
+  const floorSize = 40;
+  const floorGeo = new THREE.PlaneGeometry(floorSize, floorSize, 1, 1);
+  // Create a radial alpha texture for the floor fade
+  const fadeCanvas = document.createElement('canvas');
+  fadeCanvas.width = 256;
+  fadeCanvas.height = 256;
+  const fadeCtx = fadeCanvas.getContext('2d')!;
+  const grad = fadeCtx.createRadialGradient(128, 128, 20, 128, 128, 128);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.6, 'rgba(255,255,255,0.4)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  fadeCtx.fillStyle = grad;
+  fadeCtx.fillRect(0, 0, 256, 256);
+  const fadeTex = new THREE.CanvasTexture(fadeCanvas);
+
   const floorMat = new THREE.MeshStandardMaterial({
-    color: 0x080812,
-    roughness: 0.6,
-    metalness: 0.4,
+    color: 0x0a0a18,
+    roughness: 0.25,
+    metalness: 0.7,
+    alphaMap: fadeTex,
+    transparent: true,
   });
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
@@ -127,14 +173,211 @@ export function initGarage(
   floor.receiveShadow = true;
   garageScene.add(floor);
 
+  // ── Volumetric Bokeh Particles ──
+  buildBokehParticles();
+
+  // ── Showroom Backdrop Panels ──
+  buildBackdropPanels();
+
   // Build placeholder silhouette (reused for all cars)
   buildPlaceholder();
 
   // UI
   buildGarageUI(overlay);
 
+  // Wire canvas orbit + swipe interactions
+  wireCanvasInteractions(renderer.domElement);
+
+  // Wire keyboard navigation
+  wireKeyboardNav();
+
   // Show the first car immediately (no preload-all wall)
   showCar(0);
+}
+
+// ── Tier Color Map ──
+const TIER_COLORS: Record<string, number> = {
+  ENTRY: 0x44cc88,
+  MID: 0x4488ff,
+  EXOTIC: 0xff44aa,
+  ELITE: 0xffcc00,
+};
+
+function setTierColor(index: number) {
+  const tier = index < 3 ? 'ENTRY' : index < 5 ? 'MID' : index < 8 ? 'EXOTIC' : 'ELITE';
+  targetTierColor.setHex(TIER_COLORS[tier] ?? 0x44cc88);
+}
+
+// ── Volumetric Bokeh Particles ──
+function buildBokehParticles() {
+  const count = 80;
+  const positions = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    positions[i * 3] = (Math.random() - 0.5) * 20;
+    positions[i * 3 + 1] = Math.random() * 8 - 1;
+    positions[i * 3 + 2] = (Math.random() - 0.5) * 20 - 5; // mostly behind car
+    sizes[i] = 2 + Math.random() * 4;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+  // Create a soft circular sprite texture
+  const spriteCanvas = document.createElement('canvas');
+  spriteCanvas.width = 64;
+  spriteCanvas.height = 64;
+  const sCtx = spriteCanvas.getContext('2d')!;
+  const sGrad = sCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  sGrad.addColorStop(0, 'rgba(255,200,150,0.6)');
+  sGrad.addColorStop(0.4, 'rgba(255,180,120,0.2)');
+  sGrad.addColorStop(1, 'rgba(255,160,100,0)');
+  sCtx.fillStyle = sGrad;
+  sCtx.fillRect(0, 0, 64, 64);
+  const spriteTex = new THREE.CanvasTexture(spriteCanvas);
+
+  const mat = new THREE.PointsMaterial({
+    map: spriteTex,
+    size: 0.4,
+    transparent: true,
+    opacity: 0.35,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true,
+  });
+  bokehPoints = new THREE.Points(geo, mat);
+  garageScene.add(bokehPoints);
+}
+
+// ── Showroom Backdrop Panels ──
+function buildBackdropPanels() {
+  backdropGroup = new THREE.Group();
+  const panelCount = 5;
+  const radius = 12;
+  const panelWidth = 3;
+  const panelHeight = 10;
+
+  for (let i = 0; i < panelCount; i++) {
+    const angle = (i / panelCount) * Math.PI - Math.PI / 2; // semicircle behind car
+    const x = Math.sin(angle) * radius;
+    const z = -Math.cos(angle) * radius;
+
+    // Main dark panel
+    const panelGeo = new THREE.PlaneGeometry(panelWidth, panelHeight);
+    const panelMat = new THREE.MeshStandardMaterial({
+      color: 0x0a0a18,
+      roughness: 0.8,
+      metalness: 0.3,
+      transparent: true,
+      opacity: 0.6,
+    });
+    const panel = new THREE.Mesh(panelGeo, panelMat);
+    panel.position.set(x, panelHeight / 2 - 1, z);
+    panel.lookAt(0, panelHeight / 2 - 1, 0);
+    backdropGroup.add(panel);
+
+    // Emissive edge stripe (thin vertical line)
+    const stripeGeo = new THREE.PlaneGeometry(0.02, panelHeight * 0.8);
+    const stripeMat = new THREE.MeshBasicMaterial({
+      color: 0xff6a2a,
+      transparent: true,
+      opacity: 0.25,
+    });
+    const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+    stripe.position.set(x + Math.cos(angle) * (panelWidth / 2 - 0.1), panelHeight / 2 - 1, z + Math.sin(angle) * (panelWidth / 2 - 0.1));
+    stripe.lookAt(0, panelHeight / 2 - 1, 0);
+    backdropGroup.add(stripe);
+  }
+
+  garageScene.add(backdropGroup);
+}
+
+// ── Canvas Interactions (orbit + swipe) ──
+function wireCanvasInteractions(canvas: HTMLElement) {
+  // Mouse orbit
+  canvas.addEventListener('mousedown', (e) => {
+    isDragging = true;
+    lastPointerX = e.clientX;
+    lastInteractionTime = performance.now();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - lastPointerX;
+    orbitVelocity = dx * 0.003;
+    lastPointerX = e.clientX;
+    lastInteractionTime = performance.now();
+  });
+  window.addEventListener('mouseup', () => { isDragging = false; });
+
+  // Touch orbit + swipe navigation
+  canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      isDragging = true;
+      lastPointerX = touch.clientX;
+      swipeTouchId = touch.identifier;
+      swipeStartX = touch.clientX;
+      lastInteractionTime = performance.now();
+    }
+  }, { passive: true });
+
+  canvas.addEventListener('touchmove', (e) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i];
+      if (touch.identifier === swipeTouchId) {
+        const dx = touch.clientX - lastPointerX;
+        orbitVelocity = dx * 0.003;
+        lastPointerX = touch.clientX;
+        lastInteractionTime = performance.now();
+        break;
+      }
+    }
+  }, { passive: true });
+
+  canvas.addEventListener('touchend', (e) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === swipeTouchId) {
+        isDragging = false;
+        const totalDx = e.changedTouches[i].clientX - swipeStartX;
+        // Swipe navigation (quick horizontal swipe)
+        if (Math.abs(totalDx) > SWIPE_THRESHOLD) {
+          if (totalDx < 0) {
+            currentIndex = (currentIndex + 1) % CAR_ROSTER.length;
+          } else {
+            currentIndex = (currentIndex - 1 + CAR_ROSTER.length) % CAR_ROSTER.length;
+          }
+          showCar(currentIndex);
+        }
+        swipeTouchId = null;
+        break;
+      }
+    }
+  });
+}
+
+// ── Car Dot Indicators ──
+function buildDotIndicators(container: HTMLElement) {
+  dotContainerEl = document.createElement('div');
+  dotContainerEl.className = 'garage-dots';
+  dotContainerEl.id = 'garage-dots';
+  for (let i = 0; i < CAR_ROSTER.length; i++) {
+    const dot = document.createElement('span');
+    dot.className = 'garage-dot';
+    dot.dataset.index = String(i);
+    dotContainerEl.appendChild(dot);
+  }
+  container.appendChild(dotContainerEl);
+}
+
+function updateDots(index: number) {
+  if (!dotContainerEl) return;
+  const dots = dotContainerEl.querySelectorAll('.garage-dot');
+  dots.forEach((d, i) => {
+    const dot = d as HTMLElement;
+    const unlocked = isCarUnlocked(CAR_ROSTER[i].id);
+    dot.classList.toggle('active', i === index);
+    dot.classList.toggle('locked', !unlocked);
+  });
 }
 
 /** Build a generic car-shaped silhouette for instant display while loading */
@@ -231,21 +474,25 @@ function buildGarageUI(overlay: HTMLElement) {
   uiEl.querySelector('#garage-prev')!.addEventListener('click', () => {
     currentIndex = (currentIndex - 1 + CAR_ROSTER.length) % CAR_ROSTER.length;
     showCar(currentIndex);
+    playClickSfx();
   });
 
   uiEl.querySelector('#garage-next')!.addEventListener('click', () => {
     currentIndex = (currentIndex + 1) % CAR_ROSTER.length;
     showCar(currentIndex);
+    playClickSfx();
   });
 
   uiEl.querySelector('#garage-select')!.addEventListener('click', () => {
     const car = CAR_ROSTER[currentIndex];
     if (!isCarUnlocked(car.id)) {
       if (unlockCar(car.id)) {
+        playUnlockSfx();
         showCar(currentIndex);
       }
       return;
     }
+    playConfirmSfx();
     if (onSelectCallback) onSelectCallback(car);
   });
 
@@ -296,6 +543,7 @@ function buildGarageUI(overlay: HTMLElement) {
     applyPaintToGarageModel(_previewHue);
     updatePaintBalance();
     showPaintToast('Paint applied!', '#44ff88');
+    playSpraySfx();
     // Update credit display in stats
     const creditEl = document.querySelector('#garage-stats [style*="color:#ffcc00"]');
     if (creditEl) creditEl.textContent = `${prog.credits} CR`;
@@ -315,6 +563,9 @@ function buildGarageUI(overlay: HTMLElement) {
 
   updatePaintBalance();
   progressBarEl = uiEl.querySelector('#garage-progress-bar') as HTMLElement;
+
+  // ── Dot Indicators ──
+  buildDotIndicators(uiEl);
 }
 
 let showCarRequestId = 0;
@@ -326,11 +577,17 @@ async function showCar(index: number) {
   const nameEl = document.getElementById('garage-car-name');
   if (nameEl) nameEl.textContent = car.name;
 
+  // Update dot indicator highlights
+  updateDots(index);
+
   // Determine tier from roster position
   const tierInfo = index < 3 ? { label: 'ENTRY', color: '#6b8' }
                  : index < 6 ? { label: 'MID', color: '#8af' }
                  : index < 9 ? { label: 'EXOTIC', color: '#f8a' }
                  :             { label: 'ELITE', color: '#fd4' };
+
+  // Update ring color to match tier
+  setTierColor(index);
 
   const statsEl = document.getElementById('garage-stats');
   if (statsEl) {
@@ -395,11 +652,52 @@ async function showCar(index: number) {
     });
     // Guard against rapid navigation — only apply if this is still the current request
     if (requestId !== showCarRequestId) return;
-    model.position.y = 0.25;
+
+    // ── Entrance Animation (drop-in with scale) ──
+    model.position.y = 2.5; // start above
+    model.scale.setScalar(0.01); // start tiny
     garageScene.add(model);
     currentModel = model;
     hidePlaceholder();
     showProgressBar(false);
+
+    // Animate entrance over ~400ms
+    const entranceStart = performance.now();
+    const entranceDuration = 400;
+    const animateEntrance = () => {
+      const elapsed = performance.now() - entranceStart;
+      const t = Math.min(elapsed / entranceDuration, 1);
+      // Cubic ease-out: 1 - (1-t)^3
+      const ease = 1 - Math.pow(1 - t, 3);
+      model.position.y = 2.5 - (2.5 - 0.25) * ease;
+      model.scale.setScalar(0.01 + 0.99 * ease);
+      if (t < 1) {
+        requestAnimationFrame(animateEntrance);
+      } else {
+        model.position.y = 0.25;
+        model.scale.setScalar(1);
+        // Brief ring flash on landing
+        if (ringMat) {
+          ringMat.opacity = 1.0;
+        }
+      }
+    };
+    requestAnimationFrame(animateEntrance);
+
+    // ── Clearcoat Paint Upgrade ──
+    model.traverse((child: any) => {
+      if (!child.isMesh || !child.material) return;
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      for (const mat of mats) {
+        if (mat.isMeshStandardMaterial && !shouldSkipForPaint(mat, child.name)) {
+          // Upgrade to physical material properties for clearcoat gloss
+          mat.clearcoat = 0.9;
+          mat.clearcoatRoughness = 0.03;
+          mat.envMapIntensity = 1.8;
+          mat.needsUpdate = true;
+        }
+      }
+    });
     if (nameEl) nameEl.textContent = car.name;
 
     // Start lazy preloading neighbors + rest after first car loads
@@ -525,12 +823,47 @@ function updateProgress(pct: number) {
 }
 
 export function updateGarage() {
-  rotationAngle += 0.005;
-  if (currentModel) {
-    currentModel.rotation.y = rotationAngle;
+  // ── Spring-damped orbit camera ──
+  const now = performance.now();
+  const idleTime = now - lastInteractionTime;
+
+  if (isDragging) {
+    // User is actively dragging — apply velocity directly
+    orbitAngle += orbitVelocity;
+  } else {
+    // Apply damping to momentum
+    orbitVelocity *= ORBIT_DAMPING;
+
+    // Resume auto-rotate after idle delay
+    if (idleTime > AUTO_ROTATE_RESUME_DELAY) {
+      orbitAngle += AUTO_ROTATE_SPEED;
+    } else {
+      orbitAngle += orbitVelocity;
+    }
   }
-  if (placeholderMesh?.visible) {
-    placeholderMesh.rotation.y = rotationAngle;
+
+  // Position camera on orbit circle
+  garageCamera.position.x = Math.sin(orbitAngle) * ORBIT_RADIUS;
+  garageCamera.position.z = Math.cos(orbitAngle) * ORBIT_RADIUS;
+  garageCamera.position.y = ORBIT_HEIGHT;
+  garageCamera.lookAt(0, ORBIT_LOOK_Y, 0);
+
+  // Animate neon ring pulse + tier color lerp
+  ringTime += 0.016;
+  if (ringMat) {
+    ringMat.opacity = 0.6 + 0.4 * Math.sin(ringTime * 1.5);
+    currentTierColor.lerp(targetTierColor, 0.05);
+    ringMat.color.copy(currentTierColor);
+  }
+
+  // Animate bokeh particles (gentle drift)
+  if (bokehPoints) {
+    const positions = (bokehPoints.geometry.attributes.position as THREE.BufferAttribute).array as Float32Array;
+    for (let i = 0; i < positions.length; i += 3) {
+      positions[i + 1] += 0.003; // slow rise
+      if (positions[i + 1] > 8) positions[i + 1] = -1; // wrap around
+    }
+    (bokehPoints.geometry.attributes.position as THREE.BufferAttribute).needsUpdate = true;
   }
 
   garageRenderer.render(garageScene, garageCamera);
@@ -539,6 +872,10 @@ export function updateGarage() {
 export function destroyGarage() {
   if (uiEl) { uiEl.remove(); uiEl = null; }
   progressBarEl = null;
+  dotContainerEl = null;
+
+  // Unwire keyboard navigation
+  unwireKeyboardNav();
 
   // Dispose current car model
   if (currentModel) {
@@ -570,6 +907,30 @@ export function destroyGarage() {
     placeholderMesh = null;
   }
 
+  // Dispose showroom extras
+  if (bokehPoints) {
+    garageScene.remove(bokehPoints);
+    bokehPoints.geometry.dispose();
+    (bokehPoints.material as THREE.Material).dispose();
+    bokehPoints = null;
+  }
+  if (backdropGroup) {
+    garageScene.remove(backdropGroup);
+    backdropGroup.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const m = child as THREE.Mesh;
+        m.geometry?.dispose();
+        const mat = m.material;
+        if (Array.isArray(mat)) mat.forEach(x => x.dispose());
+        else if (mat) (mat as THREE.Material).dispose();
+      }
+    });
+    backdropGroup = null;
+  }
+  ringMesh = null;
+  ringMat = null;
+  ringTime = 0;
+
   // Dispose environment map
   if (garageScene?.environment) {
     garageScene.environment.dispose();
@@ -596,3 +957,163 @@ export function getSelectedCar(): CarDef {
 
 export function getGarageScene() { return garageScene; }
 export function getGarageCamera() { return garageCamera; }
+
+// ── Procedural Garage SFX ──
+let garageSfxCtx: AudioContext | null = null;
+
+function getGarageSfxCtx(): AudioContext {
+  if (!garageSfxCtx) garageSfxCtx = new AudioContext();
+  return garageSfxCtx;
+}
+
+/** Short mechanical "click-whirr" for car switching */
+function playClickSfx() {
+  try {
+    const ctx = getGarageSfxCtx();
+    const now = ctx.currentTime;
+
+    // Click: short noise burst
+    const bufSize = ctx.sampleRate * 0.03;
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.3;
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.15, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+    noise.connect(noiseGain).connect(ctx.destination);
+    noise.start(now);
+
+    // Whirr: short sine sweep
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, now);
+    osc.frequency.exponentialRampToValueAtTime(400, now + 0.08);
+    const oscGain = ctx.createGain();
+    oscGain.gain.setValueAtTime(0.06, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+    osc.connect(oscGain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.12);
+  } catch {}
+}
+
+/** Satisfying "confirm" chord for selection */
+function playConfirmSfx() {
+  try {
+    const ctx = getGarageSfxCtx();
+    const now = ctx.currentTime;
+    [523.25, 659.25].forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.1, now + i * 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3 + i * 0.05);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now + i * 0.05);
+      osc.stop(now + 0.35 + i * 0.05);
+    });
+  } catch {}
+}
+
+/** "Cha-ching" unlock sound */
+function playUnlockSfx() {
+  try {
+    const ctx = getGarageSfxCtx();
+    const now = ctx.currentTime;
+    // Metallic ping
+    const osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(1200, now);
+    osc.frequency.exponentialRampToValueAtTime(2400, now + 0.15);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.45);
+    // Shimmer
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.value = 3200;
+    const g2 = ctx.createGain();
+    g2.gain.setValueAtTime(0.04, now + 0.1);
+    g2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+    osc2.connect(g2).connect(ctx.destination);
+    osc2.start(now + 0.1);
+    osc2.stop(now + 0.55);
+  } catch {}
+}
+
+/** Paint spray hiss */
+function playSpraySfx() {
+  try {
+    const ctx = getGarageSfxCtx();
+    const now = ctx.currentTime;
+    const bufSize = ctx.sampleRate * 0.15;
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = 3000;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+    src.connect(filter).connect(gain).connect(ctx.destination);
+    src.start(now);
+  } catch {}
+}
+
+// ── Keyboard Navigation ──
+let keyboardHandler: ((e: KeyboardEvent) => void) | null = null;
+
+function wireKeyboardNav() {
+  keyboardHandler = (e: KeyboardEvent) => {
+    switch (e.code) {
+      case 'ArrowLeft':
+      case 'KeyA':
+        currentIndex = (currentIndex - 1 + CAR_ROSTER.length) % CAR_ROSTER.length;
+        showCar(currentIndex);
+        playClickSfx();
+        e.preventDefault();
+        break;
+      case 'ArrowRight':
+      case 'KeyD':
+        currentIndex = (currentIndex + 1) % CAR_ROSTER.length;
+        showCar(currentIndex);
+        playClickSfx();
+        e.preventDefault();
+        break;
+      case 'Enter':
+      case 'Space': {
+        const car = CAR_ROSTER[currentIndex];
+        if (!isCarUnlocked(car.id)) {
+          if (unlockCar(car.id)) {
+            playUnlockSfx();
+            showCar(currentIndex);
+          }
+          return;
+        }
+        playConfirmSfx();
+        if (onSelectCallback) onSelectCallback(car);
+        e.preventDefault();
+        break;
+      }
+    }
+  };
+  window.addEventListener('keydown', keyboardHandler);
+}
+
+function unwireKeyboardNav() {
+  if (keyboardHandler) {
+    window.removeEventListener('keydown', keyboardHandler);
+    keyboardHandler = null;
+  }
+}
