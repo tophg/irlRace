@@ -693,7 +693,7 @@ async function showCar(index: number) {
           // Upgrade to physical material properties for clearcoat gloss
           mat.clearcoat = 0.9;
           mat.clearcoatRoughness = 0.03;
-          mat.envMapIntensity = 1.8;
+          mat.envMapIntensity = 1.2;
           mat.needsUpdate = true;
         }
       }
@@ -765,9 +765,6 @@ function applyPaintToGarageModel(hue: number) {
       if (!mat.color) continue;
       storeOriginal(mat);
       mat.color.copy(color);
-      if (mat.emissive) {
-        mat.emissive.copy(color).multiplyScalar(0.1);
-      }
       if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
       mat.version++; // Force WebGPU uniform re-upload
     }
