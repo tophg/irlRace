@@ -166,7 +166,7 @@ export function updateWeather(dt: number, playerPos: THREE.Vector3) {
 
     // Snow/blizzard: lateral wind drift
     if (windDriftX !== 0) {
-      const drift = windDriftX * dt * (0.5 + Math.sin(i * 0.3 + Date.now() * 0.001) * 0.5);
+      const drift = windDriftX * dt * (0.5 + Math.sin(i * 0.3 + performance.now() * 0.001) * 0.5);
       precipPositions[base]     += drift;
       precipPositions[base + 3] += drift;
     }

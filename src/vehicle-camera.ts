@@ -175,9 +175,10 @@ export class VehicleCamera {
       const sy = (Math.sin(t * 11.7) + Math.sin(t * 5.3)) * this.shakeIntensity * 0.2;
       this.camera.position.x += sx;
       this.camera.position.y += sy;
-      this.shakeDecay -= 1 / 60; // approximate dt
-      if (this.shakeDecay <= 0) this.shakeIntensity = 0;
-      else this.shakeIntensity *= 0.92;
+      // Decay shake over shakeDecay seconds (frame-rate-independent)
+      const decayRate = 1 / Math.max(this.shakeDecay, 0.01);
+      this.shakeIntensity *= Math.exp(-decayRate * (1 / 60)); // conservative per-frame decay
+      if (this.shakeIntensity < 0.001) this.shakeIntensity = 0;
     }
 
     // Speed vibration (subtle at high speed)

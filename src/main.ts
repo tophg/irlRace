@@ -1948,10 +1948,17 @@ function gameLoop(timestamp: number) {
       const avgFps = 1 / avgDt;
       const currentPR = renderer.getPixelRatio();
       const basePR = Math.min(window.devicePixelRatio, 2);
+      let newPR = currentPR;
       if (avgFps < 45 && currentPR > 0.5) {
-        renderer.setPixelRatio(Math.max(currentPR - 0.15, 0.5));
+        newPR = Math.max(currentPR - 0.15, 0.5);
       } else if (avgFps > 56 && currentPR < basePR) {
-        renderer.setPixelRatio(Math.min(currentPR + 0.05, basePR));
+        newPR = Math.min(currentPR + 0.05, basePR);
+      }
+      // Only update if changed — must call setSize after setPixelRatio
+      // to properly resize the internal framebuffer (required by WebGPURenderer)
+      if (newPR !== currentPR) {
+        renderer.setPixelRatio(newPR);
+        renderer.setSize(window.innerWidth, window.innerHeight);
       }
     }
 
