@@ -2069,6 +2069,7 @@ export function triggerNearMiss(side: 'left' | 'right') {
 
 export function updateNearMissStreaks(dt: number) {
   if (!nearMissCanvas || !nearMissCtx) return;
+  if (activeStreaks.length === 0) return;
 
   const ctx = nearMissCtx;
   const w = nearMissCanvas.width;

@@ -1222,12 +1222,12 @@ function createCheckpointArch(isStart: boolean): THREE.Group {
   leftPillar.position.set(-width / 2, height / 2, 0);
   arch.add(leftPillar);
 
-  const rightPillar = new THREE.Mesh(pillarGeo, pillarMat.clone());
+  const rightPillar = new THREE.Mesh(pillarGeo, pillarMat);
   rightPillar.position.set(width / 2, height / 2, 0);
   arch.add(rightPillar);
 
   const beamGeo = new THREE.BoxGeometry(width + 0.5, isStart ? 0.5 : 0.3, isStart ? 0.5 : 0.3);
-  const beam = new THREE.Mesh(beamGeo, pillarMat.clone());
+  const beam = new THREE.Mesh(beamGeo, pillarMat);
   beam.position.set(0, height, 0);
   arch.add(beam);
 
