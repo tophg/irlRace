@@ -61,7 +61,7 @@ export function initTrackRadar(
   mapCanvas.height = MAP_SIZE * 2;
   mapCanvas.style.cssText = `
     position: fixed;
-    bottom: ${MAP_MARGIN}px;
+    top: ${MAP_MARGIN}px;
     left: ${MAP_MARGIN}px;
     width: ${MAP_SIZE}px;
     height: ${MAP_SIZE}px;

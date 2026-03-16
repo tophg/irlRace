@@ -46,6 +46,7 @@ import {
   spawnGPUNitroTrail, spawnGPURimSparks, spawnGPUBackfire,
 } from './gpu-particles';
 import { initTrackRadar, updateTrackRadar, destroyTrackRadar } from './minimap';
+import { initMusic, updateMusicIntensity, pauseMusic, resumeMusic, stopMusic } from './music';
 import {
   initRapierWorld, addBarrierCollider, addCarBody,
   syncCarToRapier, stepRapierWorld, destroyRapierWorld,
@@ -145,6 +146,8 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
     if (G.gameState === GameState.RACING || G.gameState === GameState.PAUSED) {
       togglePause({ onRestart: () => startRace(), onQuit: () => showTitleScreen() });
+      if (G.gameState === GameState.PAUSED) pauseMusic();
+      else resumeMusic();
     }
   }
 });
@@ -390,6 +393,7 @@ async function startRace() {
     uiOverlay.appendChild(G.mirrorBorder);
     showTouchControls(true);
     initAudio();
+    initMusic();
     hideLoading();
     // NOW enter COUNTDOWN — track is fully built, all assets loaded
     G.gameState = GameState.COUNTDOWN;
@@ -462,6 +466,12 @@ async function spawnAI(td: TrackData) {
     ai.setSpeedProfile(G.trackData!.speedProfile);
     scene.add(ai.vehicle.group);
     createUnderglow(ai.vehicle.group, i + 1); // Different color per AI
+
+    // AI name tag (billboard sprite above car)
+    const AI_NAMES = ['SHADOW', 'BLAZE', 'NITRO', 'GHOST', 'VIPER', 'STORM', 'RAZOR', 'DRIFT', 'FURY', 'ACE', 'NOVA'];
+    const nameTag = createNameTag(AI_NAMES[i % AI_NAMES.length], scene);
+    (ai as any)._nameTag = nameTag;
+
     G.aiRacers.push(ai);
   }
 }
@@ -630,6 +640,7 @@ function clearRaceObjects() {
 
   // Stop audio
   stopAudio();
+  stopMusic();
 
   destroyHUD();
   destroyTrackRadar();
@@ -1222,6 +1233,12 @@ function gameLoop(timestamp: number) {
     G.playerVehicle.lerpToRender(alpha);
     for (const ai of G.aiRacers) ai.vehicle.lerpToRender(alpha);
 
+    // Update AI name tags to follow car positions
+    for (const ai of G.aiRacers) {
+      const tag = (ai as any)._nameTag as THREE.Sprite | undefined;
+      if (tag) updateNameTag(tag, ai.vehicle.group.position);
+    }
+
     // ── RENDERING-RATE CODE (runs once per frame, using interpolated positions) ──
 
     // Slipstream detection (visual-rate, using interpolated positions)
@@ -1429,6 +1446,7 @@ function gameLoop(timestamp: number) {
     // Heat shimmer (canvas wavering at high speed)
     const speedR = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
     updateHeatShimmer(speedR);
+    updateMusicIntensity(speedR);
 
     // Track radar minimap
     if (G.playerVehicle) {

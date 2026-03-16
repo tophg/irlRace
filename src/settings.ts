@@ -2,6 +2,7 @@
 
 export interface GameSettings {
   masterVolume: number;    // 0–1
+  musicVolume: number;     // 0–1
   engineVolume: number;    // 0–1
   sfxVolume: number;       // 0–1
   shadowQuality: number;   // 0=off, 1=low, 2=high
@@ -17,6 +18,7 @@ const STORAGE_KEY = 'hr-settings';
 
 const DEFAULT_SETTINGS: GameSettings = {
   masterVolume: 0.8,
+  musicVolume: 0.6,
   engineVolume: 0.7,
   sfxVolume: 0.9,
   shadowQuality: 2,
@@ -87,6 +89,11 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
         <input type="range" min="0" max="100" value="${Math.round(s.sfxVolume * 100)}" id="set-sfx">
         <span class="set-val" id="set-sfx-val">${Math.round(s.sfxVolume * 100)}%</span>
       </label>
+      <label class="settings-row">
+        <span>Music</span>
+        <input type="range" min="0" max="100" value="${Math.round(s.musicVolume * 100)}" id="set-music">
+        <span class="set-val" id="set-music-val">${Math.round(s.musicVolume * 100)}%</span>
+      </label>
 
       <div class="settings-section">GRAPHICS</div>
       <label class="settings-row">
@@ -152,6 +159,7 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
   wireSlider('set-master');
   wireSlider('set-engine');
   wireSlider('set-sfx');
+  wireSlider('set-music');
   wireSlider('set-particles');
   wireSlider('set-steer');
   wireSlider('set-touch-opacity');
@@ -161,6 +169,7 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
     const get = (id: string) => parseInt((settingsEl!.querySelector(`#${id}`) as HTMLInputElement).value);
     saveSettings({
       masterVolume: get('set-master') / 100,
+      musicVolume: get('set-music') / 100,
       engineVolume: get('set-engine') / 100,
       sfxVolume: get('set-sfx') / 100,
       shadowQuality: parseInt((settingsEl!.querySelector('#set-shadows') as HTMLSelectElement).value),
