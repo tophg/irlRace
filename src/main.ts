@@ -779,28 +779,7 @@ const AI_DRIVER_NAMES = [
   'Turbo', 'Clutch', 'Drift', 'Razor', 'Burn', 'Apex',
 ];
 
-/** Brief popup for near-miss events. */
-function showNearMissPopup() {
-  const uiOverlay = document.getElementById('ui-overlay');
-  if (!uiOverlay) return;
-  const popup = document.createElement('div');
-  popup.textContent = 'NEAR MISS! +5 NOS';
-  popup.style.cssText = `
-    position:fixed; left:50%; top:40%; transform:translateX(-50%);
-    color:#ff6600; font-family:Outfit,sans-serif; font-size:18px; font-weight:700;
-    text-shadow:0 0 8px rgba(255,102,0,0.6); pointer-events:none; z-index:60;
-    animation: nearMissAnim 1s ease-out forwards;
-  `;
-  // Inject keyframes if not present
-  if (!document.getElementById('nearmiss-style')) {
-    const style = document.createElement('style');
-    style.id = 'nearmiss-style';
-    style.textContent = `@keyframes nearMissAnim { 0%{opacity:1;transform:translateX(-50%) translateY(0)} 100%{opacity:0;transform:translateX(-50%) translateY(-40px)} }`;
-    document.head.appendChild(style);
-  }
-  uiOverlay.appendChild(popup);
-  setTimeout(() => popup.remove(), 1100);
-}
+
 
 function resolvePlayerName(id: string): string {
   if (id === 'local') return 'You';
