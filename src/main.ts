@@ -38,7 +38,8 @@ import {
   initLensFlares, updateLensFlares,
   initLightning, setLightningEnabled, updateLightning,
   initNearMissStreaks, triggerNearMiss, updateNearMissStreaks,
-  initVictoryConfetti, spawnVictoryConfetti, updateVictoryConfetti,
+  initNearMissWhoosh, triggerNearMissWhoosh, updateNearMissWhoosh,
+  initVictoryConfetti, spawnVictoryConfetti, updateVictoryConfetti, setConfettiContinuous,
 } from './vfx';
 import {
   initGPUParticles, updateGPUParticles, destroyGPUParticles,
@@ -406,6 +407,7 @@ async function startRace() {
     initLensFlares(scene, lightPositions);
     initLightning(container);
     initNearMissStreaks(container);
+    initNearMissWhoosh(scene);
     initVictoryConfetti(scene);
 
     // Enable lightning if storm weather
@@ -897,6 +899,7 @@ function showResults() {
   // Victory confetti burst!
   if (G.playerVehicle) {
     spawnVictoryConfetti(G.playerVehicle.group.position);
+    setConfettiContinuous(true, G.playerVehicle.group.position);
   }
 
   // Record session wins
@@ -1586,7 +1589,7 @@ function gameLoop(timestamp: number) {
 
     // Brake disc glow
     if (G._playerBrakeDiscs) {
-      updateBrakeDiscs(G._playerBrakeDiscs, G.playerVehicle.brake, G.playerVehicle.speed);
+      updateBrakeDiscs(G._playerBrakeDiscs, G.playerVehicle.brake, G.playerVehicle.speed, frameDt, G.selectedCar.maxSpeed, G.playerVehicle.group.position);
     }
 
     // Shoulder dust (near barriers = near road edge)
@@ -1637,6 +1640,7 @@ function gameLoop(timestamp: number) {
             const sinH = Math.sin(G.playerVehicle.heading);
             const cross = dx * cosH - dz * sinH;
             triggerNearMiss(cross > 0 ? 'right' : 'left');
+            triggerNearMissWhoosh(cross > 0 ? 'right' : 'left', camera.position, G.playerVehicle.heading);
             // Nitro reward + stat tracking
             G.playerVehicle.addNitro(5);
             G.raceStats.nearMissCount = (G.raceStats.nearMissCount ?? 0) + 1;
@@ -1645,6 +1649,7 @@ function gameLoop(timestamp: number) {
       }
     }
     updateNearMissStreaks(frameDt);
+    updateNearMissWhoosh(frameDt, camera.position, G.playerVehicle.heading);
 
     // Victory confetti physics
     updateVictoryConfetti(frameDt);

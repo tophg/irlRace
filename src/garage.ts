@@ -17,6 +17,9 @@ let rotationAngle = 0;
 let onSelectCallback: ((car: CarDef) => void) | null = null;
 let uiEl: HTMLElement | null = null;
 
+// Original material colors — stored on first paint so RESET is instant
+const originalColors = new WeakMap<THREE.Material, THREE.Color>();
+
 // Placeholder silhouette
 let placeholderMesh: THREE.Mesh | null = null;
 
@@ -273,15 +276,14 @@ function buildGarageUI(overlay: HTMLElement) {
     });
   }
 
-  // Reset paint (free)
+  // Reset paint (free) — restore from stored originals
   uiEl.querySelector('#garage-paint-reset')?.addEventListener('click', () => {
     const s = getSettings();
     s.paintHue = -1;
     saveSettings(s);
     lastCommittedHue = -1;
     if (paintSlider) paintSlider.value = '180';
-    // Reload model to restore original colors
-    showCar(currentIndex);
+    restoreOriginalColors();
   });
 
   progressBarEl = uiEl.querySelector('#garage-progress-bar') as HTMLElement;
@@ -387,6 +389,31 @@ async function showCar(index: number) {
   }
 }
 
+/** Determine if a material/mesh should be excluded from paint recoloring. */
+function shouldSkipForPaint(mat: any, meshName: string): boolean {
+  // Glass / transparent
+  if (mat.transparent && mat.opacity < 0.5) return true;
+  // Lights (strong emissive)
+  if (mat.emissiveIntensity > 0.5) return true;
+  // Named exclusions (mesh or material name)
+  const name = (mat.name || meshName || '').toLowerCase();
+  if (/glass|window|windshield|tire|tyre|wheel|rubber|rim|chrome|logo|badge|grille|exhaust|mirror|light|lens|indicator/.test(name)) return true;
+  // Very dark AND highly metallic (likely trim/unibody, not painted body)
+  if (mat.color) {
+    const hsl = { h: 0, s: 0, l: 0 };
+    mat.color.getHSL(hsl);
+    if (hsl.l < 0.05 && (mat.metalness ?? 0) > 0.85) return true;
+  }
+  return false;
+}
+
+/** Store original color for a material if not already stored. */
+function storeOriginal(mat: any) {
+  if (!originalColors.has(mat) && mat.color) {
+    originalColors.set(mat, mat.color.clone());
+  }
+}
+
 /** Recolor the current garage model's body panels with a hue (0–360). */
 function applyPaintToGarageModel(hue: number) {
   if (!currentModel) return;
@@ -395,19 +422,31 @@ function applyPaintToGarageModel(hue: number) {
     if (!child.isMesh) return;
     const mat = child.material;
     if (!mat || Array.isArray(mat)) return;
-    if (mat.transparent && mat.opacity < 0.9) return;
-    // Skip emissive-dominant meshes (headlights, taillights, indicators)
-    if (mat.emissive && mat.emissiveIntensity > 0.3) {
-      const eLum = mat.emissive.r * 0.299 + mat.emissive.g * 0.587 + mat.emissive.b * 0.114;
-      if (eLum > 0.1) return;
+    if (shouldSkipForPaint(mat, child.name)) return;
+    if (!mat.color) return;
+    storeOriginal(mat);
+    mat.color.copy(color);
+    if (mat.emissive) {
+      mat.emissive.copy(color).multiplyScalar(0.1);
     }
-    if (mat.color) {
-      const hsl = { h: 0, s: 0, l: 0 };
-      mat.color.getHSL(hsl);
-      if (hsl.l > 0.1 && hsl.l < 0.9) {
-        mat.color.copy(color);
-        if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
+    if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
+  });
+}
+
+/** Restore all painted materials to their original colors. */
+function restoreOriginalColors() {
+  if (!currentModel) return;
+  currentModel.traverse((child: any) => {
+    if (!child.isMesh) return;
+    const mat = child.material;
+    if (!mat || Array.isArray(mat)) return;
+    const orig = originalColors.get(mat);
+    if (orig && mat.color) {
+      mat.color.copy(orig);
+      if (mat.emissive) {
+        mat.emissive.set(0, 0, 0);
       }
+      if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
     }
   });
 }

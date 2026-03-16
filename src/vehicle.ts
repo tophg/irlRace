@@ -192,21 +192,24 @@ export class Vehicle {
     const color = new THREE.Color().setHSL(hue / 360, 0.85, 0.45);
     this.model.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
-      const mat = child.material;
+      const mat = child.material as any;
       if (!mat || Array.isArray(mat)) return;
-      // Skip dark materials (wheels, rubber, trim) and transparent (glass)
-      if (mat.transparent && mat.opacity < 0.9) return;
-      if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshPhysicalMaterial) {
-        const hsl = { h: 0, s: 0, l: 0 };
-        mat.color.getHSL(hsl);
-        // Only recolor materials that have some saturation or lightness (body panels)
-        // Skip very dark (l < 0.1) materials like tires, and very light (> 0.9) like chrome
-        if (hsl.l > 0.1 && hsl.l < 0.9) {
-          mat.color.copy(color);
-          if (mat.emissive) {
-            mat.emissive.copy(color).multiplyScalar(0.1);
-          }
-        }
+      // Skip glass / transparent
+      if (mat.transparent && mat.opacity < 0.5) return;
+      // Skip lights (strong emissive)
+      if (mat.emissiveIntensity > 0.5) return;
+      // Named exclusions
+      const name = (mat.name || child.name || '').toLowerCase();
+      if (/glass|window|windshield|tire|tyre|wheel|rubber|rim|chrome|logo|badge|grille|exhaust|mirror|light|lens|indicator/.test(name)) return;
+      if (!mat.color) return;
+      // Very dark + highly metallic = trim, not body
+      const hsl = { h: 0, s: 0, l: 0 };
+      mat.color.getHSL(hsl);
+      if (hsl.l < 0.05 && (mat.metalness ?? 0) > 0.85) return;
+      // Apply paint
+      mat.color.copy(color);
+      if (mat.emissive) {
+        mat.emissive.copy(color).multiplyScalar(0.1);
       }
     });
   }

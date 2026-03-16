@@ -3,6 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { attribute, float, vec4, mul, max, sub, clamp, mix, uniform as tslUniform } from 'three/tsl';
+import { spawnGPUSparks } from './gpu-particles';
 
 // ── Tire Smoke Pool ──
 const SMOKE_POOL_SIZE = 60;
@@ -1922,7 +1923,12 @@ export function updateBackfire(dt: number) {
   }
 }
 
-// ── Brake Disc Glow (red emissive behind wheels on hard braking) ──
+// ── Brake Disc Glow (temperature accumulation model) ──
+
+let _brakeTemp = 0; // 0..1 accumulated thermal energy
+const _darkRed = new THREE.Color(0x8b0000);
+const _brightOrange = new THREE.Color(0xff6600);
+const _brakeEmissiveColor = new THREE.Color();
 
 /**
  * Add brake disc glow meshes to a car's body group.
@@ -1955,30 +1961,66 @@ export function createBrakeDiscs(bodyGroup: THREE.Group): THREE.MeshStandardMate
     materials.push(mat);
   }
 
+  _brakeTemp = 0;
   return materials;
 }
 
 /**
- * Update brake disc glow intensity based on braking force.
+ * Update brake disc glow using a temperature accumulation model.
+ * Heat builds with braking force × speed and decays exponentially.
  * @param discMats — array of 4 materials from createBrakeDiscs
  * @param brakeForce — 0..1 brake input
- * @param speed — current speed (glow only visible at speed)
+ * @param speed — current speed
+ * @param dt — frame delta in seconds
+ * @param maxSpeed — car's max speed for ratio computation
+ * @param carPos — car position for hot spark spawning
  */
 export function updateBrakeDiscs(
   discMats: THREE.MeshStandardMaterial[],
   brakeForce: number,
   speed: number,
+  dt: number,
+  maxSpeed: number,
+  carPos?: THREE.Vector3,
 ) {
   const absSpeed = Math.abs(speed);
-  // Glow only when actually braking at speed
-  const glowIntensity = brakeForce > 0.1 && absSpeed > 5
-    ? Math.min(brakeForce * 3, 4) * Math.min(absSpeed / 20, 1)
-    : 0;
+  const speedRatio = Math.min(absSpeed / Math.max(maxSpeed, 1), 1);
+
+  // Accumulate heat: brake force × speed ratio
+  if (brakeForce > 0.1 && absSpeed > 5) {
+    _brakeTemp = Math.min(_brakeTemp + brakeForce * speedRatio * dt * 3, 1);
+  }
+  // Thermal decay (exponential cooling)
+  _brakeTemp *= Math.exp(-2 * dt);
+  if (_brakeTemp < 0.005) _brakeTemp = 0;
+
+  // Emissive intensity driven by temperature
+  const glowIntensity = _brakeTemp * 4.0;
+
+  // Color ramp: dark red → bright orange based on temperature
+  _brakeEmissiveColor.copy(_darkRed).lerp(_brightOrange, _brakeTemp);
 
   for (const mat of discMats) {
     mat.emissiveIntensity = glowIntensity;
+    mat.emissive.copy(_brakeEmissiveColor);
+  }
+
+  // Hot sparks at high temperature + high speed
+  if (_brakeTemp > 0.6 && speedRatio > 0.7 && carPos) {
+    // Spawn 1-2 sparks from a random wheel position
+    const count = Math.random() > 0.5 ? 2 : 1;
+    const positions = [
+      { x: -0.6, z: 0.9 }, { x: 0.6, z: 0.9 },
+      { x: -0.6, z: -0.9 }, { x: 0.6, z: -0.9 },
+    ];
+    for (let i = 0; i < count; i++) {
+      const wp = positions[Math.floor(Math.random() * 4)];
+      _brakeSparksPos.set(carPos.x + wp.x, carPos.y + 0.22, carPos.z + wp.z);
+      spawnGPUSparks(_brakeSparksPos, 8 + _brakeTemp * 12);
+    }
   }
 }
+const _brakeSparksPos = new THREE.Vector3();
 
 // ── Shoulder Dust (dirt particles when car rides on road edge) ──
 
@@ -2440,6 +2482,99 @@ export function updateNearMissStreaks(dt: number) {
   }
 }
 
+// ── Near-Miss 3D Whoosh Mesh (air-displacement planes that sweep past camera) ──
+
+let whooshMeshL: THREE.Mesh | null = null;
+let whooshMeshR: THREE.Mesh | null = null;
+let whooshLifeL = 0;
+let whooshLifeR = 0;
+const WHOOSH_DURATION = 0.3;
+let whooshScene: THREE.Scene | null = null;
+
+export function initNearMissWhoosh(scene: THREE.Scene) {
+  whooshScene = scene;
+  const geo = new THREE.PlaneGeometry(2.5, 6);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  whooshMeshL = new THREE.Mesh(geo, mat.clone());
+  whooshMeshR = new THREE.Mesh(geo, mat.clone());
+  whooshMeshL.visible = false;
+  whooshMeshR.visible = false;
+  scene.add(whooshMeshL);
+  scene.add(whooshMeshR);
+}
+
+export function triggerNearMissWhoosh(side: 'left' | 'right', cameraPos: THREE.Vector3, cameraHeading: number) {
+  const mesh = side === 'left' ? whooshMeshL : whooshMeshR;
+  if (!mesh) return;
+
+  const sideSign = side === 'left' ? -1 : 1;
+  const cosH = Math.cos(cameraHeading);
+  const sinH = Math.sin(cameraHeading);
+  // Start behind the camera, offset to the side
+  mesh.position.set(
+    cameraPos.x + cosH * sideSign * 3 - sinH * (-4),
+    cameraPos.y + 0.5,
+    cameraPos.z - sinH * sideSign * 3 - cosH * (-4),
+  );
+  mesh.rotation.y = cameraHeading + sideSign * 0.3;
+  mesh.scale.set(0.5, 1, 1);
+  mesh.visible = true;
+
+  if (side === 'left') whooshLifeL = WHOOSH_DURATION;
+  else whooshLifeR = WHOOSH_DURATION;
+}
+
+export function updateNearMissWhoosh(dt: number, cameraPos: THREE.Vector3, cameraHeading: number) {
+  const sinH = Math.sin(cameraHeading);
+  const cosH = Math.cos(cameraHeading);
+
+  // Left whoosh
+  if (whooshLifeL > 0 && whooshMeshL) {
+    whooshLifeL -= dt;
+    const t = 1 - whooshLifeL / WHOOSH_DURATION; // 0→1
+    if (whooshLifeL <= 0) {
+      whooshMeshL.visible = false;
+    } else {
+      // Sweep forward past camera
+      const fwd = -4 + t * 12; // behind → ahead
+      whooshMeshL.position.set(
+        cameraPos.x + cosH * (-3) - sinH * fwd,
+        cameraPos.y + 0.5,
+        cameraPos.z - sinH * (-3) - cosH * fwd,
+      );
+      whooshMeshL.scale.set(0.5 + t * 1.5, 1 + t * 0.5, 1);
+      const mat = whooshMeshL.material as THREE.MeshBasicMaterial;
+      mat.opacity = (1 - t) * 0.15;
+    }
+  }
+
+  // Right whoosh
+  if (whooshLifeR > 0 && whooshMeshR) {
+    whooshLifeR -= dt;
+    const t = 1 - whooshLifeR / WHOOSH_DURATION;
+    if (whooshLifeR <= 0) {
+      whooshMeshR.visible = false;
+    } else {
+      const fwd = -4 + t * 12;
+      whooshMeshR.position.set(
+        cameraPos.x + cosH * 3 - sinH * fwd,
+        cameraPos.y + 0.5,
+        cameraPos.z - sinH * 3 - cosH * fwd,
+      );
+      whooshMeshR.scale.set(0.5 + t * 1.5, 1 + t * 0.5, 1);
+      const mat = whooshMeshR.material as THREE.MeshBasicMaterial;
+      mat.opacity = (1 - t) * 0.15;
+    }
+  }
+}
+
 // ── Victory Confetti (colorful particles on race finish) ──
 
 const CONFETTI_COUNT = 80;
@@ -2452,6 +2587,9 @@ interface ConfettiParticle {
 let confettiPool: THREE.Mesh[] = [];
 const activeConfetti: ConfettiParticle[] = [];
 let confettiScene: THREE.Scene | null = null;
+let _confettiContinuous = false;
+let _confettiSpawnPos: THREE.Vector3 | null = null;
+let _confettiPoolIdx = 0;
 
 const CONFETTI_COLORS = [
   0xff4444, 0x44ff44, 0x4488ff,
@@ -2511,7 +2649,40 @@ export function spawnVictoryConfetti(pos: THREE.Vector3) {
   }
 }
 
+/** Enable/disable continuous confetti rain during results screen. */
+export function setConfettiContinuous(enabled: boolean, pos?: THREE.Vector3) {
+  _confettiContinuous = enabled;
+  _confettiSpawnPos = pos ? pos.clone() : null;
+}
+
 export function updateVictoryConfetti(dt: number) {
+  // Continuous rain: spawn 2 particles per frame while active
+  if (_confettiContinuous && confettiPool.length > 0 && _confettiSpawnPos) {
+    for (let n = 0; n < 2; n++) {
+      const mesh = confettiPool[_confettiPoolIdx % confettiPool.length];
+      _confettiPoolIdx++;
+      mesh.position.set(
+        _confettiSpawnPos.x + (Math.random() - 0.5) * 10,
+        _confettiSpawnPos.y + 6 + Math.random() * 4,
+        _confettiSpawnPos.z + (Math.random() - 0.5) * 10,
+      );
+      mesh.scale.setScalar(0.5 + Math.random() * 0.8);
+      mesh.visible = true;
+      const mat = mesh.material as THREE.MeshBasicMaterial;
+      mat.opacity = 1.0;
+      mat.color.setHex(CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)]);
+      activeConfetti.push({
+        mesh,
+        vx: (Math.random() - 0.5) * 3,
+        vy: -1 - Math.random() * 2, // gentle downward
+        vz: (Math.random() - 0.5) * 3,
+        spin: (Math.random() - 0.5) * 8,
+        spinAxis: Math.random() * 3,
+        life: 3 + Math.random() * 2,
+      });
+    }
+  }
+
   let j = 0;
   while (j < activeConfetti.length) {
     const p = activeConfetti[j];
@@ -2927,7 +3098,24 @@ export function destroyVFX() {
     nearMissCtx = null;
   }
 
+  // Clear near-miss whoosh meshes
+  for (const wm of [whooshMeshL, whooshMeshR]) {
+    if (wm) {
+      wm.parent?.remove(wm);
+      wm.geometry?.dispose();
+      (wm.material as THREE.Material)?.dispose();
+    }
+  }
+  whooshMeshL = null;
+  whooshMeshR = null;
+  whooshLifeL = 0;
+  whooshLifeR = 0;
+  whooshScene = null;
+
   // Clear victory confetti
+  _confettiContinuous = false;
+  _confettiSpawnPos = null;
+  _confettiPoolIdx = 0;
   for (const p of activeConfetti) p.mesh.visible = false;
   activeConfetti.length = 0;
   if (confettiScene) {
