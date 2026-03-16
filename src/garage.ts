@@ -373,12 +373,13 @@ function applyPaintToGarageModel(hue: number) {
     const mat = child.material;
     if (!mat || Array.isArray(mat)) return;
     if (mat.transparent && mat.opacity < 0.9) return;
+    // Skip emissive-dominant meshes (headlights, taillights, indicators)
+    if (mat.emissiveIntensity && mat.emissiveIntensity > 0.5) return;
     if (mat.color) {
       const hsl = { h: 0, s: 0, l: 0 };
       mat.color.getHSL(hsl);
       if (hsl.l > 0.1 && hsl.l < 0.9) {
         mat.color.copy(color);
-        if (mat.emissive) mat.emissive.copy(color).multiplyScalar(0.1);
       }
     }
   });
@@ -424,7 +425,8 @@ export function updateGarage() {
 export function destroyGarage() {
   if (uiEl) { uiEl.remove(); uiEl = null; }
   progressBarEl = null;
-  hidePlaceholder();
+
+  // Dispose current car model
   if (currentModel) {
     garageScene.remove(currentModel);
     currentModel.traverse((child) => {
@@ -437,6 +439,40 @@ export function destroyGarage() {
       }
     });
     currentModel = null;
+  }
+
+  // Dispose placeholder
+  if (placeholderMesh) {
+    garageScene.remove(placeholderMesh);
+    placeholderMesh.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        mesh.geometry?.dispose();
+        const mat = mesh.material;
+        if (Array.isArray(mat)) mat.forEach(m => m.dispose());
+        else if (mat) (mat as THREE.Material).dispose();
+      }
+    });
+    placeholderMesh = null;
+  }
+
+  // Dispose environment map
+  if (garageScene?.environment) {
+    garageScene.environment.dispose();
+    garageScene.environment = null;
+  }
+
+  // Dispose remaining scene objects (lights, platform, floor, ring)
+  if (garageScene) {
+    garageScene.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mesh = child as THREE.Mesh;
+        mesh.geometry?.dispose();
+        const mat = mesh.material;
+        if (Array.isArray(mat)) mat.forEach(m => m.dispose());
+        else if (mat) (mat as THREE.Material).dispose();
+      }
+    });
   }
 }
 
