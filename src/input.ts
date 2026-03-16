@@ -27,7 +27,8 @@ const STEER_RADIUS = 80; // pixels for full deflection
 let steerIndicator: HTMLElement | null = null;
 
 export function initInput(): InputState {
-  // Keyboard
+  // Keyboard — Left/Right are intentionally swapped here to compensate
+  // for the heading-to-rotation convention used in vehicle.ts physics.
   window.addEventListener('keydown', (e) => {
     switch (e.code) {
       case 'ArrowUp':    case 'KeyW': state.up = true;    break;

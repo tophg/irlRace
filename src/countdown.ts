@@ -1,4 +1,6 @@
-/* ── Hood Racer — Countdown Overlay ── */
+/* ── Hood Racer — Countdown Overlay ──
+ * Note: Uses its own AudioContext (not audio.ts) because the countdown
+ * runs before initAudio() is called. The context is closed after use. */
 
 let overlayEl: HTMLElement | null = null;
 let countdownTimers: number[] = [];

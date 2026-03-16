@@ -155,6 +155,11 @@ export class AIRacer {
         this.vehicle.heading = Math.atan2(respawnDir.x, respawnDir.z);
         this.vehicle.group.rotation.y = this.vehicle.heading;
         this.vehicle.speed = 10; // Give them a rolling start
+        // Align velocity vector to new heading (prevents flying off-track)
+        const sinH = Math.sin(this.vehicle.heading);
+        const cosH = Math.cos(this.vehicle.heading);
+        this.vehicle.velX = 10 * sinH;
+        this.vehicle.velZ = 10 * cosH;
         
         // Reset stuck timer
         this.stuckTimer = 0;

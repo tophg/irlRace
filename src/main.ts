@@ -147,9 +147,11 @@ window.addEventListener('keydown', (e) => {
   }
   if (e.code === 'Escape') {
     if (G.gameState === GameState.RACING || G.gameState === GameState.PAUSED) {
+      const wasPaused = G.gameState === GameState.PAUSED;
       togglePause({ onRestart: () => startRace(), onQuit: () => showTitleScreen() });
-      if (G.gameState === GameState.PAUSED) pauseMusic();
-      else resumeMusic();
+      // Pause/resume music based on the transition direction
+      if (wasPaused) resumeMusic();
+      else pauseMusic();
     }
   }
 });

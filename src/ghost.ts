@@ -84,10 +84,18 @@ export function finalizeGhostLap(
   try {
     const stored = loadAllGhosts();
     stored[seed.toString()] = data;
-    // Keep only last 20 ghosts to limit storage
+    // Keep only 20 ghosts — evict the one with the worst (slowest) lap time
     const keys = Object.keys(stored);
     if (keys.length > 20) {
-      delete stored[keys[0]];
+      let worstKey = keys[0];
+      let worstTime = stored[worstKey].lapTime;
+      for (const k of keys) {
+        if (stored[k].lapTime > worstTime) {
+          worstTime = stored[k].lapTime;
+          worstKey = k;
+        }
+      }
+      delete stored[worstKey];
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
   } catch {}

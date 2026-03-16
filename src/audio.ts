@@ -286,7 +286,7 @@ export function playLapFanfare() {
 
 /** Play tire screech on heavy drift. */
 export function playDriftSFX(intensity: number) {
-  if (!audioCtx || intensity < 0.3) return;
+  if (!audioCtx || !masterGain || intensity < 0.3) return;
 
   // White noise through bandpass for screech
   const bufferSize = audioCtx.sampleRate * 0.15;
@@ -380,6 +380,7 @@ export function playPositionSFX(gained: boolean) {
 }
 
 export function stopAudio() {
+  stopAllMusic();
   for (const osc of engineOscs) { try { osc.stop(); } catch {} }
   engineOscs = [];
   engineGains = [];

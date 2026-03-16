@@ -552,7 +552,9 @@ export class Vehicle {
 
     // ── Crosswind lateral push ──
     if (weather?.crosswindForce && absSpeed > 3) {
-      const variance = 1 + Math.sin(Date.now() * 0.001) * (weather.crosswindVariance ?? 0);
+      // Use deterministic per-frame time from physics accumulator
+      const windTime = performance.now() * 0.001; // smooth, monotonic
+      const variance = 1 + Math.sin(windTime) * (weather.crosswindVariance ?? 0);
       const windForce = weather.crosswindForce * absSpeed * absSpeed * 0.0001 * variance;
       this._velX += windForce * cosH * dt;
       this._velZ -= windForce * sinH * dt;
@@ -569,19 +571,9 @@ export class Vehicle {
       this.angularVel = 0;
     }
 
-    // ── Position update (with sub-step guard for tunneling prevention) ──
-    const stepDist = Math.sqrt(this._velX * this._velX + this._velZ * this._velZ) * dt;
-    if (stepDist > 3.5) {
-      // Split into 2 half-steps to prevent tunneling through barriers
-      this.group.position.x += this._velX * dt * 0.5;
-      this.group.position.z += this._velZ * dt * 0.5;
-      // Mid-step barrier check is handled by the main collision loop below
-      this.group.position.x += this._velX * dt * 0.5;
-      this.group.position.z += this._velZ * dt * 0.5;
-    } else {
-      this.group.position.x += this._velX * dt;
-      this.group.position.z += this._velZ * dt;
-    }
+    // ── Position update ──
+    this.group.position.x += this._velX * dt;
+    this.group.position.z += this._velZ * dt;
 
     // ── Keep on road surface (per-wheel raycast with spline fallback) ──
     let nearestSpline: { t: number; point: THREE.Vector3; distance: number } | null = null;
@@ -816,10 +808,10 @@ export class Vehicle {
     }
 
     // ── Brake light intensity ──
-    if (this.taillightMatL) {
+    if (this.taillightMatL && this.taillightMatR) {
       const brakeGlow = this.brake > 0 ? 5.0 : 1.5;
       this.taillightMatL.emissiveIntensity = brakeGlow;
-      this.taillightMatR!.emissiveIntensity = brakeGlow;
+      this.taillightMatR.emissiveIntensity = brakeGlow;
     }
   }
 
@@ -1017,9 +1009,11 @@ export class Vehicle {
 
       if (!inZone) return;
 
-      // Darken color toward grey (simulates paint scraping to bare metal)
-      const darkFactor = 1 - severity * 0.4;
-      mat.color.multiplyScalar(Math.max(darkFactor, 0.5));
+      // Darken color toward grey based on absolute damage (not compounding)
+      const darkFactor = Math.max(0.5, 1 - severity * 0.4);
+      const hsl = { h: 0, s: 0, l: 0 };
+      mat.color.getHSL(hsl);
+      mat.color.setHSL(hsl.h, hsl.s * darkFactor, Math.max(hsl.l * darkFactor, 0.15));
 
       // Increase roughness (fresh paint → scraped metal)
       mat.roughness = Math.min(0.3 + severity * 0.6, 0.9);
