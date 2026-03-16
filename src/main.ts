@@ -208,6 +208,9 @@ function showTitleScreen() {
   `;
   uiOverlay.appendChild(titleEl);
 
+  // Browser autoplay policy blocks music at page load; retry on first user click
+  titleEl.addEventListener('click', () => playTitleMusic(), { once: true });
+
   document.getElementById('btn-singleplayer')!.addEventListener('click', () => {
     titleEl.remove();
     enterGarage('singleplayer');

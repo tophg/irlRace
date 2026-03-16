@@ -37,8 +37,6 @@ export interface CarDef {
 
 export const CAR_ROSTER: CarDef[] = [
   // ── ENTRY TIER ──
-  // Civic — all-rounder, predictable and stable, the default
-  { id: 'civic',       name: 'Civic',       file: 'blue_camry.glb',    maxSpeed: 68, acceleration: 28, handling: 2.4, braking: 45, driftFactor: 0.28, gripCoeff: 0.85, latFriction: 5.5, suspStiffness: 0.04, steerSpeed: 3.0,  driftThreshold: 0.12, mass: 1500, cgHeight: 0.12, frontBias: 0.54 },
   // Haven — beginner-friendly, forgiving grip, smooth ride
   { id: 'haven',       name: 'Haven',       file: 'white_camry.glb',   maxSpeed: 65, acceleration: 30, handling: 2.6, braking: 48, driftFactor: 0.20, gripCoeff: 0.95, latFriction: 6.5, suspStiffness: 0.03, steerSpeed: 3.2,  driftThreshold: 0.15, mass: 1480, cgHeight: 0.11, frontBias: 0.53 },
 
@@ -48,8 +46,7 @@ export const CAR_ROSTER: CarDef[] = [
   { id: 'phantom',     name: 'Phantom',     file: 'Nissan_Altima.glb',  maxSpeed: 76, acceleration: 27, handling: 2.1, braking: 42, driftFactor: 0.40, gripCoeff: 0.78, latFriction: 4.0, suspStiffness: 0.05, steerSpeed: 2.6,  driftThreshold: 0.10, mass: 1550, cgHeight: 0.16, frontBias: 0.57 },
   // Monarch — heavy cruiser, strong accel, planted but slow to turn
   { id: 'monarch',     name: 'Monarch',     file: 'Nissan_Maxima.glb',  maxSpeed: 73, acceleration: 33, handling: 1.9, braking: 44, driftFactor: 0.26, gripCoeff: 0.84, latFriction: 5.0, suspStiffness: 0.04, steerSpeed: 2.8,  driftThreshold: 0.11, mass: 1650, cgHeight: 0.14, frontBias: 0.55 },
-  // Rally — AWD grip machine, best handling in class, sharp turn-in
-  { id: 'rally',       name: 'Rally',       file: 'Subaru_WRX1.glb',   maxSpeed: 72, acceleration: 34, handling: 3.0, braking: 50, driftFactor: 0.18, gripCoeff: 1.05, latFriction: 7.0, suspStiffness: 0.03, steerSpeed: 3.5,  driftThreshold: 0.18, mass: 1430, cgHeight: 0.10, frontBias: 0.47 },
+
 
   // ── EXOTIC TIER ──
   // Venom — dramatic drift character, spectacular slides, high speed
@@ -62,8 +59,7 @@ export const CAR_ROSTER: CarDef[] = [
   // ── ELITE TIER ──
   // Diablo — top speed king, lightweight, fragile glass cannon
   { id: 'diablo',      name: 'Diablo',      file: 'Lamborghini.glb',    maxSpeed: 92, acceleration: 36, handling: 2.2, braking: 55, driftFactor: 0.36, gripCoeff: 0.88, latFriction: 5.5, suspStiffness: 0.04, steerSpeed: 3.2,  driftThreshold: 0.10, mass: 1320, cgHeight: 0.08, frontBias: 0.42 },
-  // Shadow — grip king, planted at all speeds, composed cornering
-  { id: 'shadow',      name: 'Shadow',      file: 'Subaru_WRX4.glb',   maxSpeed: 85, acceleration: 32, handling: 3.4, braking: 52, driftFactor: 0.14, gripCoeff: 1.12, latFriction: 7.5, suspStiffness: 0.03, steerSpeed: 3.6,  driftThreshold: 0.20, mass: 1400, cgHeight: 0.09, frontBias: 0.46 },
+
 ];
 
 // ── Damage ──

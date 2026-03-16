@@ -72,12 +72,12 @@ export function buildTrackFromControlPoints(
   const shoulderMesh = buildShoulders(finalSpline);
   const kerbGroup = buildKerbs(finalSpline, curvatures);
 
-  // Checkpoints
-  const numCheckpoints = 10;
+  // Checkpoints — scale count by track length (1 per ~100 world units, min 4, max 12)
+  const numCheckpoints = Math.max(4, Math.min(12, Math.round(totalLength / 100)));
   const checkpoints: Checkpoint[] = [];
   for (let i = 1; i <= numCheckpoints; i++) {
     const t = i / numCheckpoints;
-    const evalT = t === 1.0 ? 0 : t;
+    const evalT = t >= 1.0 ? 0 : t;
     const position = finalSpline.getPointAt(evalT);
     const tangent = finalSpline.getTangentAt(evalT).normalize();
     checkpoints.push({ position, tangent, index: i - 1, t });

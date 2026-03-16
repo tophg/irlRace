@@ -17,20 +17,19 @@ const CREDITS_PODIUM_BONUS = 100;
 // ── Car Unlock Costs (by id) ──
 const UNLOCK_COSTS: Record<string, number> = {
   // Entry tier — free
-  civic: 0,
   haven: 0,
 
   // Mid tier
   phantom: 500,
   monarch: 600,
-  rally: 700,
+
   // Exotic tier
   venom: 1500,
   precision: 1800,
   apex: 2000,
   // Elite tier
   diablo: 4000,
-  shadow: 5000,
+
 };
 
 // ── Progress Data ──
@@ -58,7 +57,7 @@ function defaultProgress(): PlayerProgress {
     bestLapTime: 0,
     totalDistance: 0,
     totalDriftTime: 0,
-    unlockedCars: ['civic', 'haven'], // Entry tier free
+    unlockedCars: ['haven'], // Entry tier free
   };
 }
 
