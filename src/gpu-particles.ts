@@ -64,14 +64,16 @@ export async function initGPUParticles(
 ) {
   gpuScene = scene;
 
-  // Create storage buffers
-  positionBuffer = new THREE.StorageBufferAttribute(cpuPositions, 3);
-  velocityBuffer = new THREE.StorageBufferAttribute(cpuVelocities, 3);
-  colorBuffer = new THREE.StorageBufferAttribute(cpuColors, 4);
-  lifeBuffer = new THREE.StorageBufferAttribute(cpuLife, 1);
-  maxLifeBuffer = new THREE.StorageBufferAttribute(cpuMaxLife, 1);
-  typeBuffer = new THREE.StorageBufferAttribute(cpuType, 1);
-  sizeBuffer = new THREE.StorageBufferAttribute(cpuSize, 1);
+  // Create storage buffers only once to prevent VRAM growth across races
+  if (!positionBuffer) {
+    positionBuffer = new THREE.StorageBufferAttribute(cpuPositions, 3);
+    velocityBuffer = new THREE.StorageBufferAttribute(cpuVelocities, 3);
+    colorBuffer = new THREE.StorageBufferAttribute(cpuColors, 4);
+    lifeBuffer = new THREE.StorageBufferAttribute(cpuLife, 1);
+    maxLifeBuffer = new THREE.StorageBufferAttribute(cpuMaxLife, 1);
+    typeBuffer = new THREE.StorageBufferAttribute(cpuType, 1);
+    sizeBuffer = new THREE.StorageBufferAttribute(cpuSize, 1);
+  }
 
   // TSL storage nodes for compute shader access
   const sPos = storage(positionBuffer, 'vec3', MAX_PARTICLES);

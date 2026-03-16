@@ -2877,6 +2877,19 @@ export function destroyVFX() {
   for (const p of activeSmoke) p.mesh.visible = false;
   activeSmoke.length = 0;
 
+  // Clear debris
+  for (const d of activeDebris) d.mesh.visible = false;
+  activeDebris.length = 0;
+  if (sceneRef) {
+    for (const mesh of debrisPool) {
+      sceneRef.remove(mesh);
+      mesh.geometry?.dispose();
+      (mesh.material as THREE.Material)?.dispose();
+    }
+  }
+  debrisPool.length = 0;
+  debrisIdx = 0;
+
   // Clear sparks (before nulling scene)
   for (const s of activeSparks) s.mesh.visible = false;
   activeSparks.length = 0;
