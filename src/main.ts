@@ -274,9 +274,11 @@ function enterGarage(mode: 'singleplayer' | 'multiplayer') {
 
   initGarage(renderer, uiOverlay, (car: CarDef) => {
     G.selectedCar = car;
-    // Show loading overlay FIRST to cover the transition (prevents empty scene flash)
-    showLoading();
+    // Hide renderer canvas during garage teardown to prevent empty scene flash
+    renderer.domElement.style.visibility = 'hidden';
     destroyGarage();
+    // Restore after a frame so the race config dialog renders on top
+    requestAnimationFrame(() => { renderer.domElement.style.visibility = ''; });
 
     if (mode === 'singleplayer') {
       showRaceConfig((laps, ai, difficulty, seed, weather, environment) => {
