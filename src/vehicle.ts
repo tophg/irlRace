@@ -198,8 +198,8 @@ export class Vehicle {
         if (!mat) continue;
         // Skip glass / transparent
         if (mat.transparent && mat.opacity < 0.5) continue;
-        // Skip lights (strong emissive)
-        if (mat.emissiveIntensity > 0.5) continue;
+        // Skip lights (strong emissive color)
+        if (mat.emissiveIntensity > 0.5 && mat.emissive && mat.emissive.getHex() > 0) continue;
         // Named exclusions
         const name = (mat.name || child.name || '').toLowerCase();
         if (/glass|window|windshield|tire|tyre|wheel|rubber|rim|chrome|logo|badge|grille|exhaust|mirror|light|lens|indicator/.test(name)) continue;

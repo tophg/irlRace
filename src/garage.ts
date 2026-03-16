@@ -431,8 +431,8 @@ async function showCar(index: number) {
 function shouldSkipForPaint(mat: any, meshName: string): boolean {
   // Glass / transparent
   if (mat.transparent && mat.opacity < 0.5) return true;
-  // Lights (strong emissive)
-  if (mat.emissiveIntensity > 0.5) return true;
+  // Lights (strong emissive color)
+  if (mat.emissiveIntensity > 0.5 && mat.emissive && mat.emissive.getHex() > 0) return true;
   // Named exclusions (mesh or material name)
   const name = (mat.name || meshName || '').toLowerCase();
   if (/glass|window|windshield|tire|tyre|wheel|rubber|rim|chrome|logo|badge|grille|exhaust|mirror|light|lens|indicator/.test(name)) return true;
