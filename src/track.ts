@@ -75,12 +75,11 @@ export function buildTrackFromControlPoints(
   // Checkpoints — scale count by track length (1 per ~100 world units, min 4, max 12)
   const numCheckpoints = Math.max(4, Math.min(12, Math.round(totalLength / 100)));
   const checkpoints: Checkpoint[] = [];
-  for (let i = 1; i <= numCheckpoints; i++) {
+  for (let i = 0; i < numCheckpoints; i++) {
     const t = i / numCheckpoints;
-    const evalT = t >= 1.0 ? 0 : t;
-    const position = finalSpline.getPointAt(evalT);
-    const tangent = finalSpline.getTangentAt(evalT).normalize();
-    checkpoints.push({ position, tangent, index: i - 1, t });
+    const position = finalSpline.getPointAt(t);
+    const tangent = finalSpline.getTangentAt(t).normalize();
+    checkpoints.push({ position, tangent, index: i, t });
   }
 
   const sceneryGroup = generateScenery(finalSpline, rng);
@@ -125,13 +124,11 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   // ── 8. Place checkpoints (distributed from t > 0 to t=1.0 for precise lap completion) ──
   const numCheckpoints = 10;
   const checkpoints: Checkpoint[] = [];
-  for (let i = 1; i <= numCheckpoints; i++) {
-    const t = i / numCheckpoints; // e.g. 0.1, 0.2 ... 1.0
-    // Use t=0 for geometry evaluation if t=1, since the spline loops perfectly
-    const evalT = t === 1.0 ? 0 : t;
-    const position = finalSpline.getPointAt(evalT);
-    const tangent = finalSpline.getTangentAt(evalT).normalize();
-    checkpoints.push({ position, tangent, index: i - 1, t });
+  for (let i = 0; i < numCheckpoints; i++) {
+    const t = i / numCheckpoints;
+    const position = finalSpline.getPointAt(t);
+    const tangent = finalSpline.getTangentAt(t).normalize();
+    checkpoints.push({ position, tangent, index: i, t });
   }
 
   // ── 9. Scenery ──
@@ -928,13 +925,13 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
       transparent: true,
       depthWrite: true,
       polygonOffset: true,
-      polygonOffsetFactor: 1,
-      polygonOffsetUnits: 1,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -4,
     });
     const lineMesh = new THREE.Mesh(lineGeo, lineMat);
     lineMesh.renderOrder = -1; // Draw before vehicles
     lineMesh.position.copy(p);
-    lineMesh.position.y += 0.03; // Just above road surface
+    lineMesh.position.y += 0.005; // Barely above road surface
     // Rotate plane to lie flat on the road, aligned with the track direction
     lineMesh.quaternion.setFromRotationMatrix(
       new THREE.Matrix4().makeBasis(right, new THREE.Vector3(0, 1, 0), tangent)

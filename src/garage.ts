@@ -205,7 +205,7 @@ function buildGarageUI(overlay: HTMLElement) {
       <button class="car-nav-btn" id="garage-next">▶</button>
     </div>
     <div style="margin-top:10px;text-align:center;">
-      <label style="font-size:11px;color:rgba(255,255,255,0.6);letter-spacing:1px;">PAINT COLOR</label>
+      <label style="font-size:11px;color:rgba(255,255,255,0.6);letter-spacing:1px;">PAINT COLOR <span style="color:#ffcc00;font-size:10px">(100 CR)</span></label>
       <input type="range" min="0" max="360" value="${getSettings().paintHue >= 0 ? getSettings().paintHue : 180}" id="garage-paint"
              style="width:160px;-webkit-appearance:none;height:8px;border-radius:4px;
                     background:linear-gradient(to right,hsl(0,85%,45%),hsl(60,85%,45%),hsl(120,85%,45%),hsl(180,85%,45%),hsl(240,85%,45%),hsl(300,85%,45%),hsl(360,85%,45%));">
@@ -237,25 +237,48 @@ function buildGarageUI(overlay: HTMLElement) {
     if (onSelectCallback) onSelectCallback(car);
   });
 
-  // Paint hue slider — live preview
+  // Paint hue slider — live preview + credit cost
+  const PAINT_COST = 100;
   const paintSlider = uiEl.querySelector('#garage-paint') as HTMLInputElement;
+  let lastCommittedHue = getSettings().paintHue; // track the saved hue to bill only on change
   if (paintSlider) {
     paintSlider.addEventListener('input', () => {
       const hue = parseInt(paintSlider.value);
-      // Persist immediately
+      // Live preview (no charge yet)
+      applyPaintToGarageModel(hue);
+    });
+    paintSlider.addEventListener('change', () => {
+      const hue = parseInt(paintSlider.value);
+      if (hue === lastCommittedHue) return; // no change
+      const prog = getProgress();
+      if (prog.credits < PAINT_COST) {
+        // Can't afford — revert to previous hue
+        if (lastCommittedHue >= 0) {
+          paintSlider.value = String(lastCommittedHue);
+          applyPaintToGarageModel(lastCommittedHue);
+        } else {
+          showCar(currentIndex); // reload original colors
+        }
+        return;
+      }
+      // Deduct credits
+      prog.credits -= PAINT_COST;
+      localStorage.setItem('hoodracer_progress', JSON.stringify(prog));
+      lastCommittedHue = hue;
       const s = getSettings();
       s.paintHue = hue;
       saveSettings(s);
-      // Recolor the current model in the garage
-      applyPaintToGarageModel(hue);
+      // Refresh stats to show updated credit balance
+      showCar(currentIndex);
     });
   }
 
-  // Reset paint
+  // Reset paint (free)
   uiEl.querySelector('#garage-paint-reset')?.addEventListener('click', () => {
     const s = getSettings();
     s.paintHue = -1;
     saveSettings(s);
+    lastCommittedHue = -1;
     if (paintSlider) paintSlider.value = '180';
     // Reload model to restore original colors
     showCar(currentIndex);
@@ -369,21 +392,21 @@ function applyPaintToGarageModel(hue: number) {
   if (!currentModel) return;
   const color = new THREE.Color().setHSL(hue / 360, 0.85, 0.45);
   currentModel.traverse((child: any) => {
-    if (!(child instanceof THREE.Mesh)) return;
+    if (!child.isMesh) return;
     const mat = child.material;
     if (!mat || Array.isArray(mat)) return;
     if (mat.transparent && mat.opacity < 0.9) return;
     // Skip emissive-dominant meshes (headlights, taillights, indicators)
-    // Check actual emissive color luminance, not just emissiveIntensity (defaults to 1.0)
     if (mat.emissive && mat.emissiveIntensity > 0.3) {
       const eLum = mat.emissive.r * 0.299 + mat.emissive.g * 0.587 + mat.emissive.b * 0.114;
-      if (eLum > 0.1) return; // genuinely emissive — skip
+      if (eLum > 0.1) return;
     }
     if (mat.color) {
       const hsl = { h: 0, s: 0, l: 0 };
       mat.color.getHSL(hsl);
       if (hsl.l > 0.1 && hsl.l < 0.9) {
         mat.color.copy(color);
+        if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
       }
     }
   });
