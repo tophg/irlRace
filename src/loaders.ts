@@ -50,12 +50,10 @@ function processCarModel(model: THREE.Group): THREE.Group {
   const scale = 4.0 / maxDim;
   model.scale.setScalar(scale);
 
-  // Center the model
+  // Center the model and set bottom to Y=0
   box.setFromObject(model);
   const center = box.getCenter(new THREE.Vector3());
-  model.position.sub(center);
-  model.position.y -= box.min.y; // sit on ground
-  model.position.y -= 0.15;       // nudge down to close wheel-road gap
+  model.position.set(-center.x, -box.min.y - 0.05, -center.z); // -0.05 sink for tire weight
 
   // Material enhancements
   model.traverse((child) => {

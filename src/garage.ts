@@ -458,17 +458,21 @@ function applyPaintToGarageModel(hue: number) {
   const color = new THREE.Color().setHSL(hue / 360, 0.85, 0.45);
   currentModel.traverse((child: any) => {
     if (!child.isMesh) return;
-    const mat = child.material;
-    if (!mat || Array.isArray(mat)) return;
-    if (shouldSkipForPaint(mat, child.name)) return;
-    if (!mat.color) return;
-    storeOriginal(mat);
-    mat.color.copy(color);
-    if (mat.emissive) {
-      mat.emissive.copy(color).multiplyScalar(0.1);
+    if (!child.material) return;
+    
+    const mats = Array.isArray(child.material) ? child.material : [child.material];
+    
+    for (const mat of mats) {
+      if (shouldSkipForPaint(mat, child.name)) continue;
+      if (!mat.color) continue;
+      storeOriginal(mat);
+      mat.color.copy(color);
+      if (mat.emissive) {
+        mat.emissive.copy(color).multiplyScalar(0.1);
+      }
+      if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
+      mat.version++; // Force WebGPU uniform re-upload
     }
-    if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
-    mat.version++; // Force WebGPU uniform re-upload
   });
 }
 
@@ -477,16 +481,20 @@ function restoreOriginalColors() {
   if (!currentModel) return;
   currentModel.traverse((child: any) => {
     if (!child.isMesh) return;
-    const mat = child.material;
-    if (!mat || Array.isArray(mat)) return;
-    const orig = originalColors.get(mat);
-    if (orig && mat.color) {
-      mat.color.copy(orig);
-      if (mat.emissive) {
-        mat.emissive.set(0, 0, 0);
+    if (!child.material) return;
+    
+    const mats = Array.isArray(child.material) ? child.material : [child.material];
+    
+    for (const mat of mats) {
+      const orig = originalColors.get(mat);
+      if (orig && mat.color) {
+        mat.color.copy(orig);
+        if (mat.emissive) {
+          mat.emissive.set(0, 0, 0);
+        }
+        if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
+        mat.version++; // Force WebGPU uniform re-upload
       }
-      if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
-      mat.version++; // Force WebGPU uniform re-upload
     }
   });
 }

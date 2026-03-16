@@ -11,7 +11,7 @@ let gameMusicAudio: HTMLAudioElement | null = null;
 
 function getTitleMusic() {
   if (!titleMusicAudio) {
-    titleMusicAudio = new Audio('/audio/title-theme.wav');
+    titleMusicAudio = new Audio('/audio/game-music.wav');
     titleMusicAudio.loop = true;
   }
   return titleMusicAudio;

@@ -192,27 +192,30 @@ export class Vehicle {
     const color = new THREE.Color().setHSL(hue / 360, 0.85, 0.45);
     this.model.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
-      const mat = child.material as any;
-      if (!mat || Array.isArray(mat)) return;
-      // Skip glass / transparent
-      if (mat.transparent && mat.opacity < 0.5) return;
-      // Skip lights (strong emissive)
-      if (mat.emissiveIntensity > 0.5) return;
-      // Named exclusions
-      const name = (mat.name || child.name || '').toLowerCase();
-      if (/glass|window|windshield|tire|tyre|wheel|rubber|rim|chrome|logo|badge|grille|exhaust|mirror|light|lens|indicator/.test(name)) return;
-      if (!mat.color) return;
-      // Very dark + highly metallic = trim, not body
-      const hsl = { h: 0, s: 0, l: 0 };
-      mat.color.getHSL(hsl);
-      if (hsl.l < 0.05 && (mat.metalness ?? 0) > 0.85) return;
-      // Apply paint
-      mat.color.copy(color);
-      if (mat.emissive) {
-        mat.emissive.copy(color).multiplyScalar(0.1);
+      const mats = Array.isArray(child.material) ? child.material : [child.material];
+      
+      for (const mat of mats as any[]) {
+        if (!mat) continue;
+        // Skip glass / transparent
+        if (mat.transparent && mat.opacity < 0.5) continue;
+        // Skip lights (strong emissive)
+        if (mat.emissiveIntensity > 0.5) continue;
+        // Named exclusions
+        const name = (mat.name || child.name || '').toLowerCase();
+        if (/glass|window|windshield|tire|tyre|wheel|rubber|rim|chrome|logo|badge|grille|exhaust|mirror|light|lens|indicator/.test(name)) continue;
+        if (!mat.color) continue;
+        // Very dark + highly metallic = trim, not body
+        const hsl = { h: 0, s: 0, l: 0 };
+        mat.color.getHSL(hsl);
+        if (hsl.l < 0.05 && (mat.metalness ?? 0) > 0.85) continue;
+        // Apply paint
+        mat.color.copy(color);
+        if (mat.emissive) {
+          mat.emissive.copy(color).multiplyScalar(0.1);
+        }
+        if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
+        mat.version++; // Force WebGPU uniform re-upload
       }
-      if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
-      mat.version++; // Force WebGPU uniform re-upload
     });
   }
 
