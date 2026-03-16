@@ -83,7 +83,9 @@ const REDLINE_FREQ = 320;
 export function initAudio() {
   stopAudio();
 
-  audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
   if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
 
   const s = getSettings();
@@ -392,5 +394,5 @@ export function stopAudio() {
   if (crackleTimeout) { clearTimeout(crackleTimeout); crackleTimeout = null; }
   if (windSource) { try { windSource.stop(); } catch {} windSource = null; }
   windGain = null; windFilter = null;
-  if (audioCtx) { try { audioCtx.close(); } catch {} audioCtx = null; }
+  // Note: audioCtx is kept alive as a singleton to avoid hitting browser limits
 }

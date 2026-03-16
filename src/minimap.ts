@@ -14,6 +14,7 @@ const DOT_TRAIL_LEN = 3;     // frames of motion trail
 let trackPoints: { x: number; y: number }[] = [];
 let mapCanvas: HTMLCanvasElement | null = null;
 let mapCtx: CanvasRenderingContext2D | null = null;
+let offscreenCanvas: HTMLCanvasElement | null = null;
 
 // Bounding box for world → minimap transform
 let minX = Infinity, maxX = -Infinity;
@@ -55,7 +56,40 @@ export function initTrackRadar(
     y: (p.z - minZ + padZ) * scaleZ + 8,
   }));
 
-  // Create canvas element
+  // Create off-screen canvas for static track
+  offscreenCanvas = document.createElement('canvas');
+  offscreenCanvas.width = MAP_SIZE * 2;
+  offscreenCanvas.height = MAP_SIZE * 2;
+  const offCtx = offscreenCanvas.getContext('2d')!;
+  offCtx.scale(2, 2);
+
+  // Draw track circuit to off-screen buffer
+  offCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  offCtx.lineWidth = 2.5;
+  offCtx.lineCap = 'round';
+  offCtx.lineJoin = 'round';
+  offCtx.beginPath();
+  for (let i = 0; i < trackPoints.length; i++) {
+    const p = trackPoints[i];
+    if (i === 0) offCtx.moveTo(p.x, p.y);
+    else offCtx.lineTo(p.x, p.y);
+  }
+  if (trackPoints.length > 0) offCtx.lineTo(trackPoints[0].x, trackPoints[0].y);
+  offCtx.stroke();
+
+  // Brighter racing line on top
+  offCtx.strokeStyle = 'rgba(255, 140, 0, 0.2)';
+  offCtx.lineWidth = 5;
+  offCtx.beginPath();
+  for (let i = 0; i < trackPoints.length; i++) {
+    const p = trackPoints[i];
+    if (i === 0) offCtx.moveTo(p.x, p.y);
+    else offCtx.lineTo(p.x, p.y);
+  }
+  if (trackPoints.length > 0) offCtx.lineTo(trackPoints[0].x, trackPoints[0].y);
+  offCtx.stroke();
+
+  // Create main canvas element
   mapCanvas = document.createElement('canvas');
   mapCanvas.width = MAP_SIZE * 2;  // 2x for retina
   mapCanvas.height = MAP_SIZE * 2;
@@ -101,34 +135,10 @@ export function updateTrackRadar(
   ctx.roundRect(0, 0, W, W, 12);
   ctx.fill();
 
-  // Draw track circuit
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-  ctx.lineWidth = 2.5;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  for (let i = 0; i < trackPoints.length; i++) {
-    const p = trackPoints[i];
-    if (i === 0) ctx.moveTo(p.x, p.y);
-    else ctx.lineTo(p.x, p.y);
+  // Draw cached static track
+  if (offscreenCanvas) {
+    ctx.drawImage(offscreenCanvas, 0, 0, W, W);
   }
-  // Close the loop
-  if (trackPoints.length > 0) {
-    ctx.lineTo(trackPoints[0].x, trackPoints[0].y);
-  }
-  ctx.stroke();
-
-  // Brighter racing line on top
-  ctx.strokeStyle = 'rgba(255, 140, 0, 0.2)';
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  for (let i = 0; i < trackPoints.length; i++) {
-    const p = trackPoints[i];
-    if (i === 0) ctx.moveTo(p.x, p.y);
-    else ctx.lineTo(p.x, p.y);
-  }
-  if (trackPoints.length > 0) ctx.lineTo(trackPoints[0].x, trackPoints[0].y);
-  ctx.stroke();
 
   // Draw AI dots
   for (const ai of aiPositions) {
@@ -186,5 +196,6 @@ export function destroyTrackRadar() {
     mapCanvas = null;
     mapCtx = null;
   }
+  offscreenCanvas = null;
   trackPoints = [];
 }

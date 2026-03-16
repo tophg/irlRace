@@ -105,25 +105,6 @@ export function updateVFX(dt: number) {
     i++;
   }
 
-  // Sparks (swap-and-pop)
-  let j = 0;
-  while (j < activeSparks.length) {
-    const s = activeSparks[j];
-    s.life -= dt;
-    if (s.life <= 0) {
-      s.mesh.visible = false;
-      activeSparks[j] = activeSparks[activeSparks.length - 1];
-      activeSparks.pop();
-      continue;
-    }
-    s.mesh.position.addScaledVector(s.velocity, dt);
-    s.velocity.y -= 15 * dt;
-    const mat = s.mesh.material as THREE.MeshBasicMaterial;
-    mat.opacity = s.life * 3;
-    s.mesh.scale.setScalar(0.5 + (1 - s.life) * 0.5);
-    j++;
-  }
-
   // Metal debris (tumble, gravity, bounce)
   updateDebris(dt);
 }
@@ -719,54 +700,6 @@ export function updateNameTag(sprite: THREE.Sprite, pos: THREE.Vector3) {
 }
 
 // ── Collision Sparks ──
-const SPARK_POOL_SIZE = 30;
-const sparkPool: THREE.Mesh[] = [];
-let sparkIdx = 0;
-const sparkVelPool: THREE.Vector3[] = [];
-for (let i = 0; i < SPARK_POOL_SIZE; i++) sparkVelPool.push(new THREE.Vector3());
-let sparkVelIdx = 0;
-
-interface SparkParticle {
-  mesh: THREE.Mesh;
-  velocity: THREE.Vector3;
-  life: number;
-}
-const activeSparks: SparkParticle[] = [];
-
-export function spawnCollisionSparks(pos: THREE.Vector3, force: number) {
-  if (!smokeScene) return;
-
-  if (sparkPool.length === 0) {
-    const geo = new THREE.SphereGeometry(0.08, 4, 3);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffaa33, transparent: true, opacity: 1, depthWrite: false });
-    for (let i = 0; i < SPARK_POOL_SIZE; i++) {
-      const m = new THREE.Mesh(geo, mat.clone());
-      m.visible = false;
-      smokeScene.add(m);
-      sparkPool.push(m);
-    }
-  }
-
-  const count = Math.min(Math.floor(force * 0.8), 12);
-  for (let i = 0; i < count; i++) {
-    const mesh = sparkPool[sparkIdx % SPARK_POOL_SIZE];
-    sparkIdx++;
-    mesh.position.copy(pos);
-    mesh.visible = true;
-    (mesh.material as THREE.MeshBasicMaterial).opacity = 1;
-    (mesh.material as THREE.MeshBasicMaterial).color.setHex(Math.random() > 0.5 ? 0xffaa33 : 0xffee66);
-
-    const vel = sparkVelPool[sparkVelIdx % SPARK_POOL_SIZE];
-    sparkVelIdx++;
-    vel.set(
-      (Math.random() - 0.5) * 8,
-      1 + Math.random() * 4,
-      (Math.random() - 0.5) * 8,
-    );
-    activeSparks.push({ mesh, velocity: vel, life: 0.3 + Math.random() * 0.3 });
-  }
-}
-
 // ── Damage Smoke ──
 let damageSmokeCooldown = 0;
 
@@ -830,73 +763,6 @@ export function spawnFlameParticle(pos: THREE.Vector3, intensity: number, dt = 0
       (Math.random() - 0.5) * 1.5,
     );
     activeSmoke.push({ mesh, velocity: vel, life: 0.3 + Math.random() * 0.2, maxLife: 0.5 });
-  }
-}
-
-// ── Explosion Burst (one-shot on severe impact) ──
-
-export function spawnExplosion(pos: THREE.Vector3, force: number) {
-  if (!smokeScene) return;
-
-  const count = Math.min(Math.floor(force * 0.6), 20);
-
-  // Bright expanding particles
-  for (let i = 0; i < count; i++) {
-    if (sparkPool.length === 0) {
-      // Lazy-init spark pool if needed
-      const geo = new THREE.SphereGeometry(0.08, 4, 3);
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffaa33, transparent: true, opacity: 1, depthWrite: false });
-      for (let j = 0; j < SPARK_POOL_SIZE; j++) {
-        const m = new THREE.Mesh(geo, mat.clone());
-        m.visible = false;
-        smokeScene.add(m);
-        sparkPool.push(m);
-      }
-    }
-
-    const mesh = sparkPool[sparkIdx % SPARK_POOL_SIZE];
-    sparkIdx++;
-    mesh.position.copy(pos);
-    mesh.position.y += 0.5;
-    mesh.visible = true;
-    mesh.scale.setScalar(1.0 + Math.random());
-
-    const sMat = mesh.material as THREE.MeshBasicMaterial;
-    sMat.opacity = 1;
-    // White center → orange → dark
-    const brightness = Math.random();
-    sMat.color.setRGB(1, 0.5 + brightness * 0.5, brightness * 0.3);
-
-    const vel = sparkVelPool[sparkVelIdx % SPARK_POOL_SIZE];
-    sparkVelIdx++;
-    const speed = 5 + Math.random() * 10;
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.random() * Math.PI;
-    vel.set(
-      Math.sin(phi) * Math.cos(theta) * speed,
-      Math.abs(Math.cos(phi)) * speed * 0.7 + 2,
-      Math.sin(phi) * Math.sin(theta) * speed,
-    );
-    activeSparks.push({ mesh, velocity: vel, life: 0.4 + Math.random() * 0.3 });
-  }
-
-  // Dark smoke cloud after explosion
-  for (let i = 0; i < 5; i++) {
-    if (smokePool.length === 0) return;
-    const mesh = smokePool[smokeIdx % SMOKE_POOL_SIZE];
-    smokeIdx++;
-    mesh.position.copy(pos);
-    mesh.position.y += 0.5;
-    mesh.scale.setScalar(1.5 + Math.random());
-    mesh.visible = true;
-    const mat = mesh.material as THREE.MeshBasicMaterial;
-    mat.opacity = 0.5;
-    mat.color.setHex(0x222222);
-
-    const vel = smokeVelPool[smokeVelIdx % SMOKE_VEL_POOL_SIZE];
-    smokeVelIdx++;
-    vel.set((Math.random() - 0.5) * 3, 1 + Math.random() * 2, (Math.random() - 0.5) * 3);
-    activeSmoke.push({ mesh, velocity: vel, life: 1.0, maxLife: 1.0 });
   }
 }
 
@@ -1014,54 +880,6 @@ function updateDebris(dt: number) {
     }
 
     i++;
-  }
-}
-
-// ── Scrape Sparks (continuous stream during barrier contact) ──
-let scrapeCooldown = 0;
-
-/**
- * Spawn continuous scrape sparks along a barrier tangent.
- * Call every frame while the car is scraping a barrier.
- */
-export function spawnScrapeSparks(
-  pos: THREE.Vector3,
-  tangentX: number,
-  tangentZ: number,
-  speed: number,
-  dt: number,
-) {
-  if (!smokeScene || speed < 3) return;
-  scrapeCooldown -= dt;
-  if (scrapeCooldown > 0) return;
-  scrapeCooldown = 0.02; // ~50 sparks/sec
-
-  if (sparkPool.length === 0) return;
-  const count = Math.ceil(Math.min(speed * 0.2, 3));
-  for (let i = 0; i < count; i++) {
-    const mesh = sparkPool[sparkIdx % SPARK_POOL_SIZE];
-    sparkIdx++;
-    mesh.position.copy(pos);
-    mesh.position.x += (Math.random() - 0.5) * 0.3;
-    mesh.position.y += Math.random() * 0.2;
-    mesh.position.z += (Math.random() - 0.5) * 0.3;
-    mesh.visible = true;
-    mesh.scale.setScalar(0.3 + Math.random() * 0.3);
-
-    const sMat = mesh.material as THREE.MeshBasicMaterial;
-    sMat.opacity = 1;
-    sMat.color.setRGB(1, 0.7 + Math.random() * 0.3, 0.2);
-
-    const vel = sparkVelPool[sparkVelIdx % SPARK_POOL_SIZE];
-    sparkVelIdx++;
-    // Sparks fly along the tangent + upward
-    const tangentSpeed = speed * 0.5 + Math.random() * 3;
-    vel.set(
-      tangentX * tangentSpeed + (Math.random() - 0.5) * 2,
-      1.5 + Math.random() * 2,
-      tangentZ * tangentSpeed + (Math.random() - 0.5) * 2,
-    );
-    activeSparks.push({ mesh, velocity: vel, life: 0.15 + Math.random() * 0.15 });
   }
 }
 
@@ -1257,27 +1075,6 @@ export function spawnTireBlowout(pos: THREE.Vector3) {
       (Math.random() - 0.5) * 6,
     );
     activeSmoke.push({ mesh, velocity: vel, life: 1.2, maxLife: 1.2 });
-  }
-
-  // Spark burst from rim scraping
-  if (sparkPool.length === 0) return;
-  for (let i = 0; i < 5; i++) {
-    const mesh = sparkPool[sparkIdx % SPARK_POOL_SIZE];
-    sparkIdx++;
-    mesh.position.copy(pos);
-    mesh.visible = true;
-    mesh.scale.setScalar(0.4 + Math.random() * 0.3);
-    const sMat = mesh.material as THREE.MeshBasicMaterial;
-    sMat.opacity = 1;
-    sMat.color.setRGB(1, 0.6, 0.1);
-    const vel = sparkVelPool[sparkVelIdx % SPARK_POOL_SIZE];
-    sparkVelIdx++;
-    vel.set(
-      (Math.random() - 0.5) * 8,
-      1 + Math.random() * 3,
-      (Math.random() - 0.5) * 8,
-    );
-    activeSparks.push({ mesh, velocity: vel, life: 0.3 + Math.random() * 0.2 });
   }
 }
 
@@ -2890,19 +2687,6 @@ export function destroyVFX() {
   debrisPool.length = 0;
   debrisIdx = 0;
 
-  // Clear sparks (before nulling scene)
-  for (const s of activeSparks) s.mesh.visible = false;
-  activeSparks.length = 0;
-  if (sceneRef) {
-    for (const mesh of sparkPool) {
-      sceneRef.remove(mesh);
-      mesh.geometry?.dispose();
-      (mesh.material as THREE.Material)?.dispose();
-    }
-  }
-  sparkPool.length = 0;
-  sparkIdx = 0;
-  sparkVelIdx = 0;
   damageSmokeCooldown = 0;
   flameCooldown = 0;
 

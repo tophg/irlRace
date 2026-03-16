@@ -1347,13 +1347,13 @@ function gameLoop(timestamp: number) {
     // Leftover accumulator fraction (`alpha`) is used to interpolate visuals.
     G.physicsAccumulator += frameDt;
 
-    // Save pre-physics state for rendering interpolation
-    G.playerVehicle.saveSnapshot();
-    for (const ai of G.aiRacers) ai.vehicle.saveSnapshot();
-
     // Run deterministic physics sub-steps
     let physicsStepsThisFrame = 0;
     while (G.physicsAccumulator >= PHYSICS_DT && physicsStepsThisFrame < 4) {
+      // Save pre-physics state for rendering interpolation
+      if (G.playerVehicle) G.playerVehicle.saveSnapshot();
+      for (const ai of G.aiRacers) ai.vehicle.saveSnapshot();
+
       // ── Rollback: record local input + snapshot before this step ──
       const currentInput = s === GameState.RACING ? getInput() : { up: false, down: false, left: false, right: false, boost: false, steerAnalog: 0 };
       if (G.playerVehicle) {
