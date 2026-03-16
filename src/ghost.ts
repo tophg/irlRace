@@ -22,6 +22,7 @@ interface GhostData {
   seed: number;
   carId: string;
   lapTime: number;        // ms
+  timestamp: number;      // ms since epoch (for LRU eviction)
   snapshots: GhostSnapshot[];
 }
 
@@ -80,22 +81,24 @@ export function finalizeGhostLap(
   const existing = loadGhostForSeed(seed);
   if (existing && existing.lapTime <= lapTime) return false;
 
-  const data: GhostData = { seed, carId, lapTime, snapshots };
+  const data: GhostData = { seed, carId, lapTime, timestamp: Date.now(), snapshots };
   try {
     const stored = loadAllGhosts();
+    // Enforce 1 ghost per track seed (save best, overwrite old)
     stored[seed.toString()] = data;
-    // Keep only 20 ghosts — evict the one with the worst (slowest) lap time
+    
+    // Keep only 20 ghosts total — evict the Least Recently Used (oldest timestamp)
     const keys = Object.keys(stored);
     if (keys.length > 20) {
-      let worstKey = keys[0];
-      let worstTime = stored[worstKey].lapTime;
+      let oldestKey = keys[0];
+      let oldestTime = stored[oldestKey].timestamp;
       for (const k of keys) {
-        if (stored[k].lapTime > worstTime) {
-          worstTime = stored[k].lapTime;
-          worstKey = k;
+        if (stored[k].timestamp < oldestTime) {
+          oldestTime = stored[k].timestamp;
+          oldestKey = k;
         }
       }
-      delete stored[worstKey];
+      delete stored[oldestKey];
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
   } catch {}
@@ -157,8 +160,7 @@ export function updateGhostPlayback() {
   const sampleInterval = 1000 / SAMPLE_RATE;
   const totalDuration = ghostData.snapshots.length * sampleInterval;
 
-  // Loop playback
-  const t = elapsed % totalDuration;
+  const t = Math.min(elapsed, totalDuration);
   const idx = Math.floor(t / sampleInterval);
   const frac = (t / sampleInterval) - idx;
 
@@ -178,6 +180,19 @@ export function updateGhostPlayback() {
   if (dh > Math.PI) dh -= Math.PI * 2;
   if (dh < -Math.PI) dh += Math.PI * 2;
   ghostMesh.rotation.y = a.heading + dh * frac;
+
+  // Fade out slightly when finished rather than looping infinitely
+  if (elapsed > totalDuration) {
+    const fadeOutDuration = 2000; // ms
+    const fadeFrac = Math.min((elapsed - totalDuration) / fadeOutDuration, 1);
+    const targetOpacity = 0.3 * (1 - fadeFrac);
+    ghostMesh.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+        mat.opacity = targetOpacity;
+      }
+    });
+  }
 }
 
 /** Get the ghost's best lap time formatted string. */
