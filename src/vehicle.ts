@@ -189,7 +189,7 @@ export class Vehicle {
   /** Recolor the car body with a new hue (0–360). Preserves metalness/roughness. */
   setPaintColor(hue: number) {
     if (!this.model) return;
-    const color = new THREE.Color().setHSL(hue / 360, 0.85, 0.45);
+    const color = new THREE.Color().setHSL(hue / 360, 0.90, 0.22);
     this.model.traverse((child) => {
       if (!(child instanceof THREE.Mesh)) return;
       const mats = Array.isArray(child.material) ? child.material : [child.material];
@@ -210,9 +210,6 @@ export class Vehicle {
         if (hsl.l < 0.05 && (mat.metalness ?? 0) > 0.85) continue;
         // Apply paint
         mat.color.copy(color);
-        if (mat.emissive) {
-          mat.emissive.copy(color).multiplyScalar(0.1);
-        }
         if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
         mat.version++; // Force WebGPU uniform re-upload
       }

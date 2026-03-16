@@ -369,6 +369,10 @@ async function startRace() {
     G.raceEngine = new RaceEngine(trackData.checkpoints, G.totalLaps);
 
     const playerModel = await loadCarModel(G.selectedCar.file);
+    // Defensive: ensure model starts with clean transforms
+    playerModel.position.set(0, 0, 0);
+    playerModel.scale.setScalar(1);
+    playerModel.rotation.set(0, 0, 0);
     G.playerVehicle = new Vehicle(G.selectedCar);
     G.playerVehicle.setModel(playerModel);
     // Apply custom paint if set
@@ -559,6 +563,9 @@ async function spawnAI(td: TrackData) {
 
     try {
       const model = await loadCarModel(def.file);
+      model.position.set(0, 0, 0);
+      model.scale.setScalar(1);
+      model.rotation.set(0, 0, 0);
       ai.vehicle.setModel(model);
     } catch {}
 
