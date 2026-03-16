@@ -353,6 +353,7 @@ export function showControlsRef() {
 export function showTitleScreen(callbacks: {
   onSingleplayer: () => void;
   onMultiplayer: () => void;
+  onTrackEditor: () => void;
   onApplySettings: () => void;
 }) {
   const uiOverlay = document.getElementById('ui-overlay')!;
@@ -368,6 +369,7 @@ export function showTitleScreen(callbacks: {
     <div class="menu-buttons">
       <button class="menu-btn" id="btn-singleplayer">SINGLEPLAYER</button>
       <button class="menu-btn" id="btn-multiplayer">MULTIPLAYER</button>
+      <button class="menu-btn" id="btn-track-editor" style="border-color:#ff6600;color:#ff8833;">🏁 TRACK EDITOR</button>
       <button class="menu-btn" id="btn-controls" style="border-color:var(--col-text-dim);font-size:16px;">CONTROLS</button>
       <button class="menu-btn" id="btn-settings" style="border-color:var(--col-text-dim);font-size:16px;">SETTINGS</button>
     </div>
@@ -382,6 +384,11 @@ export function showTitleScreen(callbacks: {
   document.getElementById('btn-multiplayer')!.addEventListener('click', () => {
     titleEl.remove();
     callbacks.onMultiplayer();
+  });
+
+  document.getElementById('btn-track-editor')!.addEventListener('click', () => {
+    titleEl.remove();
+    callbacks.onTrackEditor();
   });
 
   document.getElementById('btn-controls')!.addEventListener('click', showControlsRef);

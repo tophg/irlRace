@@ -449,6 +449,31 @@ export function spawnGPUBackfire(carPos: THREE.Vector3, heading: number) {
   flushToGPU();
 }
 
+/** Spawn slipstream air-streak particles from AI car's rear during drafting. */
+export function spawnGPUSlipstream(
+  aiPos: THREE.Vector3, aiHeading: number, carSpeed: number,
+) {
+  const sinH = Math.sin(aiHeading);
+  const cosH = Math.cos(aiHeading);
+  const count = 3 + (Math.random() > 0.5 ? 1 : 0);
+  for (let i = 0; i < count; i++) {
+    const spread = (Math.random() - 0.5) * 0.8;
+    writeParticle(
+      aiPos.x - sinH * 2.5 + cosH * spread,
+      aiPos.y + 0.3 + Math.random() * 0.8,
+      aiPos.z - cosH * 2.5 - sinH * spread,
+      -sinH * Math.abs(carSpeed) * 0.4 + (Math.random() - 0.5) * 1.5,
+      (Math.random() - 0.5) * 0.5,
+      -cosH * Math.abs(carSpeed) * 0.4 + (Math.random() - 0.5) * 1.5,
+      0.85, 0.9, 1.0, 0.08,
+      0.3 + Math.random() * 0.15,
+      PType.DUST,
+      0.3 + Math.random() * 0.3,
+    );
+  }
+  flushToGPU();
+}
+
 // ── Per-frame update ──
 
 export async function updateGPUParticles(

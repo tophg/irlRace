@@ -24,7 +24,7 @@ import {
   initBoostFlame, updateBoostFlame,
   createNameTag, updateNameTag,
   destroyVFX, spawnDamageSmoke,
-  initSkidMarks, updateSkidMarks, destroySkidMarks,
+  initSkidMarks, updateSkidMarks, destroySkidMarks, updateSkidGlowTime,
   spawnFlameParticle,
   spawnDamageZoneSmoke,
   initWindshieldCracks, updateWindshieldCracks, resetWindshieldCracks,
@@ -32,6 +32,7 @@ import {
   initImpactFlash, triggerImpactFlash, updateImpactFlash,
   createUnderglow, updateUnderglow,
   initBoostShockwave, triggerBoostShockwave, updateBoostShockwave,
+  initNitroFlash,
   createBrakeDiscs, updateBrakeDiscs,
   initHeatShimmer, updateHeatShimmer,
   initLensFlares, updateLensFlares,
@@ -44,9 +45,11 @@ import {
   spawnGPUSparks, spawnGPUExplosion, spawnGPUDamageSmoke, spawnGPUFlame,
   spawnGPUScrapeSparks, spawnGPUGlassShards, spawnGPUShoulderDust,
   spawnGPUNitroTrail, spawnGPURimSparks, spawnGPUBackfire,
+  spawnGPUSlipstream,
 } from './gpu-particles';
 import { initTrackRadar, updateTrackRadar, destroyTrackRadar } from './minimap';
 import { playTitleMusic, playGameMusic, pauseMusic, resumeMusic, stopAllMusic } from './audio';
+import { showTrackEditor, destroyTrackEditor } from './track-editor';
 import { loadProgress, processRaceRewards, getProgress, levelProgress, xpToNextLevel, type RaceResult } from './progression';
 import { startGhostRecording, sampleGhostFrame, finalizeGhostLap, loadGhostForSeed, startGhostPlayback, updateGhostPlayback, destroyGhost, getGhostBestTime } from './ghost';
 import {
@@ -198,6 +201,7 @@ function showTitleScreen() {
     <div class="menu-buttons">
       <button class="menu-btn" id="btn-singleplayer">SINGLEPLAYER</button>
       <button class="menu-btn" id="btn-multiplayer">MULTIPLAYER</button>
+      <button class="menu-btn" id="btn-track-editor" style="border-color:#ff6600;color:#ff8833;">🏁 TRACK EDITOR</button>
       <button class="menu-btn" id="btn-controls" style="border-color:var(--col-text-dim);font-size:16px;">CONTROLS</button>
       <button class="menu-btn" id="btn-settings" style="border-color:var(--col-text-dim);font-size:16px;">SETTINGS</button>
     </div>
@@ -214,6 +218,11 @@ function showTitleScreen() {
     enterGarage('multiplayer');
   });
 
+  document.getElementById('btn-track-editor')!.addEventListener('click', () => {
+    titleEl.remove();
+    enterTrackEditor();
+  });
+
   document.getElementById('btn-controls')!.addEventListener('click', showControlsRef);
 
   document.getElementById('btn-settings')!.addEventListener('click', () => {
@@ -221,6 +230,35 @@ function showTitleScreen() {
       G.localPlayerName = getSettings().playerName || G.localPlayerName;
       applySettingsToRenderer();
     });
+  });
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// TRACK EDITOR
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+function enterTrackEditor() {
+  G.gameState = GameState.TRACK_EDITOR;
+  stopAllMusic();
+
+  showTrackEditor(uiOverlay, {
+    onTestDrive: (track) => {
+      destroyTrackEditor();
+      G.totalLaps = 1;
+      G.aiCount = 0;
+      G.aiDifficulty = 'easy';
+      (G as any)._customTrack = track;
+      startRace();
+    },
+    onRaceWithTrack: (track) => {
+      destroyTrackEditor();
+      (G as any)._customTrack = track;
+      enterGarage('singleplayer');
+    },
+    onBack: () => {
+      destroyTrackEditor();
+      showTitleScreen();
+    },
   });
 }
 
@@ -278,11 +316,18 @@ async function startRace() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
 
-    // Generate track (preserve seed for restart)
-    const seed = G.trackSeed ?? Math.floor(Math.random() * 99999);
-    G.currentRaceSeed = seed;
-    G.trackSeed = null;
-    G.trackData = generateTrack(seed);
+    // Generate track (use custom track from editor if present, else procedural)
+    let seed = G.trackSeed ?? Math.floor(Math.random() * 99999);
+    if ((G as any)._customTrack) {
+      G.trackData = (G as any)._customTrack;
+      (G as any)._customTrack = null; // consume — restart uses random seed
+      G.currentRaceSeed = 0;
+    } else {
+      G.currentRaceSeed = seed;
+      G.trackSeed = null;
+      G.trackData = generateTrack(seed);
+    }
+    const trackData = G.trackData!; // guaranteed non-null after if/else above
     // Environment: use player-selected environment if not 'random', else seed-based
     const selectedEnv = (G as any)._selectedEnvironment as string;
     const envPreset = (selectedEnv && selectedEnv !== 'random')
@@ -302,18 +347,18 @@ async function startRace() {
     else if (w === 'blizzard') applyEnvironment(getEnvironmentByName('Blizzard'));
     else if (w === 'ice') applyEnvironment(getEnvironmentByName('Black Ice'));
 
-    if (w !== 'clear') applyWetRoad(G.trackData.roadMesh);
-    scene.add(G.trackData.roadMesh);
-    scene.add(G.trackData.barrierLeft);
-    scene.add(G.trackData.barrierRight);
-    scene.add(G.trackData.shoulderMesh);
-    scene.add(G.trackData.kerbGroup);
-    scene.add(G.trackData.sceneryGroup);
+    if (w !== 'clear') applyWetRoad(trackData.roadMesh);
+    scene.add(trackData.roadMesh);
+    scene.add(trackData.barrierLeft);
+    scene.add(trackData.barrierRight);
+    scene.add(trackData.shoulderMesh);
+    scene.add(trackData.kerbGroup);
+    scene.add(trackData.sceneryGroup);
 
-    G.checkpointMarkers = buildCheckpointMarkers(G.trackData.checkpoints);
+    G.checkpointMarkers = buildCheckpointMarkers(trackData.checkpoints);
     scene.add(G.checkpointMarkers);
 
-    G.raceEngine = new RaceEngine(G.trackData.checkpoints, G.totalLaps);
+    G.raceEngine = new RaceEngine(trackData.checkpoints, G.totalLaps);
 
     const playerModel = await loadCarModel(G.selectedCar.file);
     G.playerVehicle = new Vehicle(G.selectedCar);
@@ -322,8 +367,8 @@ async function startRace() {
     const paintHue = getSettings().paintHue;
     if (paintHue >= 0) G.playerVehicle.setPaintColor(paintHue);
     scene.add(G.playerVehicle.group);
-    G.playerVehicle.setRoadMesh(G.trackData.roadMesh);
-    G.playerVehicle.placeOnTrack(G.trackData.spline, 0, -3.5);
+    G.playerVehicle.setRoadMesh(trackData.roadMesh);
+    G.playerVehicle.placeOnTrack(trackData.spline, 0, -3.5);
     G._playerUnderglow = createUnderglow(G.playerVehicle.group, 0);
     G._playerBrakeDiscs = createBrakeDiscs(G.playerVehicle.group.children[0] as THREE.Group);
     G.raceEngine.addRacer('local');
@@ -338,14 +383,15 @@ async function startRace() {
     initRainDroplets(container);
     initImpactFlash(container);
     initBoostShockwave(scene);
+    initNitroFlash(container);
     initHeatShimmer(container);
 
     // Track radar minimap
-    initTrackRadar(G.trackData.spline, document.getElementById('ui-overlay')!);
+    initTrackRadar(trackData.spline, document.getElementById('ui-overlay')!);
 
     // Collect street light positions for lens flares
     const lightPositions: THREE.Vector3[] = [];
-    G.trackData.sceneryGroup.traverse((child: THREE.Object3D) => {
+    trackData.sceneryGroup.traverse((child: THREE.Object3D) => {
       if ((child as any).isPointLight) {
         lightPositions.push(child.position.clone());
       }
@@ -368,15 +414,15 @@ async function startRace() {
     }
     try {
       await initRapierWorld();
-      addBarrierCollider(G.trackData.barrierLeft);
-      addBarrierCollider(G.trackData.barrierRight);
+      addBarrierCollider(trackData.barrierLeft);
+      addBarrierCollider(trackData.barrierRight);
       const playerPos = G.playerVehicle.group.position;
       addCarBody('local', playerPos.x, playerPos.y, playerPos.z, G.playerVehicle.heading);
     } catch (e) {
       console.warn('[Rapier] WASM init failed, running without enhanced collision:', e);
     }
 
-    if (!G.netPeer) await spawnAI(G.trackData);
+    if (!G.netPeer) await spawnAI(trackData);
 
     if (G.netPeer) {
       await spawnRemoteVehicles();
@@ -1348,6 +1394,8 @@ function gameLoop(timestamp: number) {
           if (angleDiff < 0.52) {
             const draftStrength = (1 - dist / 15) * 20;
             G.playerVehicle.addNitro(draftStrength * frameDt);
+            // Slipstream air-streak particles from AI car's rear
+            spawnGPUSlipstream(aPos, ai.vehicle.heading, G.playerVehicle.speed);
           }
         }
       }
@@ -1398,9 +1446,10 @@ function gameLoop(timestamp: number) {
     // VFX
     const driftAbs = Math.abs(G.playerVehicle.driftAngle);
     if (driftAbs > 0.15 && s === GameState.RACING) {
-      spawnTireSmoke(G.playerVehicle.group.position, driftAbs);
+      spawnTireSmoke(G.playerVehicle.group.position, driftAbs, G.playerVehicle.isNitroActive);
     }
     if (s === GameState.RACING) {
+      updateSkidGlowTime();
       updateSkidMarks(G.playerVehicle.group.position, G.playerVehicle.heading, driftAbs, G.playerVehicle.group.position.y);
       // Ghost car: sample position + update playback
       sampleGhostFrame(G.playerVehicle.group.position, G.playerVehicle.heading);

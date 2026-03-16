@@ -12,6 +12,7 @@ export enum GameState {
   RACING,
   PAUSED,
   RESULTS,
+  TRACK_EDITOR,
 }
 
 // ── Car Roster ──
@@ -109,6 +110,14 @@ export interface TrackData {
   bvh: SplineBVH;
   speedProfile: number[];
   curvatures: number[];
+}
+
+// ── Custom Track (user-created in editor) ──
+export interface CustomTrackDef {
+  name: string;
+  controlPoints: { x: number; z: number }[];
+  elevations?: number[];
+  createdAt: number;
 }
 
 // ── Vehicle Runtime ──

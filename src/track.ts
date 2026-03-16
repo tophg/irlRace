@@ -22,6 +22,73 @@ export function generateTrack(seed?: number): TrackData {
   return buildTrackAttempt(baseSeed).data;
 }
 
+/** Build a track from user-placed 2D control points (Track Editor → TrackData pipeline). */
+export function buildTrackFromControlPoints(
+  points: { x: number; z: number }[],
+  elevations?: number[],
+): TrackData {
+  if (points.length < 4) throw new Error('Need at least 4 control points');
+
+  const rng = seededRandom(42); // deterministic scenery
+
+  // Convert 2D → 3D with optional per-point elevation
+  let controlPoints3D: THREE.Vector3[];
+  if (elevations && elevations.length === points.length) {
+    controlPoints3D = points.map((p, i) => new THREE.Vector3(p.x, elevations[i], p.z));
+  } else {
+    // Auto-elevation via value noise
+    const noise = createValueNoise2D(rng);
+    controlPoints3D = points.map(p => {
+      const nx = p.x * 0.004;
+      const nz = p.z * 0.004;
+      const y = noise(nx, nz) * 10 + noise(nx * 4, nz * 4) * 2;
+      return new THREE.Vector3(p.x, y, p.z);
+    });
+    // Smooth elevation with moving average (same as procedural)
+    for (let pass = 0; pass < 4; pass++) {
+      const prev = controlPoints3D.map(p => p.y);
+      for (let i = 0; i < controlPoints3D.length; i++) {
+        let avg = 0;
+        for (let j = -4; j <= 4; j++) {
+          avg += prev[(i + j + controlPoints3D.length) % controlPoints3D.length];
+        }
+        controlPoints3D[i].y = avg / 9;
+      }
+    }
+  }
+
+  // Build spline & enforce constraints
+  const spline = new THREE.CatmullRomCurve3(controlPoints3D, true, 'centripetal', 0.5);
+  enforceMinRadius(spline, controlPoints3D, MIN_RADIUS);
+  const finalSpline = new THREE.CatmullRomCurve3(controlPoints3D, true, 'centripetal', 0.5);
+  const totalLength = finalSpline.getLength();
+
+  const { curvatures, speedProfile } = computeProfiles(finalSpline);
+
+  // Build meshes (reuse all existing builders)
+  const roadMesh = buildRoadMesh(finalSpline, curvatures, rng);
+  const barrierLeft = buildBarrierMesh(finalSpline, -1, curvatures);
+  const barrierRight = buildBarrierMesh(finalSpline, 1, curvatures);
+  const shoulderMesh = buildShoulders(finalSpline);
+  const kerbGroup = buildKerbs(finalSpline, curvatures);
+
+  // Checkpoints
+  const numCheckpoints = 10;
+  const checkpoints: Checkpoint[] = [];
+  for (let i = 1; i <= numCheckpoints; i++) {
+    const t = i / numCheckpoints;
+    const evalT = t === 1.0 ? 0 : t;
+    const position = finalSpline.getPointAt(evalT);
+    const tangent = finalSpline.getTangentAt(evalT).normalize();
+    checkpoints.push({ position, tangent, index: i - 1, t });
+  }
+
+  const sceneryGroup = generateScenery(finalSpline, rng);
+  const bvh = new SplineBVH(finalSpline, 800);
+
+  return { spline: finalSpline, roadMesh, barrierLeft, barrierRight, shoulderMesh, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures };
+}
+
 interface TrackAttemptResult { data: TrackData; qualityScore: number }
 
 function buildTrackAttempt(seed: number): TrackAttemptResult {
