@@ -207,12 +207,22 @@ function buildGarageUI(overlay: HTMLElement) {
       <button class="select-btn" id="garage-select">SELECT</button>
       <button class="car-nav-btn" id="garage-next">▶</button>
     </div>
-    <div style="margin-top:10px;text-align:center;">
-      <label style="font-size:11px;color:rgba(255,255,255,0.6);letter-spacing:1px;">PAINT COLOR <span style="color:#ffcc00;font-size:10px">(100 CR)</span></label>
-      <input type="range" min="0" max="360" value="${getSettings().paintHue >= 0 ? getSettings().paintHue : 180}" id="garage-paint"
-             style="width:160px;-webkit-appearance:none;height:8px;border-radius:4px;
-                    background:linear-gradient(to right,hsl(0,85%,45%),hsl(60,85%,45%),hsl(120,85%,45%),hsl(180,85%,45%),hsl(240,85%,45%),hsl(300,85%,45%),hsl(360,85%,45%));">
-      <button id="garage-paint-reset" style="font-size:10px;background:none;border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.5);padding:2px 8px;border-radius:4px;cursor:pointer;margin-left:6px;">RESET</button>
+    <div class="paint-shop" id="paint-shop">
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px">
+        <div id="paint-swatch" style="width:28px;height:28px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);background:hsl(180,85%,45%)"></div>
+        <input type="range" min="0" max="360" value="${getSettings().paintHue >= 0 ? getSettings().paintHue : 180}" id="garage-paint"
+               style="width:140px;-webkit-appearance:none;height:8px;border-radius:4px;
+                      background:linear-gradient(to right,hsl(0,85%,45%),hsl(60,85%,45%),hsl(120,85%,45%),hsl(180,85%,45%),hsl(240,85%,45%),hsl(300,85%,45%),hsl(360,85%,45%))">
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px">
+        <button id="garage-paint-buy" style="font-size:11px;padding:5px 14px;border-radius:4px;border:none;
+                background:linear-gradient(135deg,#ff8800,#ff6600);color:#fff;font-weight:700;cursor:pointer;
+                letter-spacing:0.5px;transition:opacity 0.2s">BUY PAINT — 100 CR</button>
+        <button id="garage-paint-reset" style="font-size:10px;background:none;border:1px solid rgba(255,255,255,0.2);
+                color:rgba(255,255,255,0.5);padding:4px 10px;border-radius:4px;cursor:pointer">RESET</button>
+      </div>
+      <div id="paint-balance" style="text-align:center;margin-top:4px;font-size:10px;color:rgba(255,255,255,0.4)"></div>
+      <div id="paint-toast" style="text-align:center;font-size:11px;font-weight:700;margin-top:4px;height:16px;transition:opacity 0.3s;opacity:0"></div>
     </div>
   `;
 
@@ -231,61 +241,79 @@ function buildGarageUI(overlay: HTMLElement) {
   uiEl.querySelector('#garage-select')!.addEventListener('click', () => {
     const car = CAR_ROSTER[currentIndex];
     if (!isCarUnlocked(car.id)) {
-      // Try to unlock
       if (unlockCar(car.id)) {
-        showCar(currentIndex); // Refresh display
+        showCar(currentIndex);
       }
       return;
     }
     if (onSelectCallback) onSelectCallback(car);
   });
 
-  // Paint hue slider — live preview + credit cost
+  // ── Paint Shop Logic ──
   const PAINT_COST = 100;
   const paintSlider = uiEl.querySelector('#garage-paint') as HTMLInputElement;
-  let lastCommittedHue = getSettings().paintHue; // track the saved hue to bill only on change
+  const paintSwatch = uiEl.querySelector('#paint-swatch') as HTMLElement;
+  const paintBuyBtn = uiEl.querySelector('#garage-paint-buy') as HTMLButtonElement;
+  const paintBalanceEl = uiEl.querySelector('#paint-balance') as HTMLElement;
+  const paintToastEl = uiEl.querySelector('#paint-toast') as HTMLElement;
+  let _previewHue = getSettings().paintHue >= 0 ? getSettings().paintHue : 180;
+
+  function updatePaintBalance() {
+    const prog = getProgress();
+    paintBalanceEl.textContent = `Credits: ${prog.credits} CR`;
+    paintBuyBtn.style.opacity = prog.credits >= PAINT_COST ? '1' : '0.4';
+    paintBuyBtn.style.pointerEvents = prog.credits >= PAINT_COST ? 'auto' : 'none';
+  }
+
+  function showPaintToast(msg: string, color: string) {
+    paintToastEl.textContent = msg;
+    paintToastEl.style.color = color;
+    paintToastEl.style.opacity = '1';
+    setTimeout(() => { paintToastEl.style.opacity = '0'; }, 2000);
+  }
+
+  // Live preview on drag (free)
   if (paintSlider) {
     paintSlider.addEventListener('input', () => {
-      const hue = parseInt(paintSlider.value);
-      // Live preview (no charge yet)
-      applyPaintToGarageModel(hue);
-    });
-    paintSlider.addEventListener('change', () => {
-      const hue = parseInt(paintSlider.value);
-      if (hue === lastCommittedHue) return; // no change
-      const prog = getProgress();
-      if (prog.credits < PAINT_COST) {
-        // Can't afford — revert to previous hue
-        if (lastCommittedHue >= 0) {
-          paintSlider.value = String(lastCommittedHue);
-          applyPaintToGarageModel(lastCommittedHue);
-        } else {
-          showCar(currentIndex); // reload original colors
-        }
-        return;
-      }
-      // Deduct credits
-      prog.credits -= PAINT_COST;
-      localStorage.setItem('hoodracer_progress', JSON.stringify(prog));
-      lastCommittedHue = hue;
-      const s = getSettings();
-      s.paintHue = hue;
-      saveSettings(s);
-      // Refresh stats to show updated credit balance
-      showCar(currentIndex);
+      _previewHue = parseInt(paintSlider.value);
+      applyPaintToGarageModel(_previewHue);
+      paintSwatch.style.background = `hsl(${_previewHue},85%,45%)`;
     });
   }
 
-  // Reset paint (free) — restore from stored originals
+  // Buy paint button
+  paintBuyBtn?.addEventListener('click', () => {
+    const prog = getProgress();
+    if (prog.credits < PAINT_COST) {
+      showPaintToast('Not enough credits!', '#ff4444');
+      return;
+    }
+    prog.credits -= PAINT_COST;
+    localStorage.setItem('hoodracer_progress', JSON.stringify(prog));
+    const s = getSettings();
+    s.paintHue = _previewHue;
+    saveSettings(s);
+    applyPaintToGarageModel(_previewHue);
+    updatePaintBalance();
+    showPaintToast('Paint applied!', '#44ff88');
+    // Update credit display in stats
+    const creditEl = document.querySelector('#garage-stats [style*="color:#ffcc00"]');
+    if (creditEl) creditEl.textContent = `${prog.credits} CR`;
+  });
+
+  // Reset paint (free)
   uiEl.querySelector('#garage-paint-reset')?.addEventListener('click', () => {
     const s = getSettings();
     s.paintHue = -1;
     saveSettings(s);
-    lastCommittedHue = -1;
+    _previewHue = 180;
     if (paintSlider) paintSlider.value = '180';
+    paintSwatch.style.background = 'hsl(180,85%,45%)';
     restoreOriginalColors();
+    showPaintToast('Paint reset!', '#aaaaaa');
   });
 
+  updatePaintBalance();
   progressBarEl = uiEl.querySelector('#garage-progress-bar') as HTMLElement;
 }
 
@@ -379,7 +407,17 @@ async function showCar(index: number) {
 
     // Apply saved paint color if set
     const savedHue = getSettings().paintHue;
-    if (savedHue >= 0) applyPaintToGarageModel(savedHue);
+    if (savedHue >= 0) {
+      applyPaintToGarageModel(savedHue);
+      // Sync slider + swatch
+      const slider = document.getElementById('garage-paint') as HTMLInputElement;
+      const swatch = document.getElementById('paint-swatch');
+      if (slider) slider.value = String(savedHue);
+      if (swatch) swatch.style.background = `hsl(${savedHue},85%,45%)`;
+    }
+    // Update paint balance display
+    const balEl = document.getElementById('paint-balance');
+    if (balEl) balEl.textContent = `Credits: ${getProgress().credits} CR`;
   } catch (err) {
     if (requestId === showCarRequestId) {
       hidePlaceholder();
@@ -430,6 +468,7 @@ function applyPaintToGarageModel(hue: number) {
       mat.emissive.copy(color).multiplyScalar(0.1);
     }
     if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
+    mat.version++; // Force WebGPU uniform re-upload
   });
 }
 
@@ -447,6 +486,7 @@ function restoreOriginalColors() {
         mat.emissive.set(0, 0, 0);
       }
       if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
+      mat.version++; // Force WebGPU uniform re-upload
     }
   });
 }

@@ -211,6 +211,8 @@ export class Vehicle {
       if (mat.emissive) {
         mat.emissive.copy(color).multiplyScalar(0.1);
       }
+      if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
+      mat.version++; // Force WebGPU uniform re-upload
     });
   }
 
