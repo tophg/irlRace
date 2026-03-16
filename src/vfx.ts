@@ -220,17 +220,175 @@ let boostFlameScene: THREE.Scene | null = null;
 export function initBoostFlame(scene: THREE.Scene): THREE.Mesh {
   boostFlameScene = scene;
 
-  // ── Layer 1: Inner Core (tight, bright, fast-flicker) ──
-  const coreGeo = new THREE.ConeGeometry(0.1, 1.6, 8);
-  const coreMat = new THREE.MeshBasicMaterial({
-    color: 0xccddff,
+  // ── Custom flame ShaderMaterial with FBM noise ──
+  const flameVertShader = /* glsl */`
+    uniform float uTime;
+    varying vec2 vUv;
+    varying float vDisplace;
+
+    // Simplex-style hash noise
+    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec4 perm(vec4 x) { return mod289(((x * 34.0) + 10.0) * x); }
+    float noise3(vec3 p) {
+      vec3 a = floor(p);
+      vec3 d = p - a;
+      d = d * d * (3.0 - 2.0 * d);
+      vec4 b = a.xxyy + vec4(0.0, 1.0, 0.0, 1.0);
+      vec4 k1 = perm(b.xyxy);
+      vec4 k2 = perm(k1.xyxy + b.zzww);
+      vec4 c = k2 + a.zzzz;
+      vec4 k3 = perm(c);
+      vec4 k4 = perm(c + 1.0);
+      vec4 o1 = fract(k3 * (1.0 / 41.0));
+      vec4 o2 = fract(k4 * (1.0 / 41.0));
+      vec4 o3 = o2 * d.z + o1 * (1.0 - d.z);
+      vec2 o4 = o3.yw * d.x + o3.xz * (1.0 - d.x);
+      return o4.y * d.y + o4.x * (1.0 - d.y);
+    }
+
+    float fbm(vec3 p) {
+      float v = 0.0;
+      float a = 0.5;
+      vec3 shift = vec3(100.0);
+      for (int i = 0; i < 4; i++) {
+        v += a * noise3(p);
+        p = p * 2.0 + shift;
+        a *= 0.5;
+      }
+      return v;
+    }
+
+    void main() {
+      vUv = uv;
+      vec3 pos = position;
+
+      // Height along the cone (0 = base, 1 = tip)
+      float h = clamp(uv.y, 0.0, 1.0);
+
+      // Displace vertices more at the tip for a dancing flame
+      float turbulence = fbm(vec3(pos.x * 4.0, pos.z * 4.0, uTime * 3.0));
+      float displacement = turbulence * h * h * 0.35;
+      pos.x += displacement * sin(uTime * 7.0 + pos.y * 5.0);
+      pos.z += displacement * cos(uTime * 5.0 + pos.y * 3.0);
+
+      // Stretch/compress the flame length with noise
+      float lengthNoise = fbm(vec3(uTime * 2.0, 0.0, 0.0));
+      pos.y *= 0.85 + lengthNoise * 0.3;
+
+      vDisplace = displacement;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+    }
+  `;
+
+  const flameFragShader = /* glsl */`
+    uniform float uTime;
+    uniform float uIntensity;
+    varying vec2 vUv;
+    varying float vDisplace;
+
+    vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec4 mod289(vec4 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
+    vec4 perm(vec4 x) { return mod289(((x * 34.0) + 10.0) * x); }
+    float noise3(vec3 p) {
+      vec3 a = floor(p);
+      vec3 d = p - a;
+      d = d * d * (3.0 - 2.0 * d);
+      vec4 b = a.xxyy + vec4(0.0, 1.0, 0.0, 1.0);
+      vec4 k1 = perm(b.xyxy);
+      vec4 k2 = perm(k1.xyxy + b.zzww);
+      vec4 c = k2 + a.zzzz;
+      vec4 k3 = perm(c);
+      vec4 k4 = perm(c + 1.0);
+      vec4 o1 = fract(k3 * (1.0 / 41.0));
+      vec4 o2 = fract(k4 * (1.0 / 41.0));
+      vec4 o3 = o2 * d.z + o1 * (1.0 - d.z);
+      vec2 o4 = o3.yw * d.x + o3.xz * (1.0 - d.x);
+      return o4.y * d.y + o4.x * (1.0 - d.y);
+    }
+
+    float fbm(vec3 p) {
+      float v = 0.0;
+      float a = 0.5;
+      vec3 shift = vec3(100.0);
+      for (int i = 0; i < 5; i++) {
+        v += a * noise3(p);
+        p = p * 2.0 + shift;
+        a *= 0.5;
+      }
+      return v;
+    }
+
+    void main() {
+      float h = clamp(vUv.y, 0.0, 1.0);
+
+      // Scrolling noise coordinates for flame turbulence
+      vec3 noiseCoord = vec3(vUv * 3.0, uTime * 2.5);
+      float n1 = fbm(noiseCoord);
+      float n2 = fbm(noiseCoord + vec3(1.7, 9.2, uTime * 1.3));
+
+      // Combine noise with height falloff — brighter at base, fading at tip
+      float baseMask = 1.0 - pow(h, 1.5);
+      float noiseMask = (n1 + n2) * 0.5;
+
+      // Radial falloff from UV center (cone unfolds linearly)
+      float radial = abs(vUv.x - 0.5) * 2.0;
+      float radialFade = 1.0 - smoothstep(0.0, 0.9, radial);
+
+      float intensity = baseMask * (0.6 + noiseMask * 0.6) * radialFade * uIntensity;
+      intensity *= 0.8 + sin(uTime * 30.0) * 0.1 + sin(uTime * 47.0) * 0.08;
+      intensity = clamp(intensity, 0.0, 1.0);
+
+      // Nitrous temperature color ramp: white-hot → cyan → blue → purple edge
+      vec3 color;
+      if (intensity > 0.8) {
+        // White-hot core
+        float t = (intensity - 0.8) / 0.2;
+        color = mix(vec3(0.7, 0.95, 1.0), vec3(1.0, 1.0, 1.0), t);
+      } else if (intensity > 0.55) {
+        // Cyan hot zone
+        float t = (intensity - 0.55) / 0.25;
+        color = mix(vec3(0.2, 0.6, 1.0), vec3(0.7, 0.95, 1.0), t);
+      } else if (intensity > 0.3) {
+        // Blue mid zone
+        float t = (intensity - 0.3) / 0.25;
+        color = mix(vec3(0.15, 0.25, 0.9), vec3(0.2, 0.6, 1.0), t);
+      } else if (intensity > 0.1) {
+        // Purple edge
+        float t = (intensity - 0.1) / 0.2;
+        color = mix(vec3(0.3, 0.1, 0.5), vec3(0.15, 0.25, 0.9), t);
+      } else {
+        color = vec3(0.3, 0.1, 0.5);
+      }
+
+      // Alpha: sharp falloff at edges, fully transparent when intensity is near 0
+      float alpha = smoothstep(0.02, 0.15, intensity) * intensity * 1.5;
+      alpha = clamp(alpha, 0.0, 1.0);
+
+      gl_FragColor = vec4(color * (1.0 + intensity * 0.5), alpha);
+    }
+  `;
+
+  const flameUniforms = {
+    uTime: { value: 0.0 },
+    uIntensity: { value: 1.0 },
+  };
+
+  const flameMat = new THREE.ShaderMaterial({
+    uniforms: JSON.parse(JSON.stringify(flameUniforms)),
+    vertexShader: flameVertShader,
+    fragmentShader: flameFragShader,
     transparent: true,
-    opacity: 0,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+    side: THREE.DoubleSide,
   });
-  boostFlameL = new THREE.Mesh(coreGeo, coreMat.clone());
-  boostFlameR = new THREE.Mesh(coreGeo, coreMat.clone());
+
+  // Higher-poly cone for smoother vertex displacement
+  const flameGeo = new THREE.ConeGeometry(0.18, 2.0, 16, 12);
+
+  boostFlameL = new THREE.Mesh(flameGeo, flameMat.clone());
+  boostFlameR = new THREE.Mesh(flameGeo, flameMat.clone());
   boostFlameL.rotation.x = Math.PI / 2;
   boostFlameR.rotation.x = Math.PI / 2;
   boostFlameL.visible = false;
@@ -238,15 +396,19 @@ export function initBoostFlame(scene: THREE.Scene): THREE.Mesh {
   scene.add(boostFlameL);
   scene.add(boostFlameR);
 
-  // ── Layer 2: Outer Glow Envelope (larger, softer, slower flicker) ──
-  const glowGeo = new THREE.ConeGeometry(0.25, 2.0, 8);
-  const glowMat = new THREE.MeshBasicMaterial({
-    color: 0x4466cc,
+  // ── Outer glow envelope uses same shader with lower intensity ──
+  const glowMat = new THREE.ShaderMaterial({
+    uniforms: JSON.parse(JSON.stringify(flameUniforms)),
+    vertexShader: flameVertShader,
+    fragmentShader: flameFragShader,
     transparent: true,
-    opacity: 0,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+    side: THREE.DoubleSide,
   });
+  (glowMat.uniforms.uIntensity as any).value = 0.45;
+
+  const glowGeo = new THREE.ConeGeometry(0.35, 2.8, 12, 8);
   boostGlowL = new THREE.Mesh(glowGeo, glowMat.clone());
   boostGlowR = new THREE.Mesh(glowGeo, glowMat.clone());
   boostGlowL.rotation.x = Math.PI / 2;
@@ -322,65 +484,39 @@ export function updateBoostFlame(
   const ry = ly;
   const rz = carPos.z - cosH * exhaust - sinH * sideOffset;
 
-  // ── Layer 1: Inner Core — fast 30Hz flicker, white-cyan hot center ──
+  // ── Layer 1: Inner Core — update shader uniforms ──
   boostFlameL.position.set(lx, ly, lz);
-  boostFlameL.rotation.y = heading;
+  boostFlameL.rotation.set(Math.PI / 2, heading, 0);
   boostFlameR.position.set(rx, ry, rz);
-  boostFlameR.rotation.y = heading;
+  boostFlameR.rotation.set(Math.PI / 2, heading, 0);
 
-  const coreFlicker = 0.5 + Math.sin(time * 30) * 0.25 + Math.sin(time * 43) * 0.15 + Math.sin(time * 67) * 0.08;
-  boostFlameL.scale.set(coreFlicker * 0.9, coreFlicker * (1.0 + Math.sin(time * 35) * 0.15), coreFlicker * 0.9);
-  boostFlameR.scale.set(coreFlicker * 0.9, coreFlicker * (1.0 + Math.sin(time * 33) * 0.15), coreFlicker * 0.9);
+  // Update shader time uniform
+  const coreMatL = boostFlameL.material as THREE.ShaderMaterial;
+  const coreMatR = boostFlameR.material as THREE.ShaderMaterial;
+  coreMatL.uniforms.uTime.value = time;
+  coreMatR.uniforms.uTime.value = time;
 
-  // Core color: white → cyan → white rapid cycle (blackbody-inspired)
-  const coreCycle = (time * 12) % 1;
-  let cr: number, cg: number, cb: number;
-  if (coreCycle < 0.5) {
-    const t = coreCycle / 0.5;
-    cr = 1 - t * 0.6;  cg = 1 - t * 0.05;  cb = 1;
-  } else {
-    const t = (coreCycle - 0.5) / 0.5;
-    cr = 0.4 + t * 0.6;  cg = 0.95 + t * 0.05;  cb = 1;
-  }
-  const coreMatL = boostFlameL.material as THREE.MeshBasicMaterial;
-  const coreMatR = boostFlameR.material as THREE.MeshBasicMaterial;
-  coreMatL.opacity = 0.9 * coreFlicker;
-  coreMatR.opacity = 0.9 * coreFlicker;
-  coreMatL.color.setRGB(cr, cg, cb);
-  coreMatR.color.setRGB(cr, cg, cb);
+  // Subtle scale breathing
+  const coreFlicker = 0.85 + Math.sin(time * 18) * 0.1 + Math.sin(time * 31) * 0.05;
+  boostFlameL.scale.set(coreFlicker, coreFlicker, coreFlicker);
+  boostFlameR.scale.set(coreFlicker, coreFlicker, coreFlicker);
 
-  // ── Layer 2: Outer Glow — slower 15Hz sway, cyan → blue → purple cycle ──
+  // ── Layer 2: Outer Glow — update shader uniforms ──
   if (boostGlowL && boostGlowR) {
-    // Outer glow trails slightly behind (0.15 units further back)
     const glowOffset = 0.15;
     boostGlowL.position.set(lx - sinH * glowOffset, ly, lz - cosH * glowOffset);
-    boostGlowL.rotation.y = heading;
+    boostGlowL.rotation.set(Math.PI / 2, heading, 0);
     boostGlowR.position.set(rx - sinH * glowOffset, ry, rz - cosH * glowOffset);
-    boostGlowR.rotation.y = heading;
+    boostGlowR.rotation.set(Math.PI / 2, heading, 0);
 
-    const glowFlicker = 0.55 + Math.sin(time * 15) * 0.2 + Math.sin(time * 23) * 0.12;
-    boostGlowL.scale.set(glowFlicker, glowFlicker * (1.1 + Math.sin(time * 19) * 0.15), glowFlicker);
-    boostGlowR.scale.set(glowFlicker, glowFlicker * (1.1 + Math.sin(time * 17) * 0.15), glowFlicker);
+    const glowMatL = boostGlowL.material as THREE.ShaderMaterial;
+    const glowMatR = boostGlowR.material as THREE.ShaderMaterial;
+    glowMatL.uniforms.uTime.value = time;
+    glowMatR.uniforms.uTime.value = time;
 
-    // Outer glow color: slower cycle — cyan → blue → purple → cyan
-    const glowCycle = (time * 6) % 1;
-    let gr: number, gg: number, gb: number;
-    if (glowCycle < 0.33) {
-      const t = glowCycle / 0.33;
-      gr = 0.15 + t * 0.05;  gg = 0.6 - t * 0.3;  gb = 1;
-    } else if (glowCycle < 0.66) {
-      const t = (glowCycle - 0.33) / 0.33;
-      gr = 0.2 + t * 0.35;  gg = 0.3 - t * 0.15;  gb = 1 - t * 0.15;
-    } else {
-      const t = (glowCycle - 0.66) / 0.34;
-      gr = 0.55 - t * 0.4;  gg = 0.15 + t * 0.45;  gb = 0.85 + t * 0.15;
-    }
-    const glowMatL = boostGlowL.material as THREE.MeshBasicMaterial;
-    const glowMatR = boostGlowR.material as THREE.MeshBasicMaterial;
-    glowMatL.opacity = 0.45 * glowFlicker;
-    glowMatR.opacity = 0.45 * glowFlicker;
-    glowMatL.color.setRGB(gr, gg, gb);
-    glowMatR.color.setRGB(gr, gg, gb);
+    const glowFlicker = 0.9 + Math.sin(time * 12) * 0.08;
+    boostGlowL.scale.set(glowFlicker, glowFlicker, glowFlicker);
+    boostGlowR.scale.set(glowFlicker, glowFlicker, glowFlicker);
   }
 
   // ── Layer 3: Ground Glow — pulsing circles on road surface ──
@@ -396,22 +532,21 @@ export function updateBoostFlame(
     const groundMatR = boostGroundR.material as THREE.MeshBasicMaterial;
     groundMatL.opacity = 0.25 * groundPulse;
     groundMatR.opacity = 0.25 * groundPulse;
-    // Ground color blends core + glow for cohesive look
-    groundMatL.color.setRGB(cr * 0.4, cg * 0.5, cb * 0.8);
-    groundMatR.color.setRGB(cr * 0.4, cg * 0.5, cb * 0.8);
+    groundMatL.color.setRGB(0.2, 0.5, 1.0);
+    groundMatR.color.setRGB(0.2, 0.5, 1.0);
   }
 
-  // ── SpotLights — aimed downward at road, synced to flame color ──
+  // ── SpotLights — aimed downward at road, nitrous blue ──
   if (boostLightL) {
     boostLightL.position.set(lx, ly + 0.3, lz);
     boostLightL.target.position.set(lx, carPos.y - 0.5, lz);
-    boostLightL.color.setRGB(cr * 0.5, cg * 0.5, cb);
+    boostLightL.color.setRGB(0.2, 0.5, 1.0);
     boostLightL.intensity = 5 * coreFlicker;
   }
   if (boostLightR) {
     boostLightR.position.set(rx, ry + 0.3, rz);
     boostLightR.target.position.set(rx, carPos.y - 0.5, rz);
-    boostLightR.color.setRGB(cr * 0.5, cg * 0.5, cb);
+    boostLightR.color.setRGB(0.2, 0.5, 1.0);
     boostLightR.intensity = 5 * coreFlicker;
   }
 }
