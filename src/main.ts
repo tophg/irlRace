@@ -1868,7 +1868,6 @@ function gameLoop(timestamp: number) {
           pp.z - sinH * (-1.0),
         );
         spawnGPUExplosion(G._sparkPos, 25);
-        G.playerVehicle.flattenTire('left');
       }
       if (rightHP <= 0 && !G._rightTireBlown) {
         G._rightTireBlown = true;
@@ -1878,7 +1877,6 @@ function gameLoop(timestamp: number) {
           pp.z - sinH * 1.0,
         );
         spawnGPUExplosion(G._sparkPos, 25);
-        G.playerVehicle.flattenTire('right');
       }
     }
     updateGPUParticles(renderer, frameDt);

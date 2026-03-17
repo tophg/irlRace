@@ -104,45 +104,37 @@ export class Vehicle {
   get bodyRollZ(): number { return this._bodyGroup.rotation.z; }
 
   /** Reset all dynamic rotations for replay playback.
-   *  Clears: group pitch/roll, bodyGroup pitch/roll/drift-yaw,
-   *  wheel steering angle, wheel spin, wheel scale (blowout),
-   *  wheel suspension offset. Restores structural rotations
-   *  (tire/hub rotation.z = PI/2 that keeps them upright).
+   *  Clears: group pitch/roll, bodyGroup pitch/roll/drift-yaw.
+   *  Forces procedural wheel containers + all children invisible
+   *  (they exist for physics only — GLB model wheels in bodyGroup
+   *  handle visuals).
    */
   resetForReplay() {
     // Group: clear road pitch/roll, keep rotation order
     this.group.rotation.set(0, 0, 0, 'YXZ');
     // Body group: clear cosmetic pitch, roll, drift yaw
     this._bodyGroup.rotation.set(0, 0, 0);
-    // Wheels: clear steering angle + spin + suspension offset + blowout scale
+    // Procedural wheel containers: force invisible recursively.
+    // These containers (torus/hub/spoke) exist for physics positioning only.
+    // The visible wheels are part of the GLB model inside _bodyGroup.
     this.wheelSpin = 0;
     for (const w of [this.wheelFL, this.wheelFR, this.wheelRL, this.wheelRR]) {
       if (!w) continue;
-      // Container rotation.y = steering angle → 0
+      w.visible = false;
+      w.traverse((child: THREE.Object3D) => { child.visible = false; });
+      // Reset dynamic state (rotation, scale, position) for physics correctness
       w.rotation.set(0, 0, 0);
-      // Reset scale (may be squished from flattenTire blowout VFX)
       w.scale.set(1, 1, 1);
-      // Reset suspension position.y to construction default (torus radius)
       w.position.y = 0.47;
-      // wheelGroup (children[0]): clear spin + restore structural rotations
       const wg = w.children[0];
-      if (wg) {
-        wg.rotation.set(0, 0, 0);
-        // Restore tire (child 0) and hub (child 1) structural rotation.z = PI/2
-        // These keep the torus/cylinder standing upright (axle along X)
-        for (let i = 0; i < Math.min(2, wg.children.length); i++) {
-          wg.children[i].rotation.set(0, 0, Math.PI / 2);
-        }
-        // Restore spoke fan-out rotations (children 2+)
-        for (let i = 2; i < wg.children.length; i++) {
-          wg.children[i].rotation.set(((i - 2) / 5) * Math.PI, 0, 0);
-        }
-      }
+      if (wg) wg.rotation.set(0, 0, 0);
     }
   }
 
   /** Apply a replay frame's visual state to the vehicle.
-   *  Drives wheel steering, spin, body pitch/roll/drift from recorded data.
+   *  Only drives body pitch/roll/drift — procedural wheel containers
+   *  are invisible, so wheel manipulation has no visual effect.
+   *  The GLB model's wheel meshes move with _bodyGroup automatically.
    */
   applyReplayFrame(frame: {
     steer: number; wheelSpin: number; driftAngle: number;
@@ -152,21 +144,6 @@ export class Vehicle {
     this._bodyGroup.rotation.x = frame.bodyPitchX;
     this._bodyGroup.rotation.z = frame.bodyRollZ;
     this._bodyGroup.rotation.y = frame.driftAngle * 0.03;
-    // Front wheels: steering angle
-    const steerRot = frame.steer * 0.35;
-    if (this.wheelFL) this.wheelFL.rotation.y = steerRot;
-    if (this.wheelFR) this.wheelFR.rotation.y = steerRot;
-    // All wheels: spin animation + restore structural rotations
-    for (const w of [this.wheelFL, this.wheelFR, this.wheelRL, this.wheelRR]) {
-      if (!w) continue;
-      const wg = w.children[0];
-      if (!wg) continue;
-      wg.rotation.x = frame.wheelSpin;
-      // Ensure tire (child 0) and hub (child 1) keep rotation.z = PI/2
-      for (let i = 0; i < Math.min(2, wg.children.length); i++) {
-        wg.children[i].rotation.z = Math.PI / 2;
-      }
-    }
   }
 
   // Pre-computed fracture fragments (created at load time, used at explosion time)
@@ -1034,18 +1011,9 @@ export class Vehicle {
     // Drift visual yaw offset
     this._bodyGroup.rotation.y = this.driftAngle * 0.03;
 
-    // ── Wheel animation ──
-    this.wheelSpin = (this.wheelSpin + this.speed * dt * 3) % (Math.PI * 2);
-    if (this.wheelFL) {
-      const steerRot = this.steer * 0.35;
-      this.wheelFL.rotation.y = steerRot;
-      if (this.wheelFR) this.wheelFR.rotation.y = steerRot;
 
-      if (this.wheelFL.children[0]) this.wheelFL.children[0].rotation.x = this.wheelSpin;
-      if (this.wheelFR?.children[0]) this.wheelFR.children[0].rotation.x = this.wheelSpin;
-      if (this.wheelRL?.children[0]) this.wheelRL.children[0].rotation.x = this.wheelSpin;
-      if (this.wheelRR?.children[0]) this.wheelRR.children[0].rotation.x = this.wheelSpin;
-    }
+    // ── Wheel spin tracking (for replay recording only — containers are invisible) ──
+    this.wheelSpin = (this.wheelSpin + this.speed * dt * 3) % (Math.PI * 2);
 
     // ── Brake light intensity — DISABLED ──
     // if (this.taillightMatL && this.taillightMatR) {
@@ -1063,18 +1031,8 @@ export class Vehicle {
   /** Whether nitro boost is currently firing. */
   get isNitroActive(): boolean { return this._nitroActive; }
 
-  /** Serialize vehicle physics state for rollback snapshot. */
-  /** Visually flatten tires on a side (for blowout VFX). */
-  flattenTire(side: 'left' | 'right') {
-    const scaleY = 0.3;
-    if (side === 'left') {
-      if (this.wheelFL) this.wheelFL.scale.y = scaleY;
-      if (this.wheelRL) this.wheelRL.scale.y = scaleY;
-    } else {
-      if (this.wheelFR) this.wheelFR.scale.y = scaleY;
-      if (this.wheelRR) this.wheelRR.scale.y = scaleY;
-    }
-  }
+  // flattenTire removed — procedural wheel containers are invisible,
+  // so scaling them has no visual effect.
 
   serializeState(): {
     px: number; py: number; pz: number;
