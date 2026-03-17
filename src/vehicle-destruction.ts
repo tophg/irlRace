@@ -39,6 +39,9 @@ export function triggerVehicleDestruction(
   carVelZ: number,
   wheels: (THREE.Mesh | null)[],
 ) {
+  // Guard against re-triggering
+  if (destructionActive) return;
+
   destructionScene = scene;
   destructionTime = 0;
   destructionActive = true;
@@ -48,12 +51,25 @@ export function triggerVehicleDestruction(
   wreckPosition = _center.clone();
 
   // ── Phase 1: Decompose body model into fragments ──
+  // Collect meshes, skip tiny/invisible ones
   const meshes: THREE.Mesh[] = [];
   bodyGroup.traverse((child) => {
-    if (child instanceof THREE.Mesh && child.geometry) {
+    if (child instanceof THREE.Mesh && child.geometry && child.visible) {
       meshes.push(child);
     }
   });
+
+  // Cap at 15 largest fragments to avoid perf issues with complex models
+  const MAX_BODY_FRAGMENTS = 15;
+  if (meshes.length > MAX_BODY_FRAGMENTS) {
+    // Sort by bounding sphere radius (largest first) — prefer big visible panels
+    meshes.sort((a, b) => {
+      a.geometry.computeBoundingSphere();
+      b.geometry.computeBoundingSphere();
+      return (b.geometry.boundingSphere?.radius ?? 0) - (a.geometry.boundingSphere?.radius ?? 0);
+    });
+    meshes.length = MAX_BODY_FRAGMENTS;
+  }
 
   for (const srcMesh of meshes) {
     // Get world transform
