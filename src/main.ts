@@ -1049,6 +1049,16 @@ function showResults() {
 function startReplayPlayback() {
   if (!G.replayRecorder || !G.trackData || !G.playerVehicle) return;
 
+  // Clean up any destruction effects (explosion fragments, shockwave, scorch, light)
+  cleanupDestruction();
+
+  // Restore car visibility (destroyed during explosion animation)
+  G.playerVehicle.bodyGroupRef.visible = true;
+  G.playerVehicle.destroyed = false;
+  for (const w of G.playerVehicle.wheelRefs) {
+    if (w) w.visible = true;
+  }
+
   // Build mesh map for replay (player + AI vehicles)
   const meshes = new Map<string, THREE.Group>();
   meshes.set('local', G.playerVehicle.group);
