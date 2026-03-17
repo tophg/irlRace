@@ -1753,6 +1753,24 @@ function gameLoop(timestamp: number) {
       G.playerVehicle.clearExplosionFlag();
     }
 
+    // ── Landing VFX (after ramp/jump airborne state) ──
+    if (G.playerVehicle.justLanded) {
+      const impact = G.playerVehicle.landingImpact;
+      // Dust cloud at landing position (scaled by impact severity)
+      if (impact > 0.2) {
+        spawnGPUShoulderDust(
+          G.playerVehicle.group.position,
+          G.playerVehicle.speed * 0.5 + impact * 20,
+          G.playerVehicle.heading,
+        );
+      }
+      // Screen shake proportional to impact
+      if (impact > 0.3) {
+        setImpactIntensity(impact * 0.6);
+      }
+      G.playerVehicle.clearLandingFlag();
+    }
+
     // ── Hood smoke/flames at high engine heat (front hood position) ──
     const heat = G.playerVehicle.engineHeat;
     if (heat > 60) {

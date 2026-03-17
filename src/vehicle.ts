@@ -69,7 +69,27 @@ export class Vehicle {
   // Internal velocity vector on XZ plane
   private _velX = 0;
   private _velZ = 0;
+  private _velY = 0;       // vertical velocity (m/s) — used for airborne parabolic flight
   private angularVel = 0;  // heading rate of change (rad/s)
+
+  // ── Airborne state ──
+  private _airborne = false;
+  private _airTime = 0;          // seconds spent in air
+  private _prevRoadY = 0;        // previous frame's road surface Y (for velY derivation)
+  private _justLanded = false;   // single-frame flag for landing VFX
+  private _landingImpact = 0;    // 0-1 severity of last landing
+  private _airPitch = 0;         // accumulated nose-dip pitch while airborne
+
+  /** Whether the vehicle is currently airborne (in air after a ramp/jump). */
+  get airborne(): boolean { return this._airborne; }
+  /** Time in seconds the vehicle has been airborne. */
+  get airTime(): number { return this._airTime; }
+  /** Single-frame flag: true on the frame the vehicle lands. */
+  get justLanded(): boolean { return this._justLanded; }
+  /** Landing impact severity 0-1 (proportional to downward velocity at impact). */
+  get landingImpact(): number { return this._landingImpact; }
+  /** Clear the single-frame landing flag (call after VFX code has consumed it). */
+  clearLandingFlag() { this._justLanded = false; }
 
   /** Expose velocity for car-to-car collision damping */
   get velX() { return this._velX; }
@@ -544,9 +564,9 @@ export class Vehicle {
     this.steerTarget = input.steerAnalog !== 0
       ? input.steerAnalog
       : (input.left ? -1 : 0) + (input.right ? 1 : 0);
-
-    // Smooth steer interpolation (steerSpeed controls responsiveness)
-    this.steer += (this.steerTarget - this.steer) * Math.min(1, def.steerSpeed * dt);
+    // Reduced steering in air (no tire grip)
+    const steerInfluence = this._airborne ? 0.15 : 1.0;
+    this.steer += ((this.steerTarget * steerInfluence) - this.steer) * Math.min(1, def.steerSpeed * dt);
 
     // ── Compute car-local basis ──
     const sinH = Math.sin(this.heading);
@@ -769,6 +789,13 @@ export class Vehicle {
     let nearestSpline: { t: number; point: THREE.Vector3; distance: number } | null = null;
     let usedRaycast = false;
 
+    // ── Airborne physics constants ──
+    const GRAVITY = 15;            // m/s² (~1.5g for arcade feel)
+    const LAUNCH_VEL_THRESHOLD = 1.0; // min velY to trigger airborne
+    const LAUNCH_GAP_THRESHOLD = 0.15; // min gap above road to trigger airborne
+    const MAX_AIR_TIME = 5.0;      // safety: force-land after 5s
+    const AIR_STEER_FACTOR = 0.15; // steering multiplier while airborne
+
     if (this.roadMesh) {
       const flY = this.castWheelRay(sinH, cosH, -WHEEL_SIDE_X, WHEEL_FRONT_Z);
       const frY = this.castWheelRay(sinH, cosH, WHEEL_SIDE_X, WHEEL_FRONT_Z);
@@ -780,7 +807,6 @@ export class Vehicle {
 
       if (hitCount >= 2) {
         usedRaycast = true;
-        // Approximate missing wheels from available neighbors
         const validHits: number[] = [];
         if (flY !== null) validHits.push(flY);
         if (frY !== null) validHits.push(frY);
@@ -792,78 +818,122 @@ export class Vehicle {
         const rl = rlY ?? validHits[validHits.length - 1];
         const rr = rrY ?? validHits[validHits.length - 1];
 
-        // Car body target height from contact points + ground offset
-        let targetY = (fl + fr + rl + rr) / 4 + this.groundOffset;
+        const roadY = (fl + fr + rl + rr) / 4 + this.groundOffset;
 
+        if (this._airborne) {
+          // ── AIRBORNE: parabolic flight ──
+          this._velY -= GRAVITY * dt;
+          this.group.position.y += this._velY * dt;
+          this._airTime += dt;
 
-        // Defensive: don't allow sudden drops > 2 units (prevents sinking through gaps)
-        if (targetY < this.group.position.y - 2) {
-          targetY = this.group.position.y - 2;
-        }
+          // Slow nose-dip pitch (angular momentum in air)
+          this._airPitch -= 0.4 * dt;
 
-        // Asymmetric Y tracking: snap DOWN instantly, smooth UP to prevent jerky bumps
-        if (targetY <= this.group.position.y) {
-          this.group.position.y = targetY; // snap down — car must sit on road
+          // Landing detection: car has descended to or below road surface
+          if (this.group.position.y <= roadY || this._airTime > MAX_AIR_TIME) {
+            // LAND
+            this._airborne = false;
+            this.group.position.y = roadY;
+            this._justLanded = true;
+            this._landingImpact = Math.min(1.0, Math.abs(this._velY) / 15);
+            this._velY = 0;
+            this._airTime = 0;
+            this._airPitch = 0;
+          }
         } else {
+          // ── GROUNDED: smooth Y tracking (both directions) ──
           const yLerp = 1 - Math.exp(-30 * dt);
-          this.group.position.y += (targetY - this.group.position.y) * yLerp;
+          this.group.position.y += (roadY - this.group.position.y) * yLerp;
+
+          // Derive vertical velocity from road slope × forward speed
+          // (this is what gives launch velocity when leaving a ramp)
+          if (this._prevRoadY !== 0) {
+            this._velY = (roadY - this._prevRoadY) / dt;
+          }
+          this._prevRoadY = roadY;
+
+          // Launch detection: car is above road AND has upward velocity
+          const gap = this.group.position.y - roadY;
+          if (gap > LAUNCH_GAP_THRESHOLD && this._velY > LAUNCH_VEL_THRESHOLD) {
+            this._airborne = true;
+            this._airTime = 0;
+            this._airPitch = 0;
+            // velY carries forward from road slope derivative
+          }
         }
 
-        // ── Per-wheel visual suspension ──
-        // Each wheel adjusts its local Y based on how its individual road contact
-        // differs from the body's average. The base wheelY is 0.47 (torus radius).
-        const avgHit = (fl + fr + rl + rr) / 4;
-        const suspLerp = 1 - Math.exp(-20 * dt);
-        const baseWheelY = 0.33; // must match buildWheels wheelY
-        const maxTravel = 0.15; // max suspension travel
+        // ── Per-wheel visual suspension (only when grounded) ──
+        if (!this._airborne) {
+          const avgHit = (fl + fr + rl + rr) / 4;
+          const suspLerp = 1 - Math.exp(-20 * dt);
+          const baseWheelY = 0.33;
+          const maxTravel = 0.15;
 
-        if (this.wheelFL) {
-          const delta = Math.max(-maxTravel, Math.min(maxTravel, fl - avgHit));
-          this.wheelFL.position.y += (baseWheelY + delta - this.wheelFL.position.y) * suspLerp;
-        }
-        if (this.wheelFR) {
-          const delta = Math.max(-maxTravel, Math.min(maxTravel, fr - avgHit));
-          this.wheelFR.position.y += (baseWheelY + delta - this.wheelFR.position.y) * suspLerp;
-        }
-        if (this.wheelRL) {
-          const delta = Math.max(-maxTravel, Math.min(maxTravel, rl - avgHit));
-          this.wheelRL.position.y += (baseWheelY + delta - this.wheelRL.position.y) * suspLerp;
-        }
-        if (this.wheelRR) {
-          const delta = Math.max(-maxTravel, Math.min(maxTravel, rr - avgHit));
-          this.wheelRR.position.y += (baseWheelY + delta - this.wheelRR.position.y) * suspLerp;
-        }
+          if (this.wheelFL) {
+            const delta = Math.max(-maxTravel, Math.min(maxTravel, fl - avgHit));
+            this.wheelFL.position.y += (baseWheelY + delta - this.wheelFL.position.y) * suspLerp;
+          }
+          if (this.wheelFR) {
+            const delta = Math.max(-maxTravel, Math.min(maxTravel, fr - avgHit));
+            this.wheelFR.position.y += (baseWheelY + delta - this.wheelFR.position.y) * suspLerp;
+          }
+          if (this.wheelRL) {
+            const delta = Math.max(-maxTravel, Math.min(maxTravel, rl - avgHit));
+            this.wheelRL.position.y += (baseWheelY + delta - this.wheelRL.position.y) * suspLerp;
+          }
+          if (this.wheelRR) {
+            const delta = Math.max(-maxTravel, Math.min(maxTravel, rr - avgHit));
+            this.wheelRR.position.y += (baseWheelY + delta - this.wheelRR.position.y) * suspLerp;
+          }
 
-        // Road surface pitch (positive = nose up)
-        const frontAvgY = (fl + fr) / 2;
-        const rearAvgY = (rl + rr) / 2;
-        const targetPitchRoad = Math.atan2(frontAvgY - rearAvgY, WHEELBASE);
+          // Road surface pitch (positive = nose up)
+          const frontAvgY = (fl + fr) / 2;
+          const rearAvgY = (rl + rr) / 2;
+          const targetPitchRoad = Math.atan2(frontAvgY - rearAvgY, WHEELBASE);
 
-        // Road surface roll (positive = tilted right)
-        const leftAvgY = (fl + rl) / 2;
-        const rightAvgY = (fr + rr) / 2;
-        const targetRollRoad = Math.atan2(rightAvgY - leftAvgY, TRACK_WIDTH);
+          // Road surface roll (positive = tilted right)
+          const leftAvgY = (fl + rl) / 2;
+          const rightAvgY = (fr + rr) / 2;
+          const targetRollRoad = Math.atan2(rightAvgY - leftAvgY, TRACK_WIDTH);
 
-        // Smooth alignment (frame-rate independent)
-        const alignFactor = 1 - Math.exp(-10 * dt);
-        this._roadPitch += (targetPitchRoad - this._roadPitch) * alignFactor;
-        this._roadRoll += (targetRollRoad - this._roadRoll) * alignFactor;
+          // Smooth alignment (frame-rate independent)
+          const alignFactor = 1 - Math.exp(-10 * dt);
+          this._roadPitch += (targetPitchRoad - this._roadPitch) * alignFactor;
+          this._roadRoll += (targetRollRoad - this._roadRoll) * alignFactor;
+        }
+      } else if (hitCount === 0 && !this._airborne && this._velY > LAUNCH_VEL_THRESHOLD) {
+        // All rays missed AND we have upward velocity — launch!
+        this._airborne = true;
+        this._airTime = 0;
+        this._airPitch = 0;
       }
     }
 
-    if (!usedRaycast && spline) {
+    // ── Airborne flight (no road contact — either off-road or all rays missed) ──
+    if (this._airborne && !usedRaycast) {
+      this._velY -= GRAVITY * dt;
+      this.group.position.y += this._velY * dt;
+      this._airTime += dt;
+      this._airPitch -= 0.4 * dt;
+
+      // Safety: force-land if airborne too long
+      if (this._airTime > MAX_AIR_TIME) {
+        this._airborne = false;
+        this._velY = 0;
+        this._airTime = 0;
+        this._airPitch = 0;
+      }
+    }
+
+    if (!usedRaycast && !this._airborne && spline) {
       nearestSpline = bvh
         ? getClosestSplinePoint(spline, this.group.position, bvh)
         : getClosestSplinePoint(spline, this.group.position, 200);
 
-      // Asymmetric Y tracking for spline fallback too
+      // Smooth Y tracking for spline fallback
       const splineTargetY = nearestSpline.point.y + this.groundOffset;
-      if (splineTargetY <= this.group.position.y) {
-        this.group.position.y = splineTargetY;
-      } else {
-        const splineYLerp = 1 - Math.exp(-30 * dt);
-        this.group.position.y += (splineTargetY - this.group.position.y) * splineYLerp;
-      }
+      const splineYLerp = 1 - Math.exp(-30 * dt);
+      this.group.position.y += (splineTargetY - this.group.position.y) * splineYLerp;
 
       // Decay road alignment toward neutral when off road mesh
       const decayFactor = 1 - Math.exp(-5 * dt);
@@ -871,9 +941,11 @@ export class Vehicle {
       this._roadRoll *= (1 - decayFactor);
     }
 
-    // Hard floor: absolute minimum height to prevent sinking below ground
-    if (this.group.position.y < -0.5) {
-      this.group.position.y = -0.5;
+    // Emergency floor: safety net only (lowered from -0.5 to -5 to allow deep jumps)
+    if (this.group.position.y < -5) {
+      this.group.position.y = -5;
+      this._velY = 0;
+      this._airborne = false;
     }
 
     // Safety teleport: if car is way too far from track, snap back to nearest spline point
@@ -996,9 +1068,9 @@ export class Vehicle {
       }
     }
 
-    // ── Visual rotation (heading + road surface alignment) ──
+    // ── Visual rotation (heading + road surface alignment + airborne pitch) ──
     this.group.rotation.y = this.heading;
-    this.group.rotation.x = this._roadPitch;
+    this.group.rotation.x = this._roadPitch + this._airPitch;
     this.group.rotation.z = this._roadRoll;
 
     // Cosmetic body pitch & roll (throttle squat, brake dive, drift lean)
