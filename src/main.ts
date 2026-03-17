@@ -1352,15 +1352,10 @@ function gameLoop(timestamp: number) {
       return;
     }
 
-    // ── TIME SCALE (slow-motion) ──
-    const wallDt = frameDt;
-    updateTimeScale(wallDt);
-    const scaledDt = applyTimeScale(frameDt);
-
     // ── FIXED-TIMESTEP PHYSICS ──
     // Accumulate frame time, then step physics at a deterministic rate.
     // Leftover accumulator fraction (`alpha`) is used to interpolate visuals.
-    G.physicsAccumulator += scaledDt;
+    G.physicsAccumulator += frameDt;
 
     // Run deterministic physics sub-steps
     let physicsStepsThisFrame = 0;
@@ -1456,8 +1451,6 @@ function gameLoop(timestamp: number) {
             G.playerVehicle.wheelRefs,
           );
           G.playerVehicle.destroyed = true;
-          // Trigger slow-motion cinematic
-          triggerSlowMotion();
           // Screen effects: flash + letterbox + post-FX
           showExplosionFlash();
           showLetterbox();
@@ -1468,8 +1461,8 @@ function gameLoop(timestamp: number) {
           }
           // Delayed text overlay and results
           setTimeout(() => showEngineDestroyedText(), 800);
-          setTimeout(() => { hideLetterbox(); setExplosionMode(false); }, 4500);
-          setTimeout(() => showResults(), 5000);
+          setTimeout(() => { hideLetterbox(); setExplosionMode(false); }, 3500);
+          setTimeout(() => showResults(), 4000);
         }
       }
 
