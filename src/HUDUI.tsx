@@ -14,6 +14,8 @@ export const [timerText, setTimerText] = createSignal('0:00.000');
 export const [isBoostActive, setIsBoostActive] = createSignal(false);
 export const [nitroPct, setNitroPct] = createSignal(0);
 export const [isNitroActive, setIsNitroActive] = createSignal(false);
+export const [heatPct, setHeatPct] = createSignal(0);
+export const [isEngineDead, setIsEngineDead] = createSignal(false);
 export const [damageState, setDamageState] = createSignal({
   front: 100, rear: 100, left: 100, right: 100
 });
@@ -43,6 +45,15 @@ export const RacingHUD = () => {
     if (pct > 70) return 'linear-gradient(90deg, #ff6600, #ff2200)';
     if (pct > 30) return 'linear-gradient(90deg, #0088ff, #ff6600)';
     return 'linear-gradient(90deg, #0044aa, #0088ff)';
+  };
+
+  const getHeatColor = () => {
+    const h = heatPct();
+    if (h > 90) return '#ff1100';
+    if (h > 70) return '#ff6600';
+    if (h > 50) return '#ffaa00';
+    if (h > 30) return '#ffdd44';
+    return '#44aaff';
   };
 
   const getDamageClass = (hp: number) => {
@@ -81,6 +92,26 @@ export const RacingHUD = () => {
                   ? '0 0 8px rgba(255, 50, 50, 0.6)' 
                   : 'none',
               transition: 'box-shadow 0.2s, background 0.3s',
+            }}
+          />
+        </div>
+      </div>
+
+      <div classList={{ 'hud-heat': true, 'heat-danger': heatPct() > 80, 'heat-dead': isEngineDead() }} id="hud-heat">
+        <div class="hud-heat-label">
+          {isEngineDead() ? '💀 ENGINE DEAD' : heatPct() > 90 ? '🔥 OVERHEAT!' : 'HEAT'}
+        </div>
+        <div class="hud-heat-track">
+          <div 
+            class="hud-heat-fill"
+            id="hud-heat-fill"
+            style={{
+              width: `${Math.max(0, Math.min(100, heatPct()))}%`,
+              background: getHeatColor(),
+              "box-shadow": heatPct() > 80
+                ? `0 0 12px ${getHeatColor()}, 0 0 24px ${getHeatColor()}55`
+                : 'none',
+              transition: 'width 0.1s, background 0.3s',
             }}
           />
         </div>

@@ -45,8 +45,20 @@ export class Vehicle {
   nitro = 50;          // 0–100 nitro meter
   private _nitroActive = false; // actual nitro burn state (requires nitro > 0)
 
+  // ── Engine Heat System ──
+  private _engineHeat = 0;           // 0–100, overheat at 100
+  private _engineDead = false;       // true = engine blown, coasting to halt
+  private _engineDeadTimer = 0;      // countdown to engine restart (seconds)
+  private _engineJustExploded = false; // single-frame flag for VFX trigger
+
   /** Whether nitro is currently being burned (read-only) */
   get nitroActive(): boolean { return this._nitroActive; }
+  /** Current engine heat 0-100. */
+  get engineHeat(): number { return this._engineHeat; }
+  /** Whether the engine is dead from overheat. */
+  get engineDead(): boolean { return this._engineDead; }
+  /** Single-frame flag: true on the frame the engine explodes. */
+  get engineJustExploded(): boolean { return this._engineJustExploded; }
 
   /** Barrier impact info — polled by main loop for sparks/shake. Cleared each frame. */
   lastBarrierImpact: { force: number; posX: number; posY: number; posZ: number; normalX: number; normalZ: number } | null = null;
@@ -530,20 +542,60 @@ export class Vehicle {
     // ── Integrate velocity ──
     const newVForward = vForward + longForce * dt;
 
+    // ── Engine overheat: dead engine — no throttle, coast to halt ──
+    this._engineJustExploded = false; // clear single-frame flag
+    if (this._engineDead) {
+      this._engineDeadTimer -= dt;
+      // Kill throttle/nitro while engine is dead
+      this._nitroActive = false;
+      // Apply heavy drag to coast to a stop
+      const deadDrag = vForward * 3.0;
+      // We'll use this below by zeroing tyreForce contribution
+      if (this._engineDeadTimer <= 0) {
+        // Engine restarts — heat partially cooled
+        this._engineDead = false;
+        this._engineDeadTimer = 0;
+        this._engineHeat = 40; // still warm after restart
+      }
+    }
+
     // ── Nitro drain/recharge (must run before boostedMax) ──
-    if (input.boost && this.nitro > 0) {
+    if (!this._engineDead && input.boost && this.nitro > 0) {
       this._nitroActive = true;
       this.nitro = Math.max(0, this.nitro - 40 * dt);
     } else {
       this._nitroActive = false;
     }
-    // Drift recharge (stronger drift = faster recharge)
-    if (Math.abs(this.driftAngle) > 0.15 && absSpeed > 5) {
-      this.nitro = Math.min(100, this.nitro + Math.abs(this.driftAngle) * 25 * dt);
+    // Drift recharge (only when not burning nitro — can't earn and burn simultaneously)
+    if (!this._nitroActive && Math.abs(this.driftAngle) > 0.15 && absSpeed > 5) {
+      this.nitro = Math.min(100, this.nitro + Math.abs(this.driftAngle) * 15 * dt);
     }
-    // Passive slow recharge
-    if (!this._nitroActive && absSpeed > 2) {
-      this.nitro = Math.min(100, this.nitro + 2 * dt);
+    // No passive recharge — nitro is earned through drifting only
+
+    // ── Engine Heat accumulation ──
+    if (!this._engineDead) {
+      // Heat sources
+      if (this._nitroActive) this._engineHeat += 35 * dt;       // nitro is the primary heat source
+      this._engineHeat += absSpeed * 0.3 * dt;                   // high-RPM driving builds some heat
+      // Cooling (scaled by front HP — damaged radiator = less cooling)
+      const radiatorEff = fHP;                                   // 1.0 pristine → 0.0 destroyed
+      this._engineHeat -= 12 * radiatorEff * dt;                 // passive radiator cooling
+      this._engineHeat -= absSpeed * 0.2 * dt;                   // air cooling at speed
+      this._engineHeat = Math.max(0, Math.min(100, this._engineHeat));
+
+      // Overheat explosion!
+      if (this._engineHeat >= 100) {
+        this._engineDead = true;
+        this._engineDeadTimer = 3.0; // 3 seconds of engine death
+        this._engineJustExploded = true;
+        this._nitroActive = false;
+        // Engine explosion damages the front zone (radiator/engine)
+        this.damage.front.hp = Math.max(0, this.damage.front.hp - 50);
+        this.damage.front.deformAmount += 50;
+      }
+    } else {
+      // While dead: slow passive cooling
+      this._engineHeat = Math.max(0, this._engineHeat - 8 * dt);
     }
 
     const weatherMaxSpeed = def.maxSpeed * (weather?.topSpeedScale ?? 1);
@@ -988,6 +1040,10 @@ export class Vehicle {
     this._roadRoll = 0;
     this.nitro = 50;
     this._nitroActive = false;
+    this._engineHeat = 0;
+    this._engineDead = false;
+    this._engineDeadTimer = 0;
+    this._engineJustExploded = false;
     this.damage = createDamageState();
     this.detachedZones.clear();
   }

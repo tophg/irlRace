@@ -755,6 +755,51 @@ canvas { display: block; }
   50% { opacity: 0.7; }
 }
 
+/* ── Engine Heat Gauge ── */
+.hud-heat {
+  position: absolute;
+  bottom: 28px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px;
+  pointer-events: none; z-index: 20;
+}
+.hud-heat-label {
+  font-family: var(--font-display);
+  font-size: 10px; letter-spacing: 2px;
+  color: var(--col-text-dim);
+  white-space: nowrap;
+}
+.hud-heat-track {
+  width: 200px; height: 6px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  border: 1px solid rgba(255,255,255,0.1);
+  overflow: hidden;
+}
+.hud-heat-fill {
+  height: 100%; width: 0%;
+  border-radius: 3px;
+  transition: width 0.1s linear;
+}
+.heat-danger .hud-heat-label {
+  color: #ff4400;
+  text-shadow: 0 0 8px rgba(255, 68, 0, 0.6);
+  animation: heat-flash 0.4s ease-in-out infinite alternate;
+}
+.heat-danger .hud-heat-track {
+  border-color: rgba(255, 68, 0, 0.4);
+  box-shadow: 0 0 10px rgba(255, 68, 0, 0.2);
+}
+.heat-dead .hud-heat-label {
+  color: #ff0000;
+  font-size: 12px;
+  animation: heat-flash 0.2s ease-in-out infinite alternate;
+}
+@keyframes heat-flash {
+  from { opacity: 1; }
+  to { opacity: 0.4; }
+}
+
 /* ── Lap Completion Overlay ── */
 .lap-overlay {
   position: absolute;

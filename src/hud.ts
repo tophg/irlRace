@@ -14,6 +14,8 @@ import {
   setIsNitroActive,
   setDamageState,
   setGapInfo,
+  setHeatPct,
+  setIsEngineDead,
   minimapCtx,
   minimapCanvasEl,
 } from './HUDUI';
@@ -72,6 +74,12 @@ export function updateNitroHUD(nitro: number, isActive: boolean) {
   if (!disposeSolid) return;
   setNitroPct(nitro);
   setIsNitroActive(isActive);
+}
+
+export function updateHeatHUD(heat: number, isDead: boolean) {
+  if (!disposeSolid) return;
+  setHeatPct(heat);
+  setIsEngineDead(isDead);
 }
 
 export function updateDamageHUD(damage: DamageState) {

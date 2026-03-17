@@ -11,7 +11,7 @@ import { generateTrack, buildCheckpointMarkers, getClosestSplinePoint, updateChe
 import { Vehicle } from './vehicle';
 import { VehicleCamera } from './vehicle-camera';
 import { RaceEngine } from './race-engine';
-import { createHUD, updateHUD, updateMinimap, updateDamageHUD, updateGapHUD, updateNitroHUD, showHUD, destroyHUD, showLapOverlay } from './hud';
+import { createHUD, updateHUD, updateMinimap, updateDamageHUD, updateGapHUD, updateNitroHUD, updateHeatHUD, showHUD, destroyHUD, showLapOverlay } from './hud';
 import { runCountdown } from './countdown';
 import { initAudio, updateEngineAudio, playCheckpointSFX, playLapFanfare, playDriftSFX, playCollisionSFX, playPositionSFX, stopAudio } from './audio';
 import { AIRacer, OpponentInfo } from './ai-racer';
@@ -1414,6 +1414,31 @@ function gameLoop(timestamp: number) {
 
 
       updateNitroHUD(G.playerVehicle.nitro, G.playerVehicle.isNitroActive);
+      updateHeatHUD(G.playerVehicle.engineHeat, G.playerVehicle.engineDead);
+
+      // ── Engine overheat explosion VFX ──
+      if (G.playerVehicle.engineJustExploded) {
+        const pp = G.playerVehicle.group.position;
+        spawnGPUExplosion(pp, 40);
+        flashDamage(0.9);
+        setImpactIntensity(1.0);
+      }
+
+      // ── Hood smoke/flames at high engine heat ──
+      const heat = G.playerVehicle.engineHeat;
+      if (heat > 60) {
+        const hoodPos = G.playerVehicle.group.position.clone();
+        hoodPos.y += 1.2;
+        const sinH = Math.sin(G.playerVehicle.heading);
+        const cosH = Math.cos(G.playerVehicle.heading);
+        hoodPos.x += sinH * 1.0; // offset forward toward hood
+        hoodPos.z += cosH * 1.0;
+        const smokeIntensity = (heat - 60) / 40; // 0 at 60, 1 at 100
+        if (heat > 90) {
+          spawnGPUFlame(hoodPos, smokeIntensity, frameDt);
+        }
+        spawnGPUDamageSmoke(hoodPos, smokeIntensity * 0.8, frameDt);
+      }
     }
 
     // Update AI race progress (rendering-rate is fine for rankings)
