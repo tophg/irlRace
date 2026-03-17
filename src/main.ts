@@ -40,7 +40,7 @@ import {
   initNearMissStreaks, triggerNearMiss, updateNearMissStreaks,
   initNearMissWhoosh, triggerNearMissWhoosh, updateNearMissWhoosh,
   initVictoryConfetti, spawnVictoryConfetti, updateVictoryConfetti, setConfettiContinuous,
-  spawnDebris,
+  spawnDebris, warmupVFX,
 } from './vfx';
 import {
   initGPUParticles, updateGPUParticles, destroyGPUParticles,
@@ -52,7 +52,7 @@ import {
 import { initTrackRadar, updateTrackRadar, destroyTrackRadar } from './minimap';
 import { playTitleMusic, playGameMusic, pauseMusic, resumeMusic, stopAllMusic } from './audio';
 import { showTrackEditor, destroyTrackEditor } from './track-editor';
-import { triggerVehicleDestruction, updateDestructionFragments, cleanupDestruction } from './vehicle-destruction';
+import { triggerVehicleDestruction, updateDestructionFragments, cleanupDestruction, warmupDestruction, disposeDestructionAssets } from './vehicle-destruction';
 import { resetTimeScale } from './time-scale';
 import { showExplosionFlash, showLetterbox, hideLetterbox, showEngineDestroyedText, cleanupScreenEffects } from './screen-effects';
 import { loadProgress, processRaceRewards, getProgress, levelProgress, xpToNextLevel, type RaceResult } from './progression';
@@ -397,9 +397,13 @@ async function startRace() {
     G.vehicleCamera = new VehicleCamera(camera);
 
     initVFX(scene);
+    warmupVFX(); // eagerly init debris pool (avoids lazy-init stall on first explosion)
     initBoostFlame(scene);
     initSpeedLines(container);
     initSkidMarks(scene);
+
+    // Pre-warm explosion assets (ring, scorch, light) — eliminates WebGPU pipeline stall
+    warmupDestruction(scene, renderer as any, camera);
 
     initRainDroplets(container);
     initImpactFlash(container);
@@ -752,6 +756,7 @@ function clearRaceObjects() {
   destroyRapierWorld();
   rollbackManager.reset();
   cleanupDestruction();
+  disposeDestructionAssets();
   resetTimeScale();
   cleanupScreenEffects();
   setExplosionMode(false);

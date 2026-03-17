@@ -18,11 +18,22 @@ interface DestructionFragment {
 
 const fragments: DestructionFragment[] = [];
 let destructionScene: THREE.Scene | null = null;
+const _wreckPos = new THREE.Vector3();   // reusable — no .clone() at detonation
 let wreckPosition: THREE.Vector3 | null = null;
 let destructionTime = 0;
 let destructionActive = false;
 
-// Shockwave ring + dynamic light
+// ── Pre-allocated explosion assets (created once, recycled across explosions) ──
+let _ringGeo: THREE.RingGeometry | null = null;
+let _ringMat: THREE.MeshBasicMaterial | null = null;
+let _ringMesh: THREE.Mesh | null = null;
+let _scorchGeo: THREE.PlaneGeometry | null = null;
+let _scorchMat: THREE.MeshBasicMaterial | null = null;
+let _scorchMesh: THREE.Mesh | null = null;
+let _expLight: THREE.PointLight | null = null;
+let _assetsWarmed = false;
+
+// Runtime references (point to pre-allocated objects during active destruction)
 let shockwaveRing: THREE.Mesh | null = null;
 let explosionLight: THREE.PointLight | null = null;
 let scorchMark: THREE.Mesh | null = null;
@@ -48,6 +59,62 @@ _sctx.fillRect(0, 0, 64, 64);
 const _scorchTexture = new THREE.CanvasTexture(_scorchCanvas);
 
 /**
+ * Pre-allocate and shader-warm all explosion assets.
+ * Call once at race init (after scene + renderer + camera are ready).
+ * This eliminates the WebGPU pipeline compilation stall at detonation time.
+ */
+export function warmupDestruction(
+  scene: THREE.Scene,
+  renderer: { compile: (scene: THREE.Scene, camera: THREE.Camera) => void },
+  camera: THREE.Camera,
+) {
+  if (_assetsWarmed) return;
+
+  // Shockwave ring — pre-create geometry + material
+  _ringGeo = new THREE.RingGeometry(0.5, 1.5, 32);
+  _ringMat = new THREE.MeshBasicMaterial({
+    color: 0xFFCC66,
+    transparent: true,
+    opacity: 0.0,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  _ringMesh = new THREE.Mesh(_ringGeo, _ringMat);
+  _ringMesh.rotation.x = -Math.PI / 2;
+  _ringMesh.visible = false;
+  scene.add(_ringMesh);
+
+  // Scorch mark — pre-create geometry + material
+  _scorchGeo = new THREE.PlaneGeometry(7, 7);
+  _scorchMat = new THREE.MeshBasicMaterial({
+    map: _scorchTexture,
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false,
+  });
+  _scorchMesh = new THREE.Mesh(_scorchGeo, _scorchMat);
+  _scorchMesh.rotation.x = -Math.PI / 2;
+  _scorchMesh.visible = false;
+  scene.add(_scorchMesh);
+
+  // Explosion point light — pre-create with zero intensity
+  _expLight = new THREE.PointLight(0xFF8800, 0, 30, 2);
+  _expLight.visible = false;
+  scene.add(_expLight);
+
+  // Warm GPU pipelines for these materials in the ACTUAL scene
+  renderer.compile(scene, camera as THREE.PerspectiveCamera);
+
+  // Hide until needed
+  _ringMesh.visible = false;
+  _scorchMesh.visible = false;
+  _expLight.visible = false;
+
+  _assetsWarmed = true;
+}
+
+/**
  * Trigger vehicle destruction — fracture model into flying fragments.
  * Call once when engine explodes.
  */
@@ -69,7 +136,8 @@ export function triggerVehicleDestruction(
 
   // Wreck center (for fire/smoke spawning)
   vehicleGroup.getWorldPosition(_center);
-  wreckPosition = _center.clone();
+  _wreckPos.copy(_center);
+  wreckPosition = _wreckPos;
 
   // ── Phase 1: Get or create fragments (instant if pre-cached) ──
   let fractured: MeshFragment[];
@@ -177,41 +245,33 @@ export function triggerVehicleDestruction(
   // Hide the original body
   bodyGroup.visible = false;
 
-  // ── Phase 3a: Shockwave ring (expanding transparent ring) ──
-  const ringGeo = new THREE.RingGeometry(0.5, 1.5, 32);
-  const ringMat = new THREE.MeshBasicMaterial({
-    color: 0xFFCC66,
-    transparent: true,
-    opacity: 0.7,
-    side: THREE.DoubleSide,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
-  shockwaveRing = new THREE.Mesh(ringGeo, ringMat);
-  shockwaveRing.position.copy(wreckPosition!);
-  shockwaveRing.position.y += 0.3;
-  shockwaveRing.rotation.x = -Math.PI / 2; // flat on ground
-  scene.add(shockwaveRing);
+  // ── Phase 3a: Shockwave ring (reuse pre-allocated) ──
+  if (_ringMesh && _ringMat) {
+    shockwaveRing = _ringMesh;
+    shockwaveRing.position.copy(wreckPosition!);
+    shockwaveRing.position.y += 0.3;
+    shockwaveRing.scale.set(1, 1, 1);
+    _ringMat.opacity = 0.7;
+    shockwaveRing.visible = true;
+  }
 
-  // ── Phase 3b: Dynamic explosion point light ──
-  explosionLight = new THREE.PointLight(0xFF8800, 8, 30, 2);
-  explosionLight.position.copy(wreckPosition!);
-  explosionLight.position.y += 1.5;
-  scene.add(explosionLight);
+  // ── Phase 3b: Dynamic explosion point light (reuse pre-allocated) ──
+  if (_expLight) {
+    explosionLight = _expLight;
+    explosionLight.position.copy(wreckPosition!);
+    explosionLight.position.y += 1.5;
+    explosionLight.intensity = 8;
+    explosionLight.visible = true;
+  }
 
-  // ── Phase 3c: Ground scorch mark (using pre-built texture) ──
-  const scorchGeo = new THREE.PlaneGeometry(7, 7);
-  const scorchMat = new THREE.MeshBasicMaterial({
-    map: _scorchTexture,
-    transparent: true,
-    opacity: 0,
-    depthWrite: false,
-  });
-  scorchMark = new THREE.Mesh(scorchGeo, scorchMat);
-  scorchMark.position.copy(wreckPosition!);
-  scorchMark.position.y = 0.02; // just above road
-  scorchMark.rotation.x = -Math.PI / 2;
-  scene.add(scorchMark);
+  // ── Phase 3c: Ground scorch mark (reuse pre-allocated) ──
+  if (_scorchMesh && _scorchMat) {
+    scorchMark = _scorchMesh;
+    scorchMark.position.copy(wreckPosition!);
+    scorchMark.position.y = 0.02;
+    _scorchMat.opacity = 0;
+    scorchMark.visible = true;
+  }
 
   // ── Phase 3d: Dust kick-up wave ──
   spawnExplosionDust(wreckPosition!, 30);
@@ -450,28 +510,20 @@ export function cleanupDestruction() {
   }
   fragments.length = 0;
 
-  // Clean up shockwave ring
+  // Hide pre-allocated assets (don't dispose — they're reused)
   if (shockwaveRing) {
-    destructionScene?.remove(shockwaveRing);
-    shockwaveRing.geometry.dispose();
-    (shockwaveRing.material as THREE.Material).dispose();
+    shockwaveRing.visible = false;
+    shockwaveRing.scale.set(1, 1, 1);
     shockwaveRing = null;
   }
-
-  // Clean up explosion light
   if (explosionLight) {
-    destructionScene?.remove(explosionLight);
-    explosionLight.dispose();
+    explosionLight.visible = false;
+    explosionLight.intensity = 0;
     explosionLight = null;
   }
-
-  // Clean up scorch mark
   if (scorchMark) {
-    destructionScene?.remove(scorchMark);
-    scorchMark.geometry.dispose();
-    const mat = scorchMark.material as THREE.MeshBasicMaterial;
-    mat.map?.dispose();
-    mat.dispose();
+    scorchMark.visible = false;
+    if (_scorchMat) _scorchMat.opacity = 0;
     scorchMark = null;
   }
 
@@ -479,4 +531,27 @@ export function cleanupDestruction() {
   destructionTime = 0;
   wreckPosition = null;
   destructionScene = null;
+}
+
+/** Full disposal — call when leaving the race entirely (not between explosions). */
+export function disposeDestructionAssets() {
+  if (_ringMesh) {
+    _ringMesh.removeFromParent();
+    _ringGeo?.dispose();
+    _ringMat?.dispose();
+    _ringMesh = null; _ringGeo = null; _ringMat = null;
+  }
+  if (_scorchMesh) {
+    _scorchMesh.removeFromParent();
+    _scorchGeo?.dispose();
+    _scorchMat?.dispose();
+    // Note: _scorchTexture is module-level singleton, don't dispose
+    _scorchMesh = null; _scorchGeo = null; _scorchMat = null;
+  }
+  if (_expLight) {
+    _expLight.removeFromParent();
+    _expLight.dispose();
+    _expLight = null;
+  }
+  _assetsWarmed = false;
 }

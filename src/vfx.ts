@@ -832,6 +832,11 @@ function ensureDebrisPool() {
   }
 }
 
+/** Eagerly initialize debris pool at race start (avoids lazy-init stall on first explosion). */
+export function warmupVFX() {
+  ensureDebrisPool();
+}
+
 /** Spawn metal debris particles at impact point. force controls count + speed. */
 export function spawnDebris(pos: THREE.Vector3, force: number, carVelX = 0, carVelZ = 0) {
   if (!smokeScene) return;
