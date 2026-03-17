@@ -1075,23 +1075,34 @@ function startReplayPlayback() {
   meshes.set('local', G.playerVehicle.group);
   for (const ai of G.aiRacers) meshes.set(ai.id, ai.vehicle.group);
 
-  // Full explosion callback for replay — triggers complete destruction animation
-  const onExplosion = (pos: THREE.Vector3, vehicleId: string) => {
+  // Full explosion callback for replay — triggers complete destruction + VFX
+  const onExplosion = (pos: THREE.Vector3, vehicleId: string, speed: number, heading: number) => {
     // Find the vehicle that exploded
     const isLocal = vehicleId === 'local';
     const vehicle = isLocal ? G.playerVehicle : G.aiRacers.find(a => a.id === vehicleId)?.vehicle;
+
+    // Compute velocity from recorded speed + heading
+    const velX = Math.sin(heading) * speed * 0.06;
+    const velZ = Math.cos(heading) * speed * 0.06;
+
+    // Spawn GPU particle VFX (sparks, debris, glass shards)
+    const hoodPos = pos.clone();
+    hoodPos.y += 1.0;
+    hoodPos.x += Math.sin(heading) * 2.2;
+    hoodPos.z += Math.cos(heading) * 2.2;
+    spawnGPUExplosion(hoodPos, 40);
+    spawnDebris(hoodPos, 35, velX, velZ);
+    spawnGPUGlassShards(hoodPos);
+
     if (vehicle) {
       triggerVehicleDestruction(
         vehicle.bodyGroupRef,
         vehicle.group,
         getScene(),
-        0, 0, // no velocity in replay
+        velX, velZ,
         vehicle.wheelRefs,
         vehicle.cachedFragments,
       );
-    } else {
-      // Fallback: just spawn particles if we can't find the vehicle
-      spawnGPUExplosion(pos, 40);
     }
   };
 
@@ -1391,6 +1402,10 @@ function gameLoop(timestamp: number) {
       G.replayPlayer.update(frameDt);
       // Animate destruction fragments during replay (gravity, flying, fade)
       updateDestructionFragments(frameDt);
+      // Animate GPU particles + VFX debris + post-FX during replay
+      updateGPUParticles(renderer as any, frameDt);
+      updateVFX(frameDt);
+      updatePostFX(0, false, frameDt);
       const bar = document.getElementById('replay-bar');
       if (bar) bar.style.width = `${Math.round(G.replayPlayer.getProgress() * 100)}%`;
       renderer.render(scene, camera);
@@ -1492,7 +1507,8 @@ function gameLoop(timestamp: number) {
         G.replayRecorder.record('local', pv.group.position, pv.heading, pv.speed,
           pv.isNitroActive, pv.engineHeat, pv.engineDead, pv.engineJustExploded);
         for (const ai of G.aiRacers) {
-          G.replayRecorder.record(ai.id, ai.vehicle.group.position, ai.vehicle.heading, ai.vehicle.speed);
+          G.replayRecorder.record(ai.id, ai.vehicle.group.position, ai.vehicle.heading, ai.vehicle.speed,
+            ai.vehicle.isNitroActive, ai.vehicle.engineHeat, ai.vehicle.engineDead, ai.vehicle.engineJustExploded);
         }
       }
 

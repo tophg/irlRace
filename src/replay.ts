@@ -93,7 +93,7 @@ export class ReplayPlayer {
   private meshes = new Map<string, THREE.Group>();
   private modeIndex = 0;
   private smoothLookAt = new THREE.Vector3();
-  private onExplosion?: (pos: THREE.Vector3, vehicleId: string) => void;
+  private onExplosion?: (pos: THREE.Vector3, vehicleId: string, speed: number, heading: number) => void;
   private onLoop?: () => void;
   private explodedIds = new Set<string>();
 
@@ -101,7 +101,7 @@ export class ReplayPlayer {
     recorder: ReplayRecorder,
     camera: THREE.PerspectiveCamera,
     vehicleMeshes: Map<string, THREE.Group>,
-    onExplosion?: (pos: THREE.Vector3, vehicleId: string) => void,
+    onExplosion?: (pos: THREE.Vector3, vehicleId: string, speed: number, heading: number) => void,
     onLoop?: () => void,
   ) {
     this.tracks = recorder.getTracks();
@@ -164,7 +164,7 @@ export class ReplayPlayer {
       if (frame.engineJustExploded && this.onExplosion && !this.explodedIds.has(id)) {
         this.explodedIds.add(id);
         const pos = new THREE.Vector3(frame.x, frame.y, frame.z);
-        this.onExplosion(pos, id);
+        this.onExplosion(pos, id, frame.speed, frame.heading);
       }
     }
 
