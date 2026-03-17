@@ -1072,12 +1072,44 @@ function startReplayPlayback() {
   meshes.set('local', G.playerVehicle.group);
   for (const ai of G.aiRacers) meshes.set(ai.id, ai.vehicle.group);
 
-  // Explosion callback for replay VFX
-  const onExplosion = (pos: THREE.Vector3) => {
-    spawnGPUExplosion(pos, 1.0);
+  // Full explosion callback for replay — triggers complete destruction animation
+  const onExplosion = (pos: THREE.Vector3, vehicleId: string) => {
+    // Find the vehicle that exploded
+    const isLocal = vehicleId === 'local';
+    const vehicle = isLocal ? G.playerVehicle : G.aiRacers.find(a => a.id === vehicleId)?.vehicle;
+    if (vehicle) {
+      triggerVehicleDestruction(
+        vehicle.bodyGroupRef,
+        vehicle.group,
+        getScene(),
+        0, 0, // no velocity in replay
+        vehicle.wheelRefs,
+        vehicle.cachedFragments,
+      );
+    } else {
+      // Fallback: just spawn particles if we can't find the vehicle
+      spawnGPUExplosion(pos, 40);
+    }
   };
 
-  G.replayPlayer = new ReplayPlayer(G.replayRecorder, camera, meshes, onExplosion);
+  // Loop cleanup — restore car state when replay loops back to start
+  const onLoop = () => {
+    cleanupDestruction();
+    G.playerVehicle!.bodyGroupRef.visible = true;
+    G.playerVehicle!.destroyed = false;
+    for (const w of G.playerVehicle!.wheelRefs) {
+      if (w) w.visible = true;
+    }
+    for (const ai of G.aiRacers) {
+      ai.vehicle.bodyGroupRef.visible = true;
+      ai.vehicle.destroyed = false;
+      for (const w of ai.vehicle.wheelRefs) {
+        if (w) w.visible = true;
+      }
+    }
+  };
+
+  G.replayPlayer = new ReplayPlayer(G.replayRecorder, camera, meshes, onExplosion, onLoop);
   G.replayPlayer.start();
   showHUD(false);
 
@@ -1352,6 +1384,8 @@ function gameLoop(timestamp: number) {
   if (G.replayPlayer) {
     if (G.replayPlayer.isPlaying()) {
       G.replayPlayer.update(frameDt);
+      // Animate destruction fragments during replay (gravity, flying, fade)
+      updateDestructionFragments(frameDt);
       const bar = document.getElementById('replay-bar');
       if (bar) bar.style.width = `${Math.round(G.replayPlayer.getProgress() * 100)}%`;
       renderer.render(scene, camera);
