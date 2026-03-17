@@ -1058,12 +1058,11 @@ function startReplayPlayback() {
   // Clean up any destruction effects (explosion fragments, shockwave, scorch, light)
   cleanupDestruction();
 
-  // Restore car visibility (destroyed during explosion animation)
+  // Restore car body visibility (destroyed during explosion animation)
+  // NOTE: wheel containers stay invisible (container.visible = false from buildWheels).
+  // The visible wheels come from the GLB model as part of bodyGroupRef.
   G.playerVehicle.bodyGroupRef.visible = true;
   G.playerVehicle.destroyed = false;
-  for (const w of G.playerVehicle.wheelRefs) {
-    if (w) w.visible = true;
-  }
 
   // Reset body pitch/roll so car sits level (stale from last physics frame)
   // Also reset wheel steering + spin rotations (preserves structural rotations)
@@ -1129,16 +1128,10 @@ function startReplayPlayback() {
     cleanupDestruction();
     G.playerVehicle!.bodyGroupRef.visible = true;
     G.playerVehicle!.destroyed = false;
-    for (const w of G.playerVehicle!.wheelRefs) {
-      if (w) w.visible = true;
-    }
     G.playerVehicle!.resetForReplay();
     for (const ai of G.aiRacers) {
       ai.vehicle.bodyGroupRef.visible = true;
       ai.vehicle.destroyed = false;
-      for (const w of ai.vehicle.wheelRefs) {
-        if (w) w.visible = true;
-      }
       ai.vehicle.resetForReplay();
     }
   };
