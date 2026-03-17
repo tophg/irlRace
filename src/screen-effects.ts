@@ -5,7 +5,8 @@
  *   • Letterbox bars — cinematic top/bottom bars slide in/out
  *   • "ENGINE DESTROYED" text — dramatic scale-up at t=1s
  *
- * All DOM-based for zero GPU overhead.
+ * PERF: flash + letterbox elements are pre-created (hidden) to avoid
+ * createElement/appendChild on the explosion frame.
  */
 
 let flashEl: HTMLDivElement | null = null;
@@ -13,50 +14,51 @@ let letterboxTop: HTMLDivElement | null = null;
 let letterboxBottom: HTMLDivElement | null = null;
 let textEl: HTMLDivElement | null = null;
 
+// Pre-create DOM elements once (avoids createElement on the explosion frame)
+function ensureElements() {
+  if (!flashEl) {
+    flashEl = document.createElement('div');
+    flashEl.style.cssText = `
+      position: fixed; inset: 0; z-index: 9998;
+      background: white; opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease-out;
+    `;
+    document.body.appendChild(flashEl);
+  }
+  if (!letterboxTop) {
+    const barCSS = `
+      position: fixed; left: 0; right: 0; z-index: 9997;
+      height: 0px; background: black;
+      pointer-events: none;
+      transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    `;
+    letterboxTop = document.createElement('div');
+    letterboxTop.style.cssText = barCSS + 'top: 0;';
+    document.body.appendChild(letterboxTop);
+
+    letterboxBottom = document.createElement('div');
+    letterboxBottom.style.cssText = barCSS + 'bottom: 0;';
+    document.body.appendChild(letterboxBottom);
+  }
+}
+
 /** Show the white flash overlay (fades via CSS transition). */
 export function showExplosionFlash() {
-  if (flashEl) flashEl.remove();
-  flashEl = document.createElement('div');
-  flashEl.style.cssText = `
-    position: fixed; inset: 0; z-index: 9998;
-    background: white; opacity: 0.9;
-    pointer-events: none;
-    transition: opacity 0.4s ease-out;
-  `;
-  document.body.appendChild(flashEl);
+  ensureElements();
+  flashEl!.style.opacity = '0.9';
 
-  // Fade out
+  // Fade out on next frame
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       if (flashEl) flashEl.style.opacity = '0';
     });
   });
-
-  // Remove after transition
-  setTimeout(() => {
-    flashEl?.remove();
-    flashEl = null;
-  }, 500);
 }
 
 /** Show cinematic letterbox bars. */
 export function showLetterbox() {
-  if (letterboxTop) return;
-
-  const barCSS = `
-    position: fixed; left: 0; right: 0; z-index: 9997;
-    height: 0px; background: black;
-    pointer-events: none;
-    transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-  `;
-
-  letterboxTop = document.createElement('div');
-  letterboxTop.style.cssText = barCSS + 'top: 0;';
-  document.body.appendChild(letterboxTop);
-
-  letterboxBottom = document.createElement('div');
-  letterboxBottom.style.cssText = barCSS + 'bottom: 0;';
-  document.body.appendChild(letterboxBottom);
+  ensureElements();
 
   // Slide in
   requestAnimationFrame(() => {
@@ -71,12 +73,6 @@ export function showLetterbox() {
 export function hideLetterbox() {
   if (letterboxTop) letterboxTop.style.height = '0px';
   if (letterboxBottom) letterboxBottom.style.height = '0px';
-  setTimeout(() => {
-    letterboxTop?.remove();
-    letterboxBottom?.remove();
-    letterboxTop = null;
-    letterboxBottom = null;
-  }, 700);
 }
 
 /** Show "ENGINE DESTROYED" text overlay with dramatic scale animation. */
@@ -124,8 +120,9 @@ export function showEngineDestroyedText() {
 
 /** Clean up all screen effects (call on race restart). */
 export function cleanupScreenEffects() {
-  flashEl?.remove(); flashEl = null;
-  letterboxTop?.remove(); letterboxTop = null;
-  letterboxBottom?.remove(); letterboxBottom = null;
+  // Reset to hidden state (don't remove — keep pre-created)
+  if (flashEl) flashEl.style.opacity = '0';
+  if (letterboxTop) letterboxTop.style.height = '0px';
+  if (letterboxBottom) letterboxBottom.style.height = '0px';
   textEl?.remove(); textEl = null;
 }

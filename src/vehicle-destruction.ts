@@ -383,8 +383,9 @@ export function triggerVehicleDestruction(
     scorchMark.visible = true;
   }
 
-  // ── Phase 3d: Dust kick-up wave ──
-  spawnExplosionDust(wreckPosition!, 30);
+  // ── Phase 3d: Dust kick-up wave (deferred to next frame — reduces trigger frame particle budget) ──
+  const dustPos = wreckPosition!.clone();
+  requestAnimationFrame(() => spawnExplosionDust(dustPos, 30));
 }
 
 /**
