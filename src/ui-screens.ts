@@ -370,6 +370,7 @@ export function showTitleScreen(callbacks: {
       <button class="menu-btn" id="btn-singleplayer">SINGLEPLAYER</button>
       <button class="menu-btn" id="btn-multiplayer">MULTIPLAYER</button>
       <button class="menu-btn" id="btn-track-editor" style="border-color:#ff6600;color:#ff8833;">🏁 TRACK EDITOR</button>
+      <button class="menu-btn" id="btn-calibrate" style="border-color:#00ffff;color:#00ffff;">✨ CALIBRATION STUDIO</button>
       <button class="menu-btn" id="btn-controls" style="border-color:var(--col-text-dim);font-size:16px;">CONTROLS</button>
       <button class="menu-btn" id="btn-settings" style="border-color:var(--col-text-dim);font-size:16px;">SETTINGS</button>
     </div>
@@ -389,6 +390,10 @@ export function showTitleScreen(callbacks: {
   document.getElementById('btn-track-editor')!.addEventListener('click', () => {
     titleEl.remove();
     callbacks.onTrackEditor();
+  });
+
+  document.getElementById('btn-calibrate')!.addEventListener('click', () => {
+    window.location.href = '?calibrate=1';
   });
 
   document.getElementById('btn-controls')!.addEventListener('click', showControlsRef);

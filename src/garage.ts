@@ -6,6 +6,7 @@ import { CAR_ROSTER, CarDef } from './types';
 import { loadCarModel, loadCarModelWithProgress } from './loaders';
 import { isCarUnlocked, getUnlockCost, unlockCar, getProgress } from './progression';
 import { getSettings, saveSettings } from './settings';
+import { initCalibrationStudio, onStudioCarLoaded } from './calibration-studio';
 
 let garageScene: THREE.Scene;
 let garageCamera: THREE.PerspectiveCamera;
@@ -186,7 +187,7 @@ export function initGarage(
   buildGarageUI(overlay);
 
   // Wire canvas orbit + swipe interactions
-  wireCanvasInteractions(renderer.domElement);
+  wireCanvasInteractions();
 
   // Wire keyboard navigation
   wireKeyboardNav();
@@ -292,67 +293,63 @@ function buildBackdropPanels() {
   garageScene.add(backdropGroup);
 }
 
-// ── Canvas Interactions (orbit + swipe) ──
-function wireCanvasInteractions(canvas: HTMLElement) {
-  // Mouse orbit
-  canvas.addEventListener('mousedown', (e) => {
+// ── Canvas Interactions (pointer events) ──
+function wireCanvasInteractions() {
+  // Unified pointer events handling mouse and touch
+  window.addEventListener('pointerdown', (e) => {
+    // Only handle primary pointer (usually touches[0] or left click)
+    if (!e.isPrimary) return;
+    
+    // Ignore if clicking on interactive UI layers instead of the 3D canvas
+    const target = e.target as HTMLElement;
+    if (target.closest('.garage-ui > div, #calibration-studio')) return;
+
     isDragging = true;
     lastPointerX = e.clientX;
+    swipeStartX = e.clientX;
     lastInteractionTime = performance.now();
+    
+    // Check if calibration studio is active and dragging gizmo
+    if (document.body.classList.contains('gizmo-active')) {
+      isDragging = false;
+    }
   });
-  window.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
+
+  window.addEventListener('pointermove', (e) => {
+    if (!isDragging || !e.isPrimary) return;
+    if (document.body.classList.contains('gizmo-active')) {
+      isDragging = false;
+      return;
+    }
     const dx = e.clientX - lastPointerX;
     orbitVelocity = dx * 0.003;
     lastPointerX = e.clientX;
     lastInteractionTime = performance.now();
   });
-  window.addEventListener('mouseup', () => { isDragging = false; });
 
-  // Touch orbit + swipe navigation
-  canvas.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 1) {
-      const touch = e.touches[0];
-      isDragging = true;
-      lastPointerX = touch.clientX;
-      swipeTouchId = touch.identifier;
-      swipeStartX = touch.clientX;
-      lastInteractionTime = performance.now();
-    }
-  }, { passive: true });
-
-  canvas.addEventListener('touchmove', (e) => {
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      const touch = e.changedTouches[i];
-      if (touch.identifier === swipeTouchId) {
-        const dx = touch.clientX - lastPointerX;
-        orbitVelocity = dx * 0.003;
-        lastPointerX = touch.clientX;
-        lastInteractionTime = performance.now();
-        break;
-      }
-    }
-  }, { passive: true });
-
-  canvas.addEventListener('touchend', (e) => {
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      if (e.changedTouches[i].identifier === swipeTouchId) {
-        isDragging = false;
-        const totalDx = e.changedTouches[i].clientX - swipeStartX;
-        // Swipe navigation (quick horizontal swipe)
-        if (Math.abs(totalDx) > SWIPE_THRESHOLD) {
-          if (totalDx < 0) {
-            currentIndex = (currentIndex + 1) % CAR_ROSTER.length;
-          } else {
-            currentIndex = (currentIndex - 1 + CAR_ROSTER.length) % CAR_ROSTER.length;
-          }
-          showCar(currentIndex);
+  const onPointerUp = (e: PointerEvent) => {
+    if (!e.isPrimary) return;
+    
+    if (isDragging) {
+      isDragging = false;
+      const totalDx = e.clientX - swipeStartX;
+      // Swipe navigation (quick horizontal swipe - mostly used on touch)
+      if (Math.abs(totalDx) > SWIPE_THRESHOLD && e.pointerType === 'touch') {
+        if (totalDx < 0) {
+          currentIndex = (currentIndex + 1) % CAR_ROSTER.length;
+        } else {
+          currentIndex = (currentIndex - 1 + CAR_ROSTER.length) % CAR_ROSTER.length;
         }
-        swipeTouchId = null;
-        break;
+        showCar(currentIndex);
       }
     }
-  });
+  };
+
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerUp);
+
+  // ── Setup Calibration Studio ──
+  initCalibrationStudio(garageRenderer as any, uiEl!);
 }
 
 // ── Car Dot Indicators ──
@@ -661,6 +658,9 @@ async function showCar(index: number) {
     hidePlaceholder();
     showProgressBar(false);
 
+    // Platform center is -0.01, height 0.2 -> Top surface is +0.09
+    const platformY = 0.09;
+
     // Animate entrance over ~400ms
     const entranceStart = performance.now();
     const entranceDuration = 400;
@@ -669,12 +669,12 @@ async function showCar(index: number) {
       const t = Math.min(elapsed / entranceDuration, 1);
       // Cubic ease-out: 1 - (1-t)^3
       const ease = 1 - Math.pow(1 - t, 3);
-      model.position.y = 2.5 - (2.5 - 0.25) * ease;
+      model.position.y = 2.5 - (2.5 - platformY) * ease;
       model.scale.setScalar(0.01 + 0.99 * ease);
       if (t < 1) {
         requestAnimationFrame(animateEntrance);
       } else {
-        model.position.y = 0.25;
+        model.position.y = platformY;
         model.scale.setScalar(1);
         // Brief ring flash on landing
         if (ringMat) {
@@ -716,6 +716,9 @@ async function showCar(index: number) {
     // Update paint balance display
     const balEl = document.getElementById('paint-balance');
     if (balEl) balEl.textContent = `Credits: ${getProgress().credits} CR`;
+    
+    // Notify calibration studio
+    onStudioCarLoaded(model, car);
   } catch (err) {
     if (requestId === showCarRequestId) {
       hidePlaceholder();
@@ -797,7 +800,7 @@ function restoreOriginalColors() {
 function showPlaceholder() {
   if (placeholderMesh) {
     placeholderMesh.visible = true;
-    placeholderMesh.position.y = 0.25;
+    placeholderMesh.position.y = 0.09;
     if (!placeholderMesh.parent) garageScene.add(placeholderMesh);
   }
 }
@@ -832,7 +835,8 @@ export function updateGarage() {
     orbitVelocity *= ORBIT_DAMPING;
 
     // Resume auto-rotate after idle delay
-    if (idleTime > AUTO_ROTATE_RESUME_DELAY) {
+    const isCalibrating = new URLSearchParams(window.location.search).has('calibrate');
+    if (idleTime > AUTO_ROTATE_RESUME_DELAY && !isCalibrating) {
       orbitAngle += AUTO_ROTATE_SPEED;
     } else {
       orbitAngle += orbitVelocity;
@@ -1103,7 +1107,7 @@ function wireKeyboardNav() {
         e.preventDefault();
         break;
       }
-    }
+}
   };
   window.addEventListener('keydown', keyboardHandler);
 }
@@ -1114,3 +1118,4 @@ function unwireKeyboardNav() {
     keyboardHandler = null;
   }
 }
+

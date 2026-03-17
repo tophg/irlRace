@@ -35,12 +35,12 @@ export interface CarLightDef {
 export const CAR_LIGHT_MAP: Record<string, CarLightDef> = {
   // ── ENTRY TIER ──
   'white_camry.glb': {
-    headlightL: [-0.62, 0.44, 1.95],
-    headlightR: [ 0.62, 0.44, 1.95],
-    headlightSize: [0.22, 0.14],
-    taillightL: [-0.62, 0.44, -1.95],
-    taillightR: [ 0.62, 0.44, -1.95],
-    taillightSize: [0.28, 0.10],
+    headlightL: [-0.627, 0.658, 1.583],
+    headlightR: [ 0.627, 0.658, 1.583],
+    headlightSize: [0.2, 0.1],
+    taillightL: [ 0.527, 0.738, -1.833],
+    taillightR: [-0.527, 0.738, -1.833],
+    taillightSize: [0.2, 0.1],
     spotIntensity: 2.0,
     spotDistance: 20,
     beamLength: 15,
