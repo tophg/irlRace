@@ -33,6 +33,19 @@ const _worldQuat = new THREE.Quaternion();
 const _center = new THREE.Vector3();
 const _outward = new THREE.Vector3();
 
+// Pre-built scorch texture (created once at module load, not at explosion time)
+const _scorchCanvas = document.createElement('canvas');
+_scorchCanvas.width = 64;
+_scorchCanvas.height = 64;
+const _sctx = _scorchCanvas.getContext('2d')!;
+const _sgrad = _sctx.createRadialGradient(32, 32, 2, 32, 32, 30);
+_sgrad.addColorStop(0, 'rgba(0,0,0,0.8)');
+_sgrad.addColorStop(0.5, 'rgba(20,15,10,0.5)');
+_sgrad.addColorStop(1, 'rgba(0,0,0,0)');
+_sctx.fillStyle = _sgrad;
+_sctx.fillRect(0, 0, 64, 64);
+const _scorchTexture = new THREE.CanvasTexture(_scorchCanvas);
+
 /**
  * Trigger vehicle destruction — fracture model into flying fragments.
  * Call once when engine explodes.
@@ -60,13 +73,12 @@ export function triggerVehicleDestruction(
   // ── Phase 1: Get or create fragments (instant if pre-cached) ──
   let fractured: MeshFragment[];
   if (cachedFragments && cachedFragments.length > 0) {
-    // Clone pre-computed fragments — just geometry.clone() calls, no triangle iteration
+    // Share geometry references — NO cloning, no GPU buffer re-upload
     vehicleGroup.getWorldQuaternion(_worldQuat);
     fractured = cachedFragments.map(f => ({
-      mesh: new THREE.Mesh(f.mesh.geometry.clone(), f.mesh.material),
+      mesh: new THREE.Mesh(f.mesh.geometry, f.mesh.material), // shared, not cloned
       center: f.center.clone(),
     }));
-    // Position cloned fragments at vehicle’s current world transform
     for (const frag of fractured) {
       frag.mesh.position.copy(_center);
       frag.mesh.quaternion.copy(_worldQuat);
@@ -123,30 +135,14 @@ export function triggerVehicleDestruction(
     });
   }
 
-  // ── Phase 2: Detach wheels ──
+  // ── Phase 2: Detach wheels (lightweight — just hide originals, add simple clones) ──
   for (const wheel of wheels) {
     if (!wheel) continue;
     wheel.getWorldPosition(_worldPos);
 
-    // Clone wheel into scene
+    // Clone wheel — share geometry/materials (no expensive material.clone per child)
     const wheelFrag = wheel.clone();
     wheelFrag.position.copy(_worldPos);
-
-    // Make transparent for later fade
-    wheelFrag.traverse((child) => {
-      if (child instanceof THREE.Mesh && child.material) {
-        if (Array.isArray(child.material)) {
-          child.material = child.material.map(m => {
-            const c = m.clone();
-            c.transparent = true;
-            return c;
-          });
-        } else {
-          child.material = child.material.clone();
-          (child.material as THREE.Material).transparent = true;
-        }
-      }
-    });
 
     scene.add(wheelFrag);
 
@@ -201,21 +197,10 @@ export function triggerVehicleDestruction(
   explosionLight.position.y += 1.5;
   scene.add(explosionLight);
 
-  // ── Phase 3c: Ground scorch mark (procedural) ──
-  const scorchCanvas = document.createElement('canvas');
-  scorchCanvas.width = 64;
-  scorchCanvas.height = 64;
-  const ctx = scorchCanvas.getContext('2d')!;
-  const grad = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
-  grad.addColorStop(0, 'rgba(0,0,0,0.8)');
-  grad.addColorStop(0.5, 'rgba(20,15,10,0.5)');
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 64, 64);
-  const scorchTex = new THREE.CanvasTexture(scorchCanvas);
+  // ── Phase 3c: Ground scorch mark (using pre-built texture) ──
   const scorchGeo = new THREE.PlaneGeometry(7, 7);
   const scorchMat = new THREE.MeshBasicMaterial({
-    map: scorchTex,
+    map: _scorchTexture,
     transparent: true,
     opacity: 0,
     depthWrite: false,
