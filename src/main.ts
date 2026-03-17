@@ -1417,25 +1417,30 @@ function gameLoop(timestamp: number) {
       updateNitroHUD(G.playerVehicle.nitro, G.playerVehicle.isNitroActive);
       updateHeatHUD(G.playerVehicle.engineHeat, G.playerVehicle.engineDead);
 
-      // ── Engine overheat explosion VFX ──
+      // ── Engine overheat explosion VFX (at front hood) ──
       if (G.playerVehicle.engineJustExploded) {
-        const pp = G.playerVehicle.group.position;
-        spawnGPUExplosion(pp, 40);
-        spawnDebris(pp, 35, G.playerVehicle.velX, G.playerVehicle.velZ);
-        spawnGPUGlassShards(pp);
+        const sinH = Math.sin(G.playerVehicle.heading);
+        const cosH = Math.cos(G.playerVehicle.heading);
+        const hoodExplosion = G.playerVehicle.group.position.clone();
+        hoodExplosion.y += 1.0;
+        hoodExplosion.x += sinH * 2.2; // front hood
+        hoodExplosion.z += cosH * 2.2;
+        spawnGPUExplosion(hoodExplosion, 40);
+        spawnDebris(hoodExplosion, 35, G.playerVehicle.velX, G.playerVehicle.velZ);
+        spawnGPUGlassShards(hoodExplosion);
         flashDamage(0.9);
         setImpactIntensity(1.0);
       }
 
-      // ── Hood smoke/flames at high engine heat ──
+      // ── Hood smoke/flames at high engine heat (front hood position) ──
       const heat = G.playerVehicle.engineHeat;
       if (heat > 60) {
-        const hoodPos = G.playerVehicle.group.position.clone();
-        hoodPos.y += 1.2;
         const sinH = Math.sin(G.playerVehicle.heading);
         const cosH = Math.cos(G.playerVehicle.heading);
-        hoodPos.x += sinH * 1.0; // offset forward toward hood
-        hoodPos.z += cosH * 1.0;
+        const hoodPos = G.playerVehicle.group.position.clone();
+        hoodPos.y += 1.0;
+        hoodPos.x += sinH * 2.2; // front hood
+        hoodPos.z += cosH * 2.2;
         const smokeIntensity = (heat - 60) / 40; // 0 at 60, 1 at 100
         if (heat > 90) {
           spawnGPUFlame(hoodPos, smokeIntensity, frameDt);
