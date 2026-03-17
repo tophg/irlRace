@@ -153,6 +153,27 @@ export function fractureMesh(
   const fragments: MeshFragment[] = [];
   const worldMatrix = new THREE.Matrix4().compose(_worldPos, _worldQuat, _worldScale);
 
+  // Clone material ONCE and share across all fragments (perf optimization)
+  let sharedMaterial: THREE.Material | THREE.Material[];
+  if (Array.isArray(srcMesh.material)) {
+    sharedMaterial = srcMesh.material.map(m => {
+      const c = m.clone();
+      c.transparent = true;
+      if ('emissive' in c) {
+        (c as any).emissive = new THREE.Color(0xFF6600);
+        (c as any).emissiveIntensity = 0.6;
+      }
+      return c;
+    });
+  } else {
+    sharedMaterial = srcMesh.material.clone();
+    sharedMaterial.transparent = true;
+    if ('emissive' in sharedMaterial) {
+      (sharedMaterial as any).emissive = new THREE.Color(0xFF6600);
+      (sharedMaterial as any).emissiveIntensity = 0.6;
+    }
+  }
+
   for (let c = 0; c < totalCells; c++) {
     const cell = cells[c];
     if (cell.positions.length === 0) continue; // empty cell
@@ -166,10 +187,6 @@ export function fractureMesh(
     if (hasUVs && cell.uvs.length > 0) {
       fragGeo.setAttribute('uv', new THREE.Float32BufferAttribute(cell.uvs, 2));
     }
-    if (hasColors && cell.colors.length > 0) {
-      const itemSize = colorAttr!.itemSize;
-      fragGeo.setAttribute('color', new THREE.Float32BufferAttribute(cell.colors, itemSize));
-    }
 
     // Compute the center of this fragment (in local space)
     fragGeo.computeBoundingBox();
@@ -179,28 +196,7 @@ export function fractureMesh(
     // Transform center to world space
     const worldCenter = fragCenter.clone().applyMatrix4(worldMatrix);
 
-    // Clone material(s) from source mesh
-    let material: THREE.Material | THREE.Material[];
-    if (Array.isArray(srcMesh.material)) {
-      material = srcMesh.material.map(m => {
-        const c = m.clone();
-        c.transparent = true;
-        if ('emissive' in c) {
-          (c as any).emissive = new THREE.Color(0xFF6600);
-          (c as any).emissiveIntensity = 0.6;
-        }
-        return c;
-      });
-    } else {
-      material = srcMesh.material.clone();
-      material.transparent = true;
-      if ('emissive' in material) {
-        (material as any).emissive = new THREE.Color(0xFF6600);
-        (material as any).emissiveIntensity = 0.6;
-      }
-    }
-
-    const fragMesh = new THREE.Mesh(fragGeo, material);
+    const fragMesh = new THREE.Mesh(fragGeo, sharedMaterial);
 
     // Position at world-space center, with source rotation/scale
     fragMesh.position.copy(_worldPos);

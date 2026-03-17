@@ -322,6 +322,21 @@ export class VehicleCamera {
     this.smoothPos.lerp(_desired, posLerp);
     this.camera.position.copy(this.smoothPos);
 
+    // Phase-matched camera shake
+    let shakeAmp = 0;
+    if (t < 0.5) shakeAmp = 0.35 * (1 - t / 0.5);           // heavy impact
+    else if (t < 2.0) shakeAmp = 0.08;                        // rumble
+    else if (t < 3.5) shakeAmp = 0.03;                        // settle
+    // Secondary explosion shake spikes
+    if (t > 0.9 && t < 1.2) shakeAmp = Math.max(shakeAmp, 0.15);
+    if (t > 2.4 && t < 2.7) shakeAmp = Math.max(shakeAmp, 0.12);
+
+    if (shakeAmp > 0.005) {
+      this.camera.position.x += (Math.random() - 0.5) * shakeAmp;
+      this.camera.position.y += (Math.random() - 0.5) * shakeAmp * 0.7;
+      this.camera.position.z += (Math.random() - 0.5) * shakeAmp;
+    }
+
     // Look at wreck
     _lookTarget.copy(this.orbitCenter);
     _lookTarget.y += lookOffsetY;

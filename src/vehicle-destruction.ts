@@ -1,7 +1,7 @@
 /* ── Hood Racer — Vehicle Destruction Animation ── */
 
 import * as THREE from 'three';
-import { spawnGPUExplosion, spawnGPUFlame, spawnGPUDamageSmoke } from './gpu-particles';
+import { spawnGPUExplosion, spawnGPUFlame, spawnGPUDamageSmoke, spawnExplosionDust, spawnGPUSparks } from './gpu-particles';
 import { fractureMesh } from './mesh-fracture';
 
 // ── Fragment System ──
@@ -65,8 +65,8 @@ export function triggerVehicleDestruction(
   });
 
   for (const srcMesh of meshes) {
-    // Use runtime fracture to split single mesh into 12 fragments (3×2×2 grid)
-    const fractured = fractureMesh(srcMesh, 3, 2, 2);
+    // Use runtime fracture to split single mesh into 6 fragments (3×1×2 grid)
+    const fractured = fractureMesh(srcMesh, 3, 1, 2);
 
     for (const frag of fractured) {
       scene.add(frag.mesh);
@@ -208,6 +208,9 @@ export function triggerVehicleDestruction(
   scorchMark.position.y = 0.02; // just above road
   scorchMark.rotation.x = -Math.PI / 2;
   scene.add(scorchMark);
+
+  // ── Phase 3d: Dust kick-up wave ──
+  spawnExplosionDust(wreckPosition!, 30);
 }
 
 /**
@@ -290,6 +293,11 @@ export function updateDestructionFragments(dt: number): boolean {
       f.mesh.rotation.y += f.angularVel.y * dt;
       f.mesh.rotation.z += f.angularVel.z * dt;
 
+      // Trail sparks (15% chance per frame while airborne, first 2s)
+      if (f.lifetime < 2.0 && Math.random() < 0.15) {
+        spawnGPUSparks(f.mesh.position, 2);
+      }
+
       // Ground bounce
       if (f.mesh.position.y <= 0.15) {
         f.mesh.position.y = 0.15;
@@ -303,6 +311,11 @@ export function updateDestructionFragments(dt: number): boolean {
           f.grounded = true;
           f.velocity.set(0, 0, 0);
           f.angularVel.set(0, 0, 0);
+        }
+
+        // Impact sparks on bounce (50% chance)
+        if (Math.random() < 0.5) {
+          spawnGPUSparks(f.mesh.position, 4);
         }
       }
     }

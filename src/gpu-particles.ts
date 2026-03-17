@@ -302,6 +302,28 @@ export function spawnGPUExplosion(pos: THREE.Vector3, force: number) {
   flushToGPU();
 }
 
+/** Spawn outward dust/dirt kick-up wave from explosion concussion. */
+export function spawnExplosionDust(pos: THREE.Vector3, force: number) {
+  const count = Math.min(Math.floor(force * 0.6), 20);
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 8 + Math.random() * 7;
+    writeParticle(
+      pos.x + Math.cos(angle) * 0.5,
+      pos.y + 0.1,
+      pos.z + Math.sin(angle) * 0.5,
+      Math.cos(angle) * speed,
+      0.3 + Math.random() * 0.7,  // stays near ground
+      Math.sin(angle) * speed,
+      0.65, 0.55, 0.35, 0.4,      // tan/dirt color
+      0.8 + Math.random() * 0.4,
+      PType.DUST,
+      1.8 + Math.random() * 1.0,   // large
+    );
+  }
+  flushToGPU();
+}
+
 /** Spawn damage smoke (throttled). */
 let damageSmokeCD = 0;
 export function spawnGPUDamageSmoke(pos: THREE.Vector3, intensity: number, dt = 0.016) {
