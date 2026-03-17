@@ -125,7 +125,7 @@ export class Vehicle {
       // Reset dynamic state (rotation, scale, position) for physics correctness
       w.rotation.set(0, 0, 0);
       w.scale.set(1, 1, 1);
-      w.position.y = 0.47;
+      w.position.y = 0.33; // match GLB model wheel hub height
       const wg = w.children[0];
       if (wg) wg.rotation.set(0, 0, 0);
     }
@@ -398,9 +398,9 @@ export class Vehicle {
     this.wheelRL = createWheel();
     this.wheelRR = createWheel();
 
-    // wheelY = 0.47 matches torus outer radius (0.35 + 0.12 = 0.47)
-    // so tire bottoms sit exactly at Y=0 — the road surface
-    const wheelY = 0.47, frontZ = -1.3, rearZ = 1.3, sideX = 0.85;
+    // wheelY = 0.33 matches approximate GLB model wheel hub center height
+    // (containers are invisible — used only for suspension raycasting)
+    const wheelY = 0.33, frontZ = -1.3, rearZ = 1.3, sideX = 0.85;
     this.wheelFL.position.set(-sideX, wheelY, frontZ);
     this.wheelFR.position.set(sideX, wheelY, frontZ);
     this.wheelRL.position.set(-sideX, wheelY, rearZ);
@@ -814,7 +814,7 @@ export class Vehicle {
         // differs from the body's average. The base wheelY is 0.47 (torus radius).
         const avgHit = (fl + fr + rl + rr) / 4;
         const suspLerp = 1 - Math.exp(-20 * dt);
-        const baseWheelY = 0.47;
+        const baseWheelY = 0.33; // must match buildWheels wheelY
         const maxTravel = 0.15; // max suspension travel
 
         if (this.wheelFL) {
