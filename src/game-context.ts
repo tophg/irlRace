@@ -144,7 +144,6 @@ export const G = {
   // ── Performance ──
   _lastShadowX: -999,
   _lastShadowZ: -999,
-  _mirrorFrame: 0,
   _drsFrameTimes: [] as number[],
 };
 

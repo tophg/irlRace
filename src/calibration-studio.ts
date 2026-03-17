@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { CarDef } from './types';
-import { CarLightDef, saveCalibrationOverride } from './car-lights';
+import { CarLightDef, saveCalibrationOverride, CAR_LIGHT_MAP } from './car-lights';
 import { getGarageScene, getGarageCamera } from './garage';
 
 // ── Globals for Studio State ──
@@ -363,32 +363,29 @@ function applySymmetryIfEnabled() {
 function resetToSavedData() {
   if (!currentCarDef) return;
   
-  // Try loading from actual car-lights.ts map
-  import('./car-lights').then(({ CAR_LIGHT_MAP }) => {
-    const saved = CAR_LIGHT_MAP[currentCarDef!.id];
-    if (saved) {
-      Object.assign(calData, saved);
-      
-      // Rebuild markers based on saved data
-      ['headlightL', 'headlightR', 'taillightL', 'taillightR'].forEach(type => {
-        const d = (calData as any)[type];
-        if (d && currentCar) {
-          if (!markers[type]) {
-            const isHL = type.startsWith('headlight');
-            const m = new THREE.Mesh(markerGeo, isHL ? hlMat : tlMat);
-            currentCar.add(m);
-            markers[type] = m;
-          }
-          markers[type].position.set(d[0], d[1], d[2]);
-          
-          const size = (calData as any)[type.startsWith('headlight') ? 'headlightSize' : 'taillightSize'];
-          if (size) markers[type].scale.set(size[0], size[1], 1);
+  const saved = CAR_LIGHT_MAP[currentCarDef.id];
+  if (saved) {
+    Object.assign(calData, saved);
+    
+    // Rebuild markers based on saved data
+    ['headlightL', 'headlightR', 'taillightL', 'taillightR'].forEach(type => {
+      const d = (calData as any)[type];
+      if (d && currentCar) {
+        if (!markers[type]) {
+          const isHL = type.startsWith('headlight');
+          const m = new THREE.Mesh(markerGeo, isHL ? hlMat : tlMat);
+          currentCar.add(m);
+          markers[type] = m;
         }
-      });
-      
-      if (activeMarker) selectMarker(activeMarker);
-    }
-  });
+        markers[type].position.set(d[0], d[1], d[2]);
+        
+        const size = (calData as any)[type.startsWith('headlight') ? 'headlightSize' : 'taillightSize'];
+        if (size) markers[type].scale.set(size[0], size[1], 1);
+      }
+    });
+    
+    if (activeMarker) selectMarker(activeMarker);
+  }
 }
 
 function renderAutoGhosts() {
