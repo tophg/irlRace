@@ -1,5 +1,7 @@
 /* ── Hood Racer — Settings Menu ── */
 
+import { updateMusicVolume } from './audio';
+
 export interface GameSettings {
   masterVolume: number;    // 0–1
   engineVolume: number;    // 0–1
@@ -175,7 +177,7 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
       paintHue: getSettings().paintHue, // Preserved; paint is set in garage
     });
     destroySettings();
-    import('./audio').then(m => m.updateMusicVolume());
+    updateMusicVolume();
   });
 
   settingsEl.querySelector('#set-cancel')!.addEventListener('click', destroySettings);

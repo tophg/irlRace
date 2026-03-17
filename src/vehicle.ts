@@ -971,11 +971,7 @@ export class Vehicle {
       const hits = this.raycaster.intersectObject(this.roadMesh, false);
       if (hits.length > 0) {
         this.group.position.y = hits[0].point.y;
-      } else {
-        this.group.position.y += 0.05;
       }
-    } else {
-      this.group.position.y += 0.05;
     }
 
     this.heading = Math.atan2(tangent.x, tangent.z);

@@ -218,30 +218,56 @@ export function updateWeather(dt: number, playerPos: THREE.Vector3) {
   precipMesh.position.set(0, 0, 0);
 }
 
+// ── Saved road material state (for restoration on weather change) ──
+let savedRoadMat: { roughness: number; metalness: number; color: THREE.Color } | null = null;
+let savedRoadMesh: THREE.Mesh | null = null;
+
 /**
  * Apply weather-dependent road surface material changes.
  * Rain → wet glossy; Snow → white-dusted; Ice → mirror-glossy.
+ * Saves originals for restoration in destroyWeather().
  */
 export function applyWetRoad(roadMesh: THREE.Mesh) {
   const mat = roadMesh.material as THREE.MeshStandardMaterial;
   const w = currentWeather;
 
+  // Save originals on first call (before mutation)
+  if (!savedRoadMat) {
+    savedRoadMat = { roughness: mat.roughness, metalness: mat.metalness, color: mat.color.clone() };
+    savedRoadMesh = roadMesh;
+  }
+
   if (w === 'light_rain' || w === 'heavy_rain') {
-    mat.roughness = Math.max(0.6, mat.roughness - precipConfig.roadSpecular * 0.5);
-    mat.metalness = Math.min(0.08, mat.metalness + precipConfig.roadSpecular * 0.05);
+    mat.roughness = Math.max(0.6, savedRoadMat.roughness - precipConfig.roadSpecular * 0.5);
+    mat.metalness = Math.min(0.08, savedRoadMat.metalness + precipConfig.roadSpecular * 0.05);
   } else if (w === 'snow' || w === 'blizzard') {
     // Snow-dusted road: slightly lighter, rougher
-    mat.roughness = Math.min(0.95, mat.roughness + 0.15);
-    mat.color.lerp(new THREE.Color(0xcccccc), 0.15);
+    mat.roughness = Math.min(0.95, savedRoadMat.roughness + 0.15);
+    mat.color.copy(savedRoadMat.color).lerp(new THREE.Color(0xcccccc), 0.15);
   } else if (w === 'ice') {
     // Slightly glossy ice surface (but not mirror-like)
     mat.roughness = 0.35;
     mat.metalness = 0.15;
-    mat.color.lerp(new THREE.Color(0x88aacc), 0.2);
+    mat.color.copy(savedRoadMat.color).lerp(new THREE.Color(0x88aacc), 0.2);
   }
 }
 
+/** Get the precipitation mesh (for hiding during mirror render). */
+export function getPrecipMesh(): THREE.LineSegments | null {
+  return precipMesh;
+}
+
 export function destroyWeather() {
+  // Restore road material to original state
+  if (savedRoadMat && savedRoadMesh) {
+    const mat = savedRoadMesh.material as THREE.MeshStandardMaterial;
+    mat.roughness = savedRoadMat.roughness;
+    mat.metalness = savedRoadMat.metalness;
+    mat.color.copy(savedRoadMat.color);
+    savedRoadMat = null;
+    savedRoadMesh = null;
+  }
+
   if (precipMesh && precipScene) {
     precipScene.remove(precipMesh);
     precipMesh.geometry.dispose();
@@ -265,3 +291,4 @@ export function destroyWeather() {
   currentWeather = 'clear';
   precipConfig = PRECIP_CONFIGS.clear;
 }
+

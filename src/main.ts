@@ -62,7 +62,7 @@ import { initInput, showTouchControls, getInput } from './input';
 import { loadSettings, getSettings, showSettings } from './settings';
 import { ReplayRecorder, ReplayPlayer } from './replay';
 import { resolveCarCollisions, CarCollider, CollisionEvent } from './bvh';
-import { getWeatherForSeed, initWeather, updateWeather, applyWetRoad, destroyWeather, getWeatherGripMultiplier, getWeatherDriftMultiplier, getCurrentWeather, getWeatherPhysics } from './weather';
+import { getWeatherForSeed, initWeather, updateWeather, applyWetRoad, destroyWeather, getWeatherGripMultiplier, getWeatherDriftMultiplier, getCurrentWeather, getWeatherPhysics, getPrecipMesh } from './weather';
 import { initPostFX, updatePostFX, setImpactIntensity, setBoostActive, getPostFXPipeline, destroyPostFX } from './post-fx';
 
 // ── Shared state ──
@@ -1964,17 +1964,16 @@ function gameLoop(timestamp: number) {
       G.mirrorCamera.updateProjectionMatrix();
       G.mirrorCamera.projectionMatrix.elements[0] *= -1; // Flip X
 
-      // Flip culling to account for the negative scale reflection
-      // WebGPURenderer automatically handles frontFace logic if scale is negative,
-      // but modifying projectionMatrix by hand requires explicit winding order flips if needed.
+      // Hide weather particles during mirror render (prevents VFX bleed)
+      const precip = getPrecipMesh();
+      if (precip) precip.visible = false;
 
       // Scissor / Viewport
       const w = 320, h = 120;
       const x = Math.floor(window.innerWidth / 2 - w / 2);
       
       // WebGPU viewport Y=0 is TOP. WebGL viewport Y=0 is BOTTOM.
-      // We detect the active backend by checking context type.
-      const isWebGL = !!renderer.domElement.getContext('webgl2');
+      const isWebGL = !!(renderer as any).isWebGLRenderer;
       const y = isWebGL ? Math.floor(window.innerHeight - h - 14) : 14;
 
       renderer.setScissorTest(true);
@@ -1990,6 +1989,9 @@ function gameLoop(timestamp: number) {
       renderer.setScissorTest(false);
       renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
       renderer.autoClear = oldAutoClear;
+
+      // Restore weather particles
+      if (precip) precip.visible = true;
     }
 
     // ── Dynamic Resolution Scaling ──
