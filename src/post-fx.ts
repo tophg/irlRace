@@ -100,16 +100,16 @@ export function initPostFX(
  * @param speedRatio 0..1 (current speed / max speed)
  * @param isNitroActive whether nitrous is currently burning
  */
-export function updatePostFX(speedRatio: number, isNitroActive = false) {
+export function updatePostFX(speedRatio: number, isNitroActive = false, dt = 1 / 60) {
   // Speed vignette: stronger during nitrous for tunnel vision
   const baseVignette = 0.15 + speedRatio * 0.4;
   uVignetteStrength.value = isNitroActive ? Math.max(baseVignette, 0.45 + speedRatio * 0.2) : baseVignette;
 
-  // Boost intensity for radial effect during nitrous
-  uBoostIntensity.value = Math.max(0, uBoostIntensity.value - 0.05); // decay per frame
+  // Boost intensity for radial effect during nitrous (dt-scaled linear decay)
+  uBoostIntensity.value = Math.max(0, uBoostIntensity.value - 3.0 * dt);
 
-  // Impact intensity auto-decay (exponential)
-  uImpactIntensity.value *= 0.88;
+  // Impact intensity auto-decay (frame-rate-independent exponential)
+  uImpactIntensity.value *= Math.pow(0.88, dt * 60);
   if (uImpactIntensity.value < 0.01) uImpactIntensity.value = 0;
 
   // Subtle chromatic aberration during boost (adds cinematic feel)

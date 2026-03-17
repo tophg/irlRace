@@ -2106,7 +2106,7 @@ function gameLoop(timestamp: number) {
       // Update post-FX uniforms
       const speedRatio = G.playerVehicle ? Math.abs(G.playerVehicle.speed) / G.playerVehicle.def.maxSpeed : 0;
       const isNitro = G.playerVehicle?.isNitroActive ?? false;
-      updatePostFX(Math.min(speedRatio, 1), isNitro);
+      updatePostFX(Math.min(speedRatio, 1), isNitro, frameDt);
       if (isNitro) setBoostActive(true);
       G.postFXPipeline.render();
     } else {

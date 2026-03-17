@@ -443,6 +443,8 @@ export function cleanupDestruction() {
     f.mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
         child.geometry?.dispose();
+        if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+        else if (child.material) (child.material as THREE.Material).dispose();
       }
     });
   }
