@@ -81,16 +81,24 @@ export function triggerVehicleDestruction(
     frag.position.copy(_worldPos);
     frag.quaternion.copy(_worldQuat);
 
-    // Make material transparent for fade-out later
+    // Make material transparent for fade-out + add heat glow
     if (Array.isArray(frag.material)) {
       frag.material = frag.material.map(m => {
         const c = m.clone();
         c.transparent = true;
+        if ('emissive' in c) {
+          (c as any).emissive = new THREE.Color(0xFF6600); // hot orange glow
+          (c as any).emissiveIntensity = 0.6;
+        }
         return c;
       });
     } else {
       frag.material = frag.material.clone();
       (frag.material as THREE.Material).transparent = true;
+      if ('emissive' in frag.material) {
+        (frag.material as any).emissive = new THREE.Color(0xFF6600);
+        (frag.material as any).emissiveIntensity = 0.6;
+      }
     }
 
     scene.add(frag);
@@ -237,8 +245,22 @@ export function updateDestructionFragments(dt: number): boolean {
       }
     }
 
-    // Fade out in last 2 seconds of life
+    // Fade out + charring/heat cooling in last 3 seconds of life
     const fadeStart = f.maxLife - 2;
+    const heatCoolStart = 1.5; // emissive starts cooling after 1.5s
+    if (f.lifetime > heatCoolStart) {
+      const coolT = Math.min(1, (f.lifetime - heatCoolStart) / 3);
+      // Cool the emissive glow
+      if (Array.isArray(f.mesh.material)) {
+        for (const m of f.mesh.material) {
+          if ('emissiveIntensity' in m) {
+            (m as any).emissiveIntensity = 0.6 * (1 - coolT);
+          }
+        }
+      } else if ('emissiveIntensity' in (f.mesh.material as any)) {
+        (f.mesh.material as any).emissiveIntensity = 0.6 * (1 - coolT);
+      }
+    }
     if (f.lifetime > fadeStart) {
       const fadeT = 1 - (f.lifetime - fadeStart) / 2;
       const opacity = Math.max(0, fadeT * f.originalOpacity);
@@ -252,40 +274,67 @@ export function updateDestructionFragments(dt: number): boolean {
     }
   }
 
-  // ── Phase 3: Sustained fire + smoke at wreck position ──
-  if (wreckPosition && destructionTime < 5) {
-    const firePos = wreckPosition.clone();
-    firePos.y += 0.5 + Math.random() * 0.5;
-    // Add slight random spread
-    firePos.x += (Math.random() - 0.5) * 1.5;
-    firePos.z += (Math.random() - 0.5) * 1.5;
+  // ── Phase 3: Enhanced fire system ──
+  if (wreckPosition) {
+    // Initial fireball (first 0.5s — intense burst)
+    if (destructionTime < 0.5) {
+      for (let i = 0; i < 3; i++) {
+        const fp = wreckPosition.clone();
+        fp.y += 0.3 + Math.random() * 0.8;
+        fp.x += (Math.random() - 0.5) * 1.5;
+        fp.z += (Math.random() - 0.5) * 1.5;
+        spawnGPUFlame(fp, 1.0, dt);
+      }
+      spawnGPUExplosion(wreckPosition.clone(), 8); // burst VFX
+    }
 
-    spawnGPUFlame(firePos, 0.8 + Math.random() * 0.2, dt);
-    spawnGPUDamageSmoke(firePos, 0.6, dt);
+    // Mushroom plume (0.3–3s — upward rising thick smoke with fire)
+    if (destructionTime > 0.3 && destructionTime < 3.0) {
+      const plumePos = wreckPosition.clone();
+      plumePos.y += 1.0 + destructionTime * 1.5; // rises over time
+      plumePos.x += (Math.random() - 0.5) * 0.8;
+      plumePos.z += (Math.random() - 0.5) * 0.8;
+      spawnGPUDamageSmoke(plumePos, 0.9, dt);
+      if (destructionTime < 2.0) {
+        spawnGPUFlame(plumePos, 0.5, dt);
+      }
+    }
 
-    // Extra fire particles for intensity
-    if (destructionTime < 3) {
-      const firePos2 = wreckPosition.clone();
-      firePos2.y += 0.3;
-      firePos2.x += (Math.random() - 0.5) * 2;
-      firePos2.z += (Math.random() - 0.5) * 2;
-      spawnGPUFlame(firePos2, 0.6, dt);
+    // Ground fire pool (0.5–5s — radial flickering flames at road level)
+    if (destructionTime > 0.5 && destructionTime < 5.0) {
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.random() * 2.0;
+      const gfp = wreckPosition.clone();
+      gfp.x += Math.cos(angle) * dist;
+      gfp.z += Math.sin(angle) * dist;
+      gfp.y += 0.1;
+      spawnGPUFlame(gfp, 0.6 + Math.random() * 0.3, dt);
+      spawnGPUDamageSmoke(gfp, 0.4, dt);
+    }
+
+    // Ember rain (1–6s — slow-falling tiny glowing particles)
+    if (destructionTime > 1.0 && destructionTime < 6.0) {
+      const ep = wreckPosition.clone();
+      ep.y += 2 + Math.random() * 3;
+      ep.x += (Math.random() - 0.5) * 4;
+      ep.z += (Math.random() - 0.5) * 4;
+      spawnGPUFlame(ep, 0.2, dt); // tiny ember
     }
   }
 
-  // Secondary explosions
+  // Secondary explosions (larger, more dramatic)
   if (wreckPosition) {
     if (destructionTime >= 1.0 && destructionTime < 1.0 + dt * 2) {
       const p = wreckPosition.clone();
-      p.x += (Math.random() - 0.5) * 2;
-      p.y += 0.5;
-      spawnGPUExplosion(p, 20);
+      p.x += (Math.random() - 0.5) * 3;
+      p.y += 0.8;
+      spawnGPUExplosion(p, 25);
     }
     if (destructionTime >= 2.5 && destructionTime < 2.5 + dt * 2) {
       const p = wreckPosition.clone();
-      p.z += (Math.random() - 0.5) * 2;
-      p.y += 0.3;
-      spawnGPUExplosion(p, 15);
+      p.z += (Math.random() - 0.5) * 3;
+      p.y += 0.5;
+      spawnGPUExplosion(p, 18);
     }
   }
 

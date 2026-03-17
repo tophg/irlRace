@@ -53,6 +53,8 @@ import { initTrackRadar, updateTrackRadar, destroyTrackRadar } from './minimap';
 import { playTitleMusic, playGameMusic, pauseMusic, resumeMusic, stopAllMusic } from './audio';
 import { showTrackEditor, destroyTrackEditor } from './track-editor';
 import { triggerVehicleDestruction, updateDestructionFragments, cleanupDestruction } from './vehicle-destruction';
+import { triggerSlowMotion, updateTimeScale, applyTimeScale, getTimeScale, resetTimeScale } from './time-scale';
+import { showExplosionFlash, showLetterbox, hideLetterbox, showEngineDestroyedText, cleanupScreenEffects } from './screen-effects';
 import { loadProgress, processRaceRewards, getProgress, levelProgress, xpToNextLevel, type RaceResult } from './progression';
 import { startGhostRecording, sampleGhostFrame, finalizeGhostLap, loadGhostForSeed, startGhostPlayback, updateGhostPlayback, destroyGhost, getGhostBestTime } from './ghost';
 import {
@@ -65,7 +67,7 @@ import { loadSettings, getSettings, showSettings } from './settings';
 import { ReplayRecorder, ReplayPlayer } from './replay';
 import { resolveCarCollisions, CarCollider, CollisionEvent } from './bvh';
 import { getWeatherForSeed, initWeather, updateWeather, applyWetRoad, destroyWeather, getWeatherGripMultiplier, getWeatherDriftMultiplier, getCurrentWeather, getWeatherPhysics, getPrecipMesh } from './weather';
-import { initPostFX, updatePostFX, setImpactIntensity, setBoostActive, getPostFXPipeline, destroyPostFX } from './post-fx';
+import { initPostFX, updatePostFX, setImpactIntensity, setBoostActive, setExplosionMode, getPostFXPipeline, destroyPostFX } from './post-fx';
 
 // ── Shared state ──
 import { G, PHYSICS_DT, PHYSICS_HZ, MAX_FRAME_DT, LB_UPDATE_INTERVAL, resetRaceStats } from './game-context';
@@ -750,6 +752,9 @@ function clearRaceObjects() {
   destroyRapierWorld();
   rollbackManager.reset();
   cleanupDestruction();
+  resetTimeScale();
+  cleanupScreenEffects();
+  setExplosionMode(false);
 
   // Stop audio
   stopAudio();
@@ -1347,10 +1352,15 @@ function gameLoop(timestamp: number) {
       return;
     }
 
+    // ── TIME SCALE (slow-motion) ──
+    const wallDt = frameDt;
+    updateTimeScale(wallDt);
+    const scaledDt = applyTimeScale(frameDt);
+
     // ── FIXED-TIMESTEP PHYSICS ──
     // Accumulate frame time, then step physics at a deterministic rate.
     // Leftover accumulator fraction (`alpha`) is used to interpolate visuals.
-    G.physicsAccumulator += frameDt;
+    G.physicsAccumulator += scaledDt;
 
     // Run deterministic physics sub-steps
     let physicsStepsThisFrame = 0;
@@ -1446,11 +1456,20 @@ function gameLoop(timestamp: number) {
             G.playerVehicle.wheelRefs,
           );
           G.playerVehicle.destroyed = true;
+          // Trigger slow-motion cinematic
+          triggerSlowMotion();
+          // Screen effects: flash + letterbox + post-FX
+          showExplosionFlash();
+          showLetterbox();
+          setExplosionMode(true);
           // Cinematic explosion orbit camera
           if (G.vehicleCamera) {
             G.vehicleCamera.startExplosionOrbit(hoodExplosion);
           }
-          setTimeout(() => showResults(), 4000); // 4s cinematic before results
+          // Delayed text overlay and results
+          setTimeout(() => showEngineDestroyedText(), 800);
+          setTimeout(() => { hideLetterbox(); setExplosionMode(false); }, 4500);
+          setTimeout(() => showResults(), 5000);
         }
       }
 

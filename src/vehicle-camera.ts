@@ -101,6 +101,7 @@ export class VehicleCamera {
 
   mode: CameraMode = 'chase';
   private orbitAngle = 0;
+  private explosionElapsed = 0;
   private orbitCenter = new THREE.Vector3();
 
   // Shake state
@@ -244,10 +245,11 @@ export class VehicleCamera {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Start dramatic explosion orbit — tight, close, fast. */
+  /** Start dramatic multi-phase explosion cinematic. */
   startExplosionOrbit(center: THREE.Vector3) {
     this.mode = 'explosion-orbit';
     this.orbitCenter.copy(center);
+    this.explosionElapsed = 0;
     // Start from current camera angle
     this.orbitAngle = Math.atan2(
       this.camera.position.x - center.x,
@@ -255,29 +257,79 @@ export class VehicleCamera {
     );
   }
 
-  /** Update the explosion orbit (tight dramatic circle). */
+  /** Multi-phase explosion cinematic camera. */
   updateExplosionOrbit(dt: number) {
     if (this.mode !== 'explosion-orbit') return;
 
-    this.orbitAngle += EXPLOSION_ORBIT_SPEED * dt;
+    this.explosionElapsed += dt;
+    const t = this.explosionElapsed;
+
+    // ── Phase parameters based on elapsed time ──
+    let radius: number, height: number, speed: number, fov: number;
+    let posLerp: number, lookLerp: number, lookOffsetY: number;
+
+    if (t < 0.5) {
+      // Phase 1: IMPACT JOLT — camera jolts backward, heavy shake feel
+      const p = t / 0.5; // 0→1
+      const ease = p * p; // ease-in
+      radius = 5 + ease * 3;     // 5→8 (push out from blast)
+      height = 1.5 + ease * 1.0; // low angle, slightly rising
+      speed = 0.3;               // slow orbit during jolt
+      fov = 65 - ease * 10;      // 65→55 (zoom in for impact intimacy)
+      posLerp = 0.15;            // snappy
+      lookLerp = 0.12;
+      lookOffsetY = 0.5;         // look at ground level wreck
+    } else if (t < 2.0) {
+      // Phase 2: LOW ORBIT — tight ground-level wreck view
+      const p = (t - 0.5) / 1.5; // 0→1
+      radius = 6;
+      height = 1.5 + p * 0.5;    // very low, subtle rise
+      speed = 0.5;               // moderate orbit
+      fov = 55;                  // narrow cinematic
+      posLerp = 0.06;            // smooth
+      lookLerp = 0.06;
+      lookOffsetY = 0.6;
+    } else if (t < 3.5) {
+      // Phase 3: RISING PULLBACK — dramatic reveal
+      const p = (t - 2.0) / 1.5; // 0→1
+      const ease = p * p * (3 - 2 * p); // smoothstep
+      radius = 6 + ease * 12;    // 6→18 (pull back)
+      height = 2.0 + ease * 10;  // 2→12 (rise dramatically)
+      speed = 0.4 - ease * 0.15; // slowing orbit
+      fov = 55 + ease * 15;      // 55→70 (widen for context)
+      posLerp = 0.04;
+      lookLerp = 0.05;
+      lookOffsetY = 0.8 + ease * 1.5;
+    } else {
+      // Phase 4: WIDE STABILIZED — debris settling, final view
+      radius = 18;
+      height = 12;
+      speed = 0.2;               // slow majestic orbit
+      fov = 70;
+      posLerp = 0.03;            // very smooth
+      lookLerp = 0.04;
+      lookOffsetY = 2.0;
+    }
+
+    // Apply orbit
+    this.orbitAngle += speed * dt;
     _desired.set(
-      this.orbitCenter.x + Math.sin(this.orbitAngle) * EXPLOSION_ORBIT_RADIUS,
-      this.orbitCenter.y + EXPLOSION_ORBIT_HEIGHT,
-      this.orbitCenter.z + Math.cos(this.orbitAngle) * EXPLOSION_ORBIT_RADIUS,
+      this.orbitCenter.x + Math.sin(this.orbitAngle) * radius,
+      this.orbitCenter.y + height,
+      this.orbitCenter.z + Math.cos(this.orbitAngle) * radius,
     );
 
-    // Faster lerp for dramatic snap-in
-    this.smoothPos.lerp(_desired, 0.08);
+    this.smoothPos.lerp(_desired, posLerp);
     this.camera.position.copy(this.smoothPos);
 
-    // Look slightly below center (at the wreck on the road)
+    // Look at wreck
     _lookTarget.copy(this.orbitCenter);
-    _lookTarget.y += 0.8;
-    this.currentLookAt.lerp(_lookTarget, 0.06);
+    _lookTarget.y += lookOffsetY;
+    this.currentLookAt.lerp(_lookTarget, lookLerp);
     this.camera.lookAt(this.currentLookAt);
 
-    // Narrow FOV for cinematic feel
-    this.camera.fov += (EXPLOSION_FOV - this.camera.fov) * 0.05;
+    // FOV transition
+    this.camera.fov += (fov - this.camera.fov) * 0.05;
     this.camera.updateProjectionMatrix();
   }
 

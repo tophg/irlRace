@@ -139,6 +139,29 @@ export function getPostFXPipeline(): THREE.RenderPipeline | null {
   return pipeline;
 }
 
+let explosionMode = false;
+
+/**
+ * Enable/disable explosion post-FX mode.
+ * While active, impact + boost intensity stay elevated for sustained cinematic feel.
+ */
+export function setExplosionMode(active: boolean) {
+  explosionMode = active;
+  if (active) {
+    uImpactIntensity.value = 1.0;
+    uBoostIntensity.value = 1.0;
+  }
+}
+
+/** Update explosion post-FX decay (call from updatePostFX or separately). */
+export function updateExplosionPostFX(dt: number) {
+  if (!explosionMode) return;
+  // Hold elevated but slowly ease down from peak
+  uImpactIntensity.value = Math.max(0.4, uImpactIntensity.value - 0.08 * dt);
+  uBoostIntensity.value = Math.max(0.3, uBoostIntensity.value - 0.06 * dt);
+}
+
 export function destroyPostFX() {
   pipeline = null;
+  explosionMode = false;
 }
