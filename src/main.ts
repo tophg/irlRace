@@ -1430,6 +1430,12 @@ function gameLoop(timestamp: number) {
         spawnGPUGlassShards(hoodExplosion);
         flashDamage(0.9);
         setImpactIntensity(1.0);
+
+        // Engine explosion ends the race — DNF
+        if (G.raceEngine && s === GameState.RACING) {
+          G.raceEngine.markDnf('local');
+          setTimeout(() => showResults(), 2000); // let explosion play out
+        }
       }
 
       // ── Hood smoke/flames at high engine heat (front hood position) ──
