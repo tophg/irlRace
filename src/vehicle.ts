@@ -283,7 +283,12 @@ export class Vehicle {
    *  Pass renderer + camera to pre-warm WebGL shaders for explosion fragments
    *  (prevents 1-2s shader compilation stall at detonation time).
    */
-  setModel(model: THREE.Group, renderer?: { compile: (scene: THREE.Scene, camera: THREE.Camera) => void }, camera?: THREE.Camera) {
+  setModel(
+    model: THREE.Group,
+    renderer?: { compile: (scene: THREE.Scene, camera: THREE.Camera) => void },
+    camera?: THREE.Camera,
+    scene?: THREE.Scene,
+  ) {
     this.model = model;
     this._bodyGroup.add(model);
 
@@ -309,21 +314,24 @@ export class Vehicle {
       this._cachedFragments.length = 12;
     }
 
-    // Pre-warm WebGL shaders for fragment materials.
-    // Without this, the first render of explosion fragments triggers synchronous
-    // shader compilation (1-2s freeze). By compiling now during loading, the
-    // GPU caches the shader programs and explosion rendering is instant.
-    if (renderer && camera && this._cachedFragments.length > 0) {
-      const warmScene = new THREE.Scene();
-      // Add a minimal light so shaders compile with lighting enabled
-      warmScene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    // Pre-warm WebGPU pipelines for fragment materials in the REAL scene.
+    // Compiling in a throwaway scene creates pipelines that don't match the
+    // real render state (lights, env, fog, tone mapping) — causing pipeline
+    // recompilation (5-30ms stall) on the explosion frame.
+    // By compiling in the actual scene, pipelines match exactly.
+    if (renderer && camera && scene && this._cachedFragments.length > 0) {
+      const tempMeshes: THREE.Mesh[] = [];
       for (const frag of this._cachedFragments) {
-        const tempMesh = new THREE.Mesh(frag.mesh.geometry, frag.mesh.material);
-        warmScene.add(tempMesh);
+        const m = new THREE.Mesh(frag.mesh.geometry, frag.mesh.material);
+        m.visible = true;
+        m.position.set(0, -100, 0); // off-screen so invisible to player
+        m.frustumCulled = false; // ensure it's compiled even though off-screen
+        scene.add(m);
+        tempMeshes.push(m);
       }
-      renderer.compile(warmScene, camera);
-      // Dispose temp scene (compiled shaders persist in renderer cache)
-      warmScene.clear();
+      renderer.compile(scene, camera);
+      // Remove temp meshes (compiled pipelines persist in renderer cache)
+      for (const m of tempMeshes) scene.remove(m);
     }
   }
 

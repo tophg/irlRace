@@ -52,7 +52,7 @@ import {
 import { initTrackRadar, updateTrackRadar, destroyTrackRadar } from './minimap';
 import { playTitleMusic, playGameMusic, pauseMusic, resumeMusic, stopAllMusic } from './audio';
 import { showTrackEditor, destroyTrackEditor } from './track-editor';
-import { triggerVehicleDestruction, updateDestructionFragments, cleanupDestruction, warmupDestruction, disposeDestructionAssets } from './vehicle-destruction';
+import { triggerVehicleDestruction, updateDestructionFragments, cleanupDestruction, warmupDestruction, warmupFragmentMaterials, disposeDestructionAssets } from './vehicle-destruction';
 import { resetTimeScale } from './time-scale';
 import { showExplosionFlash, showLetterbox, hideLetterbox, showEngineDestroyedText, cleanupScreenEffects } from './screen-effects';
 import { loadProgress, processRaceRewards, getProgress, levelProgress, xpToNextLevel, type RaceResult } from './progression';
@@ -384,7 +384,7 @@ async function startRace() {
     playerModel.scale.setScalar(1);
     playerModel.rotation.set(0, 0, 0);
     G.playerVehicle = new Vehicle(G.selectedCar);
-    G.playerVehicle.setModel(playerModel, renderer, camera);
+    G.playerVehicle.setModel(playerModel, renderer, camera, scene);
     // Apply custom paint if set
     const paintHue = getSettings().paintHue;
     if (paintHue >= 0) G.playerVehicle.setPaintColor(paintHue);
@@ -405,6 +405,8 @@ async function startRace() {
 
     // Pre-warm explosion assets (ring, scorch, light) — eliminates WebGPU pipeline stall
     warmupDestruction(scene, renderer as any, camera);
+    // Pre-warm pool meshes with player’s REAL fragment materials
+    warmupFragmentMaterials(G.playerVehicle.cachedFragments, renderer as any, camera, scene);
 
     initRainDroplets(container);
     initImpactFlash(container);
@@ -573,7 +575,7 @@ async function spawnAI(td: TrackData) {
       model.position.set(0, 0, 0);
       model.scale.setScalar(1);
       model.rotation.set(0, 0, 0);
-      ai.vehicle.setModel(model, renderer, camera);
+      ai.vehicle.setModel(model, renderer, camera, scene);
     } catch {}
 
     ai.vehicle.setRoadMesh(G.trackData!.roadMesh);

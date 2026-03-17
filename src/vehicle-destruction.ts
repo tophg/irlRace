@@ -131,7 +131,7 @@ export function warmupDestruction(
         originalOpacity: 1.0,
       });
     }
-    placeholderMat.dispose(); // pool meshes will get real materials at detonation
+    // Keep placeholder material alive (don't dispose — used for pool resets)
     _poolReady = true;
   }
 
@@ -144,6 +144,36 @@ export function warmupDestruction(
   _expLight.visible = false;
 
   _assetsWarmed = true;
+}
+
+/**
+ * Pre-warm pool meshes with REAL fragment materials in the real scene.
+ * Call after vehicles load so the WebGPU pipelines for explosion fragments
+ * are compiled with the exact render state (lights, env map, fog, tone mapping).
+ */
+export function warmupFragmentMaterials(
+  fragments: { mesh: THREE.Mesh }[],
+  renderer: { compile: (scene: THREE.Scene, camera: THREE.Camera) => void },
+  camera: THREE.Camera,
+  scene: THREE.Scene,
+) {
+  if (!_poolReady || fragments.length === 0) return;
+  const count = Math.min(fragments.length, FRAG_POOL_SIZE);
+  // Temporarily assign real materials to pool meshes and compile
+  for (let i = 0; i < count; i++) {
+    _poolMeshes[i].geometry = fragments[i].mesh.geometry;
+    _poolMeshes[i].material = fragments[i].mesh.material;
+    _poolMeshes[i].visible = true;
+    _poolMeshes[i].position.set(0, -100, 0);
+    _poolMeshes[i].frustumCulled = false;
+  }
+  renderer.compile(scene, camera);
+  // Reset pool back to idle state
+  for (let i = 0; i < count; i++) {
+    _poolMeshes[i].geometry = _dummyGeo;
+    _poolMeshes[i].visible = false;
+    _poolMeshes[i].position.set(0, 0, 0);
+  }
 }
 
 /**
@@ -176,6 +206,8 @@ export function triggerVehicleDestruction(
   if (cachedFragments && cachedFragments.length > 0 && _poolReady) {
     vehicleGroup.getWorldQuaternion(_worldQuat);
     const count = Math.min(cachedFragments.length, FRAG_POOL_SIZE);
+    // Stagger visibility: first 6 immediately, rest on next frame (Fix D)
+    const FIRST_BATCH = Math.min(6, count);
     for (let i = 0; i < count; i++) {
       const src = cachedFragments[i];
       const frag = _fragPool[i];
@@ -187,7 +219,7 @@ export function triggerVehicleDestruction(
       mesh.position.copy(_center);
       mesh.quaternion.copy(_worldQuat);
       mesh.scale.setScalar(1);
-      mesh.visible = true;
+      mesh.visible = i < FIRST_BATCH; // deferred batch stays hidden
 
       // Compute blast velocity into pre-allocated vectors
       _outward.copy(src.center).sub(_center);
@@ -212,6 +244,14 @@ export function triggerVehicleDestruction(
       frag.maxLife = 5 + Math.random() * 3;
       frag.originalOpacity = 1.0;
       activeFragCount++;
+    }
+    // Show deferred batch on next frame
+    if (count > FIRST_BATCH) {
+      requestAnimationFrame(() => {
+        for (let i = FIRST_BATCH; i < count; i++) {
+          _poolMeshes[i].visible = true;
+        }
+      });
     }
   } else {
     // Fallback: compute at runtime (no pool available)
