@@ -13,7 +13,7 @@ import { VehicleCamera } from './vehicle-camera';
 import { RaceEngine } from './race-engine';
 import { createHUD, updateHUD, updateMinimap, updateDamageHUD, updateGapHUD, updateNitroHUD, updateHeatHUD, showHUD, destroyHUD, showLapOverlay } from './hud';
 import { runCountdown } from './countdown';
-import { initAudio, updateEngineAudio, playCheckpointSFX, playLapFanfare, playDriftSFX, playCollisionSFX, playPositionSFX, stopAudio } from './audio';
+import { initAudio, updateEngineAudio, playCheckpointSFX, playLapFanfare, playDriftSFX, playCollisionSFX, playPositionSFX, stopAudio, playNitroActivate, startNitroBurn, stopNitroBurn, updateNitroBurnIntensity, updateDepletionWarning, stopDepletionWarning, playNitroRelease } from './audio';
 import { AIRacer, OpponentInfo } from './ai-racer';
 import { initGarage, updateGarage, destroyGarage } from './garage';
 import { NetPeer } from './net-peer';
@@ -1930,15 +1930,25 @@ function gameLoop(timestamp: number) {
     }
     updateBoostFlame(s === GameState.RACING && G.playerVehicle.isNitroActive, G.playerVehicle.group.position, G.playerVehicle.heading, timestamp / 1000, G.playerVehicle.engineHeat);
 
-    // Nitrous activation shockwave (rising edge detection)
+    // Nitrous activation shockwave + SFX (rising edge detection)
     const isNitroNow = s === GameState.RACING && G.playerVehicle.isNitroActive;
     if (isNitroNow && !G._wasNitroActive) {
       triggerBoostShockwave(G.playerVehicle.group.position, G.playerVehicle.heading);
       triggerBoostBurst();
+      playNitroActivate();   // SFX 1: thump + air burst + metallic ping
+      startNitroBurn();      // SFX 2+3: sustained hiss + surge whistle
     }
-    // Backfire pops on nitro release (falling edge)
+    // Per-frame NOS audio updates (intensity scales with depletion)
+    if (isNitroNow) {
+      updateNitroBurnIntensity(G.playerVehicle.nitro);
+      updateDepletionWarning(G.playerVehicle.nitro);
+    }
+    // Backfire pops + NOS release SFX on nitro release (falling edge)
     if (!isNitroNow && G._wasNitroActive) {
       triggerBackfireSequence(G.playerVehicle.group.position, G.playerVehicle.heading);
+      stopNitroBurn();       // stop sustained hiss
+      stopDepletionWarning();
+      playNitroRelease();    // SFX 5: turbo flutter / blow-off
     }
     G._wasNitroActive = isNitroNow;
     updateBoostShockwave(frameDt);

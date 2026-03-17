@@ -75,7 +75,7 @@ export const RacingHUD = () => {
 
       <div classList={{ 'hud-boost': true, 'boost-active': isBoostActive() }} id="hud-boost">BOOST</div>
       
-      <div classList={{ 'hud-nitro': true, 'nitro-burning': isNitroActive() }} id="hud-nitro">
+      <div classList={{ 'hud-nitro': true, 'nitro-burning': isNitroActive(), 'nitro-depleting': isNitroActive() && nitroPct() < 15 }} id="hud-nitro">
         <div class="hud-nitro-label">{isNitroActive() ? '⚡ NITROUS' : 'NITROUS'}</div>
         <div class="hud-nitro-track">
           <div 
@@ -84,13 +84,22 @@ export const RacingHUD = () => {
             style={{ 
               width: `${Math.max(0, Math.min(100, nitroPct()))}%`,
               background: isNitroActive() 
-                ? 'linear-gradient(90deg, #00ccff, #4488ff, #8844ff)'
+                ? nitroPct() < 15
+                  ? 'linear-gradient(90deg, #ff2200, #ff4400, #ff0000)'
+                  : 'linear-gradient(90deg, #00ccff, #4488ff, #8844ff)'
                 : getNitroGradient(),
               "box-shadow": isNitroActive() 
-                ? '0 0 16px rgba(68, 136, 255, 0.9), 0 0 32px rgba(68, 136, 255, 0.4)'
+                ? nitroPct() < 15
+                  ? '0 0 20px rgba(255, 50, 50, 0.9), 0 0 40px rgba(255, 50, 50, 0.5), inset 0 0 8px rgba(255,100,100,0.3)'
+                  : '0 0 16px rgba(68, 136, 255, 0.9), 0 0 32px rgba(68, 136, 255, 0.4)'
                 : nitroPct() < 5 
                   ? '0 0 8px rgba(255, 50, 50, 0.6)' 
                   : 'none',
+              animation: isNitroActive() 
+                ? nitroPct() < 15
+                  ? 'nitro-deplete-pulse 0.15s infinite alternate'
+                  : 'nitro-burn-pulse 0.33s infinite alternate'
+                : 'none',
               transition: 'box-shadow 0.2s, background 0.3s',
             }}
           />
