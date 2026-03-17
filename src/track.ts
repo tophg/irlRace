@@ -1,8 +1,9 @@
 /* ── Hood Racer — Procedural Track Generator (v2 — Convex Hull + Elevation) ── */
 
 import * as THREE from 'three';
-import { Checkpoint, TrackData } from './types';
+import { Checkpoint, TrackData, RampDef } from './types';
 import { SplineBVH } from './bvh';
+import { buildRampGroup, placeRampsOnStraights } from './ramps';
 
 const ROAD_WIDTH = 14;
 const BARRIER_HEIGHT = 1.8;
@@ -26,6 +27,7 @@ export function generateTrack(seed?: number): TrackData {
 export function buildTrackFromControlPoints(
   points: { x: number; z: number }[],
   elevations?: number[],
+  ramps?: RampDef[],
 ): TrackData {
   if (points.length < 4) throw new Error('Need at least 4 control points');
 
@@ -85,7 +87,11 @@ export function buildTrackFromControlPoints(
   const sceneryGroup = generateScenery(finalSpline, rng);
   const bvh = new SplineBVH(finalSpline, 800);
 
-  return { spline: finalSpline, roadMesh, barrierLeft, barrierRight, shoulderMesh, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures };
+  // Build ramps from user definitions (or empty if none provided)
+  const rampDefs: RampDef[] = ramps ?? [];
+  const rampGroup = buildRampGroup(finalSpline, rampDefs);
+
+  return { spline: finalSpline, roadMesh, barrierLeft, barrierRight, shoulderMesh, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures, rampGroup, rampDefs };
 }
 
 interface TrackAttemptResult { data: TrackData; qualityScore: number }
@@ -137,10 +143,14 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   // ── 10. Build BVH for O(log N) nearest-point queries ──
   const bvh = new SplineBVH(finalSpline, 800);
 
+  // ── 7b. Place ramps on long straights ──
+  const rampDefs = placeRampsOnStraights(curvatures, speedProfile, totalLength, rng);
+  const rampGroup = buildRampGroup(finalSpline, rampDefs);
+
   // ── 11. Quality score ──
   const qualityScore = scoreTrack(curvatures, totalLength, speedProfile);
 
-  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, shoulderMesh, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures };
+  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, shoulderMesh, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures, rampGroup, rampDefs };
   return { data, qualityScore };
 }
 

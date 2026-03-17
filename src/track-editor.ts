@@ -8,7 +8,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { CustomTrackDef, TrackData } from './types';
+import { CustomTrackDef, TrackData, RampDef } from './types';
 import { buildTrackFromControlPoints } from './track';
 import { saveCustomTrack, loadCustomTracks, deleteCustomTrack, exportTrackJSON, importTrackJSON } from './track-storage';
 
@@ -39,7 +39,7 @@ let viewZ = 0;
 let viewScale = 2.5;
 
 // Elevation editing tool
-type EditorTool = 'layout' | 'elevation';
+type EditorTool = 'layout' | 'elevation' | 'ramp';
 let editorTool: EditorTool = 'layout';
 let elevDragStartY = 0;
 let elevDragStartVal = 0;
@@ -47,7 +47,14 @@ const ELEV_MIN = -5;
 const ELEV_MAX = 25;
 const ELEV_SENSITIVITY = 0.15; // world units per pixel
 let elevToolBtn: HTMLButtonElement | null = null;
+let rampToolBtn: HTMLButtonElement | null = null;
 let selectedIdx = -1; // for elevation profile interaction
+
+// Ramp data
+let editorRamps: RampDef[] = [];
+let rampDragIdx = -1;
+let rampDragStartY = 0;
+let rampDragStartHeight = 0;
 
 // 2D Interaction
 let dragIdx = -1;
@@ -135,6 +142,7 @@ export function showTrackEditor(
   editorTool = 'layout'; selectedIdx = -1;
   viewMode = 'split'; splitRatio = 0.45;
   flyThroughActive = false; lastTrackData = null;
+  editorRamps = []; rampDragIdx = -1;
 
   // ── Root flex container ──
   editorRoot = document.createElement('div');
@@ -228,7 +236,7 @@ export function compileEditorTrack(): TrackData | null {
   if (controlPoints.length < 4) return null;
   try {
     const elevations = controlPoints.map(p => p.y);
-    return buildTrackFromControlPoints(controlPoints, elevations);
+    return buildTrackFromControlPoints(controlPoints, elevations, editorRamps);
   } catch { return null; }
 }
 
@@ -344,13 +352,15 @@ function buildToolbar(container: HTMLElement) {
   editorToolbar.appendChild(btn('EXPORT', () => {
     if (controlPoints.length < 4) return;
     const elevations = controlPoints.map(p => p.y);
-    exportTrackJSON({ name: `Track_${Date.now()}`, controlPoints: [...controlPoints], elevations, createdAt: Date.now() });
+    exportTrackJSON({ name: `Track_${Date.now()}`, controlPoints: [...controlPoints], elevations, ramps: [...editorRamps], createdAt: Date.now() });
   }));
   editorToolbar.appendChild(btn('IMPORT', () => showImportDialog()));
   editorToolbar.appendChild(sep());
 
   elevToolBtn = btn('⛰️ ELEV', () => toggleElevationTool());
   editorToolbar.appendChild(elevToolBtn);
+  rampToolBtn = btn('🏔️ RAMP', () => toggleRampTool());
+  editorToolbar.appendChild(rampToolBtn);
   viewModeBtn = btn('◫ SPLIT', () => cycleViewMode());
   editorToolbar.appendChild(viewModeBtn);
   editorToolbar.appendChild(btn('🎥 FLY', () => startFlyThrough()));
@@ -403,18 +413,32 @@ function btn(label: string, onClick: () => void, accent = false): HTMLButtonElem
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function toggleElevationTool() {
-  editorTool = editorTool === 'layout' ? 'elevation' : 'layout';
-  updateElevToolBtn();
+  editorTool = editorTool === 'elevation' ? 'layout' : 'elevation';
+  updateToolBtns();
   if (editorCanvas) editorCanvas.style.cursor = editorTool === 'elevation' ? 'ns-resize' : 'crosshair';
   draw();
 }
 
-function updateElevToolBtn() {
-  if (!elevToolBtn) return;
-  const active = editorTool === 'elevation';
-  elevToolBtn.style.background = active ? 'rgba(255,102,0,0.35)' : 'rgba(255,255,255,0.04)';
-  elevToolBtn.style.color = active ? '#ff8833' : '#bbb';
-  elevToolBtn.style.borderColor = active ? '#ff6600' : 'rgba(255,255,255,0.18)';
+function toggleRampTool() {
+  editorTool = editorTool === 'ramp' ? 'layout' : 'ramp';
+  updateToolBtns();
+  if (editorCanvas) editorCanvas.style.cursor = editorTool === 'ramp' ? 'crosshair' : 'crosshair';
+  draw();
+}
+
+function updateToolBtns() {
+  if (elevToolBtn) {
+    const active = editorTool === 'elevation';
+    elevToolBtn.style.background = active ? 'rgba(255,102,0,0.35)' : 'rgba(255,255,255,0.04)';
+    elevToolBtn.style.color = active ? '#ff8833' : '#bbb';
+    elevToolBtn.style.borderColor = active ? '#ff6600' : 'rgba(255,255,255,0.18)';
+  }
+  if (rampToolBtn) {
+    const active = editorTool === 'ramp';
+    rampToolBtn.style.background = active ? 'rgba(255,102,0,0.35)' : 'rgba(255,255,255,0.04)';
+    rampToolBtn.style.color = active ? '#ff8833' : '#bbb';
+    rampToolBtn.style.borderColor = active ? '#ff6600' : 'rgba(255,255,255,0.18)';
+  }
 }
 
 function showSaveDialog() {
@@ -422,7 +446,7 @@ function showSaveDialog() {
   const name = prompt('Track name:');
   if (!name) return;
   const elevations = controlPoints.map(p => p.y);
-  saveCustomTrack({ name, controlPoints: [...controlPoints], elevations, createdAt: Date.now() });
+  saveCustomTrack({ name, controlPoints: [...controlPoints], elevations, ramps: [...editorRamps], createdAt: Date.now() });
   showToast(`Saved "${name}"`);
 }
 
@@ -440,6 +464,7 @@ function showLoadDialog() {
     const loadBtn = btn(t.name, () => {
       pushUndo();
       controlPoints = t.controlPoints.map((p, i) => ({ x: p.x, z: p.z, y: t.elevations?.[i] ?? 0 }));
+      editorRamps = t.ramps ? [...t.ramps] : [];
       redoStack = [];
       scheduleRebuild(); draw(); overlay.remove(); showToast(`Loaded "${t.name}"`);
     });
@@ -465,7 +490,7 @@ function showImportDialog() {
     const reader = new FileReader();
     reader.onload = () => {
       const def = importTrackJSON(reader.result as string);
-      if (def) { pushUndo(); controlPoints = def.controlPoints.map((p, i) => ({ ...p, y: def.elevations?.[i] ?? (p as any).y ?? 0 })); redoStack = []; scheduleRebuild(); draw(); showToast(`Imported "${def.name}"`); }
+      if (def) { pushUndo(); controlPoints = def.controlPoints.map((p, i) => ({ ...p, y: def.elevations?.[i] ?? (p as any).y ?? 0 })); editorRamps = def.ramps ? [...def.ramps] : []; redoStack = []; scheduleRebuild(); draw(); showToast(`Imported "${def.name}"`); }
       else showToast('Invalid track file!');
     };
     reader.readAsText(file);
@@ -520,6 +545,37 @@ function findPointAt(sx: number, sy: number): number {
   return -1;
 }
 
+/** Find which ramp marker the cursor is near (returns index or -1). */
+function findRampAt(sx: number, sy: number): number {
+  if (controlPoints.length < 4) return -1;
+  const pts3D = controlPoints.map(p => new THREE.Vector3(p.x, 0, p.z));
+  const spline = new THREE.CatmullRomCurve3(pts3D, true, 'centripetal', 0.5);
+  for (let i = 0; i < editorRamps.length; i++) {
+    const pt = spline.getPointAt(editorRamps[i].t);
+    const [rx, ry] = worldToScreen(pt.x, pt.z);
+    const dx = sx - rx, dy = sy - ry;
+    if (dx * dx + dy * dy < 15 * 15) return i;
+  }
+  return -1;
+}
+
+/** Find the closest spline t parameter for a world XZ position. */
+function closestSplineT(wx: number, wz: number): number {
+  if (controlPoints.length < 4) return 0;
+  const pts3D = controlPoints.map(p => new THREE.Vector3(p.x, 0, p.z));
+  const spline = new THREE.CatmullRomCurve3(pts3D, true, 'centripetal', 0.5);
+  let bestT = 0, bestDist = Infinity;
+  const steps = 200;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const pt = spline.getPointAt(t);
+    const dx = wx - pt.x, dz = wz - pt.z;
+    const d = dx * dx + dz * dz;
+    if (d < bestDist) { bestDist = d; bestT = t; }
+  }
+  return bestT;
+}
+
 function canvasLocalXY(e: MouseEvent): [number, number] {
   if (!editorCanvas) return [e.clientX, e.clientY];
   const rect = editorCanvas.getBoundingClientRect();
@@ -536,6 +592,25 @@ function onMouseDown(e: MouseEvent) {
     return;
   }
   if (e.button === 0) {
+    // Ramp tool: click to place or drag to adjust
+    if (editorTool === 'ramp') {
+      const ri = findRampAt(lx, ly);
+      if (ri >= 0) {
+        // Start dragging existing ramp height
+        rampDragIdx = ri;
+        rampDragStartY = ly;
+        rampDragStartHeight = editorRamps[ri].height;
+        if (editorCanvas) editorCanvas.style.cursor = 'ns-resize';
+      } else if (controlPoints.length >= 4) {
+        // Place new ramp at nearest spline position
+        const [wx, wz] = screenToWorld(lx, ly);
+        const t = closestSplineT(wx, wz);
+        editorRamps.push({ t, length: 20, height: 3, flatTop: 0.25, side: 'full' });
+        scheduleRebuild(); draw();
+      }
+      return;
+    }
+
     const idx = findPointAt(lx, ly);
     if (idx >= 0) {
       pushUndo(); dragIdx = idx;
@@ -571,6 +646,12 @@ function onMouseMove(e: MouseEvent) {
     controlPoints[dragIdx].x = wx; controlPoints[dragIdx].z = wz;
     scheduleRebuild(); draw(); return;
   }
+  // Ramp height drag
+  if (rampDragIdx >= 0) {
+    const dy = rampDragStartY - ly;
+    editorRamps[rampDragIdx].height = Math.max(1, Math.min(8, rampDragStartHeight + dy * 0.08));
+    scheduleRebuild(); draw(); return;
+  }
   const newHover = findPointAt(lx, ly);
   if (newHover !== hoverIdx) {
     hoverIdx = newHover;
@@ -582,11 +663,18 @@ function onMouseMove(e: MouseEvent) {
 function onMouseUp() {
   if (isPanning) { isPanning = false; if (editorCanvas) editorCanvas.style.cursor = 'crosshair'; return; }
   if (dragIdx >= 0) { dragIdx = -1; if (editorCanvas) editorCanvas.style.cursor = 'crosshair'; }
+  if (rampDragIdx >= 0) { rampDragIdx = -1; if (editorCanvas) editorCanvas.style.cursor = 'crosshair'; }
 }
 
 function onContextMenu(e: MouseEvent) {
   e.preventDefault();
   const [lx, ly] = canvasLocalXY(e);
+  // Ramp tool: right-click deletes ramps
+  if (editorTool === 'ramp') {
+    const ri = findRampAt(lx, ly);
+    if (ri >= 0) { editorRamps.splice(ri, 1); scheduleRebuild(); draw(); }
+    return;
+  }
   const idx = findPointAt(lx, ly);
   if (idx >= 0) { pushUndo(); controlPoints.splice(idx, 1); scheduleRebuild(); draw(); }
 }
@@ -709,6 +797,40 @@ function draw() {
     ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.font = '14px Inter, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('Click to place control points (min. 4)', w / 2, h / 2 - 11);
     ctx.fillText('Right-click to delete · Scroll to zoom · Alt+drag to pan', w / 2, h / 2 + 11);
+  }
+
+  // ── Ramp Markers ──
+  if (controlPoints.length >= 4 && editorRamps.length > 0) {
+    const pts3D = controlPoints.map(p => new THREE.Vector3(p.x, 0, p.z));
+    const spline = new THREE.CatmullRomCurve3(pts3D, true, 'centripetal', 0.5);
+    for (let i = 0; i < editorRamps.length; i++) {
+      const ramp = editorRamps[i];
+      const pt = spline.getPointAt(ramp.t);
+      const [rx, ry] = worldToScreen(pt.x, pt.z);
+      const isDragging = i === rampDragIdx;
+
+      // Diamond marker
+      const sz = isDragging ? 12 : 9;
+      ctx.save();
+      ctx.translate(rx, ry);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = isDragging ? '#ff6600' : '#ff8800';
+      ctx.fillRect(-sz / 2, -sz / 2, sz, sz);
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(-sz / 2, -sz / 2, sz, sz);
+      ctx.restore();
+
+      // Height label
+      ctx.fillStyle = '#ff8800'; ctx.font = 'bold 10px Inter, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(`🏔️ h:${ramp.height.toFixed(1)}`, rx, ry - 16);
+    }
+  }
+
+  // Ramp tool hint
+  if (editorTool === 'ramp' && controlPoints.length >= 4) {
+    ctx.fillStyle = 'rgba(255,136,0,0.7)'; ctx.font = '12px Inter, sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('🏔️ Click track to place ramp · Drag to adjust height · Right-click to delete', 12, h - 12);
   }
 
   // ── Elevation Profile Strip ──

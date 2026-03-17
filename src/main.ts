@@ -372,6 +372,7 @@ async function startRace() {
     scene.add(trackData.shoulderMesh);
     scene.add(trackData.kerbGroup);
     scene.add(trackData.sceneryGroup);
+    scene.add(trackData.rampGroup);
 
     G.checkpointMarkers = buildCheckpointMarkers(trackData.checkpoints);
     scene.add(G.checkpointMarkers);
@@ -389,7 +390,7 @@ async function startRace() {
     const paintHue = getSettings().paintHue;
     if (paintHue >= 0) G.playerVehicle.setPaintColor(paintHue);
     scene.add(G.playerVehicle.group);
-    G.playerVehicle.setRoadMesh(trackData.roadMesh);
+    G.playerVehicle.setRoadMesh(trackData.roadMesh, [trackData.rampGroup]);
     G.playerVehicle.placeOnTrack(trackData.spline, 0, -3.5);
     G._playerUnderglow = createUnderglow(G.playerVehicle.group, 0);
     // G._playerBrakeDiscs = createBrakeDiscs(G.playerVehicle.group.children[0] as THREE.Group); // DISABLED
@@ -578,7 +579,7 @@ async function spawnAI(td: TrackData) {
       ai.vehicle.setModel(model, renderer, camera, scene);
     } catch {}
 
-    ai.vehicle.setRoadMesh(G.trackData!.roadMesh);
+    ai.vehicle.setRoadMesh(G.trackData!.roadMesh, [G.trackData!.rampGroup]);
     ai.place(G.trackData!.spline, startTs[i] ?? 0.02, laneOffsets[i] ?? 0, G.trackData!.bvh);
     ai.setSpeedProfile(G.trackData!.speedProfile);
     scene.add(ai.vehicle.group);
@@ -691,12 +692,14 @@ function clearRaceObjects() {
     scene.remove(G.trackData.shoulderMesh);
     scene.remove(G.trackData.kerbGroup);
     scene.remove(G.trackData.sceneryGroup);
+    scene.remove(G.trackData.rampGroup);
     disposeMesh(G.trackData.roadMesh);
     disposeMesh(G.trackData.barrierLeft);
     disposeMesh(G.trackData.barrierRight);
     disposeMesh(G.trackData.shoulderMesh);
     disposeMesh(G.trackData.kerbGroup);
     disposeMesh(G.trackData.sceneryGroup);
+    disposeMesh(G.trackData.rampGroup);
     G.trackData = null;
   }
   if (G.checkpointMarkers) {

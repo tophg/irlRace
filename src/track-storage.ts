@@ -59,6 +59,7 @@ export function importTrackJSON(json: string): CustomTrackDef | null {
       name: obj.name,
       controlPoints: obj.controlPoints,
       elevations: Array.isArray(obj.elevations) ? obj.elevations : undefined,
+      ramps: Array.isArray(obj.ramps) ? obj.ramps : undefined,
       createdAt: obj.createdAt || Date.now(),
     };
   } catch {

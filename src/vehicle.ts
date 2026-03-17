@@ -172,6 +172,7 @@ export class Vehicle {
 
   // Road-mesh raycast state
   private roadMesh: THREE.Mesh | null = null;
+  private _extraRayTargets: THREE.Object3D[] = []; // ramp meshes etc.
   private raycaster = new THREE.Raycaster();
   private _roadPitch = 0;
   private _roadRoll = 0;
@@ -362,12 +363,13 @@ export class Vehicle {
     });
   }
 
-  /** Set the road mesh used for per-wheel raycasting. */
-  setRoadMesh(mesh: THREE.Mesh) {
+  /** Set the road mesh used for per-wheel raycasting. Additional targets (ramp meshes) are also raycasted. */
+  setRoadMesh(mesh: THREE.Mesh, extraTargets?: THREE.Object3D[]) {
     this.roadMesh = mesh;
+    this._extraRayTargets = extraTargets ?? [];
   }
 
-  /** Cast a single ray downward from a wheel's world position and return the hit Y, or null. */
+  /** Cast a single ray downward from a wheel's world position and return the highest hit Y, or null. */
   private castWheelRay(sinH: number, cosH: number, localX: number, localZ: number): number | null {
     if (!this.roadMesh) return null;
     const wx = this.group.position.x + cosH * localX + sinH * localZ;
@@ -375,8 +377,20 @@ export class Vehicle {
     _rayOrigin.set(wx, this.group.position.y + 15, wz);
     this.raycaster.set(_rayOrigin, _rayDown);
     this.raycaster.far = 30;
+
+    // Raycast road mesh
     const hits = this.raycaster.intersectObject(this.roadMesh, false);
-    return hits.length > 0 ? hits[0].point.y : null;
+    let bestY: number | null = hits.length > 0 ? hits[0].point.y : null;
+
+    // Raycast extra targets (ramps) — take highest hit Y
+    for (const target of this._extraRayTargets) {
+      const extraHits = this.raycaster.intersectObject(target, true);
+      if (extraHits.length > 0) {
+        const y = extraHits[0].point.y;
+        if (bestY === null || y > bestY) bestY = y;
+      }
+    }
+    return bestY;
   }
 
   private buildWheels() {

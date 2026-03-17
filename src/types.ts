@@ -107,6 +107,17 @@ export interface TrackData {
   bvh: SplineBVH;
   speedProfile: number[];
   curvatures: number[];
+  rampGroup: THREE.Group;
+  rampDefs: RampDef[];
+}
+
+// ── Ramps ──
+export interface RampDef {
+  t: number;       // spline position (0-1)
+  length: number;  // world units along spline
+  height: number;  // peak height above road
+  flatTop: number; // fraction of length that's flat at peak (0-0.5)
+  side: 'full' | 'left' | 'right'; // full-width or half-ramp
 }
 
 // ── Custom Track (user-created in editor) ──
@@ -114,6 +125,7 @@ export interface CustomTrackDef {
   name: string;
   controlPoints: { x: number; z: number }[];
   elevations?: number[];
+  ramps?: RampDef[];
   createdAt: number;
 }
 
