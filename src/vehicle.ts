@@ -411,27 +411,10 @@ export class Vehicle {
     beamR.position.set(hlRPos[0], hlRPos[1] - 0.5, hlRPos[2] + beamLen / 2);
     this.bodyGroup.add(beamR);
 
-    // ── Taillight decals (flat planes flush on rear face, facing -Z) ──
-    const tlGeo = new THREE.PlaneGeometry(tlSize[0], tlSize[1]);
-
-    this.taillightMatL = new THREE.MeshStandardMaterial({
-      color: 0xff1111,
-      emissive: 0xff2200,
-      emissiveIntensity: 0.6,
-      roughness: 0.1,
-      metalness: 0.0,
-    });
-    this.taillightMatR = this.taillightMatL.clone();
-
-    const tlL = new THREE.Mesh(tlGeo, this.taillightMatL);
-    tlL.position.set(tlLPos[0], tlLPos[1], tlLPos[2] - 0.01);
-    tlL.rotation.y = Math.PI; // face backward (-Z)
-    this.bodyGroup.add(tlL);
-
-    const tlR = new THREE.Mesh(tlGeo, this.taillightMatR);
-    tlR.position.set(tlRPos[0], tlRPos[1], tlRPos[2] - 0.01);
-    tlR.rotation.y = Math.PI;
-    this.bodyGroup.add(tlR);
+    // ── Taillight decals — DISABLED ──
+    // const tlGeo = new THREE.PlaneGeometry(tlSize[0], tlSize[1]);
+    // this.taillightMatL = new THREE.MeshStandardMaterial({ ... });
+    // (brake lights temporarily removed)
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -902,12 +885,12 @@ export class Vehicle {
       if (this.wheelRR?.children[0]) this.wheelRR.children[0].rotation.x = this.wheelSpin;
     }
 
-    // ── Brake light intensity ──
-    if (this.taillightMatL && this.taillightMatR) {
-      const brakeGlow = this.brake > 0 ? 5.0 : 1.5;
-      this.taillightMatL.emissiveIntensity = brakeGlow;
-      this.taillightMatR.emissiveIntensity = brakeGlow;
-    }
+    // ── Brake light intensity — DISABLED ──
+    // if (this.taillightMatL && this.taillightMatR) {
+    //   const brakeGlow = this.brake > 0 ? 5.0 : 1.5;
+    //   this.taillightMatL.emissiveIntensity = brakeGlow;
+    //   this.taillightMatR.emissiveIntensity = brakeGlow;
+    // }
   }
 
   /** Add nitro from external source (slipstream, near-miss). */

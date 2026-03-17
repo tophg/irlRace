@@ -27,7 +27,7 @@ import {
   initSkidMarks, updateSkidMarks, destroySkidMarks, updateSkidGlowTime,
   spawnFlameParticle,
   spawnDamageZoneSmoke,
-  initWindshieldCracks, updateWindshieldCracks, resetWindshieldCracks,
+
   initRainDroplets, updateRainDroplets,
   initImpactFlash, triggerImpactFlash, updateImpactFlash,
   createUnderglow, updateUnderglow,
@@ -388,7 +388,7 @@ async function startRace() {
     G.playerVehicle.setRoadMesh(trackData.roadMesh);
     G.playerVehicle.placeOnTrack(trackData.spline, 0, -3.5);
     G._playerUnderglow = createUnderglow(G.playerVehicle.group, 0);
-    G._playerBrakeDiscs = createBrakeDiscs(G.playerVehicle.group.children[0] as THREE.Group);
+    // G._playerBrakeDiscs = createBrakeDiscs(G.playerVehicle.group.children[0] as THREE.Group); // DISABLED
     G.raceEngine.addRacer('local');
 
     G.vehicleCamera = new VehicleCamera(camera);
@@ -397,7 +397,7 @@ async function startRace() {
     initBoostFlame(scene);
     initSpeedLines(container);
     initSkidMarks(scene);
-    initWindshieldCracks(container);
+
     initRainDroplets(container);
     initImpactFlash(container);
     initBoostShockwave(scene);
@@ -742,7 +742,7 @@ function clearRaceObjects() {
   // Clean up VFX (smoke, speed lines, boost flame, skid marks, cracks)
   G._leftTireBlown = false;
   G._rightTireBlown = false;
-  resetWindshieldCracks();
+
   destroyVFX();
   destroySkidMarks();
   destroyGPUParticles();
@@ -1521,9 +1521,7 @@ function gameLoop(timestamp: number) {
         }
       }
 
-      // ── Windshield cracks (frontal damage) ──
-      const frontSeverity = 1 - G.playerVehicle.damage.front.hp / 100;
-      updateWindshieldCracks(frontSeverity);
+
 
       // ── Tire blowout (side zone destruction) ──
       const leftHP = G.playerVehicle.damage.left.hp;
@@ -1641,10 +1639,10 @@ function gameLoop(timestamp: number) {
     }
     G._prevSpeedRatio = currentSpeedRatio;
 
-    // Brake disc glow
-    if (G._playerBrakeDiscs) {
-      updateBrakeDiscs(G._playerBrakeDiscs, G.playerVehicle.brake, G.playerVehicle.speed, frameDt, G.selectedCar.maxSpeed, G.playerVehicle.group.position);
-    }
+    // Brake disc glow — DISABLED
+    // if (G._playerBrakeDiscs) {
+    //   updateBrakeDiscs(G._playerBrakeDiscs, G.playerVehicle.brake, G.playerVehicle.speed, frameDt, G.selectedCar.maxSpeed, G.playerVehicle.group.position);
+    // }
 
     // Shoulder dust (near barriers = near road edge)
     if (G.playerVehicle.lastBarrierImpact && Math.abs(G.playerVehicle.speed) > 8) {

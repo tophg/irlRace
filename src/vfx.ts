@@ -952,127 +952,7 @@ export function spawnDamageZoneSmoke(pos: THREE.Vector3, severity: number, dt: n
   activeSmoke.push({ mesh, velocity: vel, life: 0.6 + severity * 0.4, maxLife: 1.0 });
 }
 
-// ── Windshield Crack Overlay (canvas-based fracture pattern) ──
 
-let crackCanvas: HTMLCanvasElement | null = null;
-let crackCtx: CanvasRenderingContext2D | null = null;
-let crackResizeHandler: (() => void) | null = null;
-let crackSeverity = 0; // 0 = none, 1 = fully shattered
-let cracksDrawn = 0;   // number of crack lines already rendered
-
-// Seed for deterministic-looking cracks
-const crackSeeds: Array<{ angle: number; len: number; branches: number }> = [];
-
-export function initWindshieldCracks(container: HTMLElement) {
-  crackCanvas = document.createElement('canvas');
-  crackCanvas.style.cssText = `
-    position:fixed;top:0;left:0;width:100%;height:100%;
-    pointer-events:none;z-index:12;opacity:0;
-  `;
-  crackCanvas.width = window.innerWidth;
-  crackCanvas.height = window.innerHeight;
-  container.appendChild(crackCanvas);
-  crackCtx = crackCanvas.getContext('2d')!;
-  crackSeverity = 0;
-  cracksDrawn = 0;
-  crackSeeds.length = 0;
-
-  crackResizeHandler = () => {
-    if (crackCanvas) {
-      crackCanvas.width = window.innerWidth;
-      crackCanvas.height = window.innerHeight;
-      // Redraw existing cracks after resize
-      if (crackSeverity > 0) redrawCracks();
-    }
-  };
-  window.addEventListener('resize', crackResizeHandler);
-}
-
-function redrawCracks() {
-  if (!crackCtx || !crackCanvas) return;
-  const ctx = crackCtx;
-  const w = crackCanvas.width;
-  const h = crackCanvas.height;
-  ctx.clearRect(0, 0, w, h);
-
-  // Impact center (slightly offset from dead center for realism)
-  const cx = w * 0.5 + w * 0.05;
-  const cy = h * 0.35;
-
-  for (const seed of crackSeeds) {
-    drawCrackLine(ctx, cx, cy, seed.angle, seed.len * Math.min(w, h), seed.branches);
-  }
-}
-
-function drawCrackLine(
-  ctx: CanvasRenderingContext2D,
-  x: number, y: number,
-  angle: number, length: number,
-  branches: number,
-) {
-  ctx.beginPath();
-  ctx.moveTo(x, y);
-
-  let cx = x;
-  let cy = y;
-  const segments = Math.floor(length / 8);
-  const segLen = length / segments;
-
-  for (let i = 0; i < segments; i++) {
-    // Add slight random wobble to crack path
-    const wobble = (Math.random() - 0.5) * 0.3;
-    const a = angle + wobble;
-    cx += Math.cos(a) * segLen;
-    cy += Math.sin(a) * segLen;
-    ctx.lineTo(cx, cy);
-
-    // Branch off sub-cracks
-    if (branches > 0 && i > 2 && Math.random() < 0.3) {
-      const branchAngle = angle + (Math.random() - 0.5) * 1.2;
-      const branchLen = (length - i * segLen) * 0.4;
-      drawCrackLine(ctx, cx, cy, branchAngle, branchLen, branches - 1);
-    }
-  }
-
-  // Thicker lines for main cracks, thinner for branches
-  ctx.strokeStyle = `rgba(255, 255, 255, ${0.5 + (3 - branches) * 0.15})`;
-  ctx.lineWidth = Math.max(0.5, 2.5 - (3 - branches) * 0.7);
-  ctx.stroke();
-}
-
-/**
- * Add windshield cracks based on frontal damage severity.
- * @param severity — 0..1 (1 = front zone at 0 HP)
- */
-export function updateWindshieldCracks(severity: number) {
-  if (!crackCanvas || !crackCtx) return;
-  if (severity <= 0.3) return; // No cracks below 30% damage
-
-  crackSeverity = severity;
-  crackCanvas.style.opacity = Math.min(severity * 1.2, 0.85).toString();
-
-  // Add new cracks progressively
-  const targetCracks = Math.floor(severity * 12); // up to 12 main crack lines
-  while (cracksDrawn < targetCracks) {
-    crackSeeds.push({
-      angle: Math.random() * Math.PI * 2,
-      len: 0.15 + Math.random() * 0.25, // 15-40% of screen
-      branches: 2 + Math.floor(Math.random() * 2),
-    });
-    cracksDrawn++;
-  }
-
-  redrawCracks();
-}
-
-/** Reset windshield cracks (between races). */
-export function resetWindshieldCracks() {
-  crackSeverity = 0;
-  cracksDrawn = 0;
-  crackSeeds.length = 0;
-  if (crackCanvas) crackCanvas.style.opacity = '0';
-  if (crackCtx && crackCanvas) crackCtx.clearRect(0, 0, crackCanvas.width, crackCanvas.height);
-}
 
 // ── Tire Blowout VFX ──
 
@@ -2781,17 +2661,7 @@ export function destroyVFX() {
   boostLightR = null;
   boostFlameScene = null;
 
-  // Remove windshield crack overlay
-  resetWindshieldCracks();
-  if (crackResizeHandler) {
-    window.removeEventListener('resize', crackResizeHandler);
-    crackResizeHandler = null;
-  }
-  if (crackCanvas) {
-    crackCanvas.remove();
-    crackCanvas = null;
-    crackCtx = null;
-  }
+
 
   // Remove rain droplets overlay
   screenDroplets.length = 0;
