@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import { attribute, float, vec4, mul, max, sub, clamp, mix, uniform as tslUniform } from 'three/tsl';
-import { spawnGPUSparks } from './gpu-particles';
+import { spawnGPUSparks, spawnGPUBackfire } from './gpu-particles';
 
 // ── Tire Smoke Pool ──
 const SMOKE_POOL_SIZE = 60;
@@ -441,11 +441,24 @@ export function triggerBoostBurst() {
   boostBurstScale = 3.0;
 }
 
+/** Fire 3 rapid backfire pops on nitro deactivation (falling edge). */
+export function triggerBackfireSequence(carPos: THREE.Vector3, heading: number) {
+  const fire = (delay: number) => {
+    setTimeout(() => {
+      spawnGPUBackfire(carPos.clone(), heading);
+    }, delay);
+  };
+  fire(0);
+  fire(80);
+  fire(180);
+}
+
 export function updateBoostFlame(
   active: boolean,
   carPos: THREE.Vector3,
   heading: number,
   time: number,
+  engineHeat = 0,
 ) {
   if (!boostFlameL || !boostFlameR) return;
 
@@ -510,7 +523,7 @@ export function updateBoostFlame(
     boostGlowR.scale.set(glowFlicker, glowFlicker, glowFlicker);
   }
 
-  // ── Layer 3: Ground Glow — pulsing circles on road surface ──
+  // ── Layer 3: Ground Glow — pulsing circles, color shifts with heat ──
   if (boostGroundL && boostGroundR) {
     boostGroundL.position.set(lx, carPos.y + 0.03, lz);
     boostGroundR.position.set(rx, carPos.y + 0.03, rz);
@@ -523,22 +536,32 @@ export function updateBoostFlame(
     const groundMatR = boostGroundR.material as THREE.MeshBasicMaterial;
     groundMatL.opacity = 0.25 * groundPulse;
     groundMatR.opacity = 0.25 * groundPulse;
-    groundMatL.color.setRGB(0.2, 0.5, 1.0);
-    groundMatR.color.setRGB(0.2, 0.5, 1.0);
+
+    // Heat-responsive ground glow color: blue → purple → orange
+    const heatT = Math.min(engineHeat / 100, 1);
+    const gr = 0.2 + heatT * 0.8;  // 0.2 → 1.0
+    const gg = 0.5 - heatT * 0.3;  // 0.5 → 0.2
+    const gb = 1.0 - heatT * 0.8;  // 1.0 → 0.2
+    groundMatL.color.setRGB(gr, gg, gb);
+    groundMatR.color.setRGB(gr, gg, gb);
   }
 
-  // ── SpotLights — aimed downward at road, nitrous blue ──
+  // ── SpotLights — aimed downward, color shifts with heat ──
+  const heatT = Math.min(engineHeat / 100, 1);
+  const lr = 0.2 + heatT * 0.8;
+  const lg = 0.5 - heatT * 0.3;
+  const lb = 1.0 - heatT * 0.8;
   if (boostLightL) {
     boostLightL.position.set(lx, ly + 0.3, lz);
     boostLightL.target.position.set(lx, carPos.y - 0.5, lz);
-    boostLightL.color.setRGB(0.2, 0.5, 1.0);
-    boostLightL.intensity = 5 * coreFlicker;
+    boostLightL.color.setRGB(lr, lg, lb);
+    boostLightL.intensity = (5 + engineHeat * 0.05) * coreFlicker;
   }
   if (boostLightR) {
     boostLightR.position.set(rx, ry + 0.3, rz);
     boostLightR.target.position.set(rx, carPos.y - 0.5, rz);
-    boostLightR.color.setRGB(0.2, 0.5, 1.0);
-    boostLightR.intensity = 5 * coreFlicker;
+    boostLightR.color.setRGB(lr, lg, lb);
+    boostLightR.intensity = (5 + engineHeat * 0.05) * coreFlicker;
   }
 }
 
@@ -2031,18 +2054,25 @@ export function initHeatShimmer(container: HTMLElement) {
 
 /**
  * Update heat shimmer overlay. Draws wavering distortion lines.
+ * Now nitro-aware: activates earlier during nitro and shows orange tint at high heat.
  * @param speedRatio — 0..1 current speed / max speed
+ * @param isNitro — whether nitro is currently active
+ * @param engineHeat — 0-100 engine temperature
  */
-export function updateHeatShimmer(speedRatio: number) {
+export function updateHeatShimmer(speedRatio: number, isNitro = false, engineHeat = 0) {
   if (!shimmerCanvas || !shimmerCtx) return;
 
-  if (speedRatio < 0.5) {
+  const threshold = isNitro ? 0.2 : 0.5;
+  if (speedRatio < threshold && engineHeat < 50) {
     shimmerCanvas.style.opacity = '0';
     return;
   }
 
-  const intensity = (speedRatio - 0.5) * 2; // 0..1 over top half of speed
-  shimmerCanvas.style.opacity = (intensity * 0.15).toString();
+  const baseIntensity = speedRatio >= threshold ? (speedRatio - threshold) / (1 - threshold) : 0;
+  const heatIntensity = Math.max(0, (engineHeat - 40) / 60); // 0 at 40, 1 at 100
+  const intensity = Math.min(1, Math.max(baseIntensity, heatIntensity));
+  const maxOpacity = isNitro ? 0.35 : 0.15;
+  shimmerCanvas.style.opacity = (intensity * maxOpacity).toString();
 
   const ctx = shimmerCtx;
   const w = shimmerCanvas.width;
@@ -2053,6 +2083,7 @@ export function updateHeatShimmer(speedRatio: number) {
   const lineCount = 8 + Math.floor(intensity * 12);
   const cx = w / 2;
   const bottomY = h * 0.75;
+  const spread = isNitro ? 200 : 120; // wider during nitro
 
   for (let i = 0; i < lineCount; i++) {
     const y = bottomY - i * (h * 0.05);
@@ -2060,12 +2091,17 @@ export function updateHeatShimmer(speedRatio: number) {
     const freq = 0.02 + i * 0.005;
 
     ctx.beginPath();
-    ctx.moveTo(cx - 120, y);
-    for (let x = cx - 120; x < cx + 120; x += 4) {
+    ctx.moveTo(cx - spread, y);
+    for (let x = cx - spread; x < cx + spread; x += 4) {
       const waveY = y + Math.sin(x * freq + time + i * 1.3) * amplitude;
       ctx.lineTo(x, waveY);
     }
-    ctx.strokeStyle = `rgba(255, 245, 220, ${0.06 * (1 - i / lineCount)})`;
+    // Orange tint at high heat, warm white normally
+    const heatTint = Math.min(engineHeat / 100, 1);
+    const r = 255;
+    const g = Math.floor(245 - heatTint * 100);
+    const b = Math.floor(220 - heatTint * 180);
+    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${0.06 * (1 - i / lineCount)})`;
     ctx.lineWidth = 2 + intensity * 2;
     ctx.stroke();
   }

@@ -32,7 +32,7 @@ import {
   initImpactFlash, triggerImpactFlash, updateImpactFlash,
   createUnderglow, updateUnderglow,
   initBoostShockwave, triggerBoostShockwave, updateBoostShockwave,
-  initNitroFlash, triggerBoostBurst,
+  initNitroFlash, triggerBoostBurst, triggerBackfireSequence,
   createBrakeDiscs, updateBrakeDiscs,
   initHeatShimmer, updateHeatShimmer,
   initLensFlares, updateLensFlares,
@@ -1565,13 +1565,17 @@ function gameLoop(timestamp: number) {
     if (G._playerUnderglow) {
       updateUnderglow(G._playerUnderglow, G.playerVehicle.speed, timestamp / 1000, G.playerVehicle.isNitroActive);
     }
-    updateBoostFlame(s === GameState.RACING && G.playerVehicle.isNitroActive, G.playerVehicle.group.position, G.playerVehicle.heading, timestamp / 1000);
+    updateBoostFlame(s === GameState.RACING && G.playerVehicle.isNitroActive, G.playerVehicle.group.position, G.playerVehicle.heading, timestamp / 1000, G.playerVehicle.engineHeat);
 
     // Nitrous activation shockwave (rising edge detection)
     const isNitroNow = s === GameState.RACING && G.playerVehicle.isNitroActive;
     if (isNitroNow && !G._wasNitroActive) {
       triggerBoostShockwave(G.playerVehicle.group.position, G.playerVehicle.heading);
       triggerBoostBurst();
+    }
+    // Backfire pops on nitro release (falling edge)
+    if (!isNitroNow && G._wasNitroActive) {
+      triggerBackfireSequence(G.playerVehicle.group.position, G.playerVehicle.heading);
     }
     G._wasNitroActive = isNitroNow;
     updateBoostShockwave(frameDt);
@@ -1582,9 +1586,28 @@ function gameLoop(timestamp: number) {
     camera.fov += (targetFOV - camera.fov) * (1 - Math.exp(-(isNitroNow ? 12 : 5) * frameDt));
     camera.updateProjectionMatrix();
 
-    // Nitro exhaust trail (fire particles during boost)
+    // Camera micro-shake during nitro burn (Perlin-noise sinusoids)
+    if (isNitroNow) {
+      const t = timestamp / 1000;
+      camera.position.x += Math.sin(t * 47) * 0.012 + Math.sin(t * 73) * 0.008;
+      camera.position.y += Math.sin(t * 53) * 0.006;
+    }
+    // Heavy shake on engine explosion (decaying)
+    if (G.playerVehicle.engineDead) {
+      const shakeDecay = G.playerVehicle.engineJustExploded ? 0.15 : 0.03;
+      const t = timestamp / 1000;
+      camera.position.x += Math.sin(t * 90) * shakeDecay;
+      camera.position.y += Math.sin(t * 110) * shakeDecay * 0.7;
+    }
+
+    // Nitro exhaust trail (fire particles during boost — doubled density for richness)
     if (s === GameState.RACING && G.playerVehicle.isNitroActive) {
       spawnGPUNitroTrail(G.playerVehicle.group.position, G.playerVehicle.heading, G.playerVehicle.speed);
+      // Second trail call with slight lateral offset for width
+      const cosH2 = Math.cos(G.playerVehicle.heading);
+      const offsetPos = G.playerVehicle.group.position.clone();
+      offsetPos.x += cosH2 * 0.15;
+      spawnGPUNitroTrail(offsetPos, G.playerVehicle.heading, G.playerVehicle.speed);
     }
 
     // Continuous rim sparks on blown tires
@@ -1628,9 +1651,9 @@ function gameLoop(timestamp: number) {
       spawnGPUShoulderDust(G.playerVehicle.group.position, G.playerVehicle.speed, G.playerVehicle.heading);
     }
 
-    // Heat shimmer (canvas wavering at high speed)
+    // Heat shimmer (canvas wavering — nitro-aware, heat-responsive)
     const speedR = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
-    updateHeatShimmer(speedR);
+    updateHeatShimmer(speedR, isNitroNow, G.playerVehicle.engineHeat);
 
     // Track radar minimap
     if (G.playerVehicle) {
