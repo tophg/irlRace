@@ -159,6 +159,10 @@ export async function initGPUParticles(
 
 // ── Spawn helpers (CPU → GPU staging) ──
 
+// Dirty range tracking — only upload changed region instead of full 8192-particle buffer
+let _dirtyStart = Infinity;
+let _dirtyEnd = -1;
+
 function writeParticle(
   px: number, py: number, pz: number,
   vx: number, vy: number, vz: number,
@@ -177,18 +181,45 @@ function writeParticle(
   cpuType[idx] = type;
   cpuSize[idx] = size;
 
+  // Track dirty range
+  if (idx < _dirtyStart) _dirtyStart = idx;
+  if (idx > _dirtyEnd) _dirtyEnd = idx;
+
   spawnHead++;
   lastSpawnTime = performance.now() / 1000;
 }
 
-function flushToGPU() {
-  positionBuffer.needsUpdate = true;
-  velocityBuffer.needsUpdate = true;
-  colorBuffer.needsUpdate = true;
-  lifeBuffer.needsUpdate = true;
-  maxLifeBuffer.needsUpdate = true;
-  typeBuffer.needsUpdate = true;
-  sizeBuffer.needsUpdate = true;
+/**
+ * Upload only the dirty region of particle buffers to GPU.
+ * Call ONCE per frame after all spawn functions, NOT inside each spawn.
+ * Uses addUpdateRange to avoid re-uploading the full 8192-particle buffer.
+ */
+export function flushToGPU() {
+  if (_dirtyEnd < 0) return; // nothing written this frame
+
+  // Per-buffer partial upload via addUpdateRange
+  const buffers3 = [positionBuffer, velocityBuffer];
+  const buffers4 = [colorBuffer];
+  const buffers1 = [lifeBuffer, maxLifeBuffer, typeBuffer, sizeBuffer];
+
+  for (const buf of buffers3) {
+    buf.clearUpdateRanges();
+    buf.addUpdateRange(_dirtyStart * 3, (_dirtyEnd - _dirtyStart + 1) * 3);
+    buf.needsUpdate = true;
+  }
+  for (const buf of buffers4) {
+    buf.clearUpdateRanges();
+    buf.addUpdateRange(_dirtyStart * 4, (_dirtyEnd - _dirtyStart + 1) * 4);
+    buf.needsUpdate = true;
+  }
+  for (const buf of buffers1) {
+    buf.clearUpdateRanges();
+    buf.addUpdateRange(_dirtyStart, _dirtyEnd - _dirtyStart + 1);
+    buf.needsUpdate = true;
+  }
+
+  _dirtyStart = Infinity;
+  _dirtyEnd = -1;
 }
 
 /** Spawn tire smoke particles at the given world position. */
@@ -209,7 +240,7 @@ export function spawnGPUSmoke(pos: THREE.Vector3, driftIntensity: number) {
       0.5 + Math.random() * 0.5,
     );
   }
-  flushToGPU();
+  // flushToGPU() removed — caller is responsible for batched flush
 }
 
 /** Spawn collision spark particles at the given world position. */
@@ -228,7 +259,7 @@ export function spawnGPUSparks(pos: THREE.Vector3, force: number) {
       0.15 + Math.random() * 0.1,
     );
   }
-  flushToGPU();
+  // flushToGPU() removed — caller is responsible for batched flush
 }
 
 /** Spawn explosion burst particles (sparks + dark smoke + molten debris). */
@@ -299,7 +330,7 @@ export function spawnGPUExplosion(pos: THREE.Vector3, force: number) {
       1.5 + Math.random(),
     );
   }
-  flushToGPU();
+  // flushToGPU() removed — caller is responsible for batched flush
 }
 
 /** Spawn outward dust/dirt kick-up wave from explosion concussion. */
@@ -321,7 +352,7 @@ export function spawnExplosionDust(pos: THREE.Vector3, force: number) {
       1.8 + Math.random() * 1.0,   // large
     );
   }
-  flushToGPU();
+  // flushToGPU() removed — caller is responsible for batched flush
 }
 
 /** Spawn damage smoke (throttled). */
@@ -344,7 +375,7 @@ export function spawnGPUDamageSmoke(pos: THREE.Vector3, intensity: number, dt = 
     PType.SMOKE,
     0.6 + intensity * 0.5,
   );
-  flushToGPU();
+  // flushToGPU() removed — caller is responsible for batched flush
 }
 
 /** Spawn flame particles (fire on critical damage). */
@@ -371,7 +402,7 @@ export function spawnGPUFlame(pos: THREE.Vector3, intensity: number, dt = 0.016)
       0.3 + intensity * 0.3,
     );
   }
-  flushToGPU();
+  // flushToGPU() removed — caller is responsible for batched flush
 }
 
 /** Spawn scrape sparks along a barrier contact line. */
@@ -394,7 +425,7 @@ export function spawnGPUScrapeSparks(pos: THREE.Vector3, speed: number, heading:
       0.1 + Math.random() * 0.08,
     );
   }
-  flushToGPU();
+  // flushToGPU() removed — caller is responsible for batched flush
 }
 
 /** Spawn glass shard burst (translucent blue shards with gravity). */
@@ -414,7 +445,7 @@ export function spawnGPUGlassShards(pos: THREE.Vector3) {
       0.08 + Math.random() * 0.06,
     );
   }
-  flushToGPU();
+  // flushToGPU() removed — caller is responsible for batched flush
 }
 
 /** Spawn shoulder dust when near barriers at speed. */
@@ -436,7 +467,7 @@ export function spawnGPUShoulderDust(pos: THREE.Vector3, speed: number, heading:
       0.4 + Math.random() * 0.3,
     );
   }
-  flushToGPU();
+  // flushToGPU() removed — caller is responsible for batched flush
 }
 
 /** Spawn nitro exhaust trail particles. */
@@ -459,7 +490,7 @@ export function spawnGPUNitroTrail(pos: THREE.Vector3, heading: number, speed: n
       0.25 + Math.random() * 0.15,
     );
   }
-  flushToGPU();
+  // flushToGPU() removed — caller is responsible for batched flush
 }
 
 /** Spawn rim sparks for blown-out tires. */
@@ -480,7 +511,7 @@ export function spawnGPURimSparks(pos: THREE.Vector3, speed: number) {
       0.06 + Math.random() * 0.04,
     );
   }
-  flushToGPU();
+  // flushToGPU() removed — caller is responsible for batched flush
 }
 
 /** Spawn backfire exhaust pop. */
@@ -504,7 +535,7 @@ export function spawnGPUBackfire(carPos: THREE.Vector3, heading: number) {
       isFlame ? 0.2 + Math.random() * 0.1 : 0.3 + Math.random() * 0.2,
     );
   }
-  flushToGPU();
+  // flushToGPU() removed — caller is responsible for batched flush
 }
 
 /** Spawn slipstream air-streak particles from AI car's rear during drafting. */
@@ -529,12 +560,12 @@ export function spawnGPUSlipstream(
       0.3 + Math.random() * 0.3,
     );
   }
-  flushToGPU();
+  // flushToGPU() removed — caller is responsible for batched flush
 }
 
 // ── Per-frame update ──
 
-export async function updateGPUParticles(
+export function updateGPUParticles(
   renderer: THREE.WebGPURenderer,
   dt: number,
 ) {
@@ -543,7 +574,9 @@ export async function updateGPUParticles(
   const now = performance.now() / 1000;
   if (lastSpawnTime > 0 && (now - lastSpawnTime) > MAX_PARTICLE_LIFETIME) return;
   uDt.value = dt;
-  await renderer.computeAsync(computeNode);
+  // Fire-and-forget: no await — GPU runs compute in parallel with CPU
+  // Eliminates the CPU-GPU sync stall that blocked the event loop
+  renderer.computeAsync(computeNode);
 }
 
 // ── Cleanup ──

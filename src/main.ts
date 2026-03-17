@@ -47,7 +47,7 @@ import {
   spawnGPUSparks, spawnGPUExplosion, spawnGPUDamageSmoke, spawnGPUFlame,
   spawnGPUScrapeSparks, spawnGPUGlassShards, spawnGPUShoulderDust,
   spawnGPUNitroTrail, spawnGPURimSparks, spawnGPUBackfire,
-  spawnGPUSlipstream,
+  spawnGPUSlipstream, flushToGPU,
 } from './gpu-particles';
 import { initTrackRadar, updateTrackRadar, destroyTrackRadar } from './minimap';
 import { playTitleMusic, playGameMusic, pauseMusic, resumeMusic, stopAllMusic } from './audio';
@@ -1585,6 +1585,7 @@ function gameLoop(timestamp: number) {
       // Animate destruction fragments during replay (gravity, flying, fade)
       updateDestructionFragments(frameDt);
       // Animate GPU particles + VFX debris + post-FX during replay
+      flushToGPU(); // batched flush for replay VFX
       updateGPUParticles(renderer as any, frameDt);
       updateVFX(frameDt);
       updatePostFX(0, false, frameDt);
@@ -1911,6 +1912,7 @@ function gameLoop(timestamp: number) {
         spawnGPUExplosion(G._sparkPos, 25);
       }
     }
+    flushToGPU(); // single batched upload of minimal dirty range (Fix F)
     updateGPUParticles(renderer, frameDt);
     updateWeather(frameDt, G.playerVehicle.group.position);
 

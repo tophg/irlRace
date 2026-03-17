@@ -31,6 +31,7 @@ const _fragPool: DestructionFragment[] = [];  // pre-allocated, reused each expl
 const _poolMeshes: THREE.Mesh[] = [];         // pre-created mesh shells (stay in scene)
 let _poolReady = false;
 const _dummyGeo = new THREE.BufferGeometry(); // placeholder for idle pool meshes
+const _lastEmissive = new Float32Array(FRAG_POOL_SIZE + WHEEL_POOL_SIZE); // cached emissive per fragment (Fix E)
 
 // ── Pre-allocated explosion assets (created once, recycled across explosions) ──
 let _ringGeo: THREE.RingGeometry | null = null;
@@ -196,6 +197,7 @@ export function triggerVehicleDestruction(
   destructionTime = 0;
   destructionActive = true;
   activeFragCount = 0;
+  _lastEmissive.fill(0.6); // reset cached emissive for delta-gating
 
   // Wreck center (for fire/smoke spawning)
   vehicleGroup.getWorldPosition(_center);
@@ -464,8 +466,8 @@ export function updateDestructionFragments(dt: number): boolean {
       f.mesh.rotation.y += f.angularVel.y * dt;
       f.mesh.rotation.z += f.angularVel.z * dt;
 
-      // Trail sparks (15% chance per frame while airborne, first 2s)
-      if (f.lifetime < 2.0 && Math.random() < 0.15) {
+      // Trail sparks (4% chance per frame while airborne, first 2s — throttled from 15%)
+      if (f.lifetime < 2.0 && Math.random() < 0.04) {
         spawnGPUSparks(f.mesh.position, 2);
       }
 
@@ -496,15 +498,19 @@ export function updateDestructionFragments(dt: number): boolean {
     const heatCoolStart = 1.5; // emissive starts cooling after 1.5s
     if (f.lifetime > heatCoolStart) {
       const coolT = Math.min(1, (f.lifetime - heatCoolStart) / 3);
-      // Cool the emissive glow
-      if (Array.isArray(f.mesh.material)) {
-        for (const m of f.mesh.material) {
-          if ('emissiveIntensity' in m) {
-            (m as any).emissiveIntensity = 0.6 * (1 - coolT);
+      const newEmissive = 0.6 * (1 - coolT);
+      // Delta-gate: only write if changed significantly (avoids redundant uniform uploads)
+      if (Math.abs(newEmissive - _lastEmissive[i]) > 0.01) {
+        _lastEmissive[i] = newEmissive;
+        if (Array.isArray(f.mesh.material)) {
+          for (const m of f.mesh.material) {
+            if ('emissiveIntensity' in m) {
+              (m as any).emissiveIntensity = newEmissive;
+            }
           }
+        } else if ('emissiveIntensity' in (f.mesh.material as any)) {
+          (f.mesh.material as any).emissiveIntensity = newEmissive;
         }
-      } else if ('emissiveIntensity' in (f.mesh.material as any)) {
-        (f.mesh.material as any).emissiveIntensity = 0.6 * (1 - coolT);
       }
     }
     if (f.lifetime > fadeStart) {
@@ -522,16 +528,17 @@ export function updateDestructionFragments(dt: number): boolean {
 
   // ── Phase 3: Enhanced fire system ──
   if (wreckPosition) {
-    // Initial fireball (first 0.5s — intense burst)
+    // Initial fireball (first 0.5s — reduced from 3 flames/frame to 1 per ~3 frames)
     if (destructionTime < 0.5) {
-      for (let i = 0; i < 3; i++) {
+      if (Math.random() < 0.33) {
         _firePos.copy(wreckPosition);
         _firePos.y += 0.3 + Math.random() * 0.8;
         _firePos.x += (Math.random() - 0.5) * 1.5;
         _firePos.z += (Math.random() - 0.5) * 1.5;
         spawnGPUFlame(_firePos, 1.0, dt);
       }
-      spawnGPUExplosion(wreckPosition, 8); // burst VFX
+      // Single burst at start only (not every frame)
+      if (destructionTime < dt * 2) spawnGPUExplosion(wreckPosition, 8);
     }
 
     // Mushroom plume (0.3–3s — upward rising thick smoke with fire)
