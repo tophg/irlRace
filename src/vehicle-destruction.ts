@@ -94,8 +94,9 @@ export function triggerVehicleDestruction(
     });
     fractured = [];
     for (const srcMesh of meshes) {
-      fractured.push(...fractureMesh(srcMesh, 3, 1, 2));
+      fractured.push(...fractureMesh(srcMesh, 2, 1, 1));
     }
+    if (fractured.length > 12) fractured.length = 12;
   }
 
   for (const frag of fractured) {

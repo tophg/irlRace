@@ -228,7 +228,11 @@ export class Vehicle {
       }
     });
     for (const srcMesh of meshes) {
-      this._cachedFragments.push(...fractureMesh(srcMesh, 3, 1, 2));
+      this._cachedFragments.push(...fractureMesh(srcMesh, 2, 1, 1));
+    }
+    // Cap fragments to avoid excessive scene.add() calls at explosion time
+    if (this._cachedFragments.length > 12) {
+      this._cachedFragments.length = 12;
     }
   }
 
