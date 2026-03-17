@@ -1431,10 +1431,14 @@ function gameLoop(timestamp: number) {
         flashDamage(0.9);
         setImpactIntensity(1.0);
 
-        // Engine explosion ends the race — DNF
+        // Engine explosion ends the race — DNF + cinematic orbit
         if (G.raceEngine && s === GameState.RACING) {
           G.raceEngine.markDnf('local');
-          setTimeout(() => showResults(), 2000); // let explosion play out
+          // Cinematic explosion orbit camera
+          if (G.vehicleCamera) {
+            G.vehicleCamera.startExplosionOrbit(hoodExplosion);
+          }
+          setTimeout(() => showResults(), 4000); // 4s cinematic before results
         }
       }
 
@@ -1467,8 +1471,13 @@ function gameLoop(timestamp: number) {
       G.vehicleCamera.updateOrbit(frameDt);
     }
 
+    // Explosion orbit cinematic (during RACING after DNF or RESULTS)
+    if (G.vehicleCamera?.mode === 'explosion-orbit') {
+      G.vehicleCamera.updateExplosionOrbit(frameDt);
+    }
+
     // Camera
-    if (G.vehicleCamera && G.vehicleCamera.mode !== 'orbit') {
+    if (G.vehicleCamera && G.vehicleCamera.mode !== 'orbit' && G.vehicleCamera.mode !== 'explosion-orbit') {
       let camTarget = G.playerVehicle.group.position;
       let camHeading = G.playerVehicle.heading;
       let camSpeed = G.playerVehicle.speed;

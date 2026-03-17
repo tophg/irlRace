@@ -17,6 +17,12 @@ const ORBIT_HEIGHT = 18;
 const ORBIT_SPEED = 0.15; // radians/s
 const SPECTATE_FOV = 65;
 
+// Explosion orbit params (tight, dramatic)
+const EXPLOSION_ORBIT_RADIUS = 8;
+const EXPLOSION_ORBIT_HEIGHT = 3.5;
+const EXPLOSION_ORBIT_SPEED = 0.7; // radians/s — fast dramatic rotation
+const EXPLOSION_FOV = 55;
+
 // ── Camera controls ──
 // Scroll = distance, Shift+scroll = tilt, right-click drag = tilt, 2-finger swipe = tilt
 
@@ -85,7 +91,7 @@ const _lookTarget = new THREE.Vector3();
 const _tiltQuat = new THREE.Quaternion();
 const _localZ = new THREE.Vector3(0, 0, 1);
 
-export type CameraMode = 'chase' | 'orbit' | 'follow';
+export type CameraMode = 'chase' | 'orbit' | 'follow' | 'explosion-orbit';
 
 export class VehicleCamera {
   private camera: THREE.PerspectiveCamera;
@@ -235,6 +241,43 @@ export class VehicleCamera {
     this.camera.lookAt(this.currentLookAt);
 
     this.camera.fov += (SPECTATE_FOV - this.camera.fov) * FOV_LERP;
+    this.camera.updateProjectionMatrix();
+  }
+
+  /** Start dramatic explosion orbit — tight, close, fast. */
+  startExplosionOrbit(center: THREE.Vector3) {
+    this.mode = 'explosion-orbit';
+    this.orbitCenter.copy(center);
+    // Start from current camera angle
+    this.orbitAngle = Math.atan2(
+      this.camera.position.x - center.x,
+      this.camera.position.z - center.z,
+    );
+  }
+
+  /** Update the explosion orbit (tight dramatic circle). */
+  updateExplosionOrbit(dt: number) {
+    if (this.mode !== 'explosion-orbit') return;
+
+    this.orbitAngle += EXPLOSION_ORBIT_SPEED * dt;
+    _desired.set(
+      this.orbitCenter.x + Math.sin(this.orbitAngle) * EXPLOSION_ORBIT_RADIUS,
+      this.orbitCenter.y + EXPLOSION_ORBIT_HEIGHT,
+      this.orbitCenter.z + Math.cos(this.orbitAngle) * EXPLOSION_ORBIT_RADIUS,
+    );
+
+    // Faster lerp for dramatic snap-in
+    this.smoothPos.lerp(_desired, 0.08);
+    this.camera.position.copy(this.smoothPos);
+
+    // Look slightly below center (at the wreck on the road)
+    _lookTarget.copy(this.orbitCenter);
+    _lookTarget.y += 0.8;
+    this.currentLookAt.lerp(_lookTarget, 0.06);
+    this.camera.lookAt(this.currentLookAt);
+
+    // Narrow FOV for cinematic feel
+    this.camera.fov += (EXPLOSION_FOV - this.camera.fov) * 0.05;
     this.camera.updateProjectionMatrix();
   }
 
