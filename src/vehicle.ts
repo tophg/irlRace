@@ -208,9 +208,9 @@ export class Vehicle {
     this.model = model;
     this._bodyGroup.add(model);
 
-    // Ground offset is 0 — the loader (processCarModel) already positions the model
-    // so tire contact sits at y=0. No additional offset needed.
-    this.groundOffset = 0;
+    // Per-model height offset — the loader positions cars at ground level,
+    // so groundOffset is just the optional per-model tuning value.
+    this.groundOffset = this.def.heightOffset ?? 0;
 
     this.buildWheels();
     this.buildLights();
@@ -711,6 +711,31 @@ export class Vehicle {
         } else {
           const yLerp = 1 - Math.exp(-30 * dt);
           this.group.position.y += (targetY - this.group.position.y) * yLerp;
+        }
+
+        // ── Per-wheel visual suspension ──
+        // Each wheel adjusts its local Y based on how its individual road contact
+        // differs from the body's average. The base wheelY is 0.47 (torus radius).
+        const avgHit = (fl + fr + rl + rr) / 4;
+        const suspLerp = 1 - Math.exp(-20 * dt);
+        const baseWheelY = 0.47;
+        const maxTravel = 0.15; // max suspension travel
+
+        if (this.wheelFL) {
+          const delta = Math.max(-maxTravel, Math.min(maxTravel, fl - avgHit));
+          this.wheelFL.position.y += (baseWheelY + delta - this.wheelFL.position.y) * suspLerp;
+        }
+        if (this.wheelFR) {
+          const delta = Math.max(-maxTravel, Math.min(maxTravel, fr - avgHit));
+          this.wheelFR.position.y += (baseWheelY + delta - this.wheelFR.position.y) * suspLerp;
+        }
+        if (this.wheelRL) {
+          const delta = Math.max(-maxTravel, Math.min(maxTravel, rl - avgHit));
+          this.wheelRL.position.y += (baseWheelY + delta - this.wheelRL.position.y) * suspLerp;
+        }
+        if (this.wheelRR) {
+          const delta = Math.max(-maxTravel, Math.min(maxTravel, rr - avgHit));
+          this.wheelRR.position.y += (baseWheelY + delta - this.wheelRR.position.y) * suspLerp;
         }
 
         // Road surface pitch (positive = nose up)

@@ -33,32 +33,33 @@ export interface CarDef {
   mass: number;           // vehicle mass kg (weight transfer, damage, inertia)
   cgHeight: number;       // CG height ratio (weight transfer sensitivity, 0.05–0.3)
   frontBias: number;      // static front axle weight fraction (0.5=even)
+  heightOffset?: number;  // extra Y offset from road surface (raise/lower per-model)
 }
 
 export const CAR_ROSTER: CarDef[] = [
   // ── ENTRY TIER ──
   // Haven — beginner-friendly, forgiving grip, smooth ride
-  { id: 'haven',       name: 'Haven',       file: 'white_camry.glb',   maxSpeed: 65, acceleration: 30, handling: 2.6, braking: 48, driftFactor: 0.20, gripCoeff: 0.95, latFriction: 6.5, suspStiffness: 0.03, steerSpeed: 3.2,  driftThreshold: 0.15, mass: 1480, cgHeight: 0.11, frontBias: 0.53 },
+  { id: 'haven',       name: 'Haven',       file: 'white_camry.glb',   maxSpeed: 65, acceleration: 30, handling: 2.6, braking: 48, driftFactor: 0.20, gripCoeff: 0.95, latFriction: 6.5, suspStiffness: 0.03, steerSpeed: 3.2,  driftThreshold: 0.15, mass: 1480, cgHeight: 0.11, frontBias: 0.53, heightOffset: 0.15 },
 
 
   // ── MID TIER ──
   // Phantom — loose rear, rewards aggression, high mid-tier speed
-  { id: 'phantom',     name: 'Phantom',     file: 'Nissan_Altima.glb',  maxSpeed: 76, acceleration: 27, handling: 2.1, braking: 42, driftFactor: 0.40, gripCoeff: 0.78, latFriction: 4.0, suspStiffness: 0.05, steerSpeed: 2.6,  driftThreshold: 0.10, mass: 1550, cgHeight: 0.16, frontBias: 0.57 },
+  { id: 'phantom',     name: 'Phantom',     file: 'Nissan_Altima.glb',  maxSpeed: 76, acceleration: 27, handling: 2.1, braking: 42, driftFactor: 0.40, gripCoeff: 0.78, latFriction: 4.0, suspStiffness: 0.05, steerSpeed: 2.6,  driftThreshold: 0.10, mass: 1550, cgHeight: 0.16, frontBias: 0.57, heightOffset: 0.05 },
   // Monarch — heavy cruiser, strong accel, planted but slow to turn
-  { id: 'monarch',     name: 'Monarch',     file: 'Nissan_Maxima.glb',  maxSpeed: 73, acceleration: 33, handling: 1.9, braking: 44, driftFactor: 0.26, gripCoeff: 0.84, latFriction: 5.0, suspStiffness: 0.04, steerSpeed: 2.8,  driftThreshold: 0.11, mass: 1650, cgHeight: 0.14, frontBias: 0.55 },
+  { id: 'monarch',     name: 'Monarch',     file: 'Nissan_Maxima.glb',  maxSpeed: 73, acceleration: 33, handling: 1.9, braking: 44, driftFactor: 0.26, gripCoeff: 0.84, latFriction: 5.0, suspStiffness: 0.04, steerSpeed: 2.8,  driftThreshold: 0.11, mass: 1650, cgHeight: 0.14, frontBias: 0.55, heightOffset: 0.05 },
 
 
   // ── EXOTIC TIER ──
   // Venom — dramatic drift character, spectacular slides, high speed
-  { id: 'venom',       name: 'Venom',       file: 'Ferrari.glb',        maxSpeed: 83, acceleration: 34, handling: 2.3, braking: 50, driftFactor: 0.44, gripCoeff: 0.80, latFriction: 4.5, suspStiffness: 0.05, steerSpeed: 2.8,  driftThreshold: 0.09, mass: 1380, cgHeight: 0.09, frontBias: 0.44 },
+  { id: 'venom',       name: 'Venom',       file: 'Ferrari.glb',        maxSpeed: 83, acceleration: 34, handling: 2.3, braking: 50, driftFactor: 0.44, gripCoeff: 0.80, latFriction: 4.5, suspStiffness: 0.05, steerSpeed: 2.8,  driftThreshold: 0.09, mass: 1380, cgHeight: 0.09, frontBias: 0.44, heightOffset: 0.0 },
   // Precision — surgical accuracy, balanced, rear-engine snap oversteer
-  { id: 'precision',   name: 'Precision',   file: 'Porsche_911.glb',    maxSpeed: 80, acceleration: 32, handling: 2.9, braking: 52, driftFactor: 0.24, gripCoeff: 0.96, latFriction: 6.0, suspStiffness: 0.03, steerSpeed: 3.4,  driftThreshold: 0.13, mass: 1420, cgHeight: 0.09, frontBias: 0.40 },
+  { id: 'precision',   name: 'Precision',   file: 'Porsche_911.glb',    maxSpeed: 80, acceleration: 32, handling: 2.9, braking: 52, driftFactor: 0.24, gripCoeff: 0.96, latFriction: 6.0, suspStiffness: 0.03, steerSpeed: 3.4,  driftThreshold: 0.13, mass: 1420, cgHeight: 0.09, frontBias: 0.40, heightOffset: 0.0 },
   // Apex — rally-bred monster, raw turbo power, explosive acceleration
-  { id: 'apex',        name: 'Apex',        file: 'Subaru_WRX3.glb',   maxSpeed: 78, acceleration: 38, handling: 2.8, braking: 48, driftFactor: 0.30, gripCoeff: 1.00, latFriction: 6.5, suspStiffness: 0.04, steerSpeed: 3.3,  driftThreshold: 0.14, mass: 1380, cgHeight: 0.10, frontBias: 0.48 },
+  { id: 'apex',        name: 'Apex',        file: 'Subaru_WRX3.glb',   maxSpeed: 78, acceleration: 38, handling: 2.8, braking: 48, driftFactor: 0.30, gripCoeff: 1.00, latFriction: 6.5, suspStiffness: 0.04, steerSpeed: 3.3,  driftThreshold: 0.14, mass: 1380, cgHeight: 0.10, frontBias: 0.48, heightOffset: 0.05 },
 
   // ── ELITE TIER ──
   // Diablo — top speed king, lightweight, fragile glass cannon
-  { id: 'diablo',      name: 'Diablo',      file: 'Lamborghini.glb',    maxSpeed: 92, acceleration: 36, handling: 2.2, braking: 55, driftFactor: 0.36, gripCoeff: 0.88, latFriction: 5.5, suspStiffness: 0.04, steerSpeed: 3.2,  driftThreshold: 0.10, mass: 1320, cgHeight: 0.08, frontBias: 0.42 },
+  { id: 'diablo',      name: 'Diablo',      file: 'Lamborghini.glb',    maxSpeed: 92, acceleration: 36, handling: 2.2, braking: 55, driftFactor: 0.36, gripCoeff: 0.88, latFriction: 5.5, suspStiffness: 0.04, steerSpeed: 3.2,  driftThreshold: 0.10, mass: 1320, cgHeight: 0.08, frontBias: 0.42, heightOffset: 0.0 },
 
 ];
 
