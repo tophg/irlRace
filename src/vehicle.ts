@@ -91,6 +91,7 @@ export class Vehicle {
   private raycaster = new THREE.Raycaster();
   private _roadPitch = 0;
   private _roadRoll = 0;
+  private groundOffset = 0; // distance from model origin to wheel contact point (positive = origin above ground)
 
   // Damage
   damage: DamageState = createDamageState();
@@ -195,6 +196,11 @@ export class Vehicle {
   setModel(model: THREE.Group) {
     this.model = model;
     this.bodyGroup.add(model);
+
+    // Compute ground contact offset from bounding box
+    const box = new THREE.Box3().setFromObject(model);
+    this.groundOffset = -box.min.y; // positive = how far model origin is above tire contact
+
     this.buildWheels();
     this.buildLights();
   }
@@ -679,8 +685,8 @@ export class Vehicle {
         const rl = rlY ?? validHits[validHits.length - 1];
         const rr = rrY ?? validHits[validHits.length - 1];
 
-        // Car body target height from contact points
-        let targetY = (fl + fr + rl + rr) / 4;
+        // Car body target height from contact points + ground offset
+        let targetY = (fl + fr + rl + rr) / 4 + this.groundOffset;
 
 
         // Defensive: don't allow sudden drops > 2 units (prevents sinking through gaps)
@@ -719,11 +725,12 @@ export class Vehicle {
         : getClosestSplinePoint(spline, this.group.position, 200);
 
       // Asymmetric Y tracking for spline fallback too
-      if (nearestSpline.point.y <= this.group.position.y) {
-        this.group.position.y = nearestSpline.point.y;
+      const splineTargetY = nearestSpline.point.y + this.groundOffset;
+      if (splineTargetY <= this.group.position.y) {
+        this.group.position.y = splineTargetY;
       } else {
         const splineYLerp = 1 - Math.exp(-30 * dt);
-        this.group.position.y += (nearestSpline.point.y - this.group.position.y) * splineYLerp;
+        this.group.position.y += (splineTargetY - this.group.position.y) * splineYLerp;
       }
 
       // Decay road alignment toward neutral when off road mesh
@@ -747,7 +754,7 @@ export class Vehicle {
       // Car escaped the track — teleport back
       this.group.position.x = nearestSpline.point.x;
       this.group.position.z = nearestSpline.point.z;
-      this.group.position.y = nearestSpline.point.y;
+      this.group.position.y = nearestSpline.point.y + this.groundOffset;
       this._velX *= 0.5;
       this._velZ *= 0.5;
       this.angularVel = 0;
@@ -1006,7 +1013,7 @@ export class Vehicle {
       this.raycaster.far = 25;
       const hits = this.raycaster.intersectObject(this.roadMesh, false);
       if (hits.length > 0) {
-        this.group.position.y = hits[0].point.y;
+        this.group.position.y = hits[0].point.y + this.groundOffset;
       }
     }
 
