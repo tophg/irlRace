@@ -564,12 +564,12 @@ export class Vehicle {
     // ── Engine Heat accumulation ──
     if (!this._engineDead) {
       // Heat sources
-      if (this._nitroActive) this._engineHeat += 70 * dt;       // nitro is the primary heat source
-      this._engineHeat += absSpeed * 0.5 * dt;                   // high-RPM driving builds heat
+      if (this._nitroActive) this._engineHeat += 40 * dt;       // nitro is the primary heat source
+      this._engineHeat += absSpeed * 0.3 * dt;                   // high-RPM driving builds heat
       // Cooling (scaled by front HP — damaged radiator = less cooling)
       const radiatorEff = fHP;                                   // 1.0 pristine → 0.0 destroyed
-      this._engineHeat -= 5 * radiatorEff * dt;                  // passive radiator cooling
-      this._engineHeat -= absSpeed * 0.1 * dt;                   // air cooling at speed
+      this._engineHeat -= 8 * radiatorEff * dt;                  // passive radiator cooling
+      this._engineHeat -= absSpeed * 0.12 * dt;                  // air cooling at speed
       this._engineHeat = Math.max(0, Math.min(100, this._engineHeat));
 
       // Overheat explosion!
