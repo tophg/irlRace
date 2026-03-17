@@ -1454,6 +1454,11 @@ function gameLoop(timestamp: number) {
         }
       }
 
+      // Clear single-frame flag AFTER VFX code consumed it
+      if (G.playerVehicle.engineJustExploded) {
+        G.playerVehicle.clearExplosionFlag();
+      }
+
       // ── Hood smoke/flames at high engine heat (front hood position) ──
       const heat = G.playerVehicle.engineHeat;
       if (heat > 60) {

@@ -59,6 +59,8 @@ export class Vehicle {
   get engineDead(): boolean { return this._engineDead; }
   /** Single-frame flag: true on the frame the engine explodes. */
   get engineJustExploded(): boolean { return this._engineJustExploded; }
+  /** Clear the single-frame explosion flag (call after VFX code has consumed it). */
+  clearExplosionFlag() { this._engineJustExploded = false; }
 
   /** Barrier impact info — polled by main loop for sparks/shake. Cleared each frame. */
   lastBarrierImpact: { force: number; posX: number; posY: number; posZ: number; normalX: number; normalZ: number } | null = null;
@@ -541,7 +543,7 @@ export class Vehicle {
     const newVForward = vForward + longForce * dt;
 
     // ── Engine overheat: dead engine — no throttle, coast to halt ──
-    this._engineJustExploded = false; // clear single-frame flag
+    // (engineJustExploded flag is cleared by main.ts after VFX code consumes it)
     if (this._engineDead) {
       this._engineDeadTimer -= dt;
       // Kill throttle/nitro while engine is dead
