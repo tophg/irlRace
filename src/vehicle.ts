@@ -208,9 +208,9 @@ export class Vehicle {
     this.model = model;
     this._bodyGroup.add(model);
 
-    // Compute ground contact offset from bounding box
-    const box = new THREE.Box3().setFromObject(model);
-    this.groundOffset = -box.min.y; // positive = how far model origin is above tire contact
+    // Ground offset is 0 — the loader (processCarModel) already positions the model
+    // so tire contact sits at y=0. No additional offset needed.
+    this.groundOffset = 0;
 
     this.buildWheels();
     this.buildLights();
