@@ -1087,6 +1087,8 @@ function startReplayPlayback() {
   };
 
   // Full explosion callback for replay — triggers complete destruction + VFX
+  // Uses staggered spawning to spread GPU buffer writes across 3 frames
+  const _replayExpPos = new THREE.Vector3();
   const onExplosion = (pos: THREE.Vector3, vehicleId: string, speed: number, heading: number) => {
     const isLocal = vehicleId === 'local';
     const vehicle = isLocal ? G.playerVehicle : G.aiRacers.find(a => a.id === vehicleId)?.vehicle;
@@ -1095,14 +1097,20 @@ function startReplayPlayback() {
     const velX = Math.sin(heading) * speed * 0.06;
     const velZ = Math.cos(heading) * speed * 0.06;
 
-    // Spawn GPU particle VFX (sparks, debris, glass shards)
-    const hoodPos = pos.clone();
-    hoodPos.y += 1.0;
-    hoodPos.x += Math.sin(heading) * 2.2;
-    hoodPos.z += Math.cos(heading) * 2.2;
-    spawnGPUExplosion(hoodPos, 40);
-    spawnDebris(hoodPos, 35, velX, velZ);
-    spawnGPUGlassShards(hoodPos);
+    // Frame 0: core explosion sparks only (~34 writes)
+    _replayExpPos.copy(pos);
+    _replayExpPos.y += 1.0;
+    _replayExpPos.x += Math.sin(heading) * 2.2;
+    _replayExpPos.z += Math.cos(heading) * 2.2;
+    spawnGPUExplosion(_replayExpPos, 40);
+
+    // Frame 1: glass shards + debris (deferred to next rAF)
+    const ep = _replayExpPos.clone(); // small alloc, but OFF the critical frame
+    const vx = velX, vz = velZ;
+    requestAnimationFrame(() => {
+      spawnGPUGlassShards(ep);
+      spawnDebris(ep, 35, vx, vz);
+    });
 
     if (vehicle) {
       triggerVehicleDestruction(
@@ -1700,11 +1708,21 @@ function gameLoop(timestamp: number) {
       _hoodExplosionPos.y += 1.0;
       _hoodExplosionPos.x += sinH * 2.2; // front hood
       _hoodExplosionPos.z += cosH * 2.2;
+
+      // Frame 0: core explosion only (~34 GPU writes)
       spawnGPUExplosion(_hoodExplosionPos, 40);
-      spawnDebris(_hoodExplosionPos, 35, G.playerVehicle.velX, G.playerVehicle.velZ);
-      spawnGPUGlassShards(_hoodExplosionPos);
       flashDamage(0.9);
       setImpactIntensity(1.0);
+
+      // Frames 1+2: debris + glass shards (staggered off critical frame)
+      const ep = _hoodExplosionPos.clone();
+      const pvx = G.playerVehicle.velX, pvz = G.playerVehicle.velZ;
+      requestAnimationFrame(() => {
+        spawnGPUGlassShards(ep);
+        requestAnimationFrame(() => {
+          spawnDebris(ep, 35, pvx, pvz);
+        });
+      });
 
       // Engine explosion ends the race — DNF + cinematic orbit + destruction
       if (G.raceEngine && s === GameState.RACING) {

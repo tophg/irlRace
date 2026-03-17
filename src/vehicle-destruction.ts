@@ -365,9 +365,8 @@ export function updateDestructionFragments(dt: number): boolean {
       shockwaveRing.scale.set(s, s, 1);
       (shockwaveRing.material as THREE.MeshBasicMaterial).opacity = 0.7 * (1 - ringT);
     } else {
-      destructionScene?.remove(shockwaveRing);
-      shockwaveRing.geometry.dispose();
-      (shockwaveRing.material as THREE.Material).dispose();
+      // Hide — DON'T dispose. Preserves warm WebGPU pipeline for next explosion.
+      shockwaveRing.visible = false;
       shockwaveRing = null;
     }
   }
@@ -384,8 +383,9 @@ export function updateDestructionFragments(dt: number): boolean {
       const cool = (destructionTime - 0.3) / 3.7;
       explosionLight.color.setRGB(1.0, 0.53 - cool * 0.3, 0.0);
     } else {
-      destructionScene?.remove(explosionLight);
-      explosionLight.dispose();
+      // Hide — DON'T dispose. Preserves warm pipeline for next explosion.
+      explosionLight.visible = false;
+      explosionLight.intensity = 0;
       explosionLight = null;
     }
   }

@@ -810,9 +810,27 @@ interface DebrisParticle {
   ax: number; ay: number; az: number;  // angular velocity
   life: number;
   bounced: boolean;
+  active: boolean;
 }
 
-const activeDebris: DebrisParticle[] = [];
+// Pre-allocated debris state pool (avoids per-spawn object allocation)
+const debrisStates: DebrisParticle[] = [];
+let debrisStatesReady = false;
+
+function ensureDebrisStates() {
+  if (debrisStatesReady) return;
+  for (let i = 0; i < DEBRIS_POOL_SIZE; i++) {
+    debrisStates.push({
+      mesh: null!,
+      vx: 0, vy: 0, vz: 0,
+      ax: 0, ay: 0, az: 0,
+      life: 0,
+      bounced: false,
+      active: false,
+    });
+  }
+  debrisStatesReady = true;
+}
 
 function ensureDebrisPool() {
   if (debrisPool.length > 0 || !smokeScene) return;
@@ -830,6 +848,7 @@ function ensureDebrisPool() {
     smokeScene.add(m);
     debrisPool.push(m);
   }
+  ensureDebrisStates();
 }
 
 /** Eagerly initialize debris pool at race start (avoids lazy-init stall on first explosion). */
@@ -844,7 +863,9 @@ export function spawnDebris(pos: THREE.Vector3, force: number, carVelX = 0, carV
 
   const count = Math.min(Math.floor(force * 0.3), 8);
   for (let i = 0; i < count; i++) {
-    const mesh = debrisPool[debrisIdx % DEBRIS_POOL_SIZE];
+    const meshSlot = debrisIdx % DEBRIS_POOL_SIZE;
+    const mesh = debrisPool[meshSlot];
+    const state = debrisStates[meshSlot];
     debrisIdx++;
     mesh.position.copy(pos);
     mesh.position.x += (Math.random() - 0.5) * 0.5;
@@ -859,30 +880,29 @@ export function spawnDebris(pos: THREE.Vector3, force: number, carVelX = 0, carV
     // Inherit car velocity + random burst
     const speed = 3 + Math.random() * force * 0.5;
     const theta = Math.random() * Math.PI * 2;
-    activeDebris.push({
-      mesh,
-      vx: carVelX * 0.3 + Math.cos(theta) * speed,
-      vy: 2 + Math.random() * 4,
-      vz: carVelZ * 0.3 + Math.sin(theta) * speed,
-      ax: (Math.random() - 0.5) * 15,
-      ay: (Math.random() - 0.5) * 15,
-      az: (Math.random() - 0.5) * 15,
-      life: 2.0 + Math.random() * 1.5,
-      bounced: false,
-    });
+    // Reuse pre-allocated state (zero allocation)
+    state.mesh = mesh;
+    state.vx = carVelX * 0.3 + Math.cos(theta) * speed;
+    state.vy = 2 + Math.random() * 4;
+    state.vz = carVelZ * 0.3 + Math.sin(theta) * speed;
+    state.ax = (Math.random() - 0.5) * 15;
+    state.ay = (Math.random() - 0.5) * 15;
+    state.az = (Math.random() - 0.5) * 15;
+    state.life = 2.0 + Math.random() * 1.5;
+    state.bounced = false;
+    state.active = true;
   }
 }
 
 /** Update debris physics (gravity, ground bounce, fade). Call in updateVFX. */
 function updateDebris(dt: number) {
-  let i = 0;
-  while (i < activeDebris.length) {
-    const d = activeDebris[i];
+  for (let i = 0; i < DEBRIS_POOL_SIZE; i++) {
+    const d = debrisStates[i];
+    if (!d || !d.active) continue;
     d.life -= dt;
     if (d.life <= 0) {
       d.mesh.visible = false;
-      activeDebris[i] = activeDebris[activeDebris.length - 1];
-      activeDebris.pop();
+      d.active = false;
       continue;
     }
 
@@ -915,8 +935,6 @@ function updateDebris(dt: number) {
     if (d.life < 0.5) {
       (d.mesh.material as THREE.MeshStandardMaterial).opacity = d.life * 2;
     }
-
-    i++;
   }
 }
 
@@ -2605,8 +2623,10 @@ export function destroyVFX() {
   activeSmoke.length = 0;
 
   // Clear debris
-  for (const d of activeDebris) d.mesh.visible = false;
-  activeDebris.length = 0;
+  for (const d of debrisStates) {
+    if (d.active && d.mesh) d.mesh.visible = false;
+    d.active = false;
+  }
   if (sceneRef) {
     for (const mesh of debrisPool) {
       sceneRef.remove(mesh);
