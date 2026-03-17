@@ -203,6 +203,7 @@ function showTitleScreen() {
       <button class="menu-btn" id="btn-singleplayer">SINGLEPLAYER</button>
       <button class="menu-btn" id="btn-multiplayer">MULTIPLAYER</button>
       <button class="menu-btn" id="btn-track-editor" style="border-color:#ff6600;color:#ff8833;">🏁 TRACK EDITOR</button>
+      <button class="menu-btn" id="btn-calibrate" style="border-color:#00ffff;color:#00ffff;">✨ CALIBRATION STUDIO</button>
       <button class="menu-btn" id="btn-controls" style="border-color:var(--col-text-dim);font-size:16px;">CONTROLS</button>
       <button class="menu-btn" id="btn-settings" style="border-color:var(--col-text-dim);font-size:16px;">SETTINGS</button>
     </div>
@@ -234,6 +235,10 @@ function showTitleScreen() {
       G.localPlayerName = getSettings().playerName || G.localPlayerName;
       applySettingsToRenderer();
     });
+  });
+
+  document.getElementById('btn-calibrate')!.addEventListener('click', () => {
+    window.location.href = '?calibrate=1';
   });
 }
 
@@ -458,9 +463,8 @@ async function startRace() {
     createHUD(uiOverlay);
     showHUD(true);
 
-    // Rear-view mirror (RenderTarget + canvas overlay — WebGPU-compatible)
+    // Rear-view mirror (WebGPU scissor viewport target)
     G.mirrorCamera = new THREE.PerspectiveCamera(50, 320 / 120, 0.5, 500);
-    G.mirrorRT = new THREE.RenderTarget(320, 120, { depthBuffer: true });
     G.mirrorBorder = document.createElement('div');
     G.mirrorBorder.style.cssText = `
       position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
@@ -469,12 +473,6 @@ async function startRace() {
       pointer-events: none; z-index: 20; opacity: 0.85;
       overflow: hidden;
     `;
-    const mirrorCanvas = document.createElement('canvas');
-    mirrorCanvas.width = 320;
-    mirrorCanvas.height = 120;
-    mirrorCanvas.style.cssText = 'width:100%;height:100%;display:block;';
-    G.mirrorBorder.appendChild(mirrorCanvas);
-    G.mirrorCanvas = mirrorCanvas;
     uiOverlay.appendChild(G.mirrorBorder);
     showTouchControls(true);
     initAudio();
@@ -698,10 +696,7 @@ function clearRaceObjects() {
 
   // Destroy mirror
   if (G.mirrorBorder) { G.mirrorBorder.remove(); G.mirrorBorder = null; }
-  if (G.mirrorRT) { G.mirrorRT.dispose(); G.mirrorRT = null; }
-  G.mirrorCanvas = null;
   G.mirrorCamera = null;
-  G._mirrorReading = false;
 
   // Remove player
   if (G.playerVehicle) {
@@ -1945,51 +1940,56 @@ function gameLoop(timestamp: number) {
     updateDebugOverlay();
 
     // Main render — post-FX pipeline (bloom + chromatic aberration + vignette)
-    // Mirror renders AFTER with scissors on top
     if (G.postFXPipeline) {
       // Update post-FX uniforms
       const speedRatio = G.playerVehicle ? Math.abs(G.playerVehicle.speed) / G.playerVehicle.def.maxSpeed : 0;
       const isNitro = G.playerVehicle?.isNitroActive ?? false;
       updatePostFX(Math.min(speedRatio, 1), isNitro);
       if (isNitro) setBoostActive(true);
-      G.postFXPipeline.renderAsync();
+      G.postFXPipeline.render();
     } else {
       renderer.render(scene, camera);
     }
 
-    // Rear-view mirror render (RenderTarget + canvas overlay, every other frame)
-    G._mirrorFrame++;
-    if (G.mirrorCamera && G.mirrorRT && G.mirrorCanvas && G.playerVehicle && s === GameState.RACING && G._mirrorFrame % 2 === 0) {
+    // Rear-view mirror render (Scissor Test, perfectly hardware accelerated)
+    if (G.mirrorCamera && G.playerVehicle && s === GameState.RACING) {
       const sinH = Math.sin(G.playerVehicle.heading);
       const cosH = Math.cos(G.playerVehicle.heading);
       const pp = G.playerVehicle.group.position;
-      // Position camera at car roof, looking backward
       G.mirrorCamera.position.set(pp.x, pp.y + 2.5, pp.z);
       G.mirrorCamera.lookAt(pp.x - sinH * 20, pp.y + 1.5, pp.z - cosH * 20);
+      
+      // Update camera projection to perfectly flip horizontally
+      G.mirrorCamera.updateMatrixWorld();
+      G.mirrorCamera.updateProjectionMatrix();
+      G.mirrorCamera.projectionMatrix.elements[0] *= -1; // Flip X
 
-      // Render to off-screen target
-      renderer.setRenderTarget(G.mirrorRT);
+      // Flip culling to account for the negative scale reflection
+      // WebGPURenderer automatically handles frontFace logic if scale is negative,
+      // but modifying projectionMatrix by hand requires explicit winding order flips if needed.
+
+      // Scissor / Viewport
+      const w = 320, h = 120;
+      const x = Math.floor(window.innerWidth / 2 - w / 2);
+      
+      // WebGPU viewport Y=0 is TOP. WebGL viewport Y=0 is BOTTOM.
+      // We detect the active backend by checking context type.
+      const isWebGL = !!renderer.domElement.getContext('webgl2');
+      const y = isWebGL ? Math.floor(window.innerHeight - h - 14) : 14;
+
+      renderer.setScissorTest(true);
+      renderer.setScissor(x, y, w, h);
+      renderer.setViewport(x, y, w, h);
+      
+      const oldAutoClear = renderer.autoClear;
+      renderer.autoClear = false;
+      renderer.clearDepth();
+      
       renderer.render(scene, G.mirrorCamera);
-      renderer.setRenderTarget(null);
-
-      // Async pixel readback — fire-and-forget, draws to canvas when ready
-      if (!G._mirrorReading) {
-        G._mirrorReading = true;
-        const w = 320, h = 120;
-        const canvas = G.mirrorCanvas;
-        renderer.readRenderTargetPixelsAsync(G.mirrorRT, 0, 0, w, h).then((buf) => {
-          const ctx = canvas.getContext('2d')!;
-          const imgData = ctx.createImageData(w, h);
-          // WebGPU returns top-down pixels — copy directly (no Y flip needed)
-          imgData.data.set(new Uint8ClampedArray(buf.buffer, buf.byteOffset, buf.byteLength));
-          // Flip horizontally for rearview mirror effect
-          ctx.save();
-          ctx.scale(-1, 1);
-          ctx.putImageData(imgData, -w, 0);
-          ctx.restore();
-          G._mirrorReading = false;
-        }).catch(() => { G._mirrorReading = false; });
-      }
+      
+      renderer.setScissorTest(false);
+      renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+      renderer.autoClear = oldAutoClear;
     }
 
     // ── Dynamic Resolution Scaling ──

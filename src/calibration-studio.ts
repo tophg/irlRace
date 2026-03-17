@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { CarDef } from './types';
-import { CarLightDef } from './car-lights';
+import { CarLightDef, saveCalibrationOverride } from './car-lights';
 import { getGarageScene, getGarageCamera } from './garage';
 
 // ── Globals for Studio State ──
@@ -173,6 +173,9 @@ function buildStudioUI(container: HTMLElement) {
     </label>
 
     <div style="display:flex;gap:8px;margin-top:4px">
+      <button id="cal-save" style="flex:2;background:#0aa858;color:white;border:none;padding:6px;border-radius:4px;cursor:pointer;font-weight:bold">Save to LocalStorage</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:4px">
       <button id="cal-copy" style="flex:1;background:#0d6efd;color:white;border:none;padding:6px;border-radius:4px;cursor:pointer;font-weight:bold">Copy JSON</button>
       <button id="cal-reset" style="flex:1;background:#333;color:white;border:none;padding:6px;border-radius:4px;cursor:pointer">Reset</button>
     </div>
@@ -215,6 +218,15 @@ function buildStudioUI(container: HTMLElement) {
     setTimeout(() => btn.textContent = 'Copy JSON', 1500);
   });
   
+  document.getElementById('cal-save')?.addEventListener('click', () => {
+    if (!currentCarDef) return;
+    saveCalibrationOverride(currentCarDef.id, calData as CarLightDef);
+    const btn = document.getElementById('cal-save')!;
+    const oldTxt = btn.textContent;
+    btn.textContent = 'SAVED!';
+    setTimeout(() => { if (btn) btn.textContent = oldTxt; }, 1500);
+  });
+
   document.getElementById('cal-reset')?.addEventListener('click', resetToSavedData);
 }
 

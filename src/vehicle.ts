@@ -2,7 +2,7 @@
 
 import * as THREE from 'three';
 import { CarDef, InputState, VehicleState, DamageState, createDamageState } from './types';
-import { CAR_LIGHT_MAP } from './car-lights';
+import { CAR_LIGHT_MAP, CarLightDef } from './car-lights';
 import { getSettings } from './settings';
 import { getClosestSplinePoint } from './track';
 import type { SplineBVH } from './bvh';
@@ -286,53 +286,63 @@ export class Vehicle {
   // ── Car lights ──
   private taillightMatL: THREE.MeshStandardMaterial | null = null;
   private taillightMatR: THREE.MeshStandardMaterial | null = null;
-
   private buildLights() {
-    const ld = CAR_LIGHT_MAP[this.def.file]; // per-model pre-computed coordinates
+    const ld = CAR_LIGHT_MAP[this.def.file]; // manual overrides
+    const auto = this.model?.userData?.autoLights as Partial<CarLightDef> | undefined;
 
     let hlLPos: [number, number, number], hlRPos: [number, number, number];
     let tlLPos: [number, number, number], tlRPos: [number, number, number];
     let hlSize: [number, number], tlSize: [number, number];
     let spotI: number, spotD: number, beamLen: number, beamRad: number;
 
-    if (ld) {
+    // Headlight position logic
+    if (auto?.headlightL && auto?.headlightR) {
+      hlLPos = auto.headlightL;
+      hlRPos = auto.headlightR;
+      hlSize = auto.headlightSize || [0.22, 0.14];
+    } else if (ld?.headlightL) {
       hlLPos = ld.headlightL;
       hlRPos = ld.headlightR;
-      tlLPos = ld.taillightL;
-      tlRPos = ld.taillightR;
-      hlSize = ld.headlightSize;
-      tlSize = ld.taillightSize;
-      spotI = ld.spotIntensity;
-      spotD = ld.spotDistance;
-      beamLen = ld.beamLength;
-      beamRad = ld.beamRadius;
+      hlSize = ld.headlightSize || [0.22, 0.14];
     } else {
-      // Fallback: compute from bounding box
+      // Bounding box fallback
       const box = new THREE.Box3();
-      if (this.model) {
-        this.model.updateMatrixWorld(true);
-        box.setFromObject(this.model);
-        const invMatrix = new THREE.Matrix4().copy(this.bodyGroup.matrixWorld).invert();
-        box.applyMatrix4(invMatrix);
-      } else {
-        box.min.set(-0.9, 0, -2.2);
-        box.max.set(0.9, 1.4, 2.2);
-      }
+      if (this.model) box.setFromObject(this.model);
+      else box.min.set(-0.9, 0, -2.2), box.max.set(0.9, 1.4, 2.2);
       const frontZ = box.max.z;
-      const rearZ = box.min.z;
-      const halfW = (box.max.x - box.min.x) * 0.35;
       const lightY = box.min.y + (box.max.y - box.min.y) * 0.35;
+      const halfW = (box.max.x - box.min.x) * 0.35;
       hlLPos = [-halfW, lightY, frontZ];
       hlRPos = [ halfW, lightY, frontZ];
+      hlSize = [0.22, 0.14];
+    }
+
+    // Taillight position logic
+    if (auto?.taillightL && auto?.taillightR) {
+      tlLPos = auto.taillightL;
+      tlRPos = auto.taillightR;
+      tlSize = auto.taillightSize || [0.28, 0.10];
+    } else if (ld?.taillightL) {
+      tlLPos = ld.taillightL;
+      tlRPos = ld.taillightR;
+      tlSize = ld.taillightSize || [0.28, 0.10];
+    } else {
+      const box = new THREE.Box3();
+      if (this.model) box.setFromObject(this.model);
+      else box.min.set(-0.9, 0, -2.2), box.max.set(0.9, 1.4, 2.2);
+      const rearZ = box.min.z;
+      const lightY = box.min.y + (box.max.y - box.min.y) * 0.35;
+      const halfW = (box.max.x - box.min.x) * 0.35;
       tlLPos = [-halfW, lightY, rearZ];
       tlRPos = [ halfW, lightY, rearZ];
-      hlSize = [0.22, 0.14];
       tlSize = [0.28, 0.10];
-      spotI = 2.0;
-      spotD = 20;
-      beamLen = 15;
-      beamRad = 3.5;
     }
+
+    // Beam parameters (use manual overrides if present, else defaults)
+    spotI = ld?.spotIntensity || 2.0;
+    spotD = ld?.spotDistance || 20;
+    beamLen = ld?.beamLength || 15;
+    beamRad = ld?.beamRadius || 3.5;
 
     // ── Headlight decals (flat planes flush on front face, facing +Z) ──
     const hlGeo = new THREE.PlaneGeometry(hlSize[0], hlSize[1]);

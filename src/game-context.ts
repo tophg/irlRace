@@ -64,8 +64,6 @@ export const G = {
   // ── Rear-View Mirror ──
   mirrorCamera: null as THREE.PerspectiveCamera | null,
   mirrorBorder: null as HTMLElement | null,
-  mirrorCanvas: null as HTMLCanvasElement | null,
-  mirrorRT: null as THREE.RenderTarget | null,
 
   // ── Race Engine ──
   raceEngine: null as RaceEngine | null,
@@ -147,7 +145,6 @@ export const G = {
   _lastShadowX: -999,
   _lastShadowZ: -999,
   _mirrorFrame: 0,
-  _mirrorReading: false,
   _drsFrameTimes: [] as number[],
 };
 

@@ -128,3 +128,38 @@ export const CAR_LIGHT_MAP: Record<string, CarLightDef> = {
     beamRadius: 3.0,
   },
 };
+
+// ── Persistence Layer ── //
+const CALIBRATION_STORAGE_KEY = 'hood-racer-calibration-overrides';
+
+export function saveCalibrationOverride(modelId: string, def: CarLightDef) {
+  CAR_LIGHT_MAP[modelId] = def;
+  try {
+    const existingStr = localStorage.getItem(CALIBRATION_STORAGE_KEY);
+    const overrides = existingStr ? JSON.parse(existingStr) : {};
+    overrides[modelId] = def;
+    localStorage.setItem(CALIBRATION_STORAGE_KEY, JSON.stringify(overrides));
+  } catch (e) {
+    console.warn('Failed to save calibration override', e);
+  }
+}
+
+export function loadCalibrationOverrides() {
+  try {
+    const existingStr = localStorage.getItem(CALIBRATION_STORAGE_KEY);
+    if (!existingStr) return;
+    const overrides = JSON.parse(existingStr);
+    for (const modelId in overrides) {
+      if (CAR_LIGHT_MAP[modelId]) {
+        Object.assign(CAR_LIGHT_MAP[modelId], overrides[modelId]);
+      } else {
+        CAR_LIGHT_MAP[modelId] = overrides[modelId];
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to load calibration overrides', e);
+  }
+}
+
+// Load overrides immediately upon module evaluation
+loadCalibrationOverrides();
