@@ -32,7 +32,7 @@ import {
   initImpactFlash, triggerImpactFlash, updateImpactFlash,
   createUnderglow, updateUnderglow,
   initBoostShockwave, triggerBoostShockwave, updateBoostShockwave,
-  initNitroFlash,
+  initNitroFlash, triggerBoostBurst,
   createBrakeDiscs, updateBrakeDiscs,
   initHeatShimmer, updateHeatShimmer,
   initLensFlares, updateLensFlares,
@@ -40,6 +40,7 @@ import {
   initNearMissStreaks, triggerNearMiss, updateNearMissStreaks,
   initNearMissWhoosh, triggerNearMissWhoosh, updateNearMissWhoosh,
   initVictoryConfetti, spawnVictoryConfetti, updateVictoryConfetti, setConfettiContinuous,
+  spawnDebris,
 } from './vfx';
 import {
   initGPUParticles, updateGPUParticles, destroyGPUParticles,
@@ -1420,6 +1421,8 @@ function gameLoop(timestamp: number) {
       if (G.playerVehicle.engineJustExploded) {
         const pp = G.playerVehicle.group.position;
         spawnGPUExplosion(pp, 40);
+        spawnDebris(pp, 35, G.playerVehicle.velX, G.playerVehicle.velZ);
+        spawnGPUGlassShards(pp);
         flashDamage(0.9);
         setImpactIntensity(1.0);
       }
@@ -1568,6 +1571,7 @@ function gameLoop(timestamp: number) {
     const isNitroNow = s === GameState.RACING && G.playerVehicle.isNitroActive;
     if (isNitroNow && !G._wasNitroActive) {
       triggerBoostShockwave(G.playerVehicle.group.position, G.playerVehicle.heading);
+      triggerBoostBurst();
     }
     G._wasNitroActive = isNitroNow;
     updateBoostShockwave(frameDt);

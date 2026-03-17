@@ -131,7 +131,7 @@ export function setImpactIntensity(intensity: number) {
  * @param active Whether nitrous is currently active
  */
 export function setBoostActive(active: boolean) {
-  if (active) uBoostIntensity.value = Math.min(uBoostIntensity.value + 0.2, 1.0);
+  if (active) uBoostIntensity.value = Math.min(uBoostIntensity.value + 0.4, 1.0);
 }
 
 /** Get the pipeline for rendering. */

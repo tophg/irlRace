@@ -433,6 +433,14 @@ export function initBoostFlame(scene: THREE.Scene): THREE.Mesh {
   return boostFlameL; // backward compat — returns a mesh
 }
 
+// ── Flame Burst on Nitro Activation ──
+let boostBurstScale = 1.0; // decays from 3.0 → 1.0
+
+/** Call on nitro activation rising edge to trigger a flame burst. */
+export function triggerBoostBurst() {
+  boostBurstScale = 3.0;
+}
+
 export function updateBoostFlame(
   active: boolean,
   carPos: THREE.Vector3,
@@ -478,8 +486,9 @@ export function updateBoostFlame(
   coreMatL.uniforms.uTime.value = time;
   coreMatR.uniforms.uTime.value = time;
 
-  // Subtle scale breathing
-  const coreFlicker = 0.85 + Math.sin(time * 18) * 0.1 + Math.sin(time * 31) * 0.05;
+  // Subtle scale breathing + burst scale on activation
+  boostBurstScale += (1.0 - boostBurstScale) * 0.15; // decay toward 1.0 (~0.2s at 60fps)
+  const coreFlicker = (0.85 + Math.sin(time * 18) * 0.1 + Math.sin(time * 31) * 0.05) * boostBurstScale;
   boostFlameL.scale.set(coreFlicker, coreFlicker, coreFlicker);
   boostFlameR.scale.set(coreFlicker, coreFlicker, coreFlicker);
 

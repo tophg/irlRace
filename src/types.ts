@@ -125,6 +125,7 @@ export interface VehicleState {
   throttle: number;   // 0..1
   brake: number;      // 0..1
   driftAngle: number;
+  engineHeat: number; // 0-100 engine temperature
 }
 
 // ── Race Progress ──

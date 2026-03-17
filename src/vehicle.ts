@@ -983,6 +983,7 @@ export class Vehicle {
       throttle: this.throttle,
       brake: this.brake,
       driftAngle: this.driftAngle,
+      engineHeat: this._engineHeat,
     };
   }
 
