@@ -383,7 +383,7 @@ async function startRace() {
     playerModel.scale.setScalar(1);
     playerModel.rotation.set(0, 0, 0);
     G.playerVehicle = new Vehicle(G.selectedCar);
-    G.playerVehicle.setModel(playerModel);
+    G.playerVehicle.setModel(playerModel, renderer, camera);
     // Apply custom paint if set
     const paintHue = getSettings().paintHue;
     if (paintHue >= 0) G.playerVehicle.setPaintColor(paintHue);
@@ -568,7 +568,7 @@ async function spawnAI(td: TrackData) {
       model.position.set(0, 0, 0);
       model.scale.setScalar(1);
       model.rotation.set(0, 0, 0);
-      ai.vehicle.setModel(model);
+      ai.vehicle.setModel(model, renderer, camera);
     } catch {}
 
     ai.vehicle.setRoadMesh(G.trackData!.roadMesh);

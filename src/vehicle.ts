@@ -208,8 +208,11 @@ export class Vehicle {
     this.group.add(this._bodyGroup);
   }
 
-  /** Attach a loaded GLB model to this vehicle. */
-  setModel(model: THREE.Group) {
+  /** Attach a loaded GLB model to this vehicle.
+   *  Pass renderer + camera to pre-warm WebGL shaders for explosion fragments
+   *  (prevents 1-2s shader compilation stall at detonation time).
+   */
+  setModel(model: THREE.Group, renderer?: { compile: (scene: THREE.Scene, camera: THREE.Camera) => void }, camera?: THREE.Camera) {
     this.model = model;
     this._bodyGroup.add(model);
 
@@ -233,6 +236,23 @@ export class Vehicle {
     // Cap fragments to avoid excessive scene.add() calls at explosion time
     if (this._cachedFragments.length > 12) {
       this._cachedFragments.length = 12;
+    }
+
+    // Pre-warm WebGL shaders for fragment materials.
+    // Without this, the first render of explosion fragments triggers synchronous
+    // shader compilation (1-2s freeze). By compiling now during loading, the
+    // GPU caches the shader programs and explosion rendering is instant.
+    if (renderer && camera && this._cachedFragments.length > 0) {
+      const warmScene = new THREE.Scene();
+      // Add a minimal light so shaders compile with lighting enabled
+      warmScene.add(new THREE.AmbientLight(0xffffff, 0.5));
+      for (const frag of this._cachedFragments) {
+        const tempMesh = new THREE.Mesh(frag.mesh.geometry, frag.mesh.material);
+        warmScene.add(tempMesh);
+      }
+      renderer.compile(warmScene, camera);
+      // Dispose temp scene (compiled shaders persist in renderer cache)
+      warmScene.clear();
     }
   }
 
