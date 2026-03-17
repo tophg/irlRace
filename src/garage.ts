@@ -133,7 +133,7 @@ export function initGarage(
     roughness: 0.15,
   });
   platform = new THREE.Mesh(platGeo, platMat);
-  platform.position.y = -0.06;
+  platform.position.y = -0.10; // height 0.2 -> top is perfectly 0.0
   platform.receiveShadow = true;
   garageScene.add(platform);
 
@@ -142,7 +142,7 @@ export function initGarage(
   ringMat = new THREE.MeshBasicMaterial({ color: 0x44cc88, transparent: true, opacity: 0.8 });
   ringMesh = new THREE.Mesh(ringGeo, ringMat);
   ringMesh.rotation.x = -Math.PI / 2;
-  ringMesh.position.y = 0.01;
+  ringMesh.position.y = 0.0;
   garageScene.add(ringMesh);
 
   // ── Reflective Floor with Radial Gradient Fade ──
@@ -170,7 +170,7 @@ export function initGarage(
   });
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
-  floor.position.y = -0.12;
+  floor.position.y = 0.0; // Must be exactly 0 since loaders.ts aligns tires to 0
   floor.receiveShadow = true;
   garageScene.add(floor);
 
@@ -658,8 +658,8 @@ async function showCar(index: number) {
     hidePlaceholder();
     showProgressBar(false);
 
-    // Platform center is -0.01, height 0.2 -> Top surface is +0.09
-    const platformY = 0.09;
+    // Platform top is now mathematically exactly 0.0
+    const platformY = 0.0;
 
     // Animate entrance over ~400ms
     const entranceStart = performance.now();

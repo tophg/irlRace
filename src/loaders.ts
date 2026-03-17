@@ -51,16 +51,30 @@ function processCarModel(model: THREE.Group, filename = 'unknown'): THREE.Group 
   const scale = 4.0 / maxDim;
   model.scale.setScalar(scale);
 
-  // Recompute bounding box after scale
-  box.setFromObject(model);
-  const center = box.getCenter(new THREE.Vector3());
-
   // ── Per-model tire contact detection ──
-  // GLTF models face +X. After rotation.y = PI/2 (applied later), local +X becomes +Z.
-  // Since our models are clean, the absolute lowest vertex of the entire mesh
-  // is mathematically guaranteed to be the bottom of the tires.
-  // We can bypass complex raycasting and just use the bounding box minimum.
-  const tireContactY = box.min.y;
+  // Recompute bounding box after scale (only for actual car geometry, excluding shadow planes)
+  const carOnlyBox = new THREE.Box3();
+  model.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) {
+      const mesh = child as THREE.Mesh;
+      const mat = mesh.material as THREE.Material;
+      // Many low-poly cars have a baked drop-shadow plane with transparency or specific naming
+      const isShadowPlane = mesh.name.toLowerCase().includes('shadow') || 
+                            (mat && mat.transparent && mat.opacity < 1);
+      
+      if (!isShadowPlane) {
+        const meshBox = new THREE.Box3().setFromObject(mesh);
+        carOnlyBox.union(meshBox);
+      }
+    }
+  });
+
+  if (carOnlyBox.isEmpty()) {
+    carOnlyBox.copy(box); // Fallback if everything was filtered out
+  }
+
+  const center = carOnlyBox.getCenter(new THREE.Vector3());
+  const tireContactY = carOnlyBox.min.y;
 
   model.position.set(-center.x, -tireContactY, -center.z);
 
