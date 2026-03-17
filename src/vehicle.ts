@@ -100,7 +100,8 @@ export class Vehicle {
 
   /** Reset all dynamic rotations for replay playback.
    *  Clears: group pitch/roll, bodyGroup pitch/roll/drift-yaw,
-   *  wheel steering angle, wheel spin. Preserves structural rotations
+   *  wheel steering angle, wheel spin, wheel scale (blowout),
+   *  wheel suspension offset. Preserves structural rotations
    *  (tire/hub rotation.z = PI/2 that keeps them upright).
    */
   resetForReplay() {
@@ -108,12 +109,16 @@ export class Vehicle {
     this.group.rotation.set(0, 0, 0, 'YXZ');
     // Body group: clear cosmetic pitch, roll, drift yaw
     this._bodyGroup.rotation.set(0, 0, 0);
-    // Wheels: clear steering angle + spin
+    // Wheels: clear steering angle + spin + suspension offset + blowout scale
     this.wheelSpin = 0;
     for (const w of [this.wheelFL, this.wheelFR, this.wheelRL, this.wheelRR]) {
       if (!w) continue;
       // Container rotation.y = steering angle → 0
       w.rotation.set(0, 0, 0);
+      // Reset scale (may be squished from flattenTire blowout VFX)
+      w.scale.set(1, 1, 1);
+      // Reset suspension position.y to construction default (torus radius)
+      w.position.y = 0.47;
       // wheelGroup (children[0]) rotation.x = wheelSpin → 0
       // (tire/hub rotation.z = PI/2 are deeper children, unaffected)
       const wg = w.children[0];
