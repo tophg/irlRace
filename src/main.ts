@@ -1060,18 +1060,9 @@ function startReplayPlayback() {
   }
 
   // Reset body pitch/roll so car sits level (stale from last physics frame)
-  // Also reset wheel steering + spin rotations
-  const resetVehicleRotations = (v: { bodyGroupRef: THREE.Group; group: THREE.Group; wheelRefs: (THREE.Mesh | null)[] }) => {
-    v.bodyGroupRef.rotation.set(0, 0, 0);
-    v.group.rotation.set(0, 0, 0, 'YXZ');
-    for (const w of v.wheelRefs) {
-      if (!w) continue;
-      w.rotation.set(0, 0, 0); // clear steering angle
-      if (w.children[0]) w.children[0].rotation.set(0, 0, 0); // clear wheel spin
-    }
-  };
-  resetVehicleRotations(G.playerVehicle);
-  for (const ai of G.aiRacers) resetVehicleRotations(ai.vehicle);
+  // Also reset wheel steering + spin rotations (preserves structural rotations)
+  G.playerVehicle.resetForReplay();
+  for (const ai of G.aiRacers) ai.vehicle.resetForReplay();
 
   // Build mesh map for replay (player + AI vehicles)
   const meshes = new Map<string, THREE.Group>();
@@ -1106,14 +1097,14 @@ function startReplayPlayback() {
     for (const w of G.playerVehicle!.wheelRefs) {
       if (w) w.visible = true;
     }
-    resetVehicleRotations(G.playerVehicle!);
+    G.playerVehicle!.resetForReplay();
     for (const ai of G.aiRacers) {
       ai.vehicle.bodyGroupRef.visible = true;
       ai.vehicle.destroyed = false;
       for (const w of ai.vehicle.wheelRefs) {
         if (w) w.visible = true;
       }
-      resetVehicleRotations(ai.vehicle);
+      ai.vehicle.resetForReplay();
     }
   };
 

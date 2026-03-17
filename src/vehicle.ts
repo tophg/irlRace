@@ -98,6 +98,29 @@ export class Vehicle {
   get destroyed(): boolean { return this._destroyed; }
   set destroyed(v: boolean) { this._destroyed = v; }
 
+  /** Reset all dynamic rotations for replay playback.
+   *  Clears: group pitch/roll, bodyGroup pitch/roll/drift-yaw,
+   *  wheel steering angle, wheel spin. Preserves structural rotations
+   *  (tire/hub rotation.z = PI/2 that keeps them upright).
+   */
+  resetForReplay() {
+    // Group: clear road pitch/roll, keep rotation order
+    this.group.rotation.set(0, 0, 0, 'YXZ');
+    // Body group: clear cosmetic pitch, roll, drift yaw
+    this._bodyGroup.rotation.set(0, 0, 0);
+    // Wheels: clear steering angle + spin
+    this.wheelSpin = 0;
+    for (const w of [this.wheelFL, this.wheelFR, this.wheelRL, this.wheelRR]) {
+      if (!w) continue;
+      // Container rotation.y = steering angle → 0
+      w.rotation.set(0, 0, 0);
+      // wheelGroup (children[0]) rotation.x = wheelSpin → 0
+      // (tire/hub rotation.z = PI/2 are deeper children, unaffected)
+      const wg = w.children[0];
+      if (wg) wg.rotation.x = 0;
+    }
+  }
+
   // Pre-computed fracture fragments (created at load time, used at explosion time)
   private _cachedFragments: MeshFragment[] = [];
   get cachedFragments(): MeshFragment[] { return this._cachedFragments; }
