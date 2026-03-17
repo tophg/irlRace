@@ -1059,12 +1059,25 @@ function startReplayPlayback() {
     if (w) w.visible = true;
   }
 
+  // Reset body pitch/roll so car sits level (stale from last physics frame)
+  G.playerVehicle.bodyGroupRef.rotation.set(0, 0, 0);
+  G.playerVehicle.group.rotation.set(0, 0, 0, 'YXZ');
+  for (const ai of G.aiRacers) {
+    ai.vehicle.bodyGroupRef.rotation.set(0, 0, 0);
+    ai.vehicle.group.rotation.set(0, 0, 0, 'YXZ');
+  }
+
   // Build mesh map for replay (player + AI vehicles)
   const meshes = new Map<string, THREE.Group>();
   meshes.set('local', G.playerVehicle.group);
   for (const ai of G.aiRacers) meshes.set(ai.id, ai.vehicle.group);
 
-  G.replayPlayer = new ReplayPlayer(G.replayRecorder, camera, meshes);
+  // Explosion callback for replay VFX
+  const onExplosion = (pos: THREE.Vector3) => {
+    spawnGPUExplosion(pos, 1.0);
+  };
+
+  G.replayPlayer = new ReplayPlayer(G.replayRecorder, camera, meshes, onExplosion);
   G.replayPlayer.start();
   showHUD(false);
 
