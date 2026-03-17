@@ -1449,6 +1449,7 @@ function gameLoop(timestamp: number) {
             G.playerVehicle.velX,
             G.playerVehicle.velZ,
             G.playerVehicle.wheelRefs,
+            G.playerVehicle.cachedFragments,
           );
           G.playerVehicle.destroyed = true;
           // Screen effects: flash + letterbox + post-FX

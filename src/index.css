@@ -858,7 +858,8 @@ canvas { display: block; }
 /* ── Loading Screen ── */
 .loading-overlay {
   position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
   background: rgb(10,10,15);
   z-index: 95;
 }
@@ -868,6 +869,16 @@ canvas { display: block; }
   color: var(--col-accent);
   letter-spacing: 4px;
   animation: loading-pulse 1.2s ease-in-out infinite;
+}
+.loading-dots::after {
+  content: '';
+  animation: loading-dots 1.5s steps(4, end) infinite;
+}
+@keyframes loading-dots {
+  0%  { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
 }
 @keyframes loading-pulse {
   0%, 100% { opacity: 0.4; }

@@ -5,6 +5,7 @@ import { CarDef, InputState, VehicleState, DamageState, createDamageState } from
 import { CAR_LIGHT_MAP, CarLightDef } from './car-lights';
 import { getSettings } from './settings';
 import { getClosestSplinePoint } from './track';
+import { fractureMesh, MeshFragment } from './mesh-fracture';
 import type { SplineBVH } from './bvh';
 import type { WeatherPhysics } from './weather';
 
@@ -96,6 +97,10 @@ export class Vehicle {
   }
   get destroyed(): boolean { return this._destroyed; }
   set destroyed(v: boolean) { this._destroyed = v; }
+
+  // Pre-computed fracture fragments (created at load time, used at explosion time)
+  private _cachedFragments: MeshFragment[] = [];
+  get cachedFragments(): MeshFragment[] { return this._cachedFragments; }
 
   // Road-mesh raycast state
   private roadMesh: THREE.Mesh | null = null;
@@ -214,6 +219,17 @@ export class Vehicle {
 
     this.buildWheels();
     this.buildLights();
+
+    // Pre-fracture the mesh NOW (at load time) so explosion is instant
+    const meshes: THREE.Mesh[] = [];
+    this._bodyGroup.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.geometry && child.visible) {
+        meshes.push(child);
+      }
+    });
+    for (const srcMesh of meshes) {
+      this._cachedFragments.push(...fractureMesh(srcMesh, 3, 1, 2));
+    }
   }
 
   /** Recolor the car body with a new hue (0–360). Preserves metalness/roughness. */

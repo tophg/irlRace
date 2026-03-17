@@ -2,7 +2,7 @@
 
 import * as THREE from 'three';
 import { spawnGPUExplosion, spawnGPUFlame, spawnGPUDamageSmoke, spawnExplosionDust, spawnGPUSparks } from './gpu-particles';
-import { fractureMesh } from './mesh-fracture';
+import { fractureMesh, type MeshFragment } from './mesh-fracture';
 
 // ── Fragment System ──
 
@@ -44,6 +44,7 @@ export function triggerVehicleDestruction(
   carVelX: number,
   carVelZ: number,
   wheels: (THREE.Mesh | null)[],
+  cachedFragments?: MeshFragment[],
 ) {
   // Guard against re-triggering
   if (destructionActive) return;
@@ -56,54 +57,70 @@ export function triggerVehicleDestruction(
   vehicleGroup.getWorldPosition(_center);
   wreckPosition = _center.clone();
 
-  // ── Phase 1: Fracture body mesh into spatial fragments ──
-  const meshes: THREE.Mesh[] = [];
-  bodyGroup.traverse((child) => {
-    if (child instanceof THREE.Mesh && child.geometry && child.visible) {
-      meshes.push(child);
-    }
-  });
-
-  for (const srcMesh of meshes) {
-    // Use runtime fracture to split single mesh into 6 fragments (3×1×2 grid)
-    const fractured = fractureMesh(srcMesh, 3, 1, 2);
-
+  // ── Phase 1: Get or create fragments (instant if pre-cached) ──
+  let fractured: MeshFragment[];
+  if (cachedFragments && cachedFragments.length > 0) {
+    // Clone pre-computed fragments — just geometry.clone() calls, no triangle iteration
+    vehicleGroup.getWorldQuaternion(_worldQuat);
+    fractured = cachedFragments.map(f => ({
+      mesh: new THREE.Mesh(f.mesh.geometry.clone(), f.mesh.material),
+      center: f.center.clone(),
+    }));
+    // Position cloned fragments at vehicle’s current world transform
     for (const frag of fractured) {
-      scene.add(frag.mesh);
-
-      // Outward blast velocity — direction from wreck center to fragment center
-      _outward.copy(frag.center).sub(_center);
-      const dist = _outward.length();
-      _outward.normalize();
-
-      // Close fragments (near engine) get higher blast force
-      const proximity = Math.max(0.3, 1.0 - dist / 4);
-      const blastForce = 4 + proximity * 10 + Math.random() * 4;
-
-      const velocity = new THREE.Vector3(
-        carVelX * 0.015 + _outward.x * blastForce + (Math.random() - 0.5) * 3,
-        2 + proximity * 5 + Math.random() * 3,
-        carVelZ * 0.015 + _outward.z * blastForce + (Math.random() - 0.5) * 3,
-      );
-
-      // Tumble intensity based on proximity
-      const tumbleScale = 4 + proximity * 6;
-      const angularVel = new THREE.Vector3(
-        (Math.random() - 0.5) * tumbleScale,
-        (Math.random() - 0.5) * tumbleScale * 0.7,
-        (Math.random() - 0.5) * tumbleScale,
-      );
-
-      fragments.push({
-        mesh: frag.mesh,
-        velocity,
-        angularVel,
-        grounded: false,
-        lifetime: 0,
-        maxLife: 5 + Math.random() * 3,
-        originalOpacity: 1.0,
-      });
+      frag.mesh.position.copy(_center);
+      frag.mesh.quaternion.copy(_worldQuat);
+      frag.mesh.scale.setScalar(1);
     }
+  } else {
+    // Fallback: compute at runtime
+    const meshes: THREE.Mesh[] = [];
+    bodyGroup.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.geometry && child.visible) {
+        meshes.push(child);
+      }
+    });
+    fractured = [];
+    for (const srcMesh of meshes) {
+      fractured.push(...fractureMesh(srcMesh, 3, 1, 2));
+    }
+  }
+
+  for (const frag of fractured) {
+    scene.add(frag.mesh);
+
+    // Outward blast velocity — direction from wreck center to fragment center
+    _outward.copy(frag.center).sub(_center);
+    const dist = _outward.length();
+    _outward.normalize();
+
+    // Close fragments (near engine) get higher blast force
+    const proximity = Math.max(0.3, 1.0 - dist / 4);
+    const blastForce = 4 + proximity * 10 + Math.random() * 4;
+
+    const velocity = new THREE.Vector3(
+      carVelX * 0.015 + _outward.x * blastForce + (Math.random() - 0.5) * 3,
+      2 + proximity * 5 + Math.random() * 3,
+      carVelZ * 0.015 + _outward.z * blastForce + (Math.random() - 0.5) * 3,
+    );
+
+    // Tumble intensity based on proximity
+    const tumbleScale = 4 + proximity * 6;
+    const angularVel = new THREE.Vector3(
+      (Math.random() - 0.5) * tumbleScale,
+      (Math.random() - 0.5) * tumbleScale * 0.7,
+      (Math.random() - 0.5) * tumbleScale,
+    );
+
+    fragments.push({
+      mesh: frag.mesh,
+      velocity,
+      angularVel,
+      grounded: false,
+      lifetime: 0,
+      maxLife: 5 + Math.random() * 3,
+      originalOpacity: 1.0,
+    });
   }
 
   // ── Phase 2: Detach wheels ──

@@ -210,7 +210,11 @@ export function showLoading() {
   const uiOverlay = document.getElementById('ui-overlay')!;
   const el = document.createElement('div');
   el.className = 'loading-overlay';
-  el.innerHTML = '<div class="loading-text">GENERATING TRACK...</div>';
+  el.innerHTML = `
+    <div class="title-logo" style="font-size:clamp(36px,8vw,72px);margin-bottom:12px;">HOOD RACER</div>
+    <div class="title-subtitle" style="margin-bottom:40px;">Street Legends Never Stop</div>
+    <div class="loading-text">GENERATING TRACK<span class="loading-dots"></span></div>
+  `;
   uiOverlay.appendChild(el);
   G.loadingEl = el;
 }
