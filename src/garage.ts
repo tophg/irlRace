@@ -658,8 +658,9 @@ async function showCar(index: number) {
     hidePlaceholder();
     showProgressBar(false);
 
-    // Platform top is now mathematically exactly 0.0
-    const platformY = 0.0;
+    // Platform landing height — model geometry extends ~0.3 below origin,
+    // so raise above floor (y=0) to prevent tires clipping through
+    const platformY = 0.35;
 
     // Animate entrance over ~400ms
     const entranceStart = performance.now();
