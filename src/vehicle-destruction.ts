@@ -2,6 +2,7 @@
 
 import * as THREE from 'three';
 import { spawnGPUExplosion, spawnGPUFlame, spawnGPUDamageSmoke } from './gpu-particles';
+import { fractureMesh } from './mesh-fracture';
 
 // ── Fragment System ──
 
@@ -21,6 +22,11 @@ let wreckPosition: THREE.Vector3 | null = null;
 let destructionTime = 0;
 let destructionActive = false;
 
+// Shockwave ring + dynamic light
+let shockwaveRing: THREE.Mesh | null = null;
+let explosionLight: THREE.PointLight | null = null;
+let scorchMark: THREE.Mesh | null = null;
+
 // Temps to avoid allocs
 const _worldPos = new THREE.Vector3();
 const _worldQuat = new THREE.Quaternion();
@@ -28,7 +34,7 @@ const _center = new THREE.Vector3();
 const _outward = new THREE.Vector3();
 
 /**
- * Trigger vehicle destruction — decompose model into flying fragments.
+ * Trigger vehicle destruction — fracture model into flying fragments.
  * Call once when engine explodes.
  */
 export function triggerVehicleDestruction(
@@ -50,8 +56,7 @@ export function triggerVehicleDestruction(
   vehicleGroup.getWorldPosition(_center);
   wreckPosition = _center.clone();
 
-  // ── Phase 1: Decompose body model into fragments ──
-  // Collect meshes, skip tiny/invisible ones
+  // ── Phase 1: Fracture body mesh into spatial fragments ──
   const meshes: THREE.Mesh[] = [];
   bodyGroup.traverse((child) => {
     if (child instanceof THREE.Mesh && child.geometry && child.visible) {
@@ -59,75 +64,46 @@ export function triggerVehicleDestruction(
     }
   });
 
-  // Cap at 15 largest fragments to avoid perf issues with complex models
-  const MAX_BODY_FRAGMENTS = 15;
-  if (meshes.length > MAX_BODY_FRAGMENTS) {
-    // Sort by bounding sphere radius (largest first) — prefer big visible panels
-    meshes.sort((a, b) => {
-      a.geometry.computeBoundingSphere();
-      b.geometry.computeBoundingSphere();
-      return (b.geometry.boundingSphere?.radius ?? 0) - (a.geometry.boundingSphere?.radius ?? 0);
-    });
-    meshes.length = MAX_BODY_FRAGMENTS;
-  }
-
   for (const srcMesh of meshes) {
-    // Get world transform
-    srcMesh.getWorldPosition(_worldPos);
-    srcMesh.getWorldQuaternion(_worldQuat);
+    // Use runtime fracture to split single mesh into 12 fragments (3×2×2 grid)
+    const fractured = fractureMesh(srcMesh, 3, 2, 2);
 
-    // Clone mesh for independent scene-level fragment
-    const frag = srcMesh.clone();
-    frag.position.copy(_worldPos);
-    frag.quaternion.copy(_worldQuat);
+    for (const frag of fractured) {
+      scene.add(frag.mesh);
 
-    // Make material transparent for fade-out + add heat glow
-    if (Array.isArray(frag.material)) {
-      frag.material = frag.material.map(m => {
-        const c = m.clone();
-        c.transparent = true;
-        if ('emissive' in c) {
-          (c as any).emissive = new THREE.Color(0xFF6600); // hot orange glow
-          (c as any).emissiveIntensity = 0.6;
-        }
-        return c;
+      // Outward blast velocity — direction from wreck center to fragment center
+      _outward.copy(frag.center).sub(_center);
+      const dist = _outward.length();
+      _outward.normalize();
+
+      // Close fragments (near engine) get higher blast force
+      const proximity = Math.max(0.3, 1.0 - dist / 4);
+      const blastForce = 4 + proximity * 10 + Math.random() * 4;
+
+      const velocity = new THREE.Vector3(
+        carVelX * 0.015 + _outward.x * blastForce + (Math.random() - 0.5) * 3,
+        2 + proximity * 5 + Math.random() * 3,
+        carVelZ * 0.015 + _outward.z * blastForce + (Math.random() - 0.5) * 3,
+      );
+
+      // Tumble intensity based on proximity
+      const tumbleScale = 4 + proximity * 6;
+      const angularVel = new THREE.Vector3(
+        (Math.random() - 0.5) * tumbleScale,
+        (Math.random() - 0.5) * tumbleScale * 0.7,
+        (Math.random() - 0.5) * tumbleScale,
+      );
+
+      fragments.push({
+        mesh: frag.mesh,
+        velocity,
+        angularVel,
+        grounded: false,
+        lifetime: 0,
+        maxLife: 5 + Math.random() * 3,
+        originalOpacity: 1.0,
       });
-    } else {
-      frag.material = frag.material.clone();
-      (frag.material as THREE.Material).transparent = true;
-      if ('emissive' in frag.material) {
-        (frag.material as any).emissive = new THREE.Color(0xFF6600);
-        (frag.material as any).emissiveIntensity = 0.6;
-      }
     }
-
-    scene.add(frag);
-
-    // Outward blast velocity
-    _outward.copy(_worldPos).sub(_center).normalize();
-    const blastForce = 6 + Math.random() * 8;
-    const velocity = new THREE.Vector3(
-      carVelX * 0.015 + _outward.x * blastForce + (Math.random() - 0.5) * 3,
-      3 + Math.random() * 6,
-      carVelZ * 0.015 + _outward.z * blastForce + (Math.random() - 0.5) * 3,
-    );
-
-    // Random tumble
-    const angularVel = new THREE.Vector3(
-      (Math.random() - 0.5) * 8,
-      (Math.random() - 0.5) * 6,
-      (Math.random() - 0.5) * 8,
-    );
-
-    fragments.push({
-      mesh: frag,
-      velocity,
-      angularVel,
-      grounded: false,
-      lifetime: 0,
-      maxLife: 6 + Math.random() * 3,
-      originalOpacity: 1.0,
-    });
   }
 
   // ── Phase 2: Detach wheels ──
@@ -185,6 +161,53 @@ export function triggerVehicleDestruction(
 
   // Hide the original body
   bodyGroup.visible = false;
+
+  // ── Phase 3a: Shockwave ring (expanding transparent ring) ──
+  const ringGeo = new THREE.RingGeometry(0.5, 1.5, 32);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0xFFCC66,
+    transparent: true,
+    opacity: 0.7,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  shockwaveRing = new THREE.Mesh(ringGeo, ringMat);
+  shockwaveRing.position.copy(wreckPosition!);
+  shockwaveRing.position.y += 0.3;
+  shockwaveRing.rotation.x = -Math.PI / 2; // flat on ground
+  scene.add(shockwaveRing);
+
+  // ── Phase 3b: Dynamic explosion point light ──
+  explosionLight = new THREE.PointLight(0xFF8800, 8, 30, 2);
+  explosionLight.position.copy(wreckPosition!);
+  explosionLight.position.y += 1.5;
+  scene.add(explosionLight);
+
+  // ── Phase 3c: Ground scorch mark (procedural) ──
+  const scorchCanvas = document.createElement('canvas');
+  scorchCanvas.width = 64;
+  scorchCanvas.height = 64;
+  const ctx = scorchCanvas.getContext('2d')!;
+  const grad = ctx.createRadialGradient(32, 32, 2, 32, 32, 30);
+  grad.addColorStop(0, 'rgba(0,0,0,0.8)');
+  grad.addColorStop(0.5, 'rgba(20,15,10,0.5)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 64, 64);
+  const scorchTex = new THREE.CanvasTexture(scorchCanvas);
+  const scorchGeo = new THREE.PlaneGeometry(7, 7);
+  const scorchMat = new THREE.MeshBasicMaterial({
+    map: scorchTex,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  });
+  scorchMark = new THREE.Mesh(scorchGeo, scorchMat);
+  scorchMark.position.copy(wreckPosition!);
+  scorchMark.position.y = 0.02; // just above road
+  scorchMark.rotation.x = -Math.PI / 2;
+  scene.add(scorchMark);
 }
 
 /**
@@ -196,6 +219,45 @@ export function updateDestructionFragments(dt: number): boolean {
   if (!destructionActive || fragments.length === 0) return false;
 
   destructionTime += dt;
+
+  // ── Shockwave ring animation (0–0.4s) ──
+  if (shockwaveRing) {
+    const ringT = destructionTime / 0.4;
+    if (ringT < 1) {
+      const s = 1 + ringT * 29; // scale 1→30
+      shockwaveRing.scale.set(s, s, 1);
+      (shockwaveRing.material as THREE.MeshBasicMaterial).opacity = 0.7 * (1 - ringT);
+    } else {
+      destructionScene?.remove(shockwaveRing);
+      shockwaveRing.geometry.dispose();
+      (shockwaveRing.material as THREE.Material).dispose();
+      shockwaveRing = null;
+    }
+  }
+
+  // ── Dynamic explosion light (flicker + decay) ──
+  if (explosionLight) {
+    if (destructionTime < 0.3) {
+      // Initial flash decay: 8→3
+      explosionLight.intensity = 8 - (destructionTime / 0.3) * 5;
+    } else if (destructionTime < 4.0) {
+      // Fire flicker
+      explosionLight.intensity = 2.5 + Math.random() * 1.5;
+      // Color cools over time: orange → deep red
+      const cool = (destructionTime - 0.3) / 3.7;
+      explosionLight.color.setRGB(1.0, 0.53 - cool * 0.3, 0.0);
+    } else {
+      destructionScene?.remove(explosionLight);
+      explosionLight.dispose();
+      explosionLight = null;
+    }
+  }
+
+  // ── Scorch mark fade-in ──
+  if (scorchMark && destructionTime < 0.6) {
+    const scorchT = Math.min(1, destructionTime / 0.5);
+    (scorchMark.material as THREE.MeshBasicMaterial).opacity = scorchT * 0.7;
+  }
 
   // ── Update fragment physics ──
   for (let i = fragments.length - 1; i >= 0; i--) {
@@ -368,6 +430,32 @@ export function cleanupDestruction() {
     });
   }
   fragments.length = 0;
+
+  // Clean up shockwave ring
+  if (shockwaveRing) {
+    destructionScene?.remove(shockwaveRing);
+    shockwaveRing.geometry.dispose();
+    (shockwaveRing.material as THREE.Material).dispose();
+    shockwaveRing = null;
+  }
+
+  // Clean up explosion light
+  if (explosionLight) {
+    destructionScene?.remove(explosionLight);
+    explosionLight.dispose();
+    explosionLight = null;
+  }
+
+  // Clean up scorch mark
+  if (scorchMark) {
+    destructionScene?.remove(scorchMark);
+    scorchMark.geometry.dispose();
+    const mat = scorchMark.material as THREE.MeshBasicMaterial;
+    mat.map?.dispose();
+    mat.dispose();
+    scorchMark = null;
+  }
+
   destructionActive = false;
   destructionTime = 0;
   wreckPosition = null;

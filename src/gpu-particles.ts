@@ -231,36 +231,70 @@ export function spawnGPUSparks(pos: THREE.Vector3, force: number) {
   flushToGPU();
 }
 
-/** Spawn explosion burst particles (sparks + dark smoke). */
+/** Spawn explosion burst particles (sparks + dark smoke + molten debris). */
 export function spawnGPUExplosion(pos: THREE.Vector3, force: number) {
-  // Bright expanding sparks
-  const sparkCount = Math.min(Math.floor(force * 0.6), 20);
+  const sparkCount = Math.min(Math.floor(force * 0.8), 25);
   for (let i = 0; i < sparkCount; i++) {
-    const speed = 5 + Math.random() * 10;
+    const speed = 5 + Math.random() * 12;
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.random() * Math.PI;
-    const brightness = Math.random();
+    const roll = Math.random();
+
+    // Temperature-gradient coloring: white-hot → orange → deep red
+    let r: number, g: number, b: number, size: number;
+    if (roll < 0.3) {
+      // White-hot core sparks (brightest, fastest)
+      r = 1.0; g = 0.95; b = 0.7;
+      size = 0.3 + Math.random() * 0.2;
+    } else if (roll < 0.7) {
+      // Standard orange sparks
+      r = 1.0; g = 0.4 + Math.random() * 0.3; b = 0.1;
+      size = 0.4 + Math.random() * 0.3;
+    } else {
+      // Deep red trailing embers (slower, longer-lived)
+      r = 0.8; g = 0.12 + Math.random() * 0.1; b = 0.05;
+      size = 0.5 + Math.random() * 0.4;
+    }
+
     writeParticle(
       pos.x, pos.y + 0.5, pos.z,
       Math.sin(phi) * Math.cos(theta) * speed,
       Math.abs(Math.cos(phi)) * speed * 0.7 + 2,
       Math.sin(phi) * Math.sin(theta) * speed,
-      1.0, 0.5 + brightness * 0.5, brightness * 0.3, 1.0,
-      0.4 + Math.random() * 0.3,
+      r, g, b, 1.0,
+      0.4 + Math.random() * 0.4,
       PType.SPARK,
-      0.3 + Math.random() * 0.3,
+      size,
+    );
+  }
+
+  // Molten debris chunks (large, slow, dark gray)
+  for (let i = 0; i < 3; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = 2 + Math.random() * 4;
+    writeParticle(
+      pos.x, pos.y + 0.5, pos.z,
+      Math.cos(angle) * spd,
+      1 + Math.random() * 3,
+      Math.sin(angle) * spd,
+      0.25, 0.2, 0.15, 0.8,
+      1.4 + Math.random() * 0.6,
+      PType.SMOKE,
+      1.2 + Math.random() * 0.6,
     );
   }
 
   // Dark smoke cloud
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 6; i++) {
     writeParticle(
-      pos.x, pos.y + 0.5, pos.z,
+      pos.x + (Math.random() - 0.5) * 1.5,
+      pos.y + 0.5 + Math.random() * 0.5,
+      pos.z + (Math.random() - 0.5) * 1.5,
       (Math.random() - 0.5) * 3,
       1 + Math.random() * 2,
       (Math.random() - 0.5) * 3,
       0.13, 0.13, 0.13, 0.5,
-      1.0,
+      1.2 + Math.random() * 0.3,
       PType.SMOKE,
       1.5 + Math.random(),
     );
