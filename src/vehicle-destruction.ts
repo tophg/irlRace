@@ -16,12 +16,21 @@ interface DestructionFragment {
   originalOpacity: number;
 }
 
-const fragments: DestructionFragment[] = [];
+let activeFragCount = 0;  // how many pool slots are active this explosion
 let destructionScene: THREE.Scene | null = null;
 const _wreckPos = new THREE.Vector3();   // reusable — no .clone() at detonation
 let wreckPosition: THREE.Vector3 | null = null;
 let destructionTime = 0;
 let destructionActive = false;
+
+// ── Pre-allocated fragment/wheel mesh pool ──
+const FRAG_POOL_SIZE = 12;
+const WHEEL_POOL_SIZE = 4;
+const TOTAL_POOL = FRAG_POOL_SIZE + WHEEL_POOL_SIZE;
+const _fragPool: DestructionFragment[] = [];  // pre-allocated, reused each explosion
+const _poolMeshes: THREE.Mesh[] = [];         // pre-created mesh shells (stay in scene)
+let _poolReady = false;
+const _dummyGeo = new THREE.BufferGeometry(); // placeholder for idle pool meshes
 
 // ── Pre-allocated explosion assets (created once, recycled across explosions) ──
 let _ringGeo: THREE.RingGeometry | null = null;
@@ -103,6 +112,29 @@ export function warmupDestruction(
   _expLight.visible = false;
   scene.add(_expLight);
 
+  // ── Pre-allocate fragment/wheel mesh pool ──
+  if (!_poolReady) {
+    const placeholderMat = new THREE.MeshBasicMaterial({ visible: false });
+    for (let i = 0; i < TOTAL_POOL; i++) {
+      const mesh = new THREE.Mesh(_dummyGeo, placeholderMat);
+      mesh.visible = false;
+      mesh.frustumCulled = false; // fragments move fast, don't cull
+      scene.add(mesh);
+      _poolMeshes.push(mesh);
+      _fragPool.push({
+        mesh,
+        velocity: new THREE.Vector3(),
+        angularVel: new THREE.Vector3(),
+        grounded: false,
+        lifetime: 0,
+        maxLife: 5,
+        originalOpacity: 1.0,
+      });
+    }
+    placeholderMat.dispose(); // pool meshes will get real materials at detonation
+    _poolReady = true;
+  }
+
   // Warm GPU pipelines for these materials in the ACTUAL scene
   renderer.compile(scene, camera as THREE.PerspectiveCamera);
 
@@ -133,110 +165,148 @@ export function triggerVehicleDestruction(
   destructionScene = scene;
   destructionTime = 0;
   destructionActive = true;
+  activeFragCount = 0;
 
   // Wreck center (for fire/smoke spawning)
   vehicleGroup.getWorldPosition(_center);
   _wreckPos.copy(_center);
   wreckPosition = _wreckPos;
 
-  // ── Phase 1: Get or create fragments (instant if pre-cached) ──
-  let fractured: MeshFragment[];
-  if (cachedFragments && cachedFragments.length > 0) {
-    // Share geometry references — NO cloning, no GPU buffer re-upload
+  // ── Phase 1: Assign cached fragments to pool meshes (zero alloc) ──
+  if (cachedFragments && cachedFragments.length > 0 && _poolReady) {
     vehicleGroup.getWorldQuaternion(_worldQuat);
-    fractured = cachedFragments.map(f => ({
-      mesh: new THREE.Mesh(f.mesh.geometry, f.mesh.material), // shared, not cloned
-      center: f.center.clone(),
-    }));
-    for (const frag of fractured) {
-      frag.mesh.position.copy(_center);
-      frag.mesh.quaternion.copy(_worldQuat);
-      frag.mesh.scale.setScalar(1);
+    const count = Math.min(cachedFragments.length, FRAG_POOL_SIZE);
+    for (let i = 0; i < count; i++) {
+      const src = cachedFragments[i];
+      const frag = _fragPool[i];
+      const mesh = _poolMeshes[i];
+
+      // Swap geometry + material (shared references, no clone)
+      mesh.geometry = src.mesh.geometry;
+      mesh.material = src.mesh.material;
+      mesh.position.copy(_center);
+      mesh.quaternion.copy(_worldQuat);
+      mesh.scale.setScalar(1);
+      mesh.visible = true;
+
+      // Compute blast velocity into pre-allocated vectors
+      _outward.copy(src.center).sub(_center);
+      const dist = _outward.length();
+      _outward.normalize();
+      const proximity = Math.max(0.3, 1.0 - dist / 4);
+      const blastForce = 4 + proximity * 10 + Math.random() * 4;
+
+      frag.velocity.set(
+        carVelX * 0.015 + _outward.x * blastForce + (Math.random() - 0.5) * 3,
+        2 + proximity * 5 + Math.random() * 3,
+        carVelZ * 0.015 + _outward.z * blastForce + (Math.random() - 0.5) * 3,
+      );
+      const tumbleScale = 4 + proximity * 6;
+      frag.angularVel.set(
+        (Math.random() - 0.5) * tumbleScale,
+        (Math.random() - 0.5) * tumbleScale * 0.7,
+        (Math.random() - 0.5) * tumbleScale,
+      );
+      frag.grounded = false;
+      frag.lifetime = 0;
+      frag.maxLife = 5 + Math.random() * 3;
+      frag.originalOpacity = 1.0;
+      activeFragCount++;
     }
   } else {
-    // Fallback: compute at runtime
+    // Fallback: compute at runtime (no pool available)
     const meshes: THREE.Mesh[] = [];
     bodyGroup.traverse((child) => {
       if (child instanceof THREE.Mesh && child.geometry && child.visible) {
         meshes.push(child);
       }
     });
-    fractured = [];
+    let fractured: MeshFragment[] = [];
     for (const srcMesh of meshes) {
       fractured.push(...fractureMesh(srcMesh, 2, 1, 1));
     }
-    if (fractured.length > 12) fractured.length = 12;
+    if (fractured.length > FRAG_POOL_SIZE) fractured.length = FRAG_POOL_SIZE;
+    for (let i = 0; i < fractured.length; i++) {
+      const src = fractured[i];
+      if (_poolReady) {
+        const mesh = _poolMeshes[i];
+        mesh.geometry = src.mesh.geometry;
+        mesh.material = src.mesh.material;
+        mesh.position.copy(_center);
+        mesh.scale.setScalar(1);
+        mesh.visible = true;
+      } else {
+        scene.add(src.mesh);
+        _fragPool.push({
+          mesh: src.mesh,
+          velocity: new THREE.Vector3(),
+          angularVel: new THREE.Vector3(),
+          grounded: false, lifetime: 0, maxLife: 5, originalOpacity: 1.0,
+        });
+      }
+      const frag = _fragPool[i];
+      _outward.copy(src.center).sub(_center);
+      const dist = _outward.length();
+      _outward.normalize();
+      const proximity = Math.max(0.3, 1.0 - dist / 4);
+      const blastForce = 4 + proximity * 10 + Math.random() * 4;
+      frag.velocity.set(
+        carVelX * 0.015 + _outward.x * blastForce + (Math.random() - 0.5) * 3,
+        2 + proximity * 5 + Math.random() * 3,
+        carVelZ * 0.015 + _outward.z * blastForce + (Math.random() - 0.5) * 3,
+      );
+      const tumbleScale = 4 + proximity * 6;
+      frag.angularVel.set(
+        (Math.random() - 0.5) * tumbleScale,
+        (Math.random() - 0.5) * tumbleScale * 0.7,
+        (Math.random() - 0.5) * tumbleScale,
+      );
+      frag.grounded = false;
+      frag.lifetime = 0;
+      frag.maxLife = 5 + Math.random() * 3;
+      frag.originalOpacity = 1.0;
+      activeFragCount++;
+    }
   }
 
-  for (const frag of fractured) {
-    scene.add(frag.mesh);
-
-    // Outward blast velocity — direction from wreck center to fragment center
-    _outward.copy(frag.center).sub(_center);
-    const dist = _outward.length();
-    _outward.normalize();
-
-    // Close fragments (near engine) get higher blast force
-    const proximity = Math.max(0.3, 1.0 - dist / 4);
-    const blastForce = 4 + proximity * 10 + Math.random() * 4;
-
-    const velocity = new THREE.Vector3(
-      carVelX * 0.015 + _outward.x * blastForce + (Math.random() - 0.5) * 3,
-      2 + proximity * 5 + Math.random() * 3,
-      carVelZ * 0.015 + _outward.z * blastForce + (Math.random() - 0.5) * 3,
-    );
-
-    // Tumble intensity based on proximity
-    const tumbleScale = 4 + proximity * 6;
-    const angularVel = new THREE.Vector3(
-      (Math.random() - 0.5) * tumbleScale,
-      (Math.random() - 0.5) * tumbleScale * 0.7,
-      (Math.random() - 0.5) * tumbleScale,
-    );
-
-    fragments.push({
-      mesh: frag.mesh,
-      velocity,
-      angularVel,
-      grounded: false,
-      lifetime: 0,
-      maxLife: 5 + Math.random() * 3,
-      originalOpacity: 1.0,
-    });
-  }
-
-  // ── Phase 2: Detach wheels (lightweight — just hide originals, add simple clones) ──
+  // ── Phase 2: Detach wheels into pool slots [12..15] ──
+  let wheelIdx = 0;
   for (const wheel of wheels) {
-    if (!wheel) continue;
+    if (!wheel || wheelIdx >= WHEEL_POOL_SIZE) continue;
     wheel.getWorldPosition(_worldPos);
 
-    // Clone wheel — share geometry/materials (no expensive material.clone per child)
-    const wheelFrag = wheel.clone();
-    wheelFrag.position.copy(_worldPos);
+    const poolSlot = FRAG_POOL_SIZE + wheelIdx;
+    const frag = _fragPool[poolSlot];
 
-    scene.add(wheelFrag);
+    if (_poolReady) {
+      const mesh = _poolMeshes[poolSlot];
+      // Copy geometry + material from the wheel (always a Mesh)
+      mesh.geometry = wheel.geometry;
+      mesh.material = wheel.material;
+      mesh.position.copy(_worldPos);
+      mesh.quaternion.identity();
+      mesh.scale.setScalar(1);
+      mesh.visible = true;
+    }
 
     // Wheels fly outward and upward
     _outward.copy(_worldPos).sub(_center).normalize();
-    const velocity = new THREE.Vector3(
+    frag.velocity.set(
       carVelX * 0.015 + _outward.x * 10 + (Math.random() - 0.5) * 2,
       4 + Math.random() * 5,
       carVelZ * 0.015 + _outward.z * 10 + (Math.random() - 0.5) * 2,
     );
-
-    fragments.push({
-      mesh: wheelFrag,
-      velocity,
-      angularVel: new THREE.Vector3(
-        (Math.random() - 0.5) * 15, // fast spin
-        (Math.random() - 0.5) * 4,
-        (Math.random() - 0.5) * 15,
-      ),
-      grounded: false,
-      lifetime: 0,
-      maxLife: 7,
-      originalOpacity: 1.0,
-    });
+    frag.angularVel.set(
+      (Math.random() - 0.5) * 15,
+      (Math.random() - 0.5) * 4,
+      (Math.random() - 0.5) * 15,
+    );
+    frag.grounded = false;
+    frag.lifetime = 0;
+    frag.maxLife = 7;
+    frag.originalOpacity = 1.0;
+    activeFragCount++;
+    wheelIdx++;
 
     // Hide original wheel
     wheel.visible = false;
@@ -283,7 +353,7 @@ export function triggerVehicleDestruction(
  * Returns true if destruction is still active.
  */
 export function updateDestructionFragments(dt: number): boolean {
-  if (!destructionActive || fragments.length === 0) return false;
+  if (!destructionActive || activeFragCount === 0) return false;
 
   destructionTime += dt;
 
@@ -327,19 +397,15 @@ export function updateDestructionFragments(dt: number): boolean {
   }
 
   // ── Update fragment physics ──
-  for (let i = fragments.length - 1; i >= 0; i--) {
-    const f = fragments[i];
+  for (let i = 0; i < TOTAL_POOL; i++) {
+    const f = _fragPool[i];
+    if (!f.mesh.visible) continue; // skip inactive pool slots
     f.lifetime += dt;
 
     if (f.lifetime >= f.maxLife) {
-      // Remove fragment
-      if (destructionScene) destructionScene.remove(f.mesh);
-      f.mesh.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.geometry?.dispose();
-        }
-      });
-      fragments.splice(i, 1);
+      // Hide pool mesh (don't remove from scene)
+      f.mesh.visible = false;
+      activeFragCount--;
       continue;
     }
 
@@ -478,7 +544,7 @@ export function updateDestructionFragments(dt: number): boolean {
   }
 
   // Destruction complete when all fragments removed
-  if (fragments.length === 0) {
+  if (activeFragCount === 0) {
     destructionActive = false;
     return false;
   }
@@ -498,17 +564,13 @@ export function isDestructionActive(): boolean {
 
 /** Clean up all fragments (call before next race). */
 export function cleanupDestruction() {
-  for (const f of fragments) {
-    if (destructionScene) destructionScene.remove(f.mesh);
-    f.mesh.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.geometry?.dispose();
-        if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
-        else if (child.material) (child.material as THREE.Material).dispose();
-      }
-    });
+  // Hide all pool meshes (don't dispose — they're reused)
+  for (let i = 0; i < _fragPool.length; i++) {
+    _fragPool[i].mesh.visible = false;
+    _fragPool[i].lifetime = 0;
+    _fragPool[i].grounded = false;
   }
-  fragments.length = 0;
+  activeFragCount = 0;
 
   // Hide pre-allocated assets (don't dispose — they're reused)
   if (shockwaveRing) {
@@ -535,6 +597,16 @@ export function cleanupDestruction() {
 
 /** Full disposal — call when leaving the race entirely (not between explosions). */
 export function disposeDestructionAssets() {
+  // Dispose fragment/wheel pool meshes
+  for (const mesh of _poolMeshes) {
+    mesh.removeFromParent();
+    // Note: geometry/material are shared refs from cachedFragments — don't dispose here
+  }
+  _poolMeshes.length = 0;
+  _fragPool.length = 0;
+  _poolReady = false;
+  activeFragCount = 0;
+
   if (_ringMesh) {
     _ringMesh.removeFromParent();
     _ringGeo?.dispose();

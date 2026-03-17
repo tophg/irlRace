@@ -125,6 +125,7 @@ const input = initInput();
 
 // ── Reusable temp (local to main.ts) ──
 const _rPos = new THREE.Vector3();
+const _hoodExplosionPos = new THREE.Vector3();  // reusable temp for explosion position
 
 // ── Keyboard listener for spectator cycling + emotes ──
 const EMOTE_MAP: Record<string, string> = { '1': '👍', '2': '😂', '3': '💨', '4': '🔥' };
@@ -1499,13 +1500,13 @@ function gameLoop(timestamp: number) {
       if (G.playerVehicle.engineJustExploded) {
         const sinH = Math.sin(G.playerVehicle.heading);
         const cosH = Math.cos(G.playerVehicle.heading);
-        const hoodExplosion = G.playerVehicle.group.position.clone();
-        hoodExplosion.y += 1.0;
-        hoodExplosion.x += sinH * 2.2; // front hood
-        hoodExplosion.z += cosH * 2.2;
-        spawnGPUExplosion(hoodExplosion, 40);
-        spawnDebris(hoodExplosion, 35, G.playerVehicle.velX, G.playerVehicle.velZ);
-        spawnGPUGlassShards(hoodExplosion);
+        _hoodExplosionPos.copy(G.playerVehicle.group.position);
+        _hoodExplosionPos.y += 1.0;
+        _hoodExplosionPos.x += sinH * 2.2; // front hood
+        _hoodExplosionPos.z += cosH * 2.2;
+        spawnGPUExplosion(_hoodExplosionPos, 40);
+        spawnDebris(_hoodExplosionPos, 35, G.playerVehicle.velX, G.playerVehicle.velZ);
+        spawnGPUGlassShards(_hoodExplosionPos);
         flashDamage(0.9);
         setImpactIntensity(1.0);
 
@@ -1529,7 +1530,7 @@ function gameLoop(timestamp: number) {
           setExplosionMode(true);
           // Cinematic explosion orbit camera
           if (G.vehicleCamera) {
-            G.vehicleCamera.startExplosionOrbit(hoodExplosion);
+            G.vehicleCamera.startExplosionOrbit(_hoodExplosionPos);
           }
           // Delayed text overlay and results
           setTimeout(() => showEngineDestroyedText(), 800);
