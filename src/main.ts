@@ -1060,12 +1060,18 @@ function startReplayPlayback() {
   }
 
   // Reset body pitch/roll so car sits level (stale from last physics frame)
-  G.playerVehicle.bodyGroupRef.rotation.set(0, 0, 0);
-  G.playerVehicle.group.rotation.set(0, 0, 0, 'YXZ');
-  for (const ai of G.aiRacers) {
-    ai.vehicle.bodyGroupRef.rotation.set(0, 0, 0);
-    ai.vehicle.group.rotation.set(0, 0, 0, 'YXZ');
-  }
+  // Also reset wheel steering + spin rotations
+  const resetVehicleRotations = (v: { bodyGroupRef: THREE.Group; group: THREE.Group; wheelRefs: (THREE.Mesh | null)[] }) => {
+    v.bodyGroupRef.rotation.set(0, 0, 0);
+    v.group.rotation.set(0, 0, 0, 'YXZ');
+    for (const w of v.wheelRefs) {
+      if (!w) continue;
+      w.rotation.set(0, 0, 0); // clear steering angle
+      if (w.children[0]) w.children[0].rotation.set(0, 0, 0); // clear wheel spin
+    }
+  };
+  resetVehicleRotations(G.playerVehicle);
+  for (const ai of G.aiRacers) resetVehicleRotations(ai.vehicle);
 
   // Build mesh map for replay (player + AI vehicles)
   const meshes = new Map<string, THREE.Group>();
@@ -1100,12 +1106,14 @@ function startReplayPlayback() {
     for (const w of G.playerVehicle!.wheelRefs) {
       if (w) w.visible = true;
     }
+    resetVehicleRotations(G.playerVehicle!);
     for (const ai of G.aiRacers) {
       ai.vehicle.bodyGroupRef.visible = true;
       ai.vehicle.destroyed = false;
       for (const w of ai.vehicle.wheelRefs) {
         if (w) w.visible = true;
       }
+      resetVehicleRotations(ai.vehicle);
     }
   };
 
@@ -1480,6 +1488,16 @@ function gameLoop(timestamp: number) {
 
       updateNitroHUD(G.playerVehicle.nitro, G.playerVehicle.isNitroActive);
       updateHeatHUD(G.playerVehicle.engineHeat, G.playerVehicle.engineDead);
+
+      // Record replay frames BEFORE explosion flag is consumed/cleared
+      if (G.replayRecorder) {
+        const pv = G.playerVehicle;
+        G.replayRecorder.record('local', pv.group.position, pv.heading, pv.speed,
+          pv.isNitroActive, pv.engineHeat, pv.engineDead, pv.engineJustExploded);
+        for (const ai of G.aiRacers) {
+          G.replayRecorder.record(ai.id, ai.vehicle.group.position, ai.vehicle.heading, ai.vehicle.speed);
+        }
+      }
 
       // ── Engine overheat explosion VFX (at front hood) ──
       if (G.playerVehicle.engineJustExploded) {
@@ -2012,15 +2030,6 @@ function gameLoop(timestamp: number) {
         updateGapHUD(gaps.ahead, gaps.behind);
       }
 
-      // Record replay frames (including VFX fields)
-      if (G.replayRecorder) {
-        const pv = G.playerVehicle;
-        G.replayRecorder.record('local', pv.group.position, pv.heading, pv.speed,
-          pv.isNitroActive, pv.engineHeat, pv.engineDead, pv.engineJustExploded);
-        for (const ai of G.aiRacers) {
-          G.replayRecorder.record(ai.id, ai.vehicle.group.position, ai.vehicle.heading, ai.vehicle.speed);
-        }
-      }
 
       // Damage HUD
       if (G.playerVehicle) updateDamageHUD(G.playerVehicle.damage);
