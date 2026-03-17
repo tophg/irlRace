@@ -1496,85 +1496,84 @@ function gameLoop(timestamp: number) {
           }
         }
       }
+    }
 
+    updateNitroHUD(G.playerVehicle.nitro, G.playerVehicle.isNitroActive);
+    updateHeatHUD(G.playerVehicle.engineHeat, G.playerVehicle.engineDead);
 
-      updateNitroHUD(G.playerVehicle.nitro, G.playerVehicle.isNitroActive);
-      updateHeatHUD(G.playerVehicle.engineHeat, G.playerVehicle.engineDead);
+    // Record replay frames BEFORE explosion flag is consumed/cleared
+    if (G.replayRecorder) {
+      const pv = G.playerVehicle;
+      G.replayRecorder.record('local', pv.group.position, pv.heading, pv.speed,
+        pv.isNitroActive, pv.engineHeat, pv.engineDead, pv.engineJustExploded);
+      for (const ai of G.aiRacers) {
+        G.replayRecorder.record(ai.id, ai.vehicle.group.position, ai.vehicle.heading, ai.vehicle.speed,
+          ai.vehicle.isNitroActive, ai.vehicle.engineHeat, ai.vehicle.engineDead, ai.vehicle.engineJustExploded);
+      }
+    }
 
-      // Record replay frames BEFORE explosion flag is consumed/cleared
-      if (G.replayRecorder) {
-        const pv = G.playerVehicle;
-        G.replayRecorder.record('local', pv.group.position, pv.heading, pv.speed,
-          pv.isNitroActive, pv.engineHeat, pv.engineDead, pv.engineJustExploded);
-        for (const ai of G.aiRacers) {
-          G.replayRecorder.record(ai.id, ai.vehicle.group.position, ai.vehicle.heading, ai.vehicle.speed,
-            ai.vehicle.isNitroActive, ai.vehicle.engineHeat, ai.vehicle.engineDead, ai.vehicle.engineJustExploded);
+    // ── Engine overheat explosion VFX (at front hood) ──
+    if (G.playerVehicle.engineJustExploded) {
+      const sinH = Math.sin(G.playerVehicle.heading);
+      const cosH = Math.cos(G.playerVehicle.heading);
+      _hoodExplosionPos.copy(G.playerVehicle.group.position);
+      _hoodExplosionPos.y += 1.0;
+      _hoodExplosionPos.x += sinH * 2.2; // front hood
+      _hoodExplosionPos.z += cosH * 2.2;
+      spawnGPUExplosion(_hoodExplosionPos, 40);
+      spawnDebris(_hoodExplosionPos, 35, G.playerVehicle.velX, G.playerVehicle.velZ);
+      spawnGPUGlassShards(_hoodExplosionPos);
+      flashDamage(0.9);
+      setImpactIntensity(1.0);
+
+      // Engine explosion ends the race — DNF + cinematic orbit + destruction
+      if (G.raceEngine && s === GameState.RACING) {
+        G.raceEngine.markDnf('local');
+        // Trigger vehicle destruction animation
+        triggerVehicleDestruction(
+          G.playerVehicle.bodyGroupRef,
+          G.playerVehicle.group,
+          getScene(),
+          G.playerVehicle.velX,
+          G.playerVehicle.velZ,
+          G.playerVehicle.wheelRefs,
+          G.playerVehicle.cachedFragments,
+        );
+        G.playerVehicle.destroyed = true;
+        // Screen effects: flash + letterbox + post-FX
+        showExplosionFlash();
+        showLetterbox();
+        setExplosionMode(true);
+        // Cinematic explosion orbit camera
+        if (G.vehicleCamera) {
+          G.vehicleCamera.startExplosionOrbit(_hoodExplosionPos);
         }
+        // Delayed text overlay and results
+        setTimeout(() => showEngineDestroyedText(), 800);
+        setTimeout(() => { hideLetterbox(); setExplosionMode(false); }, 3500);
+        setTimeout(() => showResults(), 4000);
       }
+    }
 
-      // ── Engine overheat explosion VFX (at front hood) ──
-      if (G.playerVehicle.engineJustExploded) {
-        const sinH = Math.sin(G.playerVehicle.heading);
-        const cosH = Math.cos(G.playerVehicle.heading);
-        _hoodExplosionPos.copy(G.playerVehicle.group.position);
-        _hoodExplosionPos.y += 1.0;
-        _hoodExplosionPos.x += sinH * 2.2; // front hood
-        _hoodExplosionPos.z += cosH * 2.2;
-        spawnGPUExplosion(_hoodExplosionPos, 40);
-        spawnDebris(_hoodExplosionPos, 35, G.playerVehicle.velX, G.playerVehicle.velZ);
-        spawnGPUGlassShards(_hoodExplosionPos);
-        flashDamage(0.9);
-        setImpactIntensity(1.0);
+    // Clear single-frame flag AFTER VFX code consumed it
+    if (G.playerVehicle.engineJustExploded) {
+      G.playerVehicle.clearExplosionFlag();
+    }
 
-        // Engine explosion ends the race — DNF + cinematic orbit + destruction
-        if (G.raceEngine && s === GameState.RACING) {
-          G.raceEngine.markDnf('local');
-          // Trigger vehicle destruction animation
-          triggerVehicleDestruction(
-            G.playerVehicle.bodyGroupRef,
-            G.playerVehicle.group,
-            getScene(),
-            G.playerVehicle.velX,
-            G.playerVehicle.velZ,
-            G.playerVehicle.wheelRefs,
-            G.playerVehicle.cachedFragments,
-          );
-          G.playerVehicle.destroyed = true;
-          // Screen effects: flash + letterbox + post-FX
-          showExplosionFlash();
-          showLetterbox();
-          setExplosionMode(true);
-          // Cinematic explosion orbit camera
-          if (G.vehicleCamera) {
-            G.vehicleCamera.startExplosionOrbit(_hoodExplosionPos);
-          }
-          // Delayed text overlay and results
-          setTimeout(() => showEngineDestroyedText(), 800);
-          setTimeout(() => { hideLetterbox(); setExplosionMode(false); }, 3500);
-          setTimeout(() => showResults(), 4000);
-        }
+    // ── Hood smoke/flames at high engine heat (front hood position) ──
+    const heat = G.playerVehicle.engineHeat;
+    if (heat > 60) {
+      const sinH = Math.sin(G.playerVehicle.heading);
+      const cosH = Math.cos(G.playerVehicle.heading);
+      const hoodPos = G.playerVehicle.group.position.clone();
+      hoodPos.y += 1.0;
+      hoodPos.x += sinH * 2.2; // front hood
+      hoodPos.z += cosH * 2.2;
+      const smokeIntensity = (heat - 60) / 40; // 0 at 60, 1 at 100
+      if (heat > 90) {
+        spawnGPUFlame(hoodPos, smokeIntensity, frameDt);
       }
-
-      // Clear single-frame flag AFTER VFX code consumed it
-      if (G.playerVehicle.engineJustExploded) {
-        G.playerVehicle.clearExplosionFlag();
-      }
-
-      // ── Hood smoke/flames at high engine heat (front hood position) ──
-      const heat = G.playerVehicle.engineHeat;
-      if (heat > 60) {
-        const sinH = Math.sin(G.playerVehicle.heading);
-        const cosH = Math.cos(G.playerVehicle.heading);
-        const hoodPos = G.playerVehicle.group.position.clone();
-        hoodPos.y += 1.0;
-        hoodPos.x += sinH * 2.2; // front hood
-        hoodPos.z += cosH * 2.2;
-        const smokeIntensity = (heat - 60) / 40; // 0 at 60, 1 at 100
-        if (heat > 90) {
-          spawnGPUFlame(hoodPos, smokeIntensity, frameDt);
-        }
-        spawnGPUDamageSmoke(hoodPos, smokeIntensity * 0.8, frameDt);
-      }
+      spawnGPUDamageSmoke(hoodPos, smokeIntensity * 0.8, frameDt);
     }
 
     // Update AI race progress (rendering-rate is fine for rankings)
