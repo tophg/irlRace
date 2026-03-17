@@ -106,7 +106,7 @@ export class Vehicle {
   /** Reset all dynamic rotations for replay playback.
    *  Clears: group pitch/roll, bodyGroup pitch/roll/drift-yaw,
    *  wheel steering angle, wheel spin, wheel scale (blowout),
-   *  wheel suspension offset. Preserves structural rotations
+   *  wheel suspension offset. Restores structural rotations
    *  (tire/hub rotation.z = PI/2 that keeps them upright).
    */
   resetForReplay() {
@@ -124,10 +124,20 @@ export class Vehicle {
       w.scale.set(1, 1, 1);
       // Reset suspension position.y to construction default (torus radius)
       w.position.y = 0.47;
-      // wheelGroup (children[0]) rotation.x = wheelSpin → 0
-      // (tire/hub rotation.z = PI/2 are deeper children, unaffected)
+      // wheelGroup (children[0]): clear spin + restore structural rotations
       const wg = w.children[0];
-      if (wg) wg.rotation.x = 0;
+      if (wg) {
+        wg.rotation.set(0, 0, 0);
+        // Restore tire (child 0) and hub (child 1) structural rotation.z = PI/2
+        // These keep the torus/cylinder standing upright (axle along X)
+        for (let i = 0; i < Math.min(2, wg.children.length); i++) {
+          wg.children[i].rotation.set(0, 0, Math.PI / 2);
+        }
+        // Restore spoke fan-out rotations (children 2+)
+        for (let i = 2; i < wg.children.length; i++) {
+          wg.children[i].rotation.set(((i - 2) / 5) * Math.PI, 0, 0);
+        }
+      }
     }
   }
 
@@ -146,11 +156,17 @@ export class Vehicle {
     const steerRot = frame.steer * 0.35;
     if (this.wheelFL) this.wheelFL.rotation.y = steerRot;
     if (this.wheelFR) this.wheelFR.rotation.y = steerRot;
-    // All wheels: spin animation
-    if (this.wheelFL?.children[0]) this.wheelFL.children[0].rotation.x = frame.wheelSpin;
-    if (this.wheelFR?.children[0]) this.wheelFR.children[0].rotation.x = frame.wheelSpin;
-    if (this.wheelRL?.children[0]) this.wheelRL.children[0].rotation.x = frame.wheelSpin;
-    if (this.wheelRR?.children[0]) this.wheelRR.children[0].rotation.x = frame.wheelSpin;
+    // All wheels: spin animation + restore structural rotations
+    for (const w of [this.wheelFL, this.wheelFR, this.wheelRL, this.wheelRR]) {
+      if (!w) continue;
+      const wg = w.children[0];
+      if (!wg) continue;
+      wg.rotation.x = frame.wheelSpin;
+      // Ensure tire (child 0) and hub (child 1) keep rotation.z = PI/2
+      for (let i = 0; i < Math.min(2, wg.children.length); i++) {
+        wg.children[i].rotation.z = Math.PI / 2;
+      }
+    }
   }
 
   // Pre-computed fracture fragments (created at load time, used at explosion time)
