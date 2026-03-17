@@ -1075,9 +1075,19 @@ function startReplayPlayback() {
   meshes.set('local', G.playerVehicle.group);
   for (const ai of G.aiRacers) meshes.set(ai.id, ai.vehicle.group);
 
+  // Build vehicle lookup for frame updates
+  const vehicleMap = new Map<string, { applyReplayFrame: (f: any) => void }>();
+  vehicleMap.set('local', G.playerVehicle);
+  for (const ai of G.aiRacers) vehicleMap.set(ai.id, ai.vehicle);
+
+  // Per-frame visual state callback — drives wheel steer/spin, body pitch/roll/drift
+  const onFrameUpdate = (vehicleId: string, frame: any) => {
+    const v = vehicleMap.get(vehicleId);
+    if (v) v.applyReplayFrame(frame);
+  };
+
   // Full explosion callback for replay — triggers complete destruction + VFX
   const onExplosion = (pos: THREE.Vector3, vehicleId: string, speed: number, heading: number) => {
-    // Find the vehicle that exploded
     const isLocal = vehicleId === 'local';
     const vehicle = isLocal ? G.playerVehicle : G.aiRacers.find(a => a.id === vehicleId)?.vehicle;
 
@@ -1125,29 +1135,188 @@ function startReplayPlayback() {
     }
   };
 
-  G.replayPlayer = new ReplayPlayer(G.replayRecorder, camera, meshes, onExplosion, onLoop);
+  G.replayPlayer = new ReplayPlayer(G.replayRecorder, camera, meshes, onExplosion, onFrameUpdate, onLoop);
   G.replayPlayer.start();
   showHUD(false);
 
-  // Show replay HUD with exit button
+  // ── Enhanced Replay HUD ──
   const replayHud = document.createElement('div');
   replayHud.id = 'replay-hud';
   replayHud.style.cssText = `
-    position:fixed; top:24px; left:50%; transform:translateX(-50%); z-index:100;
-    display:flex; align-items:center; gap:16px;
+    position:fixed; bottom:0; left:0; right:0; z-index:100;
+    background:linear-gradient(transparent, rgba(0,0,0,0.85));
+    padding:16px 24px 20px; display:flex; flex-direction:column; gap:10px;
+    font-family:var(--font-display); transition:opacity 0.3s;
   `;
   replayHud.innerHTML = `
-    <div style="font-family:var(--font-display);font-size:18px;color:var(--col-cyan);letter-spacing:3px;">REPLAY</div>
-    <div id="replay-progress" style="width:200px;height:4px;background:rgba(255,255,255,0.15);border-radius:2px;">
-      <div id="replay-bar" style="height:100%;background:var(--col-cyan);border-radius:2px;width:0%;transition:width 0.1s;"></div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="font-size:14px;color:var(--col-cyan);letter-spacing:3px;">● REPLAY</div>
+      <div id="replay-time" style="font-size:13px;color:rgba(255,255,255,0.6);font-family:monospace;">0:00 / 0:00</div>
+      <div style="flex:1;"></div>
+      <div id="replay-focus" style="font-size:12px;color:rgba(255,255,255,0.5);cursor:pointer;" title="Click or Tab to cycle">👁 PLAYER</div>
     </div>
-    <button class="menu-btn" id="btn-exit-replay" style="padding:8px 16px;font-size:14px;">EXIT</button>
+    <div id="replay-scrub" style="width:100%;height:8px;background:rgba(255,255,255,0.12);border-radius:4px;cursor:pointer;position:relative;">
+      <div id="replay-bar" style="height:100%;background:var(--col-cyan);border-radius:4px;width:0%;pointer-events:none;"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;justify-content:center;flex-wrap:wrap;">
+      <button class="replay-ctrl" id="rp-skip-back" title="← Skip -3s">⏪</button>
+      <button class="replay-ctrl" id="rp-play-pause" title="Space: Play/Pause">▶</button>
+      <button class="replay-ctrl" id="rp-skip-fwd" title="→ Skip +3s">⏩</button>
+      <button class="replay-ctrl" id="rp-speed" title="[ ] Speed" style="min-width:48px;">1x</button>
+      <div style="width:1px;height:20px;background:rgba(255,255,255,0.15);margin:0 6px;"></div>
+      <button class="replay-ctrl replay-cam" data-cam="chase" title="1: Chase">🏎</button>
+      <button class="replay-ctrl replay-cam" data-cam="orbit" title="2: Orbit">🔄</button>
+      <button class="replay-ctrl replay-cam" data-cam="trackside" title="3: Trackside">📷</button>
+      <button class="replay-ctrl replay-cam" data-cam="helicopter" title="4: Helicopter">🚁</button>
+      <button class="replay-ctrl replay-cam" data-cam="free" title="5: Free Cam (drag)">🎥</button>
+      <button class="replay-ctrl replay-cam active" data-cam="auto" title="0: Auto Cycle">AUTO</button>
+      <div style="width:1px;height:20px;background:rgba(255,255,255,0.15);margin:0 6px;"></div>
+      <button class="replay-ctrl" id="rp-exit" title="Esc: Exit">EXIT</button>
+    </div>
   `;
+
+  // Inject replay button styles
+  const style = document.createElement('style');
+  style.id = 'replay-styles';
+  style.textContent = `
+    .replay-ctrl {
+      border:1px solid rgba(255,255,255,0.25); background:rgba(255,255,255,0.06);
+      color:#fff; font-size:14px; padding:6px 12px; border-radius:6px;
+      cursor:pointer; font-family:var(--font-display); transition:all 0.15s;
+    }
+    .replay-ctrl:hover { background:rgba(255,255,255,0.15); border-color:var(--col-cyan); }
+    .replay-ctrl.active { background:var(--col-cyan); color:#000; border-color:var(--col-cyan); }
+  `;
+  document.head.appendChild(style);
   uiOverlay.appendChild(replayHud);
 
-  document.getElementById('btn-exit-replay')!.addEventListener('click', () => {
+  // ── HUD update helpers ──
+  const updateHUD = () => {
+    if (!G.replayPlayer) return;
+    const bar = document.getElementById('replay-bar');
+    if (bar) bar.style.width = `${Math.round(G.replayPlayer.getProgress() * 100)}%`;
+
+    const timeEl = document.getElementById('replay-time');
+    if (timeEl) {
+      const cur = G.replayPlayer.getPlaybackTime() / 1000;
+      const dur = G.replayPlayer.getDuration() / 1000;
+      const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+      timeEl.textContent = `${fmt(cur)} / ${fmt(dur)}`;
+    }
+
+    const pauseBtn = document.getElementById('rp-play-pause');
+    if (pauseBtn) pauseBtn.textContent = G.replayPlayer.paused ? '▶' : '❚❚';
+
+    const speedBtn = document.getElementById('rp-speed');
+    if (speedBtn) speedBtn.textContent = `${G.replayPlayer.speed}x`;
+
+    const focusEl = document.getElementById('replay-focus');
+    if (focusEl) {
+      const id = G.replayPlayer.focusTarget;
+      focusEl.textContent = `👁 ${id === 'local' ? 'PLAYER' : id.substring(0, 8).toUpperCase()}`;
+    }
+  };
+
+  // ── Scrub bar click/drag ──
+  const scrubBar = document.getElementById('replay-scrub')!;
+  let scrubbing = false;
+  const handleScrub = (e: MouseEvent) => {
+    const rect = scrubBar.getBoundingClientRect();
+    const progress = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    G.replayPlayer?.seekTo(progress);
+    updateHUD();
+  };
+  scrubBar.addEventListener('mousedown', (e) => { scrubbing = true; handleScrub(e); });
+  document.addEventListener('mousemove', (e) => { if (scrubbing) handleScrub(e); });
+  document.addEventListener('mouseup', () => { scrubbing = false; });
+
+  // ── Button handlers ──
+  document.getElementById('rp-play-pause')!.addEventListener('click', () => {
+    G.replayPlayer?.togglePause(); updateHUD();
+  });
+  document.getElementById('rp-skip-back')!.addEventListener('click', () => {
+    G.replayPlayer?.seekRelative(-3000); updateHUD();
+  });
+  document.getElementById('rp-skip-fwd')!.addEventListener('click', () => {
+    G.replayPlayer?.seekRelative(3000); updateHUD();
+  });
+  document.getElementById('rp-speed')!.addEventListener('click', () => {
+    G.replayPlayer?.cycleSpeedUp(); updateHUD();
+  });
+  document.getElementById('rp-exit')!.addEventListener('click', () => {
     stopReplayPlayback();
   });
+  document.getElementById('replay-focus')!.addEventListener('click', () => {
+    G.replayPlayer?.cycleFocusTarget(); updateHUD();
+  });
+
+  // Camera mode buttons
+  for (const btn of document.querySelectorAll('.replay-cam')) {
+    btn.addEventListener('click', () => {
+      const mode = (btn as HTMLElement).dataset.cam as any;
+      G.replayPlayer?.setCameraMode(mode);
+      document.querySelectorAll('.replay-cam').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  }
+
+  // ── Free camera mouse orbit ──
+  let freeDragging = false;
+  const canvasEl = renderer.domElement;
+  const onFreeDrag = (e: MouseEvent) => {
+    if (!freeDragging || G.replayPlayer?.cameraMode !== 'free') return;
+    G.replayPlayer.rotateFreeCam(-e.movementX * 0.005, -e.movementY * 0.005);
+  };
+  canvasEl.addEventListener('mousedown', (e) => {
+    if (G.replayPlayer?.cameraMode === 'free' && e.button === 0) freeDragging = true;
+  });
+  document.addEventListener('mouseup', () => { freeDragging = false; });
+  document.addEventListener('mousemove', onFreeDrag);
+  canvasEl.addEventListener('wheel', (e) => {
+    if (G.replayPlayer?.cameraMode === 'free') {
+      G.replayPlayer.zoomFreeCam(e.deltaY * 0.05);
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  // ── Keyboard shortcuts ──
+  const replayKeyHandler = (e: KeyboardEvent) => {
+    if (!G.replayPlayer) return;
+    switch (e.key) {
+      case ' ':
+        e.preventDefault();
+        G.replayPlayer.togglePause(); updateHUD(); break;
+      case 'ArrowLeft':
+        G.replayPlayer.seekRelative(-3000); updateHUD(); break;
+      case 'ArrowRight':
+        G.replayPlayer.seekRelative(3000); updateHUD(); break;
+      case '[':
+        G.replayPlayer.cycleSpeedDown(); updateHUD(); break;
+      case ']':
+        G.replayPlayer.cycleSpeedUp(); updateHUD(); break;
+      case 'Tab':
+        e.preventDefault();
+        G.replayPlayer.cycleFocusTarget(); updateHUD(); break;
+      case 'Escape':
+        stopReplayPlayback(); break;
+      case '1': case '2': case '3': case '4': case '5': case '0': {
+        const modes: Record<string, string> = {
+          '1': 'chase', '2': 'orbit', '3': 'trackside',
+          '4': 'helicopter', '5': 'free', '0': 'auto',
+        };
+        const mode = modes[e.key]!;
+        G.replayPlayer.setCameraMode(mode as any);
+        document.querySelectorAll('.replay-cam').forEach(b => {
+          b.classList.toggle('active', (b as HTMLElement).dataset.cam === mode);
+        });
+        break;
+      }
+    }
+  };
+  document.addEventListener('keydown', replayKeyHandler);
+  // Store handler ref for cleanup
+  (replayHud as any)._keyHandler = replayKeyHandler;
+  (replayHud as any)._updateHUD = updateHUD;
 }
 
 function stopReplayPlayback() {
@@ -1156,7 +1325,14 @@ function stopReplayPlayback() {
     G.replayPlayer = null;
   }
   const hud = document.getElementById('replay-hud');
-  if (hud) hud.remove();
+  if (hud) {
+    // Remove keyboard handler
+    const handler = (hud as any)._keyHandler;
+    if (handler) document.removeEventListener('keydown', handler);
+    hud.remove();
+  }
+  const style = document.getElementById('replay-styles');
+  if (style) style.remove();
   showResults();
 }
 
@@ -1406,8 +1582,9 @@ function gameLoop(timestamp: number) {
       updateGPUParticles(renderer as any, frameDt);
       updateVFX(frameDt);
       updatePostFX(0, false, frameDt);
-      const bar = document.getElementById('replay-bar');
-      if (bar) bar.style.width = `${Math.round(G.replayPlayer.getProgress() * 100)}%`;
+      // Update HUD (progress bar, time, speed, etc.)
+      const hud = document.getElementById('replay-hud');
+      if (hud && (hud as any)._updateHUD) (hud as any)._updateHUD();
       renderer.render(scene, camera);
       return;
     } else {
@@ -1505,10 +1682,13 @@ function gameLoop(timestamp: number) {
     if (G.replayRecorder) {
       const pv = G.playerVehicle;
       G.replayRecorder.record('local', pv.group.position, pv.heading, pv.speed,
+        pv.steer, pv.currentWheelSpin, pv.driftAngle, pv.bodyPitchX, pv.bodyRollZ,
         pv.isNitroActive, pv.engineHeat, pv.engineDead, pv.engineJustExploded);
       for (const ai of G.aiRacers) {
-        G.replayRecorder.record(ai.id, ai.vehicle.group.position, ai.vehicle.heading, ai.vehicle.speed,
-          ai.vehicle.isNitroActive, ai.vehicle.engineHeat, ai.vehicle.engineDead, ai.vehicle.engineJustExploded);
+        const v = ai.vehicle;
+        G.replayRecorder.record(ai.id, v.group.position, v.heading, v.speed,
+          v.steer, v.currentWheelSpin, v.driftAngle, v.bodyPitchX, v.bodyRollZ,
+          v.isNitroActive, v.engineHeat, v.engineDead, v.engineJustExploded);
       }
     }
 

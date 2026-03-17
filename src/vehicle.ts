@@ -98,6 +98,11 @@ export class Vehicle {
   get destroyed(): boolean { return this._destroyed; }
   set destroyed(v: boolean) { this._destroyed = v; }
 
+  // Read-only accessors for replay recorder
+  get currentWheelSpin(): number { return this.wheelSpin; }
+  get bodyPitchX(): number { return this._bodyGroup.rotation.x; }
+  get bodyRollZ(): number { return this._bodyGroup.rotation.z; }
+
   /** Reset all dynamic rotations for replay playback.
    *  Clears: group pitch/roll, bodyGroup pitch/roll/drift-yaw,
    *  wheel steering angle, wheel spin, wheel scale (blowout),
@@ -124,6 +129,28 @@ export class Vehicle {
       const wg = w.children[0];
       if (wg) wg.rotation.x = 0;
     }
+  }
+
+  /** Apply a replay frame's visual state to the vehicle.
+   *  Drives wheel steering, spin, body pitch/roll/drift from recorded data.
+   */
+  applyReplayFrame(frame: {
+    steer: number; wheelSpin: number; driftAngle: number;
+    bodyPitchX: number; bodyRollZ: number;
+  }) {
+    // Body group: pitch + roll + drift yaw
+    this._bodyGroup.rotation.x = frame.bodyPitchX;
+    this._bodyGroup.rotation.z = frame.bodyRollZ;
+    this._bodyGroup.rotation.y = frame.driftAngle * 0.03;
+    // Front wheels: steering angle
+    const steerRot = frame.steer * 0.35;
+    if (this.wheelFL) this.wheelFL.rotation.y = steerRot;
+    if (this.wheelFR) this.wheelFR.rotation.y = steerRot;
+    // All wheels: spin animation
+    if (this.wheelFL?.children[0]) this.wheelFL.children[0].rotation.x = frame.wheelSpin;
+    if (this.wheelFR?.children[0]) this.wheelFR.children[0].rotation.x = frame.wheelSpin;
+    if (this.wheelRL?.children[0]) this.wheelRL.children[0].rotation.x = frame.wheelSpin;
+    if (this.wheelRR?.children[0]) this.wheelRR.children[0].rotation.x = frame.wheelSpin;
   }
 
   // Pre-computed fracture fragments (created at load time, used at explosion time)
