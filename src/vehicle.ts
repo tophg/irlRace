@@ -562,7 +562,7 @@ export class Vehicle {
     // ── Nitro drain/recharge (must run before boostedMax) ──
     if (!this._engineDead && input.boost && this.nitro > 0) {
       this._nitroActive = true;
-      this.nitro = Math.max(0, this.nitro - 40 * dt);
+      this.nitro = Math.max(0, this.nitro - 20 * dt);  // slower drain = longer burn window
     } else {
       this._nitroActive = false;
     }
@@ -575,12 +575,12 @@ export class Vehicle {
     // ── Engine Heat accumulation ──
     if (!this._engineDead) {
       // Heat sources
-      if (this._nitroActive) this._engineHeat += 50 * dt;       // nitro is the primary heat source
+      if (this._nitroActive) this._engineHeat += 70 * dt;       // nitro is the primary heat source
       this._engineHeat += absSpeed * 0.5 * dt;                   // high-RPM driving builds heat
       // Cooling (scaled by front HP — damaged radiator = less cooling)
       const radiatorEff = fHP;                                   // 1.0 pristine → 0.0 destroyed
-      this._engineHeat -= 8 * radiatorEff * dt;                  // passive radiator cooling
-      this._engineHeat -= absSpeed * 0.15 * dt;                  // air cooling at speed
+      this._engineHeat -= 5 * radiatorEff * dt;                  // passive radiator cooling
+      this._engineHeat -= absSpeed * 0.1 * dt;                   // air cooling at speed
       this._engineHeat = Math.max(0, Math.min(100, this._engineHeat));
 
       // Overheat explosion!
