@@ -32,6 +32,7 @@ const _worldPos = new THREE.Vector3();
 const _worldQuat = new THREE.Quaternion();
 const _center = new THREE.Vector3();
 const _outward = new THREE.Vector3();
+const _firePos = new THREE.Vector3();
 
 // Pre-built scorch texture (created once at module load, not at explosion time)
 const _scorchCanvas = document.createElement('canvas');
@@ -357,24 +358,24 @@ export function updateDestructionFragments(dt: number): boolean {
     // Initial fireball (first 0.5s — intense burst)
     if (destructionTime < 0.5) {
       for (let i = 0; i < 3; i++) {
-        const fp = wreckPosition.clone();
-        fp.y += 0.3 + Math.random() * 0.8;
-        fp.x += (Math.random() - 0.5) * 1.5;
-        fp.z += (Math.random() - 0.5) * 1.5;
-        spawnGPUFlame(fp, 1.0, dt);
+        _firePos.copy(wreckPosition);
+        _firePos.y += 0.3 + Math.random() * 0.8;
+        _firePos.x += (Math.random() - 0.5) * 1.5;
+        _firePos.z += (Math.random() - 0.5) * 1.5;
+        spawnGPUFlame(_firePos, 1.0, dt);
       }
-      spawnGPUExplosion(wreckPosition.clone(), 8); // burst VFX
+      spawnGPUExplosion(wreckPosition, 8); // burst VFX
     }
 
     // Mushroom plume (0.3–3s — upward rising thick smoke with fire)
     if (destructionTime > 0.3 && destructionTime < 3.0) {
-      const plumePos = wreckPosition.clone();
-      plumePos.y += 1.0 + destructionTime * 1.5; // rises over time
-      plumePos.x += (Math.random() - 0.5) * 0.8;
-      plumePos.z += (Math.random() - 0.5) * 0.8;
-      spawnGPUDamageSmoke(plumePos, 0.9, dt);
+      _firePos.copy(wreckPosition);
+      _firePos.y += 1.0 + destructionTime * 1.5; // rises over time
+      _firePos.x += (Math.random() - 0.5) * 0.8;
+      _firePos.z += (Math.random() - 0.5) * 0.8;
+      spawnGPUDamageSmoke(_firePos, 0.9, dt);
       if (destructionTime < 2.0) {
-        spawnGPUFlame(plumePos, 0.5, dt);
+        spawnGPUFlame(_firePos, 0.5, dt);
       }
     }
 
@@ -382,37 +383,37 @@ export function updateDestructionFragments(dt: number): boolean {
     if (destructionTime > 0.5 && destructionTime < 5.0) {
       const angle = Math.random() * Math.PI * 2;
       const dist = Math.random() * 2.0;
-      const gfp = wreckPosition.clone();
-      gfp.x += Math.cos(angle) * dist;
-      gfp.z += Math.sin(angle) * dist;
-      gfp.y += 0.1;
-      spawnGPUFlame(gfp, 0.6 + Math.random() * 0.3, dt);
-      spawnGPUDamageSmoke(gfp, 0.4, dt);
+      _firePos.copy(wreckPosition);
+      _firePos.x += Math.cos(angle) * dist;
+      _firePos.z += Math.sin(angle) * dist;
+      _firePos.y += 0.1;
+      spawnGPUFlame(_firePos, 0.6 + Math.random() * 0.3, dt);
+      spawnGPUDamageSmoke(_firePos, 0.4, dt);
     }
 
     // Ember rain (1–6s — slow-falling tiny glowing particles)
     if (destructionTime > 1.0 && destructionTime < 6.0) {
-      const ep = wreckPosition.clone();
-      ep.y += 2 + Math.random() * 3;
-      ep.x += (Math.random() - 0.5) * 4;
-      ep.z += (Math.random() - 0.5) * 4;
-      spawnGPUFlame(ep, 0.2, dt); // tiny ember
+      _firePos.copy(wreckPosition);
+      _firePos.y += 2 + Math.random() * 3;
+      _firePos.x += (Math.random() - 0.5) * 4;
+      _firePos.z += (Math.random() - 0.5) * 4;
+      spawnGPUFlame(_firePos, 0.2, dt); // tiny ember
     }
   }
 
   // Secondary explosions (larger, more dramatic)
   if (wreckPosition) {
     if (destructionTime >= 1.0 && destructionTime < 1.0 + dt * 2) {
-      const p = wreckPosition.clone();
-      p.x += (Math.random() - 0.5) * 3;
-      p.y += 0.8;
-      spawnGPUExplosion(p, 25);
+      _firePos.copy(wreckPosition);
+      _firePos.x += (Math.random() - 0.5) * 3;
+      _firePos.y += 0.8;
+      spawnGPUExplosion(_firePos, 25);
     }
     if (destructionTime >= 2.5 && destructionTime < 2.5 + dt * 2) {
-      const p = wreckPosition.clone();
-      p.z += (Math.random() - 0.5) * 3;
-      p.y += 0.5;
-      spawnGPUExplosion(p, 18);
+      _firePos.copy(wreckPosition);
+      _firePos.z += (Math.random() - 0.5) * 3;
+      _firePos.y += 0.5;
+      spawnGPUExplosion(_firePos, 18);
     }
   }
 

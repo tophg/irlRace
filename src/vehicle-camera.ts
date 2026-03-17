@@ -120,11 +120,12 @@ export class VehicleCamera {
     speed: number,
     maxSpeed: number,
     driftAngle = 0,
+    dt = 1 / 60,
   ) {
     if (this.mode === 'chase') {
-      this.updateChase(targetPos, heading, speed, maxSpeed, driftAngle);
+      this.updateChase(targetPos, heading, speed, maxSpeed, driftAngle, dt);
     } else if (this.mode === 'follow') {
-      this.updateChase(targetPos, heading, speed, maxSpeed, driftAngle);
+      this.updateChase(targetPos, heading, speed, maxSpeed, driftAngle, dt);
     }
   }
 
@@ -140,6 +141,7 @@ export class VehicleCamera {
     speed: number,
     maxSpeed: number,
     driftAngle = 0,
+    dt = 1 / 60,
   ) {
     // Desired position: behind and above the vehicle
     _desired.set(
@@ -184,7 +186,7 @@ export class VehicleCamera {
       this.camera.position.y += sy;
       // Decay shake over shakeDecay seconds (frame-rate-independent)
       const decayRate = 1 / Math.max(this.shakeDecay, 0.01);
-      this.shakeIntensity *= Math.exp(-decayRate * (1 / 60)); // conservative per-frame decay
+      this.shakeIntensity *= Math.exp(-decayRate * dt);
       if (this.shakeIntensity < 0.001) this.shakeIntensity = 0;
     }
 

@@ -53,7 +53,7 @@ import { initTrackRadar, updateTrackRadar, destroyTrackRadar } from './minimap';
 import { playTitleMusic, playGameMusic, pauseMusic, resumeMusic, stopAllMusic } from './audio';
 import { showTrackEditor, destroyTrackEditor } from './track-editor';
 import { triggerVehicleDestruction, updateDestructionFragments, cleanupDestruction } from './vehicle-destruction';
-import { triggerSlowMotion, updateTimeScale, applyTimeScale, getTimeScale, resetTimeScale } from './time-scale';
+import { resetTimeScale } from './time-scale';
 import { showExplosionFlash, showLetterbox, hideLetterbox, showEngineDestroyedText, cleanupScreenEffects } from './screen-effects';
 import { loadProgress, processRaceRewards, getProgress, levelProgress, xpToNextLevel, type RaceResult } from './progression';
 import { startGhostRecording, sampleGhostFrame, finalizeGhostLap, loadGhostForSeed, startGhostPlayback, updateGhostPlayback, destroyGhost, getGhostBestTime } from './ghost';
@@ -1599,7 +1599,7 @@ function gameLoop(timestamp: number) {
         }
       }
 
-      G.vehicleCamera.update(camTarget, camHeading, camSpeed, camMaxSpeed, G.playerVehicle.driftAngle);
+      G.vehicleCamera.update(camTarget, camHeading, camSpeed, camMaxSpeed, G.playerVehicle.driftAngle, frameDt);
     }
 
     // VFX
