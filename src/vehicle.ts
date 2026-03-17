@@ -78,13 +78,22 @@ export class Vehicle {
   private steerTarget = 0;
 
   // Visuals
-  private bodyGroup: THREE.Group;
+  private _bodyGroup: THREE.Group;
   private model: THREE.Group | null = null;
   private wheelFL: THREE.Mesh | null = null;
   private wheelFR: THREE.Mesh | null = null;
   private wheelRL: THREE.Mesh | null = null;
   private wheelRR: THREE.Mesh | null = null;
   private wheelSpin = 0;
+  private _destroyed = false;
+
+  // Read-only accessors for destruction system
+  get bodyGroupRef(): THREE.Group { return this._bodyGroup; }
+  get wheelRefs(): (THREE.Mesh | null)[] {
+    return [this.wheelFL, this.wheelFR, this.wheelRL, this.wheelRR];
+  }
+  get destroyed(): boolean { return this._destroyed; }
+  set destroyed(v: boolean) { this._destroyed = v; }
 
   // Road-mesh raycast state
   private roadMesh: THREE.Mesh | null = null;
@@ -112,9 +121,9 @@ export class Vehicle {
     this._prev.heading = this.heading;
     this._prev.roadPitch = this._roadPitch;
     this._prev.roadRoll = this._roadRoll;
-    this._prev.bodyPX = this.bodyGroup.rotation.x;
-    this._prev.bodyRZ = this.bodyGroup.rotation.z;
-    this._prev.bodyYY = this.bodyGroup.rotation.y;
+    this._prev.bodyPX = this._bodyGroup.rotation.x;
+    this._prev.bodyRZ = this._bodyGroup.rotation.z;
+    this._prev.bodyYY = this._bodyGroup.rotation.y;
     this._snapValid = true;
   }
 
@@ -132,9 +141,9 @@ export class Vehicle {
     this._curr.heading = this.heading;
     this._curr.roadPitch = this._roadPitch;
     this._curr.roadRoll = this._roadRoll;
-    this._curr.bodyPX = this.bodyGroup.rotation.x;
-    this._curr.bodyRZ = this.bodyGroup.rotation.z;
-    this._curr.bodyYY = this.bodyGroup.rotation.y;
+    this._curr.bodyPX = this._bodyGroup.rotation.x;
+    this._curr.bodyRZ = this._bodyGroup.rotation.z;
+    this._curr.bodyYY = this._bodyGroup.rotation.y;
 
     const prev = this._prev;
     const curr = this._curr;
@@ -155,9 +164,9 @@ export class Vehicle {
     this.group.rotation.z = prev.roadRoll + (curr.roadRoll - prev.roadRoll) * alpha;
 
     // Interpolate body cosmetic rotations
-    this.bodyGroup.rotation.x = prev.bodyPX + (curr.bodyPX - prev.bodyPX) * alpha;
-    this.bodyGroup.rotation.z = prev.bodyRZ + (curr.bodyRZ - prev.bodyRZ) * alpha;
-    this.bodyGroup.rotation.y = prev.bodyYY + (curr.bodyYY - prev.bodyYY) * alpha;
+    this._bodyGroup.rotation.x = prev.bodyPX + (curr.bodyPX - prev.bodyPX) * alpha;
+    this._bodyGroup.rotation.z = prev.bodyRZ + (curr.bodyRZ - prev.bodyRZ) * alpha;
+    this._bodyGroup.rotation.y = prev.bodyYY + (curr.bodyYY - prev.bodyYY) * alpha;
   }
 
   /** Restore physics-authoritative state after rendering, so next physics step is correct. */
@@ -169,9 +178,9 @@ export class Vehicle {
     this.group.rotation.y = c.heading;
     this.group.rotation.x = c.roadPitch;
     this.group.rotation.z = c.roadRoll;
-    this.bodyGroup.rotation.x = c.bodyPX;
-    this.bodyGroup.rotation.z = c.bodyRZ;
-    this.bodyGroup.rotation.y = c.bodyYY;
+    this._bodyGroup.rotation.x = c.bodyPX;
+    this._bodyGroup.rotation.z = c.bodyRZ;
+    this._bodyGroup.rotation.y = c.bodyYY;
   }
 
 
@@ -188,14 +197,14 @@ export class Vehicle {
     this.def = def;
     this.group = new THREE.Group();
     this.group.rotation.order = 'YXZ';
-    this.bodyGroup = new THREE.Group();
-    this.group.add(this.bodyGroup);
+    this._bodyGroup = new THREE.Group();
+    this.group.add(this._bodyGroup);
   }
 
   /** Attach a loaded GLB model to this vehicle. */
   setModel(model: THREE.Group) {
     this.model = model;
-    this.bodyGroup.add(model);
+    this._bodyGroup.add(model);
 
     // Compute ground contact offset from bounding box
     const box = new THREE.Box3().setFromObject(model);
@@ -374,28 +383,28 @@ export class Vehicle {
 
     const hlL = new THREE.Mesh(hlGeo, hlMat);
     hlL.position.set(hlLPos[0], hlLPos[1], hlLPos[2] + 0.01); // tiny offset to prevent z-fighting
-    this.bodyGroup.add(hlL);
+    this._bodyGroup.add(hlL);
 
     const hlR = new THREE.Mesh(hlGeo, hlMat.clone());
     hlR.position.set(hlRPos[0], hlRPos[1], hlRPos[2] + 0.01);
-    this.bodyGroup.add(hlR);
+    this._bodyGroup.add(hlR);
 
     // SpotLights for road illumination
     const hlSpotL = new THREE.SpotLight(0xffeedd, spotI, spotD, Math.PI / 5, 0.8, 2);
     hlSpotL.position.set(hlLPos[0], hlLPos[1], hlLPos[2]);
     const targetL = new THREE.Object3D();
     targetL.position.set(hlLPos[0] * 0.5, hlLPos[1] - 1, hlLPos[2] + 12);
-    this.bodyGroup.add(targetL);
+    this._bodyGroup.add(targetL);
     hlSpotL.target = targetL;
-    this.bodyGroup.add(hlSpotL);
+    this._bodyGroup.add(hlSpotL);
 
     const hlSpotR = new THREE.SpotLight(0xffeedd, spotI, spotD, Math.PI / 5, 0.8, 2);
     hlSpotR.position.set(hlRPos[0], hlRPos[1], hlRPos[2]);
     const targetR = new THREE.Object3D();
     targetR.position.set(hlRPos[0] * 0.5, hlRPos[1] - 1, hlRPos[2] + 12);
-    this.bodyGroup.add(targetR);
+    this._bodyGroup.add(targetR);
     hlSpotR.target = targetR;
-    this.bodyGroup.add(hlSpotR);
+    this._bodyGroup.add(hlSpotR);
 
     // Volumetric beam cones
     const beamGeo = new THREE.ConeGeometry(beamRad, beamLen, 12, 1, true);
@@ -410,12 +419,12 @@ export class Vehicle {
     const beamL = new THREE.Mesh(beamGeo, beamMat);
     beamL.rotation.x = -Math.PI / 2 - 0.15;
     beamL.position.set(hlLPos[0], hlLPos[1] - 0.5, hlLPos[2] + beamLen / 2);
-    this.bodyGroup.add(beamL);
+    this._bodyGroup.add(beamL);
 
     const beamR = new THREE.Mesh(beamGeo, beamMat.clone());
     beamR.rotation.x = -Math.PI / 2 - 0.15;
     beamR.position.set(hlRPos[0], hlRPos[1] - 0.5, hlRPos[2] + beamLen / 2);
-    this.bodyGroup.add(beamR);
+    this._bodyGroup.add(beamR);
 
     // ── Taillight decals — DISABLED ──
     // const tlGeo = new THREE.PlaneGeometry(tlSize[0], tlSize[1]);
@@ -873,11 +882,11 @@ export class Vehicle {
     const targetPitch = -this.throttle * speedRatio * 0.04 + this.brake * speedRatio * 0.06;
     const targetRoll = this.driftAngle * def.suspStiffness * 3;
     const bodyLerp = 1 - Math.exp(-8 * dt);
-    this.bodyGroup.rotation.x += (targetPitch - this.bodyGroup.rotation.x) * bodyLerp;
-    this.bodyGroup.rotation.z += (targetRoll - this.bodyGroup.rotation.z) * bodyLerp;
+    this._bodyGroup.rotation.x += (targetPitch - this._bodyGroup.rotation.x) * bodyLerp;
+    this._bodyGroup.rotation.z += (targetRoll - this._bodyGroup.rotation.z) * bodyLerp;
 
     // Drift visual yaw offset
-    this.bodyGroup.rotation.y = this.driftAngle * 0.03;
+    this._bodyGroup.rotation.y = this.driftAngle * 0.03;
 
     // ── Wheel animation ──
     this.wheelSpin = (this.wheelSpin + this.speed * dt * 3) % (Math.PI * 2);

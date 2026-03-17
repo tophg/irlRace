@@ -52,6 +52,7 @@ import {
 import { initTrackRadar, updateTrackRadar, destroyTrackRadar } from './minimap';
 import { playTitleMusic, playGameMusic, pauseMusic, resumeMusic, stopAllMusic } from './audio';
 import { showTrackEditor, destroyTrackEditor } from './track-editor';
+import { triggerVehicleDestruction, updateDestructionFragments, cleanupDestruction } from './vehicle-destruction';
 import { loadProgress, processRaceRewards, getProgress, levelProgress, xpToNextLevel, type RaceResult } from './progression';
 import { startGhostRecording, sampleGhostFrame, finalizeGhostLap, loadGhostForSeed, startGhostPlayback, updateGhostPlayback, destroyGhost, getGhostBestTime } from './ghost';
 import {
@@ -748,6 +749,7 @@ function clearRaceObjects() {
   destroyGPUParticles();
   destroyRapierWorld();
   rollbackManager.reset();
+  cleanupDestruction();
 
   // Stop audio
   stopAudio();
@@ -1431,9 +1433,19 @@ function gameLoop(timestamp: number) {
         flashDamage(0.9);
         setImpactIntensity(1.0);
 
-        // Engine explosion ends the race — DNF + cinematic orbit
+        // Engine explosion ends the race — DNF + cinematic orbit + destruction
         if (G.raceEngine && s === GameState.RACING) {
           G.raceEngine.markDnf('local');
+          // Trigger vehicle destruction animation
+          triggerVehicleDestruction(
+            G.playerVehicle.bodyGroupRef,
+            G.playerVehicle.group,
+            getScene(),
+            G.playerVehicle.velX,
+            G.playerVehicle.velZ,
+            G.playerVehicle.wheelRefs,
+          );
+          G.playerVehicle.destroyed = true;
           // Cinematic explosion orbit camera
           if (G.vehicleCamera) {
             G.vehicleCamera.startExplosionOrbit(hoodExplosion);
@@ -1475,6 +1487,9 @@ function gameLoop(timestamp: number) {
     if (G.vehicleCamera?.mode === 'explosion-orbit') {
       G.vehicleCamera.updateExplosionOrbit(frameDt);
     }
+
+    // Update vehicle destruction fragments
+    updateDestructionFragments(frameDt);
 
     // Camera
     if (G.vehicleCamera && G.vehicleCamera.mode !== 'orbit' && G.vehicleCamera.mode !== 'explosion-orbit') {
@@ -1922,9 +1937,11 @@ function gameLoop(timestamp: number) {
         updateGapHUD(gaps.ahead, gaps.behind);
       }
 
-      // Record replay frames
+      // Record replay frames (including VFX fields)
       if (G.replayRecorder) {
-        G.replayRecorder.record('local', G.playerVehicle.group.position, G.playerVehicle.heading, G.playerVehicle.speed);
+        const pv = G.playerVehicle;
+        G.replayRecorder.record('local', pv.group.position, pv.heading, pv.speed,
+          pv.isNitroActive, pv.engineHeat, pv.engineDead, pv.engineJustExploded);
         for (const ai of G.aiRacers) {
           G.replayRecorder.record(ai.id, ai.vehicle.group.position, ai.vehicle.heading, ai.vehicle.speed);
         }

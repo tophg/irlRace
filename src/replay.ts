@@ -9,6 +9,11 @@ interface ReplayFrame {
   heading: number;
   speed: number;
   time: number;
+  // VFX replay fields (optional for backwards compat)
+  nitroActive?: boolean;
+  engineHeat?: number;
+  engineDead?: boolean;
+  engineJustExploded?: boolean;
 }
 
 interface ReplayTrack {
@@ -33,7 +38,9 @@ export class ReplayRecorder {
     this.recording = false;
   }
 
-  record(id: string, pos: THREE.Vector3, heading: number, speed: number) {
+  record(id: string, pos: THREE.Vector3, heading: number, speed: number,
+         nitroActive?: boolean, engineHeat?: number,
+         engineDead?: boolean, engineJustExploded?: boolean) {
     if (!this.recording) return;
 
     let frames = this.tracks.get(id);
@@ -47,6 +54,7 @@ export class ReplayRecorder {
       x: pos.x, y: pos.y, z: pos.z,
       heading, speed,
       time: performance.now() - this.startTime,
+      nitroActive, engineHeat, engineDead, engineJustExploded,
     });
   }
 
@@ -179,6 +187,12 @@ export class ReplayPlayer {
       heading: a.heading + dh * t,
       speed: a.speed + (b.speed - a.speed) * t,
       time,
+      // Snap booleans from nearest frame (don't interpolate events)
+      nitroActive: t < 0.5 ? a.nitroActive : b.nitroActive,
+      engineHeat: a.engineHeat !== undefined && b.engineHeat !== undefined
+        ? a.engineHeat + (b.engineHeat - a.engineHeat) * t : undefined,
+      engineDead: t < 0.5 ? a.engineDead : b.engineDead,
+      engineJustExploded: a.engineJustExploded || b.engineJustExploded,
     };
   }
 

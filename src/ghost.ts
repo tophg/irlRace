@@ -13,6 +13,9 @@ interface GhostSnapshot {
   y: number;
   z: number;
   heading: number;
+  // VFX replay fields (optional)
+  nitroActive?: boolean;
+  engineHeat?: number;
 }
 
 // ── Storage ──
