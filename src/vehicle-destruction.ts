@@ -401,7 +401,11 @@ export function triggerVehicleDestruction(
   // count (a compile-time shader constant), forcing ALL MeshStandardMaterial
   // shaders to rebuild (~1.7s stall). Instead: hide meshes individually,
   // and zero-out light intensity while keeping them visible.
+  // NOTE: traverse() visits bodyGroup ITSELF first — we must skip it,
+  // otherwise setting bodyGroup.visible=false hides all children
+  // including the SpotLights we need to keep visible.
   bodyGroup.traverse((child) => {
+    if (child === bodyGroup) return; // skip root — keep Group visible
     if ((child as any).isLight) {
       (child as any).intensity = 0;
     } else {
