@@ -222,6 +222,10 @@ export function updateWeather(dt: number, playerPos: THREE.Vector3) {
 let savedRoadMat: { roughness: number; metalness: number; color: THREE.Color } | null = null;
 let savedRoadMesh: THREE.Mesh | null = null;
 
+// Pre-allocated colors for wet-road lerp targets (avoid per-call allocation)
+const _snowRoadColor = new THREE.Color(0xcccccc);
+const _iceRoadColor = new THREE.Color(0x88aacc);
+
 /**
  * Apply weather-dependent road surface material changes.
  * Rain → wet glossy; Snow → white-dusted; Ice → mirror-glossy.
@@ -243,12 +247,12 @@ export function applyWetRoad(roadMesh: THREE.Mesh) {
   } else if (w === 'snow' || w === 'blizzard') {
     // Snow-dusted road: slightly lighter, rougher
     mat.roughness = Math.min(0.95, savedRoadMat.roughness + 0.15);
-    mat.color.copy(savedRoadMat.color).lerp(new THREE.Color(0xcccccc), 0.15);
+    mat.color.copy(savedRoadMat.color).lerp(_snowRoadColor, 0.15);
   } else if (w === 'ice') {
     // Slightly glossy ice surface (but not mirror-like)
     mat.roughness = 0.35;
     mat.metalness = 0.15;
-    mat.color.copy(savedRoadMat.color).lerp(new THREE.Color(0x88aacc), 0.2);
+    mat.color.copy(savedRoadMat.color).lerp(_iceRoadColor, 0.2);
   }
 }
 

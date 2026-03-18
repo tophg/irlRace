@@ -31,7 +31,9 @@ export function cycleSpectateTarget(direction: 1 | -1) {
   const targets = rankings.filter(r => !r.finished && !r.dnf && r.id !== 'local');
   if (targets.length === 0) {
     G.spectateTargetId = null;
-    G.vehicleCamera.startOrbit(G.playerVehicle!.group.position);
+    if (G.playerVehicle) {
+      G.vehicleCamera.startOrbit(G.playerVehicle.group.position);
+    }
     destroySpectateHUD();
     return;
   }
@@ -51,9 +53,7 @@ function showSpectateHUD() {
   G.spectateHudEl.className = 'spectate-hud';
   uiOverlay().appendChild(G.spectateHudEl);
 
-  G.spectateHudEl.querySelector('.arrow-left')?.addEventListener('click', () => cycleSpectateTarget(-1));
-  G.spectateHudEl.querySelector('.arrow-right')?.addEventListener('click', () => cycleSpectateTarget(1));
-
+  // Note: click handlers are wired inside updateSpectateHUD after innerHTML is set
   updateSpectateHUD();
 }
 

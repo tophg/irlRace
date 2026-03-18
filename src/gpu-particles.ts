@@ -117,7 +117,7 @@ export async function initGPUParticles(
       // Update color alpha based on remaining life fraction
       const lifeFrac = life.div(maxLife_);
       const col = sColor.element(i);
-      col.w.assign(lifeFrac.mul(col.w)); // progressive fade
+      col.w.assign(lifeFrac); // linear fade: life → 0 maps to alpha → 0
 
       // Update size: smoke grows, sparks shrink
       const sz = sSize.element(i);

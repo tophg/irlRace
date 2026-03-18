@@ -182,19 +182,20 @@ export class RaceEngine {
     });
   }
 
-  /** Compute continuous progress for a racer using distance-based tiebreaker. */
+  /** Compute continuous progress for a racer using spline-t tiebreaker. */
   private continuousProgress(r: RacerProgress, N: number): number {
-    const nextIdx = (r.checkpointIndex + 1) % N;
-    const nextCpPos = this.checkpoints[nextIdx]?.position;
-    const cpPos = this.checkpoints[r.checkpointIndex]?.position;
+    // Use spline t parameter for sub-checkpoint granularity.
+    // Checkpoints are placed at t = i/N, so we can compute fractional
+    // progress within the current segment using the racer's rawT.
+    const cpT = r.checkpointIndex / N;
+    const nextCpT = ((r.checkpointIndex + 1) % N === 0) ? 1.0 : (r.checkpointIndex + 1) / N;
+    const segLen = nextCpT > cpT ? nextCpT - cpT : (1.0 - cpT) + nextCpT; // wrap-aware
 
     let frac = 0;
-    if (cpPos && nextCpPos) {
-      const segLen = cpPos.distanceTo(nextCpPos);
-      if (segLen > 0.01) {
-        const distToNext = r.position.distanceTo(nextCpPos);
-        frac = Math.max(0, Math.min(0.99, 1 - distToNext / segLen));
-      }
+    if (segLen > 0.0001) {
+      let distInSeg = r.rawT - cpT;
+      if (distInSeg < 0) distInSeg += 1.0; // handle wrap
+      frac = Math.max(0, Math.min(0.99, distInSeg / segLen));
     }
     return r.lapIndex * N + r.checkpointIndex + frac;
   }

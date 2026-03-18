@@ -109,6 +109,7 @@ const MODE_DURATION = 6000; // switch angle every 6 seconds in auto mode
 
 const _target = new THREE.Vector3();
 const _camPos = new THREE.Vector3();
+const _fallbackPos = new THREE.Vector3(); // reusable temp for fallback focus position
 
 // ── Player ──
 
@@ -297,7 +298,7 @@ export class ReplayPlayer {
 
       // Track focus target
       if (id === this._focusTarget) {
-        focusPos = mesh?.position ?? new THREE.Vector3(frame.x, frame.y, frame.z);
+        focusPos = mesh?.position ?? _fallbackPos.set(frame.x, frame.y, frame.z);
         focusHeading = frame.heading;
       }
     }
@@ -307,7 +308,7 @@ export class ReplayPlayer {
       for (const [, frames] of this.tracks) {
         const frame = this.interpolateFrame(frames, this.playbackTime);
         if (frame) {
-          focusPos = new THREE.Vector3(frame.x, frame.y, frame.z);
+          focusPos = _fallbackPos.set(frame.x, frame.y, frame.z);
           focusHeading = frame.heading;
           break;
         }
@@ -350,9 +351,14 @@ export class ReplayPlayer {
       heading: a.heading + dh * t,
       speed: a.speed + (b.speed - a.speed) * t,
       time,
-      // Vehicle visual state — interpolate linearly
+      // Vehicle visual state — interpolate with angle-wrapping for wheelSpin
       steer: a.steer + (b.steer - a.steer) * t,
-      wheelSpin: a.wheelSpin + (b.wheelSpin - a.wheelSpin) * t,
+      wheelSpin: (() => {
+        let dw = b.wheelSpin - a.wheelSpin;
+        if (dw > Math.PI) dw -= Math.PI * 2;
+        if (dw < -Math.PI) dw += Math.PI * 2;
+        return a.wheelSpin + dw * t;
+      })(),
       driftAngle: a.driftAngle + (b.driftAngle - a.driftAngle) * t,
       bodyPitchX: a.bodyPitchX + (b.bodyPitchX - a.bodyPitchX) * t,
       bodyRollZ: a.bodyRollZ + (b.bodyRollZ - a.bodyRollZ) * t,

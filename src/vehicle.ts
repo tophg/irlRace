@@ -53,7 +53,7 @@ export class Vehicle {
   private _engineJustExploded = false; // single-frame flag for VFX trigger
 
   /** Whether nitro is currently being burned (read-only) */
-  get nitroActive(): boolean { return this._nitroActive; }
+  get isNitroActive(): boolean { return this._nitroActive; }
   /** Current engine heat 0-100. */
   get engineHeat(): number { return this._engineHeat; }
   /** Whether the engine is dead from overheat. */
@@ -75,7 +75,7 @@ export class Vehicle {
   // ── Airborne state ──
   private _airborne = false;
   private _airTime = 0;          // seconds spent in air
-  private _prevRoadY = 0;        // previous frame's road surface Y (for velY derivation)
+  private _prevRoadY = NaN;       // previous frame's road surface Y (for velY derivation; NaN = uninitialized)
   private _justLanded = false;   // single-frame flag for landing VFX
   private _landingImpact = 0;    // 0-1 severity of last landing
   private _airPitch = 0;         // accumulated nose-dip pitch while airborne
@@ -858,7 +858,7 @@ export class Vehicle {
 
           // Derive road slope velocity (how fast the road surface is changing)
           const prevVelY = this._velY;
-          if (this._prevRoadY !== 0) {
+          if (!isNaN(this._prevRoadY)) {
             this._velY = (roadY - this._prevRoadY) / dt;
           }
 
@@ -866,7 +866,7 @@ export class Vehicle {
           // Must check BEFORE yLerp to prevent the car being snapped down
           // Threshold 0.5 catches all ramp types including speed bumps
           const roadDrop = this._prevRoadY - roadY; // positive = road fell
-          if (this._prevRoadY !== 0 && roadDrop > 0.5) {
+          if (!isNaN(this._prevRoadY) && roadDrop > 0.5) {
             // Road surface dropped significantly in one frame — launch!
             this._airborne = true;
             this._airTime = 0;
@@ -1128,8 +1128,7 @@ export class Vehicle {
     this.nitro = Math.min(100, this.nitro + amount);
   }
 
-  /** Whether nitro boost is currently firing. */
-  get isNitroActive(): boolean { return this._nitroActive; }
+  // isNitroActive getter moved to line 56 consolidated accessor block
 
   // flattenTire removed — procedural wheel containers are invisible,
   // so scaling them has no visual effect.
@@ -1248,7 +1247,7 @@ export class Vehicle {
     this._engineDead = false;
     this._engineDeadTimer = 0;
     this._engineJustExploded = false;
-    this._prevRoadY = 0;
+    this._prevRoadY = this.group.position.y; // seed with current Y to prevent false ramp detection on first frame
     this._airborne = false;
     this._airTime = 0;
     this._airPitch = 0;
@@ -1295,6 +1294,9 @@ export class Vehicle {
     }
   }
 
+  // Original material colors cache — prevents cumulative darkening
+  private _originalMaterialColors = new Map<THREE.MeshStandardMaterial, THREE.Color>();
+
   /** Progressively darken and roughen materials on the damaged zone. */
   private applyMaterialDamage(zone: 'front' | 'rear' | 'left' | 'right') {
     if (!this.model) return;
@@ -1317,10 +1319,16 @@ export class Vehicle {
 
       if (!inZone) return;
 
-      // Darken color toward grey based on absolute damage (not compounding)
+      // Cache original color on first encounter
+      if (!this._originalMaterialColors.has(mat)) {
+        this._originalMaterialColors.set(mat, mat.color.clone());
+      }
+      const original = this._originalMaterialColors.get(mat)!;
+
+      // Darken from ORIGINAL color based on absolute damage (prevents compounding)
       const darkFactor = Math.max(0.5, 1 - severity * 0.4);
       const hsl = { h: 0, s: 0, l: 0 };
-      mat.color.getHSL(hsl);
+      original.getHSL(hsl);
       mat.color.setHSL(hsl.h, hsl.s * darkFactor, Math.max(hsl.l * darkFactor, 0.15));
 
       // Increase roughness (fresh paint → scraped metal)

@@ -546,8 +546,9 @@ export class NetPeer {
       this.connections.set(id, remote);
     }
     remote.buffer.push(snap);
-    if (remote.buffer.length > 10) {
-      remote.buffer.splice(0, remote.buffer.length - 10);
+    // Ring-buffer style trim: when buffer gets too large, discard old entries in bulk
+    if (remote.buffer.length > 20) {
+      remote.buffer = remote.buffer.slice(-10);
     }
   }
 

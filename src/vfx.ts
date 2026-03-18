@@ -643,6 +643,7 @@ export function spawnTireBlowout(pos: THREE.Vector3) {
 
 // ── Neon Underglow (colored PointLight under car body) ──
 
+const _nitroCyanColor = new THREE.Color(0x44aaff); // reusable — avoid per-frame alloc
 const UNDERGLOW_COLORS = [
   0x00aaff, // Blue
   0xff00aa, // Pink
@@ -675,7 +676,7 @@ export function updateUnderglow(light: THREE.PointLight, speed: number, time: nu
     const pulse = 0.8 + Math.sin(time * 8) * 0.15 + Math.sin(time * 13) * 0.05;
     light.intensity = (4.5 + speedFactor * 3.0) * pulse;
     light.distance = 10 + speedFactor * 5;
-    light.color.lerp(new THREE.Color(0x44aaff), 0.15); // Smooth shift to cyan
+    light.color.lerp(_nitroCyanColor, 0.15); // Smooth shift to cyan
   } else {
     // Normal mode: gentle pulse
     const pulse = 0.7 + Math.sin(time * 3) * 0.15 + Math.sin(time * 7.3) * 0.08;
@@ -689,82 +690,120 @@ export function updateUnderglow(light: THREE.PointLight, speed: number, time: nu
 
 
 
-// ── Glass Shard Burst VFX ──
-interface GlassShard {
-  mesh: THREE.Mesh;
+// ── Glass Shard Burst VFX (pooled) ──
+const GLASS_POOL_SIZE = 15;
+
+interface GlassShardState {
+  active: boolean;
   vx: number; vy: number; vz: number;
   life: number;
 }
-const glassShards: GlassShard[] = [];
-let _glassScene: THREE.Scene | null = null;
+
 const _glassGeo = new THREE.PlaneGeometry(0.08, 0.08);
-const _glassMat = new THREE.MeshStandardMaterial({
-  color: 0xaaddff,
-  transparent: true,
-  opacity: 0.6,
-  side: THREE.DoubleSide,
-  roughness: 0.1,
-  metalness: 0.8,
-});
+const _glassPool: THREE.Mesh[] = [];
+const _glassStates: GlassShardState[] = [];
+let _glassPoolReady = false;
+let _glassScene: THREE.Scene | null = null;
+let _glassWriteIdx = 0;
+
+function ensureGlassPool(scene: THREE.Scene) {
+  if (_glassPoolReady) return;
+  _glassPoolReady = true;
+  _glassScene = scene;
+  for (let i = 0; i < GLASS_POOL_SIZE; i++) {
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xaaddff,
+      transparent: true,
+      opacity: 0.6,
+      side: THREE.DoubleSide,
+      roughness: 0.1,
+      metalness: 0.8,
+    });
+    const mesh = new THREE.Mesh(_glassGeo, mat);
+    mesh.visible = false;
+    scene.add(mesh);
+    _glassPool.push(mesh);
+    _glassStates.push({ active: false, vx: 0, vy: 0, vz: 0, life: 0 });
+  }
+}
 
 export function triggerGlassShardBurst(scene: THREE.Scene, x: number, y: number, z: number) {
-  _glassScene = scene;
+  ensureGlassPool(scene);
   const SHARD_COUNT = 10;
   for (let i = 0; i < SHARD_COUNT; i++) {
-    const mesh = new THREE.Mesh(_glassGeo, _glassMat.clone());
+    const idx = _glassWriteIdx % GLASS_POOL_SIZE;
+    _glassWriteIdx++;
+    const mesh = _glassPool[idx];
+    const st = _glassStates[idx];
     mesh.position.set(x, y, z);
     mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
     mesh.scale.setScalar(0.5 + Math.random() * 1.5);
-    scene.add(mesh);
-    glassShards.push({
-      mesh,
-      vx: (Math.random() - 0.5) * 6,
-      vy: 2 + Math.random() * 4,
-      vz: (Math.random() - 0.5) * 6,
-      life: 1.5,
-    });
+    (mesh.material as THREE.MeshStandardMaterial).opacity = 0.6;
+    mesh.visible = true;
+    st.active = true;
+    st.vx = (Math.random() - 0.5) * 6;
+    st.vy = 2 + Math.random() * 4;
+    st.vz = (Math.random() - 0.5) * 6;
+    st.life = 1.5;
   }
 }
 
 export function updateGlassShards(dt: number) {
-  for (let i = glassShards.length - 1; i >= 0; i--) {
-    const s = glassShards[i];
-    s.life -= dt;
-    if (s.life <= 0) {
-      if (_glassScene) _glassScene.remove(s.mesh);
-      // Only dispose material (cloned per-shard); geometry is shared (_glassGeo)
-      (s.mesh.material as THREE.Material).dispose();
-      glassShards.splice(i, 1);
+  for (let i = 0; i < GLASS_POOL_SIZE; i++) {
+    const st = _glassStates[i];
+    if (!st.active) continue;
+    st.life -= dt;
+    if (st.life <= 0) {
+      st.active = false;
+      _glassPool[i].visible = false;
       continue;
     }
-    s.vy -= 9.8 * dt; // gravity
-    s.mesh.position.x += s.vx * dt;
-    s.mesh.position.y += s.vy * dt;
-    s.mesh.position.z += s.vz * dt;
-    s.mesh.rotation.x += dt * 5;
-    s.mesh.rotation.z += dt * 3;
-    (s.mesh.material as THREE.MeshStandardMaterial).opacity = Math.min(0.6, s.life / 0.5);
+    st.vy -= 9.8 * dt;
+    const mesh = _glassPool[i];
+    mesh.position.x += st.vx * dt;
+    mesh.position.y += st.vy * dt;
+    mesh.position.z += st.vz * dt;
+    mesh.rotation.x += dt * 5;
+    mesh.rotation.z += dt * 3;
+    (mesh.material as THREE.MeshStandardMaterial).opacity = Math.min(0.6, st.life / 0.5);
   }
 }
 
-// ── Engine Smoke VFX ──
-interface EngineSmokeParticle {
-  mesh: THREE.Mesh;
+
+// ── Engine Smoke VFX (pooled) ──
+const SMOKE_ENG_POOL_SIZE = 30;
+
+interface EngineSmokeState {
+  active: boolean;
   vx: number; vy: number; vz: number;
   life: number;
   maxLife: number;
 }
-const engineSmokeParticles: EngineSmokeParticle[] = [];
-let _smokeEngScene: THREE.Scene | null = null;
+
 const _smokeEngGeo = new THREE.PlaneGeometry(0.5, 0.5);
-const _smokeEngMat = new THREE.MeshStandardMaterial({
-  color: 0xcccccc,
-  transparent: true,
-  opacity: 0.2,
-  side: THREE.DoubleSide,
-  depthWrite: false,
-});
-const SMOKE_POOL_MAX = 30;
+const _smokeEngPool: THREE.Mesh[] = [];
+const _smokeEngStates: EngineSmokeState[] = [];
+let _smokeEngPoolReady = false;
+let _smokeEngWriteIdx = 0;
+
+function ensureSmokeEngPool(scene: THREE.Scene) {
+  if (_smokeEngPoolReady) return;
+  _smokeEngPoolReady = true;
+  for (let i = 0; i < SMOKE_ENG_POOL_SIZE; i++) {
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xcccccc,
+      transparent: true,
+      opacity: 0.2,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(_smokeEngGeo, mat);
+    mesh.visible = false;
+    scene.add(mesh);
+    _smokeEngPool.push(mesh);
+    _smokeEngStates.push({ active: false, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 1 });
+  }
+}
 
 export function updateEngineSmoke(
   scene: THREE.Scene,
@@ -773,65 +812,64 @@ export function updateEngineSmoke(
   carX: number, carY: number, carZ: number,
   heading: number,
 ) {
-  _smokeEngScene = scene;
+  ensureSmokeEngPool(scene);
 
   // Emit new smoke if front HP < 30%
-  if (frontHP < 30 && engineSmokeParticles.length < SMOKE_POOL_MAX) {
-    const severity = 1 - frontHP / 30; // 0 at 30%, 1 at 0%
-    // Emit 1-3 particles per frame based on severity
+  if (frontHP < 30) {
+    const severity = 1 - frontHP / 30;
     const emitCount = Math.min(1 + Math.floor(severity * 2), 3);
     const sinH = Math.sin(heading);
     const cosH = Math.cos(heading);
-    // Hood position: slightly forward and up from CG
     const hoodX = carX + sinH * (-1.0);
     const hoodZ = carZ + cosH * (-1.0);
     const hoodY = carY + 1.2;
 
     for (let e = 0; e < emitCount; e++) {
-      const mesh = new THREE.Mesh(_smokeEngGeo, _smokeEngMat.clone());
+      const idx = _smokeEngWriteIdx % SMOKE_ENG_POOL_SIZE;
+      _smokeEngWriteIdx++;
+      const mesh = _smokeEngPool[idx];
+      const st = _smokeEngStates[idx];
       mesh.position.set(
         hoodX + (Math.random() - 0.5) * 0.4,
         hoodY,
         hoodZ + (Math.random() - 0.5) * 0.4,
       );
       mesh.rotation.z = Math.random() * Math.PI;
-      scene.add(mesh);
+      mesh.scale.setScalar(0.3);
+      mesh.visible = true;
       const maxLife = 1.0 + Math.random() * 0.8;
-      engineSmokeParticles.push({
-        mesh,
-        vx: (Math.random() - 0.5) * 0.8,
-        vy: 2 + Math.random() * 2,
-        vz: (Math.random() - 0.5) * 0.8,
-        life: maxLife,
-        maxLife,
-      });
+      st.active = true;
+      st.vx = (Math.random() - 0.5) * 0.8;
+      st.vy = 2 + Math.random() * 2;
+      st.vz = (Math.random() - 0.5) * 0.8;
+      st.life = maxLife;
+      st.maxLife = maxLife;
     }
   }
 
   // Update existing smoke
-  for (let i = engineSmokeParticles.length - 1; i >= 0; i--) {
-    const p = engineSmokeParticles[i];
-    p.life -= dt;
-    if (p.life <= 0) {
-      if (_smokeEngScene) _smokeEngScene.remove(p.mesh);
-      (p.mesh.material as THREE.Material).dispose();
-      engineSmokeParticles.splice(i, 1);
+  for (let i = 0; i < SMOKE_ENG_POOL_SIZE; i++) {
+    const st = _smokeEngStates[i];
+    if (!st.active) continue;
+    st.life -= dt;
+    if (st.life <= 0) {
+      st.active = false;
+      _smokeEngPool[i].visible = false;
       continue;
     }
-    p.mesh.position.x += p.vx * dt;
-    p.mesh.position.y += p.vy * dt;
-    p.mesh.position.z += p.vz * dt;
-    // Grow over lifetime
-    const age = 1 - p.life / p.maxLife;
-    p.mesh.scale.setScalar(0.3 + age * 1.5);
-    // Fade out
-    const mat = p.mesh.material as THREE.MeshStandardMaterial;
+    const mesh = _smokeEngPool[i];
+    mesh.position.x += st.vx * dt;
+    mesh.position.y += st.vy * dt;
+    mesh.position.z += st.vz * dt;
+    const age = 1 - st.life / st.maxLife;
+    mesh.scale.setScalar(0.3 + age * 1.5);
+    const mat = mesh.material as THREE.MeshStandardMaterial;
     mat.opacity = (1 - age) * 0.25;
-    // Grey-shift over time (white → dark grey)
     const grey = 0.8 - age * 0.4;
     mat.color.setRGB(grey, grey, grey);
   }
 }
+
 
 /** Remove all VFX objects from the scene and DOM. Call between races. */
 export function destroyVFX() {

@@ -63,7 +63,7 @@ export class AIRacer {
   private targetLaneOffset = 0;
 
   // Startup protection — prevents backwards driving on first frames
-  private startupFrames = 0;
+  private startupTimer = 0; // seconds remaining
   private initialT = 0;
 
   constructor(id: string, def: CarDef, personalityIndex?: number) {
@@ -105,7 +105,7 @@ export class AIRacer {
     this.laneOffset = laneOffset / ROAD_HALF_WIDTH;
     this.targetLaneOffset = this.personality.preferredLine;
     this.overtakeTarget = null;
-    this.startupFrames = 30; // ~0.5s at 60fps
+    this.startupTimer = 0.5; // 0.5 seconds of startup protection
     this.initialT = t;
   }
 
@@ -122,8 +122,8 @@ export class AIRacer {
     // ── Startup protection: enforce placed heading on first frames ──
     // Prevents backwards driving caused by getClosestSplinePoint returning
     // wrong t near the spline start/end junction.
-    if (this.startupFrames > 0) {
-      this.startupFrames--;
+    if (this.startupTimer > 0) {
+      this.startupTimer -= dt;
       this.currentT = this.initialT;
       // Gentle forward throttle, no steering — get the car rolling correctly
       const input: InputState = {

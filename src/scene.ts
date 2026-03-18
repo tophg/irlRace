@@ -535,9 +535,9 @@ export function applyEnvironment(preset: EnvironmentPreset) {
     uSkyMid.value.setHex(preset.skyMid);
   } else {
     // Blend between skyTop and skyHorizon at 40% toward top
-    const _t = new THREE.Color(preset.skyTop);
-    const _h = new THREE.Color(preset.skyHorizon);
-    uSkyMid.value.copy(_t).lerp(_h, 0.4);
+    _tmpColorA.setHex(preset.skyTop);
+    _tmpColorB.setHex(preset.skyHorizon);
+    uSkyMid.value.copy(_tmpColorA).lerp(_tmpColorB, 0.4);
   }
   if (preset.horizonGlow) {
     uHorizonGlow.value.setHex(preset.horizonGlow);
@@ -614,6 +614,10 @@ export function getRenderer() { return renderer; }
 export function getScene() { return scene; }
 export function getCamera() { return camera; }
 export function getDirLight() { return dirLight; }
+
+// Reusable temp Colors for applyEnvironment derivations
+const _tmpColorA = new THREE.Color();
+const _tmpColorB = new THREE.Color();
 
 let _currentPreset: EnvironmentPreset = ENVIRONMENTS[0];
 

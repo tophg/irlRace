@@ -7,6 +7,8 @@ import { loadCarModel, loadCarModelWithProgress } from './loaders';
 import { isCarUnlocked, getUnlockCost, unlockCar, getProgress } from './progression';
 import { getSettings, saveSettings } from './settings';
 import { initCalibrationStudio, onStudioCarLoaded } from './calibration-studio';
+import { applyPaintToModel, restoreOriginalColors, shouldSkipForPaint } from './garage-paint';
+import { playClickSfx, playConfirmSfx, playUnlockSfx, playSpraySfx, destroyGarageSfx } from './garage-audio';
 
 let garageScene: THREE.Scene;
 let garageCamera: THREE.PerspectiveCamera;
@@ -47,9 +49,6 @@ const SWIPE_THRESHOLD = 60;
 
 // Dot indicator element
 let dotContainerEl: HTMLElement | null = null;
-
-// Original material colors — stored on first paint so RESET is instant
-const originalColors = new WeakMap<THREE.Material, THREE.Color>();
 
 // Placeholder silhouette
 let placeholderMesh: THREE.Mesh | null = null;
@@ -527,7 +526,7 @@ function buildGarageUI(overlay: HTMLElement) {
   if (paintSlider) {
     paintSlider.addEventListener('input', () => {
       _previewHue = parseInt(paintSlider.value);
-      applyPaintToGarageModel(_previewHue);
+      applyPaintToModel(currentModel, _previewHue);
       paintSwatch.style.background = `hsl(${_previewHue},85%,45%)`;
     });
   }
@@ -544,7 +543,7 @@ function buildGarageUI(overlay: HTMLElement) {
     const s = getSettings();
     s.paintHue = _previewHue;
     saveSettings(s);
-    applyPaintToGarageModel(_previewHue);
+    applyPaintToModel(currentModel, _previewHue);
     updatePaintBalance();
     showPaintToast('Paint applied!', '#44ff88');
     playSpraySfx();
@@ -561,7 +560,7 @@ function buildGarageUI(overlay: HTMLElement) {
     _previewHue = 180;
     if (paintSlider) paintSlider.value = '180';
     paintSwatch.style.background = 'hsl(180,85%,45%)';
-    restoreOriginalColors();
+    restoreOriginalColors(currentModel);
     showPaintToast('Paint reset!', '#aaaaaa');
   });
 
@@ -714,7 +713,7 @@ async function showCar(index: number) {
     // Apply saved paint color if set
     const savedHue = getSettings().paintHue;
     if (savedHue >= 0) {
-      applyPaintToGarageModel(savedHue);
+      applyPaintToModel(currentModel, savedHue);
       // Sync slider + swatch
       const slider = document.getElementById('garage-paint') as HTMLInputElement;
       const swatch = document.getElementById('paint-swatch');
@@ -736,76 +735,9 @@ async function showCar(index: number) {
   }
 }
 
-/** Determine if a material/mesh should be excluded from paint recoloring. */
-function shouldSkipForPaint(mat: any, meshName: string): boolean {
-  // Glass / transparent
-  if (mat.transparent && mat.opacity < 0.5) return true;
-  // Lights (strong emissive color)
-  if (mat.emissiveIntensity > 0.5 && mat.emissive && mat.emissive.getHex() > 0) return true;
-  // Named exclusions (mesh or material name)
-  const name = (mat.name || meshName || '').toLowerCase();
-  if (/glass|window|windshield|tire|tyre|wheel|rubber|rim|chrome|logo|badge|grille|exhaust|mirror|light|lens|indicator/.test(name)) return true;
-  // Very dark AND highly metallic (likely trim/unibody, not painted body)
-  if (mat.color) {
-    const hsl = { h: 0, s: 0, l: 0 };
-    mat.color.getHSL(hsl);
-    if (hsl.l < 0.05 && (mat.metalness ?? 0) > 0.85) return true;
-  }
-  return false;
-}
-
-/** Store original color for a material if not already stored. */
-function storeOriginal(mat: any) {
-  if (!originalColors.has(mat) && mat.color) {
-    originalColors.set(mat, mat.color.clone());
-  }
-}
-
-/** Recolor the current garage model's body panels with a hue (0–360). */
-function applyPaintToGarageModel(hue: number) {
-  if (!currentModel) return;
-  const color = new THREE.Color().setHSL(hue / 360, 0.90, 0.15);
-  currentModel.traverse((child: any) => {
-    if (!child.isMesh) return;
-    if (!child.material) return;
-    
-    const mats = Array.isArray(child.material) ? child.material : [child.material];
-    
-    for (const mat of mats) {
-      if (shouldSkipForPaint(mat, child.name)) continue;
-      if (!mat.color) continue;
-      storeOriginal(mat);
-      mat.color.copy(color);
-      if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
-      mat.version++; // Force WebGPU uniform re-upload
-    }
-  });
-}
-
-/** Restore all painted materials to their original colors. */
-function restoreOriginalColors() {
-  if (!currentModel) return;
-  currentModel.traverse((child: any) => {
-    if (!child.isMesh) return;
-    if (!child.material) return;
-    
-    const mats = Array.isArray(child.material) ? child.material : [child.material];
-    
-    for (const mat of mats) {
-      const orig = originalColors.get(mat);
-      if (orig && mat.color) {
-        mat.color.copy(orig);
-        if (mat.emissive) {
-          mat.emissive.set(0, 0, 0);
-        }
-        if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
-        mat.version++; // Force WebGPU uniform re-upload
-      }
-    }
-  });
-}
 
 function showPlaceholder() {
+
   if (placeholderMesh) {
     placeholderMesh.visible = true;
     placeholderMesh.position.y = 0.09;
@@ -976,120 +908,9 @@ export function getSelectedCar(): CarDef {
 export function getGarageScene() { return garageScene; }
 export function getGarageCamera() { return garageCamera; }
 
-// ── Procedural Garage SFX ──
-let garageSfxCtx: AudioContext | null = null;
-
-function getGarageSfxCtx(): AudioContext {
-  if (!garageSfxCtx) garageSfxCtx = new AudioContext();
-  return garageSfxCtx;
-}
-
-/** Short mechanical "click-whirr" for car switching */
-function playClickSfx() {
-  try {
-    const ctx = getGarageSfxCtx();
-    const now = ctx.currentTime;
-
-    // Click: short noise burst
-    const bufSize = ctx.sampleRate * 0.03;
-    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.3;
-    const noise = ctx.createBufferSource();
-    noise.buffer = buf;
-    const noiseGain = ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.15, now);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
-    noise.connect(noiseGain).connect(ctx.destination);
-    noise.start(now);
-
-    // Whirr: short sine sweep
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(800, now);
-    osc.frequency.exponentialRampToValueAtTime(400, now + 0.08);
-    const oscGain = ctx.createGain();
-    oscGain.gain.setValueAtTime(0.06, now);
-    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-    osc.connect(oscGain).connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.12);
-  } catch {}
-}
-
-/** Satisfying "confirm" chord for selection */
-function playConfirmSfx() {
-  try {
-    const ctx = getGarageSfxCtx();
-    const now = ctx.currentTime;
-    [523.25, 659.25].forEach((freq, i) => {
-      const osc = ctx.createOscillator();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      const gain = ctx.createGain();
-      gain.gain.setValueAtTime(0.1, now + i * 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3 + i * 0.05);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(now + i * 0.05);
-      osc.stop(now + 0.35 + i * 0.05);
-    });
-  } catch {}
-}
-
-/** "Cha-ching" unlock sound */
-function playUnlockSfx() {
-  try {
-    const ctx = getGarageSfxCtx();
-    const now = ctx.currentTime;
-    // Metallic ping
-    const osc = ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(1200, now);
-    osc.frequency.exponentialRampToValueAtTime(2400, now + 0.15);
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.12, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.45);
-    // Shimmer
-    const osc2 = ctx.createOscillator();
-    osc2.type = 'sine';
-    osc2.frequency.value = 3200;
-    const g2 = ctx.createGain();
-    g2.gain.setValueAtTime(0.04, now + 0.1);
-    g2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-    osc2.connect(g2).connect(ctx.destination);
-    osc2.start(now + 0.1);
-    osc2.stop(now + 0.55);
-  } catch {}
-}
-
-/** Paint spray hiss */
-function playSpraySfx() {
-  try {
-    const ctx = getGarageSfxCtx();
-    const now = ctx.currentTime;
-    const bufSize = ctx.sampleRate * 0.15;
-    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < bufSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
-    }
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'highpass';
-    filter.frequency.value = 3000;
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.08, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-    src.connect(filter).connect(gain).connect(ctx.destination);
-    src.start(now);
-  } catch {}
-}
 
 // ── Keyboard Navigation ──
+
 let keyboardHandler: ((e: KeyboardEvent) => void) | null = null;
 
 function wireKeyboardNav() {

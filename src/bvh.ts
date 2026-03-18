@@ -526,13 +526,16 @@ export function resolveCarCollisions(
       // Compute impact force from relative velocity along collision normal
       let impactForce = overlap * 2;
       if (velocities) {
-        const frictionFactor = 0.85;
         const vaX = velocities[i]?.velX ?? 0;
         const vaZ = velocities[i]?.velZ ?? 0;
         const vbX = velocities[j]?.velX ?? 0;
         const vbZ = velocities[j]?.velZ ?? 0;
         const relVelN = (vbX - vaX) * nx + (vbZ - vaZ) * nz;
         impactForce = Math.max(impactForce, Math.abs(relVelN));
+
+        // Scale friction by impact strength — gentle sideswipes lose less speed
+        const impactRatio = Math.min(1, impactForce / 30); // normalize: 30 = hard hit
+        const frictionFactor = 1 - 0.15 * impactRatio;     // 0.85 at max, ~1.0 for gentle touches
 
         if (velocities[i]) {
           velocities[i].velX *= frictionFactor;

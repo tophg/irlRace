@@ -13,11 +13,12 @@
  * ─── Key Design Choices ───
  * • Ring buffers (128 frames) for inputs and snapshots
  * • Last-input prediction (assume remote repeats their last input)
- * • Max rollback window: 8 frames (~67ms at 120Hz)
+ * • Max rollback window: 8 frames (~133ms at 60Hz)
  * • Existing state broadcast kept as reconciliation fallback
  */
 
 import type { InputState } from './types';
+import { PHYSICS_HZ } from './game-context';
 
 // ── Constants ──
 const BUFFER_SIZE = 128;
@@ -131,9 +132,9 @@ export class RollbackManager {
   advanceFrame() {
     this.currentFrame++;
 
-    // Rollback counter decay (once per second at 120Hz)
+    // Rollback counter decay (once per second)
     this._rollbackResetTimer++;
-    if (this._rollbackResetTimer >= 120) {
+    if (this._rollbackResetTimer >= PHYSICS_HZ) {
       this._rollbacksThisSecond = 0;
       this._rollbackResetTimer = 0;
     }

@@ -144,7 +144,8 @@ export const G = {
   // ── Performance ──
   _lastShadowX: -999,
   _lastShadowZ: -999,
-  _drsFrameTimes: [] as number[],
+  _drsFrameTimes: new Array(30).fill(0) as number[],
+  _drsWriteIdx: 0,
 
   // ── Track Editor / Race Config (typed to avoid `as any` smuggling) ──
   _customTrack: null as TrackData | null,

@@ -54,6 +54,7 @@ const _worldQuat = new THREE.Quaternion();
 const _center = new THREE.Vector3();
 const _outward = new THREE.Vector3();
 const _firePos = new THREE.Vector3();
+const _dustPos = new THREE.Vector3(); // reusable temp for deferred dust spawn
 
 // Pre-built scorch texture (created once at module load, not at explosion time)
 const _scorchCanvas = document.createElement('canvas');
@@ -386,8 +387,8 @@ export function triggerVehicleDestruction(
   }
 
   // ── Phase 3d: Dust kick-up wave (deferred to next frame — reduces trigger frame particle budget) ──
-  const dustPos = wreckPosition!.clone();
-  requestAnimationFrame(() => spawnExplosionDust(dustPos, 30));
+  _dustPos.copy(wreckPosition!);
+  requestAnimationFrame(() => spawnExplosionDust(_dustPos, 30));
 }
 
 /**
