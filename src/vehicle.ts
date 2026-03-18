@@ -863,15 +863,16 @@ export class Vehicle {
             this._velY = (roadY - this._prevRoadY) / dt;
           }
 
-          // ── Ramp lip detection: road dropped suddenly while we had upward momentum ──
+          // ── Ramp lip detection: road dropped suddenly ──
           // Must check BEFORE yLerp to prevent the car being snapped down
+          // Threshold 0.5 catches all ramp types including speed bumps
           const roadDrop = this._prevRoadY - roadY; // positive = road fell
-          if (this._prevRoadY !== 0 && roadDrop > 1.5 && prevVelY > 0.3) {
-            // Road surface dropped > 1.5 units in one frame — launch off the lip!
+          if (this._prevRoadY !== 0 && roadDrop > 0.5) {
+            // Road surface dropped significantly in one frame — launch!
             this._airborne = true;
             this._airTime = 0;
             this._airPitch = 0;
-            this._velY = Math.max(prevVelY, roadDrop * 0.5) * 1.5; // arcade boost
+            this._velY = Math.max(prevVelY, 0) + roadDrop * 0.6 + 3; // guaranteed minimum launch + proportional boost
             this._prevRoadY = roadY;
           } else {
             // Normal grounded: smooth Y tracking
