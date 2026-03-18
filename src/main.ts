@@ -15,6 +15,7 @@ import { createHUD, updateHUD, updateMinimap, updateDamageHUD, updateGapHUD, upd
 import { runCountdown } from './countdown';
 import { initAudio, updateEngineAudio, playCheckpointSFX, playLapFanfare, playFinishFanfare, playDriftSFX, playCollisionSFX, playPositionSFX, stopAudio, playNitroActivate, startNitroBurn, stopNitroBurn, updateNitroBurnIntensity, updateDepletionWarning, stopDepletionWarning, playNitroRelease, playCountdownRevs, stopCountdownRevs, playRumbleStrip } from './audio';
 import { showResults, resolvePlayerName } from './results-screen';
+import { enterSpectatorMode, cycleSpectateTarget, destroySpectateHUD } from './spectator';
 import { AIRacer, OpponentInfo } from './ai-racer';
 import { initGarage, updateGarage, destroyGarage } from './garage';
 import { NetPeer } from './net-peer';
@@ -280,12 +281,12 @@ function enterTrackEditor() {
       G.totalLaps = 1;
       G.aiCount = 0;
       G.aiDifficulty = 'easy';
-      (G as any)._customTrack = track;
+      G._customTrack = track;
       startRace();
     },
     onRaceWithTrack: (track) => {
       destroyTrackEditor();
-      (G as any)._customTrack = track;
+      G._customTrack = track;
       enterGarage('singleplayer');
     },
     onBack: () => {
@@ -315,8 +316,8 @@ function enterGarage(mode: 'singleplayer' | 'multiplayer') {
         G.totalLaps = laps;
         G.aiCount = ai;
         G.aiDifficulty = difficulty;
-        (G as any)._selectedWeather = weather;
-        (G as any)._selectedEnvironment = environment;
+        G._selectedWeather = weather;
+        G._selectedEnvironment = environment;
         if (seed.length > 0) {
           const parsed = parseInt(seed, 10);
           G.trackSeed = Number.isNaN(parsed) ? Math.floor(Math.random() * 99999) : parsed;
@@ -357,9 +358,9 @@ async function startRace() {
 
     // Generate track (use custom track from editor if present, else procedural)
     let seed = G.trackSeed ?? Math.floor(Math.random() * 99999);
-    if ((G as any)._customTrack) {
-      G.trackData = (G as any)._customTrack;
-      (G as any)._customTrack = null; // consume — restart uses random seed
+    if (G._customTrack) {
+      G.trackData = G._customTrack;
+      G._customTrack = null; // consume — restart uses random seed
       G.currentRaceSeed = 0;
     } else {
       G.currentRaceSeed = seed;
@@ -368,13 +369,13 @@ async function startRace() {
     }
     const trackData = G.trackData!; // guaranteed non-null after if/else above
     // Environment: use player-selected environment if not 'random', else seed-based
-    const selectedEnv = (G as any)._selectedEnvironment as string;
+    const selectedEnv = G._selectedEnvironment;
     const envPreset = (selectedEnv && selectedEnv !== 'random')
       ? getEnvironmentByName(selectedEnv)
       : getEnvironmentForSeed(seed);
     applyEnvironment(envPreset);
     // Weather: use player-selected weather if not 'random', else seed-based
-    const selectedW = (G as any)._selectedWeather as string;
+    const selectedW = G._selectedWeather;
     const weatherType = (selectedW && selectedW !== 'random')
       ? selectedW as any
       : getWeatherForSeed(seed);
@@ -847,77 +848,8 @@ function clearRaceObjects() {
   G.prevMyRank = 0;
   destroySpectateHUD();
 }
-
-function enterSpectatorMode() {
-  if (!G.vehicleCamera || !G.raceEngine) return;
-
-  // Find the closest unfinished racer to follow
-  const rankings = G.raceEngine.getRankings();
-  const unfinished = rankings.filter(r => !r.finished && !r.dnf && r.id !== 'local');
-
-  if (unfinished.length > 0) {
-    G.spectateTargetId = unfinished[0].id;
-    G.vehicleCamera.startFollow();
-    showSpectateHUD();
-  } else {
-    // No one left to follow — orbit the track center
-    G.spectateTargetId = null;
-    if (G.playerVehicle) {
-      G.vehicleCamera.startOrbit(G.playerVehicle.group.position);
-    }
-  }
-}
-
-function cycleSpectateTarget(direction: 1 | -1) {
-  if (!G.raceEngine || !G.vehicleCamera) return;
-  const rankings = G.raceEngine.getRankings();
-  const targets = rankings.filter(r => !r.finished && !r.dnf && r.id !== 'local');
-  if (targets.length === 0) {
-    // Everyone finished — switch to orbit
-    G.spectateTargetId = null;
-    G.vehicleCamera.startOrbit(G.playerVehicle!.group.position);
-    destroySpectateHUD();
-    return;
-  }
-
-  const curIdx = targets.findIndex(r => r.id === G.spectateTargetId);
-  let nextIdx = curIdx + direction;
-  if (nextIdx < 0) nextIdx = targets.length - 1;
-  if (nextIdx >= targets.length) nextIdx = 0;
-  G.spectateTargetId = targets[nextIdx].id;
-  G.vehicleCamera.startFollow();
-  updateSpectateHUD();
-}
-
-function showSpectateHUD() {
-  destroySpectateHUD();
-  G.spectateHudEl = document.createElement('div');
-  G.spectateHudEl.className = 'spectate-hud';
-  uiOverlay.appendChild(G.spectateHudEl);
-
-  G.spectateHudEl.querySelector('.arrow-left')?.addEventListener('click', () => cycleSpectateTarget(-1));
-  G.spectateHudEl.querySelector('.arrow-right')?.addEventListener('click', () => cycleSpectateTarget(1));
-
-  updateSpectateHUD();
-}
-
-function updateSpectateHUD() {
-  if (!G.spectateHudEl || !G.spectateTargetId) return;
-  const name = resolvePlayerName(G.spectateTargetId, G);
-  G.spectateHudEl.innerHTML = `
-    <span class="spectate-label">SPECTATING</span>
-    <span class="arrow arrow-left" id="spec-left">◀</span>
-    <span class="spectate-name">${name}</span>
-    <span class="arrow arrow-right" id="spec-right">▶</span>
-  `;
-  // Re-wire click events after innerHTML update
-  G.spectateHudEl.querySelector('#spec-left')?.addEventListener('click', () => cycleSpectateTarget(-1));
-  G.spectateHudEl.querySelector('#spec-right')?.addEventListener('click', () => cycleSpectateTarget(1));
-}
-
-function destroySpectateHUD() {
-  if (G.spectateHudEl) { G.spectateHudEl.remove(); G.spectateHudEl = null; }
-}
+// SPECTATOR MODE — extracted to spectator.ts
+// enterSpectatorMode(), cycleSpectateTarget(), destroySpectateHUD() imported at top.
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // RESULTS SCREEN — extracted to results-screen.ts

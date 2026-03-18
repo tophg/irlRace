@@ -145,6 +145,11 @@ export const G = {
   _lastShadowX: -999,
   _lastShadowZ: -999,
   _drsFrameTimes: [] as number[],
+
+  // ── Track Editor / Race Config (typed to avoid `as any` smuggling) ──
+  _customTrack: null as TrackData | null,
+  _selectedWeather: null as string | null,
+  _selectedEnvironment: null as string | null,
 };
 
 // ── Constants (not in G because they're truly immutable) ──
