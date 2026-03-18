@@ -7,6 +7,42 @@ import { ROAD_WIDTH, BARRIER_THICKNESS, estimateCurvature } from './track';
 export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THREE.Group {
   const group = new THREE.Group();
 
+  // ── Ground plane (large flat grass surface) ──
+  {
+    const groundGeo = new THREE.PlaneGeometry(800, 800);
+    // Procedural grass texture
+    const groundCanvas = document.createElement('canvas');
+    groundCanvas.width = 256;
+    groundCanvas.height = 256;
+    const gctx = groundCanvas.getContext('2d')!;
+    // Base grass color
+    gctx.fillStyle = '#2a5a1a';
+    gctx.fillRect(0, 0, 256, 256);
+    // Subtle variation patches
+    for (let i = 0; i < 200; i++) {
+      const px = Math.random() * 256;
+      const py = Math.random() * 256;
+      const shade = Math.random() > 0.5 ? '#2e6420' : '#245216';
+      gctx.fillStyle = shade;
+      gctx.fillRect(px, py, 3 + Math.random() * 8, 3 + Math.random() * 8);
+    }
+    const groundTex = new THREE.CanvasTexture(groundCanvas);
+    groundTex.wrapS = THREE.RepeatWrapping;
+    groundTex.wrapT = THREE.RepeatWrapping;
+    groundTex.repeat.set(40, 40);
+
+    const groundMat = new THREE.MeshStandardMaterial({
+      map: groundTex,
+      roughness: 0.95,
+      metalness: 0,
+    });
+    const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+    groundMesh.rotation.x = -Math.PI / 2; // lay flat
+    groundMesh.position.y = -0.5; // just below road surface
+    groundMesh.receiveShadow = true;
+    group.add(groundMesh);
+  }
+
   // Pre-compute all tree positions
   interface TreeItem { x: number; y: number; z: number; trunkH: number; crownR: number; green: number; }
   const trees: TreeItem[] = [];
@@ -19,7 +55,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const offset = ROAD_WIDTH / 2 + 5 + rng() * 30;
     const x = p.x + rx * offset * side;
     const z = p.z + rz * offset * side;
-    trees.push({ x, y: p.y, z, trunkH: 2 + rng() * 3, crownR: 1.5 + rng() * 2, green: Math.floor(rng() * 255) });
+    trees.push({ x, y: 0, z, trunkH: 2 + rng() * 3, crownR: 1.5 + rng() * 2, green: Math.floor(rng() * 255) });
   }
 
   const _m = new THREE.Matrix4();
@@ -87,7 +123,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
   // ── Enhancement 6: Ground cover grass patches (InstancedMesh — 1 draw call) ──
   {
-    const GRASS_COUNT = 2000;
+    const GRASS_COUNT = 6000;
 
     // Procedural grass texture (canvas with blade silhouettes)
     const grassCanvas = document.createElement('canvas');
@@ -150,7 +186,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
       _m.makeRotationY(rotY);
       _m.scale(new THREE.Vector3(scale, scale, scale));
-      _m.setPosition(x, p.y - 0.3, z);
+      _m.setPosition(x, -0.3, z);
       grassIM.setMatrixAt(grassIdx, _m);
 
       // Vary grass color slightly
@@ -191,16 +227,16 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const z = p.z + rz * offset * side;
 
     _m.identity();
-    _m.setPosition(x, p.y + 3, z);
+    _m.setPosition(x, 3, z);
     poleIM.setMatrixAt(i, _m);
 
-    _m.setPosition(x, p.y + 6, z);
+    _m.setPosition(x, 6, z);
     fixIM.setMatrixAt(i, _m);
 
     // Add real PointLights to every 10th lamp for visible road illumination pools
     if (i % 10 === 0) {
       const light = new THREE.PointLight(0xffdd88, 1.5, 14, 2);
-      light.position.set(x, p.y + 5.8, z);
+      light.position.set(x, 5.8, z);
       group.add(light);
     }
   }
@@ -289,7 +325,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       if (tireIdx >= TIRE_STACK_COUNT * 3) break;
       _m.identity();
       _m.makeRotationX(Math.PI / 2);
-      _m.setPosition(x, p.y + 0.15 + s * 0.3, z);
+      _m.setPosition(x, 0.15 + s * 0.3, z);
       tireIM.setMatrixAt(tireIdx++, _m);
     }
   }
@@ -338,7 +374,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     });
 
     const board = new THREE.Mesh(adGeo.clone(), adMat);
-    board.position.set(x, p.y + 2.5, z);
+    board.position.set(x, 2.5, z);
     // Face approaching drivers: orient to road tangent direction
     const facing = p.clone().add(tangent.clone().multiplyScalar(-10));
     board.lookAt(facing);
@@ -468,7 +504,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     // Position and orient the grandstand
     grandstandGroup.position.set(
       startP.x + right.x * grandstandOffset,
-      startP.y,
+      0,
       startP.z + right.z * grandstandOffset,
     );
     grandstandGroup.lookAt(startP);
