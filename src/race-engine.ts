@@ -22,8 +22,8 @@ export class RaceEngine {
     this.totalLaps = totalLaps;
   }
 
-  /** Register a racer. */
-  addRacer(id: string) {
+  /** Register a racer. Pass initialT from placement so prevT is correct on frame 1. */
+  addRacer(id: string, initialT = 0) {
     this.racers.set(id, {
       id,
       lapIndex: 0,
@@ -31,8 +31,8 @@ export class RaceEngine {
       finished: false,
       finishTime: 0,
       position: new THREE.Vector3(),
-      trackT: 0,
-      prevT: 0,
+      rawT: initialT,
+      prevT: initialT,
       lapTimes: [],
       lastLapStart: 0,
     });
@@ -45,25 +45,6 @@ export class RaceEngine {
     this.raceStartTime = performance.now();
   }
 
-  /**
-   * Compute fractional progress within the current checkpoint segment.
-   * Returns a value 0–1 representing how far between the current CP and the next CP
-   * the racer is, based on raw spline t.
-   */
-  private computeFractionalT(rawT: number, cpIndex: number): number {
-    const N = this.checkpoints.length;
-    const cpT = this.checkpoints[cpIndex]?.t ?? 0;
-    const nextCpT = this.checkpoints[(cpIndex + 1) % N]?.t ?? 1;
-
-    // Handle wrapping (e.g., last CP at t=0.95 → first CP at t=0.05)
-    let segLen = nextCpT - cpT;
-    if (segLen <= 0) segLen += 1; // wrap
-    let offset = rawT - cpT;
-    if (offset < -0.5) offset += 1; // wrap
-    if (offset > 0.5) offset -= 1; // wrap
-
-    return Math.max(0, Math.min(1, offset / segLen));
-  }
 
   /** Update a racer's position and check for checkpoint crossings.
    *  Returns event string if a checkpoint/lap/finish was hit, null otherwise.
@@ -81,9 +62,9 @@ export class RaceEngine {
     racer.position.copy(worldPos);
     const now = performance.now() - this.raceStartTime;
 
-    // Update fractional trackT for sub-checkpoint positioning
+    // Store raw spline parameter for debugging / gap calculations
     if (rawT !== undefined) {
-      racer.trackT = this.computeFractionalT(rawT, racer.checkpointIndex);
+      racer.rawT = rawT;
     }
 
     // Grace period: skip checkpoint detection for first 1.5s to prevent instant triggers
@@ -174,9 +155,11 @@ export class RaceEngine {
   }
 
   /**
-   * Get sorted rankings (finished first by time, then in-progress by continuous progress, DNF last).
-   * Uses continuous progress = lapIndex * N + checkpointIndex + fractionalT
-   * This eliminates the t-wraparound bug entirely.
+   * Get sorted rankings using distance-based continuous progress.
+   * Formula: progress = lapIndex * N + checkpointIndex + distanceFraction
+   * where distanceFraction = 1 - (distToNextCP / segmentLength), clamped [0, 0.99]
+   *
+   * This approach is monotonic, doesn't wrap, and never produces negative values.
    */
   getRankings(): RacerProgress[] {
     const list = this._racersList.slice(); // copy to avoid mutation
@@ -192,11 +175,28 @@ export class RaceEngine {
       if (!a.finished && b.finished) return 1;
       if (a.finished && b.finished) return a.finishTime - b.finishTime;
 
-      // Continuous progress: lap * N + checkpoint + fractional
-      const progA = a.lapIndex * N + a.checkpointIndex + a.trackT;
-      const progB = b.lapIndex * N + b.checkpointIndex + b.trackT;
+      // Distance-based continuous progress
+      const progA = this.continuousProgress(a, N);
+      const progB = this.continuousProgress(b, N);
       return progB - progA;
     });
+  }
+
+  /** Compute continuous progress for a racer using distance-based tiebreaker. */
+  private continuousProgress(r: RacerProgress, N: number): number {
+    const nextIdx = (r.checkpointIndex + 1) % N;
+    const nextCpPos = this.checkpoints[nextIdx]?.position;
+    const cpPos = this.checkpoints[r.checkpointIndex]?.position;
+
+    let frac = 0;
+    if (cpPos && nextCpPos) {
+      const segLen = cpPos.distanceTo(nextCpPos);
+      if (segLen > 0.01) {
+        const distToNext = r.position.distanceTo(nextCpPos);
+        frac = Math.max(0, Math.min(0.99, 1 - distToNext / segLen));
+      }
+    }
+    return r.lapIndex * N + r.checkpointIndex + frac;
   }
 
   /** Get a racer's progress. */

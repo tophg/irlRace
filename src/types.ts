@@ -150,7 +150,7 @@ export interface RacerProgress {
   finished: boolean;
   finishTime: number;
   position: THREE.Vector3;
-  trackT: number;       // fractional progress within current checkpoint segment (0–1)
+  rawT: number;         // raw spline parameter t (0–1) for position on track
   prevT: number;        // previous frame's raw spline t (for wraparound detection)
   dnf?: boolean;
   lapTimes: number[];

@@ -417,7 +417,7 @@ async function startRace() {
     G.playerVehicle.placeOnTrack(trackData.spline, 0, -3.5);
     G._playerUnderglow = createUnderglow(G.playerVehicle.group, 0);
     // G._playerBrakeDiscs = createBrakeDiscs(G.playerVehicle.group.children[0] as THREE.Group); // DISABLED
-    G.raceEngine.addRacer('local');
+    G.raceEngine.addRacer('local', 0);
 
     G.vehicleCamera = new VehicleCamera(camera);
 
@@ -633,7 +633,7 @@ async function spawnAI(td: TrackData) {
     const def = aiCars[i];
     const ai = new AIRacer(`ai_${i}`, { ...def }, i);
     ai.applyDifficulty(G.aiDifficulty);
-    G.raceEngine!.addRacer(`ai_${i}`);
+    G.raceEngine!.addRacer(`ai_${i}`, startTs[i] ?? 0.02);
 
     try {
       const model = await loadCarModel(def.file);
@@ -704,7 +704,7 @@ async function spawnRemoteVehicles() {
       G.remoteNameTags.set(player.id, tag);
     } catch {}
 
-    G.raceEngine!.addRacer(player.id);
+    G.raceEngine!.addRacer(player.id, 0);
   }
 }
 
