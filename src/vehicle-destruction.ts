@@ -391,8 +391,18 @@ export function triggerVehicleDestruction(
     wheel.visible = false;
   }
 
-  // Hide the original body
-  bodyGroup.visible = false;
+  // Hide original body — but KEEP LIGHTS VISIBLE to prevent WebGPU
+  // pipeline recompilation. Hiding lights changes the scene's active light
+  // count (a compile-time shader constant), forcing ALL MeshStandardMaterial
+  // shaders to rebuild (~1.7s stall). Instead: hide meshes individually,
+  // and zero-out light intensity while keeping them visible.
+  bodyGroup.traverse((child) => {
+    if ((child as any).isLight) {
+      (child as any).intensity = 0;
+    } else {
+      child.visible = false;
+    }
+  });
 
   // ── Phase 3a: Shockwave ring (reuse pre-allocated) ──
   if (_ringMesh && _ringMat) {
