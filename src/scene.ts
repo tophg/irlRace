@@ -1,12 +1,17 @@
 /* ── Hood Racer — Scene Setup + Environment Presets ──
  *
  * Uses WebGPURenderer (auto-fallback to WebGL2).
- * Sky dome uses TSL NodeMaterial instead of raw GLSL.
+ * Sky dome uses TSL NodeMaterial with animated gradient, stars, and cloud wisps.
+ * Ground uses vertex-displaced terrain with noise-based rolling hills.
  */
 
 import * as THREE from 'three/webgpu';
-import { MeshBasicNodeMaterial } from 'three/webgpu';
-import { mix, smoothstep, normalWorld, uniform, vec3 } from 'three/tsl';
+import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
+import {
+  mix, smoothstep, normalWorld, uniform, vec3, vec4, float,
+  sin, cos, mul, add, sub, fract, dot, abs, max, min, clamp,
+  step, positionLocal, positionWorld,
+} from 'three/tsl';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 let renderer: THREE.WebGPURenderer;
@@ -22,6 +27,10 @@ let groundMesh: THREE.Mesh;
 const uSkyTop = uniform(new THREE.Color(0x0d0d1a));
 const uSkyBottom = uniform(new THREE.Color(0x1a1a3a));
 const uSkyHorizon = uniform(new THREE.Color(0x2a1a30));
+const uSkyMid = uniform(new THREE.Color(0x151530));       // mid-sky tint zone
+const uHorizonGlow = uniform(new THREE.Color(0x3a2040));   // warm horizon glow band
+const uSkyTime = uniform(0.0);                              // animated time for stars/wisps
+const uGroundColor = uniform(new THREE.Color(0x222228));    // ground terrain color
 
 // ── Environment Presets ──
 export interface EnvironmentPreset {
@@ -31,6 +40,8 @@ export interface EnvironmentPreset {
   skyTop: number;
   skyBottom: number;
   skyHorizon: number;
+  skyMid?: number;        // optional — auto-derived from skyTop/skyHorizon blend
+  horizonGlow?: number;   // optional — auto-derived from skyHorizon brightened
   hemiSky: number;
   hemiGround: number;
   hemiIntensity: number;
@@ -178,25 +189,67 @@ export async function initScene(container: HTMLElement) {
   scene.add(dirLight);
   scene.add(dirLight.target);
 
-  const groundGeo = new THREE.PlaneGeometry(1200, 1200);
+  // ── Ground terrain (TSL NodeMaterial with vertex displacement) ──
+  const groundGeo = new THREE.PlaneGeometry(1200, 1200, 128, 128);
   const groundTex = createGroundTexture();
-  const groundMat = new THREE.MeshStandardMaterial({ color: 0x222228, roughness: 0.85, metalness: 0.05, map: groundTex });
+  const groundMat = new MeshStandardNodeMaterial({
+    roughness: 0.85, metalness: 0.05,
+  });
+  groundMat.colorNode = vec3(uGroundColor);
+
+  // Vertex displacement: gentle rolling terrain via layered sine noise
+  // Operates in the XZ plane of the undisplaced geometry (before rotation)
+  const gx = positionLocal.x;
+  const gz = positionLocal.y; // PlaneGeometry lies in XY, rotated to XZ
+  const hill1 = sin(mul(gx, 0.008)).mul(cos(mul(gz, 0.012))).mul(8.0);
+  const hill2 = sin(mul(gx, 0.022).add(3.7)).mul(sin(mul(gz, 0.018).add(1.2))).mul(3.0);
+  const hill3 = cos(mul(gx, 0.045).add(7.1)).mul(sin(mul(gz, 0.035).add(5.3))).mul(1.5);
+  const terrain = add(add(hill1, hill2), hill3);
+  // Displace along Z (which becomes Y after -90° X rotation)
+  groundMat.positionNode = add(positionLocal, vec3(0, 0, terrain));
+
   groundMesh = new THREE.Mesh(groundGeo, groundMat);
   groundMesh.rotation.x = -Math.PI / 2;
   groundMesh.position.y = -30;
   groundMesh.receiveShadow = true;
   scene.add(groundMesh);
 
-  // ── Sky dome (TSL NodeMaterial) ──
-  // Replaces the old GLSL ShaderMaterial with a TSL-based gradient
+  // ── Sky dome (TSL NodeMaterial — animated 5-zone gradient + stars + wisps) ──
   const skyGeo = new THREE.SphereGeometry(800, 32, 16);
   const skyMat = new MeshBasicNodeMaterial({ side: THREE.BackSide, fog: false });
 
-  // Use world-space normalized Y to blend between horizon, bottom, and top colors
+  // 5-zone sky gradient using world-space normalized Y
   const h = normalWorld.y;
-  const col1 = mix(uSkyHorizon, uSkyBottom, smoothstep(0.0, -0.3, h));
-  const skyColor = mix(col1, uSkyTop, smoothstep(0.0, 0.5, h));
-  skyMat.colorNode = skyColor;
+  const band0 = mix(uSkyHorizon, uSkyBottom, smoothstep(0.0, -0.3, h)); // below horizon
+  const band1 = mix(band0, uHorizonGlow, smoothstep(-0.02, 0.05, h).mul(smoothstep(0.15, 0.05, h))); // horizon glow band
+  const band2 = mix(band1, uSkyMid, smoothstep(0.05, 0.25, h));         // mid sky
+  const band3 = mix(band2, uSkyTop, smoothstep(0.25, 0.6, h));          // upper sky
+
+  // Procedural star field (upper hemisphere only)
+  // Hash function: fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453)
+  const nx = normalWorld.x;
+  const nz = normalWorld.z;
+  const starDot = add(mul(nx, 127.1), mul(nz, 311.7));
+  const starHash = fract(mul(sin(starDot), 43758.5453));
+  const starBright = step(0.997, starHash); // ~0.3% of sky has a star
+  const starFade = smoothstep(0.15, 0.4, h); // only visible above low sky
+  // Twinkle: modulate with time
+  const twinkle = add(0.6, mul(0.4, sin(add(mul(uSkyTime, 2.0), mul(starHash, 100.0)))));
+  const starColor = vec3(mul(starBright, mul(starFade, twinkle)));
+
+  // Noise-based cloud wisps (scrolling along X with time)
+  const wispX = add(mul(nx, 3.0), mul(uSkyTime, 0.02));
+  const wispZ = mul(nz, 4.0);
+  const wisp1 = sin(mul(wispX, 5.0)).mul(cos(mul(wispZ, 4.0)));
+  const wisp2 = sin(mul(wispX, 11.0).add(2.3)).mul(cos(mul(wispZ, 8.0).add(1.7)));
+  const wispNoise = add(mul(wisp1, 0.5), mul(wisp2, 0.3));
+  const wispMask = smoothstep(0.05, 0.35, h).mul(smoothstep(0.6, 0.35, h)); // mid-sky band
+  const wispAlpha = max(float(0), wispNoise).mul(wispMask).mul(0.08); // very subtle
+  const wispColor = mix(uSkyHorizon, vec3(1, 1, 1), 0.3); // slightly brighter than horizon
+
+  // Composite: gradient + stars + wisps
+  const finalSky = add(add(band3, starColor), mul(wispColor, wispAlpha));
+  skyMat.colorNode = finalSky;
 
   scene.add(new THREE.Mesh(skyGeo, skyMat));
 
@@ -218,6 +271,23 @@ export function applyEnvironment(preset: EnvironmentPreset) {
   uSkyBottom.value.setHex(preset.skyBottom);
   uSkyHorizon.value.setHex(preset.skyHorizon);
 
+  // Auto-derive mid-sky and horizon glow if not specified
+  if (preset.skyMid) {
+    uSkyMid.value.setHex(preset.skyMid);
+  } else {
+    // Blend between skyTop and skyHorizon at 40% toward top
+    const _t = new THREE.Color(preset.skyTop);
+    const _h = new THREE.Color(preset.skyHorizon);
+    uSkyMid.value.copy(_t).lerp(_h, 0.4);
+  }
+  if (preset.horizonGlow) {
+    uHorizonGlow.value.setHex(preset.horizonGlow);
+  } else {
+    // Brighten horizon color slightly for glow band
+    uHorizonGlow.value.setHex(preset.skyHorizon);
+    uHorizonGlow.value.offsetHSL(0, 0.05, 0.08);
+  }
+
   hemiLight.color.setHex(preset.hemiSky);
   hemiLight.groundColor.setHex(preset.hemiGround);
   hemiLight.intensity = preset.hemiIntensity;
@@ -226,9 +296,50 @@ export function applyEnvironment(preset: EnvironmentPreset) {
   dirLight.intensity = preset.dirIntensity;
   dirLight.position.set(...preset.dirPosition);
 
-  (groundMesh.material as THREE.MeshStandardMaterial).color.setHex(preset.groundColor);
+  uGroundColor.value.setHex(preset.groundColor);
 
   renderer.toneMappingExposure = preset.exposure;
+
+  // ── Enhancement 7: Fake godray light shafts ──
+  // Remove previous godrays
+  const oldGodrays = scene.getObjectByName('godrays');
+  if (oldGodrays) scene.remove(oldGodrays);
+
+  // Only add godrays for sunlit presets (high directional intensity, low position = dramatic)
+  const sunlit = preset.dirIntensity >= 1.6 && preset.dirPosition[1] <= 50;
+  if (sunlit) {
+    const godrayGroup = new THREE.Group();
+    godrayGroup.name = 'godrays';
+
+    const coneGeo = new THREE.ConeGeometry(25, 120, 6);
+    const coneMat = new THREE.MeshBasicMaterial({
+      color: preset.dirColor,
+      transparent: true,
+      opacity: 0.025,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: true,
+      side: THREE.DoubleSide,
+    });
+
+    for (let i = 0; i < 4; i++) {
+      const cone = new THREE.Mesh(coneGeo, coneMat.clone());
+      // Spread cones around the light direction
+      const angle = (i / 4) * Math.PI * 2 + Math.PI * 0.25;
+      const spread = 15;
+      const sx = preset.dirPosition[0] + Math.cos(angle) * spread;
+      const sz = preset.dirPosition[2] + Math.sin(angle) * spread;
+      cone.position.set(sx, preset.dirPosition[1] + 60, sz);
+      cone.lookAt(0, -20, 0);
+      godrayGroup.add(cone);
+    }
+    scene.add(godrayGroup);
+  }
+}
+
+/** Update sky animation time. Call once per frame from the main loop. */
+export function updateSkyTime(timestamp: number) {
+  uSkyTime.value = timestamp * 0.001; // seconds
 }
 
 /** Pick environment deterministically from seed. */

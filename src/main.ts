@@ -5,9 +5,9 @@ import './index.css';
 
 import { GameState, CAR_ROSTER, CarDef, EventType } from './types';
 import type { TrackData } from './types';
-import { initScene, getRenderer, getScene, getCamera, getDirLight, applyEnvironment, getEnvironmentForSeed, getEnvironmentByName } from './scene';
+import { initScene, getRenderer, getScene, getCamera, getDirLight, applyEnvironment, getEnvironmentForSeed, getEnvironmentByName, updateSkyTime } from './scene';
 import { loadCarModel } from './loaders';
-import { generateTrack, buildCheckpointMarkers, getClosestSplinePoint, updateCheckpointHighlight } from './track';
+import { generateTrack, buildCheckpointMarkers, getClosestSplinePoint, updateCheckpointHighlight, updateSceneryWind } from './track';
 import { Vehicle } from './vehicle';
 import { VehicleCamera } from './vehicle-camera';
 import { RaceEngine } from './race-engine';
@@ -1563,6 +1563,10 @@ function gameLoop(timestamp: number) {
 
   const frameDt = Math.min((timestamp - G.lastTime) / 1000, MAX_FRAME_DT);
   G.lastTime = timestamp;
+
+  // Animate sky (stars twinkle, cloud wisps scroll) + tree wind sway
+  updateSkyTime(timestamp);
+  if (G.trackData) updateSceneryWind(G.trackData.sceneryGroup, timestamp);
 
   const s = G.gameState;
 

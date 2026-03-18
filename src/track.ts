@@ -1,6 +1,7 @@
 /* ── Hood Racer — Procedural Track Generator (v2 — Convex Hull + Elevation) ── */
 
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Checkpoint, TrackData, RampDef } from './types';
 import { SplineBVH } from './bvh';
 import { buildRampGroup, placeRampsOnStraights } from './ramps';
@@ -848,9 +849,32 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
     trunkIM.instanceMatrix.needsUpdate = true;
     group.add(trunkIM);
 
-    // ── Tree crowns (InstancedMesh with per-instance color) ──
+    // ── Tree crowns (InstancedMesh with per-instance color + wind sway) ──
     const crownGeo = new THREE.SphereGeometry(2.0, 8, 6);
     const crownMat = new THREE.MeshStandardMaterial({ color: 0x2a6d2a, roughness: 0.8 });
+
+    // Enhancement 5: Inject wind sway into vertex shader (zero CPU cost)
+    crownMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uWindTime = { value: 0 };
+      // Insert time uniform declaration before main()
+      shader.vertexShader = 'uniform float uWindTime;\n' + shader.vertexShader;
+      // Inject wind displacement after #include <begin_vertex>
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+         // Wind sway — gentle organic motion using world position
+         vec4 worldPos4 = instanceMatrix * vec4(transformed, 1.0);
+         float windX = sin(uWindTime * 1.5 + worldPos4.x * 0.3) * 0.25;
+         float windZ = cos(uWindTime * 1.2 + worldPos4.z * 0.25) * 0.18;
+         // Upper vertices sway more (normalized Y in sphere: -1 to 1)
+         float heightFactor = clamp(position.y + 0.5, 0.0, 1.0);
+         transformed.x += windX * heightFactor;
+         transformed.z += windZ * heightFactor;`
+      );
+      // Store shader ref for time updates
+      (crownMat as any)._windShader = shader;
+    };
+
     const crownIM = new THREE.InstancedMesh(crownGeo, crownMat, trees.length);
     crownIM.castShadow = true;
     for (let i = 0; i < trees.length; i++) {
@@ -865,6 +889,91 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
     crownIM.instanceMatrix.needsUpdate = true;
     crownIM.instanceColor!.needsUpdate = true;
     group.add(crownIM);
+
+    // Store crown material ref for wind time updates from game loop
+    (group as any)._crownMat = crownMat;
+  }
+
+  // ── Enhancement 6: Ground cover grass patches (InstancedMesh — 1 draw call) ──
+  {
+    const GRASS_COUNT = 200;
+
+    // Procedural grass texture (canvas with blade silhouettes)
+    const grassCanvas = document.createElement('canvas');
+    grassCanvas.width = 32;
+    grassCanvas.height = 32;
+    const gctx = grassCanvas.getContext('2d')!;
+    gctx.clearRect(0, 0, 32, 32);
+    // Draw 4 blade silhouettes
+    gctx.fillStyle = '#3a7a3a';
+    for (let b = 0; b < 4; b++) {
+      const bx = 6 + b * 6;
+      gctx.beginPath();
+      gctx.moveTo(bx, 30);
+      gctx.lineTo(bx + 2, 30);
+      gctx.lineTo(bx + 1 + (b % 2 ? 2 : -2), 4 + b * 2);
+      gctx.closePath();
+      gctx.fill();
+    }
+    const grassTex = new THREE.CanvasTexture(grassCanvas);
+
+    // Cross-shaped geometry (2 intersecting planes for all-angle viewing)
+    const halfW = 0.5, halfH = 0.7;
+    const verts = new Float32Array([
+      // Plane 1 (XY)
+      -halfW, 0, 0,  halfW, 0, 0,  halfW, halfH * 2, 0,  -halfW, halfH * 2, 0,
+      // Plane 2 (ZY, rotated 90°)
+      0, 0, -halfW,  0, 0, halfW,  0, halfH * 2, halfW,  0, halfH * 2, -halfW,
+    ]);
+    const uvs = new Float32Array([
+      0, 0, 1, 0, 1, 1, 0, 1,
+      0, 0, 1, 0, 1, 1, 0, 1,
+    ]);
+    const idx = [0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7];
+    const grassGeo = new THREE.BufferGeometry();
+    grassGeo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+    grassGeo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    grassGeo.setIndex(idx);
+
+    const grassMat = new THREE.MeshStandardMaterial({
+      map: grassTex,
+      alphaTest: 0.5,
+      side: THREE.DoubleSide,
+      roughness: 0.9,
+    });
+
+    const grassIM = new THREE.InstancedMesh(grassGeo, grassMat, GRASS_COUNT);
+    let grassIdx = 0;
+
+    for (let i = 0; i < GRASS_COUNT && grassIdx < GRASS_COUNT; i++) {
+      const t = rng();
+      const p = spline.getPointAt(t);
+      const tangent = spline.getTangentAt(t).normalize();
+      const rx = tangent.z, rz = -tangent.x;
+      const side = rng() > 0.5 ? 1 : -1;
+      const offset = ROAD_WIDTH / 2 + 2 + rng() * 20;
+      const x = p.x + rx * offset * side;
+      const z = p.z + rz * offset * side;
+      const scale = 0.6 + rng() * 0.8;
+      const rotY = rng() * Math.PI;
+
+      _m.makeRotationY(rotY);
+      _m.scale(new THREE.Vector3(scale, scale, scale));
+      _m.setPosition(x, p.y, z);
+      grassIM.setMatrixAt(grassIdx, _m);
+
+      // Vary grass color slightly
+      _c.setHSL(0.3 + rng() * 0.05, 0.5 + rng() * 0.2, 0.25 + rng() * 0.15);
+      grassIM.setColorAt(grassIdx, _c);
+      grassIdx++;
+    }
+
+    if (grassIdx > 0) {
+      grassIM.count = grassIdx;
+      grassIM.instanceMatrix.needsUpdate = true;
+      grassIM.instanceColor!.needsUpdate = true;
+      group.add(grassIM);
+    }
   }
 
   // ── Street lights (InstancedMesh — NO PointLights) ──
@@ -1222,7 +1331,139 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
     }
   }
 
+  // ── Distant mountain silhouettes (1 merged draw call) ──
+  {
+    const trackCenter = new THREE.Vector3();
+    for (let t = 0; t < 1; t += 0.01) {
+      trackCenter.add(spline.getPointAt(t));
+    }
+    trackCenter.multiplyScalar(0.01);
+
+    const mountainGeos: THREE.BufferGeometry[] = [];
+    const MOUNTAIN_COUNT = 24;
+    const MOUNTAIN_RADIUS = 500;
+
+    for (let i = 0; i < MOUNTAIN_COUNT; i++) {
+      const angle = (i / MOUNTAIN_COUNT) * Math.PI * 2;
+      const cx = trackCenter.x + Math.cos(angle) * MOUNTAIN_RADIUS;
+      const cz = trackCenter.z + Math.sin(angle) * MOUNTAIN_RADIUS;
+
+      // Generate jagged mountain profile (12 points)
+      const PROFILE_PTS = 12;
+      const mtnWidth = 60 + rng() * 40;
+      const mtnHeight = 15 + rng() * 30;
+      const vertices: number[] = [];
+      const indices: number[] = [];
+
+      // Bottom-left corner
+      vertices.push(-mtnWidth / 2, 0, 0);
+      for (let p = 0; p < PROFILE_PTS; p++) {
+        const px = -mtnWidth / 2 + (mtnWidth * (p + 0.5)) / PROFILE_PTS;
+        // Height profile: base sine + noise jitter
+        const hNorm = 1 - Math.abs((p + 0.5) / PROFILE_PTS - 0.5) * 2; // peak at center
+        const py = mtnHeight * hNorm * (0.7 + rng() * 0.6);
+        vertices.push(px, py, 0);
+      }
+      // Bottom-right corner
+      vertices.push(mtnWidth / 2, 0, 0);
+
+      // Triangulate: fan from each profile point
+      const totalVerts = PROFILE_PTS + 2;
+      for (let p = 0; p < totalVerts - 1; p++) {
+        if (p === 0) {
+          indices.push(0, 1, totalVerts - 1);
+        } else {
+          indices.push(0, p, p + 1);
+        }
+      }
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+      geo.setIndex(indices);
+
+      // Transform: rotate to face center and position
+      const facingAngle = angle + Math.PI; // face inward
+      const matrix = new THREE.Matrix4()
+        .makeRotationY(facingAngle)
+        .setPosition(cx, trackCenter.y - 25, cz);
+      geo.applyMatrix4(matrix);
+
+      mountainGeos.push(geo);
+    }
+
+    if (mountainGeos.length > 0) {
+      const mergedGeo = mergeGeometries(mountainGeos);
+      if (mergedGeo) {
+        const mtnMat = new THREE.MeshBasicMaterial({
+          color: 0x1a1a2e, // dark silhouette — fog will blend naturally
+          fog: true,
+          side: THREE.DoubleSide,
+        });
+        const mtnMesh = new THREE.Mesh(mergedGeo, mtnMat);
+        group.add(mtnMesh);
+      }
+    }
+  }
+
+  // ── Billboard cloud sprites (InstancedMesh — 1 draw call) ──
+  {
+    const CLOUD_COUNT = 40;
+    const cloudCanvas = document.createElement('canvas');
+    cloudCanvas.width = 64;
+    cloudCanvas.height = 64;
+    const ctx = cloudCanvas.getContext('2d')!;
+
+    // Procedural soft cloud texture (radial gradient with noise perturbation)
+    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255,255,255,0.5)');
+    grad.addColorStop(0.4, 'rgba(255,255,255,0.25)');
+    grad.addColorStop(0.7, 'rgba(255,255,255,0.08)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 64, 64);
+
+    const cloudTex = new THREE.CanvasTexture(cloudCanvas);
+    const cloudGeo = new THREE.PlaneGeometry(30, 12);
+    const cloudMat = new THREE.MeshBasicMaterial({
+      map: cloudTex,
+      transparent: true,
+      depthWrite: false,
+      fog: true,
+      side: THREE.DoubleSide,
+    });
+
+    const cloudIM = new THREE.InstancedMesh(cloudGeo, cloudMat, CLOUD_COUNT);
+
+    const trackCenter = new THREE.Vector3();
+    for (let t = 0; t < 1; t += 0.01) trackCenter.add(spline.getPointAt(t));
+    trackCenter.multiplyScalar(0.01);
+
+    for (let i = 0; i < CLOUD_COUNT; i++) {
+      const angle = rng() * Math.PI * 2;
+      const radius = 150 + rng() * 400;
+      const x = trackCenter.x + Math.cos(angle) * radius;
+      const z = trackCenter.z + Math.sin(angle) * radius;
+      const y = 120 + rng() * 80;
+      const scale = 0.6 + rng() * 0.8;
+
+      _m.makeScale(scale, scale * (0.3 + rng() * 0.4), scale);
+      _m.setPosition(x, y, z);
+      cloudIM.setMatrixAt(i, _m);
+    }
+    cloudIM.instanceMatrix.needsUpdate = true;
+    group.add(cloudIM);
+  }
+
   return group;
+}
+
+/** Update tree wind sway time. Call once per frame from game loop. */
+export function updateSceneryWind(sceneryGroup: THREE.Group | null, timestamp: number) {
+  if (!sceneryGroup) return;
+  const crownMat = (sceneryGroup as any)._crownMat;
+  if (crownMat?._windShader) {
+    crownMat._windShader.uniforms.uWindTime.value = timestamp * 0.001;
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
