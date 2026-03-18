@@ -213,6 +213,7 @@ export function triggerVehicleDestruction(
   wreckPosition = _wreckPos;
 
   // ── Phase 1: Assign cached fragments to pool meshes (zero alloc) ──
+  console.log('[DESTRUCTION] cachedFragments:', cachedFragments?.length ?? 'NONE', '_poolReady:', _poolReady, '_poolPreWarmed:', _poolPreWarmed);
   if (cachedFragments && cachedFragments.length > 0 && _poolReady) {
     vehicleGroup.getWorldQuaternion(_worldQuat);
     const count = Math.min(cachedFragments.length, FRAG_POOL_SIZE);

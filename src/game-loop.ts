@@ -368,11 +368,14 @@ function gameLoop(timestamp: number) {
       const expPos = _hoodExplosionPos.clone();
 
       requestAnimationFrame(() => {
+        console.time('[EXPLOSION] triggerVehicleDestruction');
         if (isRacing) {
           triggerVehicleDestruction(bodyRef, vGroup, getScene(), pvx, pvz, wheelRefs, cachedFrags);
           if (G.playerVehicle) G.playerVehicle.destroyed = true;
         }
+        console.timeEnd('[EXPLOSION] triggerVehicleDestruction');
         requestAnimationFrame(() => {
+          console.time('[EXPLOSION] showExplosionFlash+letterbox');
           if (isRacing) {
             showExplosionFlash();
             showLetterbox();
@@ -384,6 +387,7 @@ function gameLoop(timestamp: number) {
             setTimeout(() => { hideLetterbox(); setExplosionMode(false); }, 3500);
             setTimeout(() => _deps.callShowResults(), 4000);
           }
+          console.timeEnd('[EXPLOSION] showExplosionFlash+letterbox');
           requestAnimationFrame(() => {
             spawnGPUGlassShards(expPos);
             requestAnimationFrame(() => {
@@ -942,6 +946,7 @@ function gameLoop(timestamp: number) {
     updateDebugOverlay();
 
     // Render
+    console.time('[RENDER] main render');
     if (G.postFXPipeline) {
       const speedRatio = G.playerVehicle ? Math.abs(G.playerVehicle.speed) / G.playerVehicle.def.maxSpeed : 0;
       const isNitro = G.playerVehicle?.isNitroActive ?? false;
@@ -951,6 +956,7 @@ function gameLoop(timestamp: number) {
     } else {
       renderer.render(scene, camera);
     }
+    console.timeEnd('[RENDER] main render');
 
     // Rear-view mirror
     if (G.mirrorCamera && G.playerVehicle && s === GameState.RACING) {
