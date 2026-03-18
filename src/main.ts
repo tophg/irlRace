@@ -805,8 +805,8 @@ function clearRaceObjects() {
     }
   }
   G.remoteNameTags.clear();
-
   G.remotePrevPos.clear();
+  G._nearMissCooldowns.clear();
 
   // Clean up detached parts
   for (const dp of G.detachedParts) {
