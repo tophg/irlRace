@@ -3,8 +3,19 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ROAD_WIDTH, BARRIER_THICKNESS, estimateCurvature } from './track';
+import type { SceneryTheme } from './scene';
 
-export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THREE.Group {
+export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number, theme?: SceneryTheme): THREE.Group {
+  // Default theme fallback (Urban Night style)
+  const T: SceneryTheme = theme ?? {
+    roadColor: 0x2a2a30, roadRoughness: 0.85, barrierColor: 0x444450,
+    buildingPalette: [0x1a1a2e, 0x22223a, 0x2a2a45, 0x181830],
+    buildingHeightRange: [8, 25], windowLitChance: 0.6, windowColor: 0xffcc66,
+    treeTrunkColor: 0x332211, treeCanopyColor: 0x1a3a1a,
+    treeCanopyStyle: 'sphere', treeCount: 30,
+    billboardStyle: 'neon', streetLightColor: 0xffdd88, streetLightDensity: 1.0,
+    groundTexture: 'grass', kerbColor: 0x888888, shoulderColor: 0x333333,
+  };
   const group = new THREE.Group();
 
   // ── Ground plane (large flat grass surface) ──
@@ -15,15 +26,21 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     groundCanvas.width = 256;
     groundCanvas.height = 256;
     const gctx = groundCanvas.getContext('2d')!;
-    // Base grass color
-    gctx.fillStyle = '#2a5a1a';
+    // Base color by ground texture type
+    const groundColors: Record<string, [string, string, string]> = {
+      grass: ['#2a5a1a', '#2e6420', '#245216'],
+      sand: ['#8a7755', '#917f5d', '#7d6b4a'],
+      snow: ['#bbccdd', '#c0d0e0', '#aabbcc'],
+      concrete: ['#3a3a40', '#404048', '#333338'],
+      dirt: ['#4a3a28', '#503e2c', '#3e3020'],
+    };
+    const [base, v1, v2] = groundColors[T.groundTexture] ?? groundColors.grass;
+    gctx.fillStyle = base;
     gctx.fillRect(0, 0, 256, 256);
-    // Subtle variation patches
     for (let i = 0; i < 200; i++) {
       const px = Math.random() * 256;
       const py = Math.random() * 256;
-      const shade = Math.random() > 0.5 ? '#2e6420' : '#245216';
-      gctx.fillStyle = shade;
+      gctx.fillStyle = Math.random() > 0.5 ? v1 : v2;
       gctx.fillRect(px, py, 3 + Math.random() * 8, 3 + Math.random() * 8);
     }
     const groundTex = new THREE.CanvasTexture(groundCanvas);
@@ -46,7 +63,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   // Pre-compute all tree positions
   interface TreeItem { x: number; y: number; z: number; trunkH: number; crownR: number; green: number; }
   const trees: TreeItem[] = [];
-  for (let i = 0; i < 80; i++) {
+  const treeCount = T.treeCanopyStyle === 'none' ? 0 : T.treeCount;
+  for (let i = 0; i < treeCount; i++) {
     const t = rng();
     const p = spline.getPointAt(t);
     const tangent = spline.getTangentAt(t).normalize();
@@ -64,7 +82,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   // ── Tree trunks (InstancedMesh) ──
   if (trees.length > 0) {
     const trunkGeo = new THREE.CylinderGeometry(0.25, 0.3, 3.5, 6);
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.9 });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: T.treeTrunkColor, roughness: 0.9 });
     const trunkIM = new THREE.InstancedMesh(trunkGeo, trunkMat, trees.length);
     trunkIM.castShadow = true;
     for (let i = 0; i < trees.length; i++) {
@@ -77,8 +95,10 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     group.add(trunkIM);
 
     // ── Tree crowns (InstancedMesh with per-instance color + wind sway) ──
-    const crownGeo = new THREE.SphereGeometry(2.0, 8, 6);
-    const crownMat = new THREE.MeshStandardMaterial({ color: 0x2a6d2a, roughness: 0.8 });
+    const crownGeo = T.treeCanopyStyle === 'cone'
+      ? new THREE.ConeGeometry(2.0, 4.0, 8)
+      : new THREE.SphereGeometry(2.0, 8, 6);
+    const crownMat = new THREE.MeshStandardMaterial({ color: T.treeCanopyColor, roughness: 0.8 });
 
     // Enhancement 5: Inject wind sway into vertex shader (zero CPU cost)
     crownMat.onBeforeCompile = (shader) => {
@@ -109,8 +129,9 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       _m.makeScale(t.crownR / 2.0, t.crownR / 2.0, t.crownR / 2.0);
       _m.setPosition(t.x, t.y + t.trunkH + t.crownR * 0.6, t.z);
       crownIM.setMatrixAt(i, _m);
-      const g = 0x1a + Math.floor((t.green / 255) * 0x40);
-      _c.setRGB(g / 255 * 0.4, g / 255, g / 255 * 0.4);
+      const tc = new THREE.Color(T.treeCanopyColor);
+      const g = tc.g + (t.green / 255) * 0.15;
+      _c.setRGB(tc.r * 0.9 + rng() * 0.1, g, tc.b * 0.9 + rng() * 0.1);
       crownIM.setColorAt(i, _c);
     }
     crownIM.instanceMatrix.needsUpdate = true;
@@ -132,7 +153,11 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const gctx = grassCanvas.getContext('2d')!;
     gctx.clearRect(0, 0, 32, 32);
     // Draw 4 blade silhouettes
-    gctx.fillStyle = '#3a7a3a';
+    gctx.fillStyle = T.groundTexture === 'grass' || T.groundTexture === 'dirt' ? '#3a7a3a' : 'rgba(0,0,0,0)';
+    if (T.groundTexture === 'snow' || T.groundTexture === 'sand' || T.groundTexture === 'concrete') {
+      // Skip grass patches for non-grass environments
+      group.add(new THREE.Group()); // placeholder to preserve structure
+    } else {
     for (let b = 0; b < 4; b++) {
       const bx = 6 + b * 6;
       gctx.beginPath();
@@ -201,6 +226,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       grassIM.instanceColor!.needsUpdate = true;
       group.add(grassIM);
     }
+    } // end else (grass/dirt environments)
   }
 
   // ── Street lights (InstancedMesh — NO PointLights) ──
@@ -576,13 +602,24 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   buildingTexCanvas.width = 64; buildingTexCanvas.height = 128;
   {
     const ctx = buildingTexCanvas.getContext('2d')!;
-    ctx.fillStyle = '#2a2a35';
+    const basePalette = T.buildingPalette;
+    const baseColorHex = basePalette[Math.floor(rng() * basePalette.length)];
+    const baseC = new THREE.Color(baseColorHex);
+    ctx.fillStyle = `rgb(${Math.floor(baseC.r*255)},${Math.floor(baseC.g*255)},${Math.floor(baseC.b*255)})`;
     ctx.fillRect(0, 0, 64, 128);
     // Draw window grid
+    const winColor = new THREE.Color(T.windowColor);
     for (let row = 0; row < 12; row++) {
       for (let col = 0; col < 4; col++) {
-        const lit = rng() > 0.5;
-        ctx.fillStyle = lit ? `hsl(${40 + rng() * 20}, ${50 + rng() * 30}%, ${50 + rng() * 30}%)` : '#1a1a22';
+        const lit = rng() > (1 - T.windowLitChance);
+        if (lit) {
+          const r = Math.floor(winColor.r * 255 * (0.7 + rng() * 0.3));
+          const g = Math.floor(winColor.g * 255 * (0.7 + rng() * 0.3));
+          const b = Math.floor(winColor.b * 255 * (0.7 + rng() * 0.3));
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+        } else {
+          ctx.fillStyle = '#1a1a22';
+        }
         ctx.fillRect(4 + col * 15, 4 + row * 10, 10, 7);
       }
     }
@@ -607,7 +644,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     let x = p.x + rx * offset * side;
     let z = p.z + rz * offset * side;
     const w = 4 + rng() * 8;
-    const h = 8 + rng() * 20;
+    const [hMin, hMax] = T.buildingHeightRange;
+    const h = hMin + rng() * (hMax - hMin);
     const d = 4 + rng() * 6;
 
     // Proximity check: ensure building doesn't land near ANY part of the track
@@ -652,9 +690,10 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     _m.setPosition(x, -5 + h / 2, z);
     buildingIM.setMatrixAt(i, _m);
 
-    // Vary building color per instance
-    const shade = 0.12 + rng() * 0.08;
-    _c.setRGB(shade, shade, shade * 1.1);
+    // Vary building color using palette
+    const palColor = new THREE.Color(T.buildingPalette[i % T.buildingPalette.length]);
+    const v = 0.8 + rng() * 0.4;
+    _c.setRGB(palColor.r * v, palColor.g * v, palColor.b * v);
     buildingIM.setColorAt(i, _c);
   }
   buildingIM.instanceMatrix.needsUpdate = true;

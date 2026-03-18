@@ -89,7 +89,7 @@ export function buildTrackFromControlPoints(
     checkpoints.push({ position, tangent, index: i, t });
   }
 
-  const sceneryGroup = generateScenery(finalSpline, rng);
+  const sceneryGroup = generateScenery(finalSpline, rng, getCurrentTheme());
   const bvh = new SplineBVH(finalSpline, 800);
 
   // Build ramps from user definitions (or empty if none provided)
@@ -143,7 +143,7 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   }
 
   // ── 9. Scenery ──
-  const sceneryGroup = generateScenery(finalSpline, rng);
+  const sceneryGroup = generateScenery(finalSpline, rng, getCurrentTheme());
 
   // ── 10. Build BVH for O(log N) nearest-point queries ──
   const bvh = new SplineBVH(finalSpline, 800);
@@ -845,6 +845,7 @@ function buildKerbs(spline: THREE.CatmullRomCurve3, curvatures: number[]): THREE
  */
 // SCENERY — extracted to track-scenery.ts
 import { generateScenery, updateSceneryWind } from './track-scenery';
+import { getCurrentTheme } from './scene';
 export { generateScenery, updateSceneryWind };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -323,6 +323,10 @@ export function showRaceConfig(
           <option value="Alpine Snow">🏔️ Alpine Snow</option>
           <option value="Blizzard">🌨️ Blizzard</option>
           <option value="Black Ice">🧊 Black Ice</option>
+          <option value="Tropical Night">🌴 Tropical Night</option>
+          <option value="Industrial Zone">🏭 Industrial Zone</option>
+          <option value="Highway Sunrise">🌄 Highway Sunrise</option>
+          <option value="Underground">🚇 Underground</option>
         </select>
       </label>
       <div style="display:flex;gap:12px;justify-content:center;margin-top:16px;">

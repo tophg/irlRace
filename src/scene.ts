@@ -32,6 +32,27 @@ const uHorizonGlow = uniform(new THREE.Color(0x3a2040));   // warm horizon glow 
 const uSkyTime = uniform(0.0);                              // animated time for stars/wisps
 const uGroundColor = uniform(new THREE.Color(0x222228));    // ground terrain color
 
+// ── Scenery Theme (controls visual identity of track-side props) ──
+export interface SceneryTheme {
+  roadColor: number;
+  roadRoughness: number;
+  barrierColor: number;
+  buildingPalette: number[];
+  buildingHeightRange: [number, number]; // [min, max] in world units
+  windowLitChance: number;
+  windowColor: number;
+  treeTrunkColor: number;
+  treeCanopyColor: number;
+  treeCanopyStyle: 'sphere' | 'cone' | 'none';
+  treeCount: number;
+  billboardStyle: 'neon' | 'minimal' | 'none';
+  streetLightColor: number;
+  streetLightDensity: number;
+  groundTexture: 'grass' | 'sand' | 'snow' | 'concrete' | 'dirt';
+  kerbColor: number;
+  shoulderColor: number;
+}
+
 // ── Environment Presets ──
 export interface EnvironmentPreset {
   name: string;
@@ -40,8 +61,8 @@ export interface EnvironmentPreset {
   skyTop: number;
   skyBottom: number;
   skyHorizon: number;
-  skyMid?: number;        // optional — auto-derived from skyTop/skyHorizon blend
-  horizonGlow?: number;   // optional — auto-derived from skyHorizon brightened
+  skyMid?: number;
+  horizonGlow?: number;
   hemiSky: number;
   hemiGround: number;
   hemiIntensity: number;
@@ -50,6 +71,7 @@ export interface EnvironmentPreset {
   dirPosition: [number, number, number];
   groundColor: number;
   exposure: number;
+  scenery: SceneryTheme;
 }
 
 export const ENVIRONMENTS: EnvironmentPreset[] = [
@@ -60,6 +82,19 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     hemiSky: 0x88aacc, hemiGround: 0x444422, hemiIntensity: 1.0,
     dirColor: 0xffeedd, dirIntensity: 2.0, dirPosition: [50, 80, 30],
     groundColor: 0x1a2a1a, exposure: 1.15,
+    scenery: {
+      roadColor: 0x2a2a30, roadRoughness: 0.85,
+      barrierColor: 0x444450,
+      buildingPalette: [0x1a1a2e, 0x22223a, 0x2a2a45, 0x181830],
+      buildingHeightRange: [8, 25],
+      windowLitChance: 0.6, windowColor: 0xffcc66,
+      treeTrunkColor: 0x332211, treeCanopyColor: 0x1a3a1a,
+      treeCanopyStyle: 'sphere', treeCount: 30,
+      billboardStyle: 'neon',
+      streetLightColor: 0xffdd88, streetLightDensity: 1.0,
+      groundTexture: 'concrete',
+      kerbColor: 0x888888, shoulderColor: 0x333333,
+    },
   },
   {
     name: 'Desert Dawn',
@@ -68,6 +103,19 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     hemiSky: 0xffddaa, hemiGround: 0x886633, hemiIntensity: 1.2,
     dirColor: 0xffcc88, dirIntensity: 2.2, dirPosition: [80, 30, 50],
     groundColor: 0x3a3520, exposure: 1.3,
+    scenery: {
+      roadColor: 0x4a4035, roadRoughness: 0.9,
+      barrierColor: 0x887755,
+      buildingPalette: [0x8a7755, 0x997766, 0x6a5540, 0xa08860],
+      buildingHeightRange: [3, 8],
+      windowLitChance: 0.2, windowColor: 0xffaa44,
+      treeTrunkColor: 0x554433, treeCanopyColor: 0x5a7a3a,
+      treeCanopyStyle: 'none', treeCount: 8,
+      billboardStyle: 'minimal',
+      streetLightColor: 0xffaa55, streetLightDensity: 0.4,
+      groundTexture: 'sand',
+      kerbColor: 0xaa9966, shoulderColor: 0x665533,
+    },
   },
   {
     name: 'Coastal Sunset',
@@ -76,6 +124,19 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     hemiSky: 0xaabbdd, hemiGround: 0x445566, hemiIntensity: 1.1,
     dirColor: 0xffaa77, dirIntensity: 2.2, dirPosition: [-60, 25, 60],
     groundColor: 0x1a2820, exposure: 1.25,
+    scenery: {
+      roadColor: 0x353540, roadRoughness: 0.75,
+      barrierColor: 0x556677,
+      buildingPalette: [0x556688, 0x668899, 0x445566, 0x778899],
+      buildingHeightRange: [3, 6],
+      windowLitChance: 0.3, windowColor: 0xffcc88,
+      treeTrunkColor: 0x664422, treeCanopyColor: 0x2a6a2a,
+      treeCanopyStyle: 'cone', treeCount: 35,
+      billboardStyle: 'minimal',
+      streetLightColor: 0xffcc77, streetLightDensity: 0.6,
+      groundTexture: 'grass',
+      kerbColor: 0x778877, shoulderColor: 0x445544,
+    },
   },
   {
     name: 'Neon City',
@@ -84,6 +145,19 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     hemiSky: 0x4488ff, hemiGround: 0x220044, hemiIntensity: 0.7,
     dirColor: 0xcc44ff, dirIntensity: 1.8, dirPosition: [30, 60, -40],
     groundColor: 0x0a0a14, exposure: 1.5,
+    scenery: {
+      roadColor: 0x151520, roadRoughness: 0.5,
+      barrierColor: 0x1a1a30,
+      buildingPalette: [0x0a0a1a, 0x101025, 0x0d0d20, 0x151530],
+      buildingHeightRange: [12, 35],
+      windowLitChance: 0.8, windowColor: 0x44aaff,
+      treeTrunkColor: 0x111111, treeCanopyColor: 0x001122,
+      treeCanopyStyle: 'none', treeCount: 0,
+      billboardStyle: 'neon',
+      streetLightColor: 0xcc44ff, streetLightDensity: 1.5,
+      groundTexture: 'concrete',
+      kerbColor: 0x333355, shoulderColor: 0x111122,
+    },
   },
   {
     name: 'Thunder Storm',
@@ -92,6 +166,19 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     hemiSky: 0x556666, hemiGround: 0x222222, hemiIntensity: 0.55,
     dirColor: 0x8899aa, dirIntensity: 1.3, dirPosition: [40, 50, 20],
     groundColor: 0x152018, exposure: 1.0,
+    scenery: {
+      roadColor: 0x252530, roadRoughness: 0.6,
+      barrierColor: 0x3a3a40,
+      buildingPalette: [0x2a2a30, 0x333338, 0x252530, 0x3a3a44],
+      buildingHeightRange: [6, 18],
+      windowLitChance: 0.4, windowColor: 0xccbb88,
+      treeTrunkColor: 0x221a11, treeCanopyColor: 0x1a2a18,
+      treeCanopyStyle: 'sphere', treeCount: 25,
+      billboardStyle: 'minimal',
+      streetLightColor: 0xccaa77, streetLightDensity: 0.8,
+      groundTexture: 'dirt',
+      kerbColor: 0x555555, shoulderColor: 0x2a2a2a,
+    },
   },
   {
     name: 'Alpine Snow',
@@ -100,6 +187,19 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     hemiSky: 0xccddee, hemiGround: 0x667788, hemiIntensity: 1.1,
     dirColor: 0xeeeeff, dirIntensity: 1.6, dirPosition: [60, 40, 40],
     groundColor: 0x334455, exposure: 1.1,
+    scenery: {
+      roadColor: 0x556068, roadRoughness: 0.7,
+      barrierColor: 0x889099,
+      buildingPalette: [0x8899aa, 0x99aabb, 0x7788aa, 0xaabbcc],
+      buildingHeightRange: [3, 7],
+      windowLitChance: 0.7, windowColor: 0xffddaa,
+      treeTrunkColor: 0x443322, treeCanopyColor: 0x1a4a2a,
+      treeCanopyStyle: 'cone', treeCount: 40,
+      billboardStyle: 'none',
+      streetLightColor: 0xeeeeff, streetLightDensity: 0.6,
+      groundTexture: 'snow',
+      kerbColor: 0xaabbcc, shoulderColor: 0x778899,
+    },
   },
   {
     name: 'Blizzard',
@@ -108,6 +208,19 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     hemiSky: 0xaabbcc, hemiGround: 0x556677, hemiIntensity: 0.7,
     dirColor: 0xccccdd, dirIntensity: 0.9, dirPosition: [30, 60, 20],
     groundColor: 0x2a3040, exposure: 0.9,
+    scenery: {
+      roadColor: 0x667078, roadRoughness: 0.55,
+      barrierColor: 0x8899aa,
+      buildingPalette: [0x778899, 0x8899aa, 0x667788],
+      buildingHeightRange: [2, 5],
+      windowLitChance: 0.5, windowColor: 0xffcc88,
+      treeTrunkColor: 0x554433, treeCanopyColor: 0x88aa99,
+      treeCanopyStyle: 'cone', treeCount: 20,
+      billboardStyle: 'none',
+      streetLightColor: 0xddddee, streetLightDensity: 0.4,
+      groundTexture: 'snow',
+      kerbColor: 0x99aabb, shoulderColor: 0x667788,
+    },
   },
   {
     name: 'Black Ice',
@@ -116,6 +229,104 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     hemiSky: 0x4466aa, hemiGround: 0x111122, hemiIntensity: 0.8,
     dirColor: 0x88aadd, dirIntensity: 1.8, dirPosition: [50, 70, -30],
     groundColor: 0x0a0e18, exposure: 1.2,
+    scenery: {
+      roadColor: 0x101820, roadRoughness: 0.3,
+      barrierColor: 0x1a2535,
+      buildingPalette: [0x0a1020, 0x101828, 0x0d1525, 0x152030],
+      buildingHeightRange: [10, 28],
+      windowLitChance: 0.3, windowColor: 0x4488cc,
+      treeTrunkColor: 0x111118, treeCanopyColor: 0x0a1a2a,
+      treeCanopyStyle: 'sphere', treeCount: 10,
+      billboardStyle: 'minimal',
+      streetLightColor: 0x88aadd, streetLightDensity: 0.7,
+      groundTexture: 'concrete',
+      kerbColor: 0x2a3a4a, shoulderColor: 0x0a1520,
+    },
+  },
+  // ── 4 New Environments ──
+  {
+    name: 'Tropical Night',
+    fogColor: 0x1a2a20, fogDensity: 0.00035,
+    skyTop: 0x0a0a1a, skyBottom: 0x0a1a15, skyHorizon: 0x1a3530,
+    hemiSky: 0x66aa88, hemiGround: 0x334422, hemiIntensity: 0.8,
+    dirColor: 0xaaddcc, dirIntensity: 1.5, dirPosition: [40, 60, 30],
+    groundColor: 0x1a2a18, exposure: 1.1,
+    scenery: {
+      roadColor: 0x2a2a2e, roadRoughness: 0.65,
+      barrierColor: 0x3a4a3a,
+      buildingPalette: [0x2a3a30, 0x344a38, 0x1a2a22, 0x405540],
+      buildingHeightRange: [3, 8],
+      windowLitChance: 0.4, windowColor: 0xffdd77,
+      treeTrunkColor: 0x554422, treeCanopyColor: 0x2a5a2a,
+      treeCanopyStyle: 'cone', treeCount: 50,
+      billboardStyle: 'minimal',
+      streetLightColor: 0xffcc66, streetLightDensity: 0.5,
+      groundTexture: 'grass',
+      kerbColor: 0x557755, shoulderColor: 0x2a3a2a,
+    },
+  },
+  {
+    name: 'Industrial Zone',
+    fogColor: 0x332a1a, fogDensity: 0.0005,
+    skyTop: 0x1a1510, skyBottom: 0x2a2215, skyHorizon: 0x443520,
+    hemiSky: 0xaa8855, hemiGround: 0x332211, hemiIntensity: 0.6,
+    dirColor: 0xff8833, dirIntensity: 1.5, dirPosition: [30, 40, 40],
+    groundColor: 0x1a1510, exposure: 1.0,
+    scenery: {
+      roadColor: 0x333030, roadRoughness: 0.95,
+      barrierColor: 0x555045,
+      buildingPalette: [0x3a3530, 0x4a4440, 0x554f48, 0x2a2520],
+      buildingHeightRange: [8, 22],
+      windowLitChance: 0.2, windowColor: 0xff8833,
+      treeTrunkColor: 0x2a2218, treeCanopyColor: 0x2a3a20,
+      treeCanopyStyle: 'sphere', treeCount: 8,
+      billboardStyle: 'minimal',
+      streetLightColor: 0xff8833, streetLightDensity: 1.2,
+      groundTexture: 'dirt',
+      kerbColor: 0x555544, shoulderColor: 0x2a2a22,
+    },
+  },
+  {
+    name: 'Highway Sunrise',
+    fogColor: 0xddaa66, fogDensity: 0.00015,
+    skyTop: 0x2244aa, skyBottom: 0xff8844, skyHorizon: 0xffcc55,
+    hemiSky: 0xffeecc, hemiGround: 0x886644, hemiIntensity: 1.4,
+    dirColor: 0xffcc66, dirIntensity: 2.5, dirPosition: [90, 15, 60],
+    groundColor: 0x2a3a20, exposure: 1.4,
+    scenery: {
+      roadColor: 0x3a3a3e, roadRoughness: 0.8,
+      barrierColor: 0x778877,
+      buildingPalette: [0x778877, 0x889988],
+      buildingHeightRange: [2, 4],
+      windowLitChance: 0.1, windowColor: 0xffcc88,
+      treeTrunkColor: 0x553322, treeCanopyColor: 0x3a6a2a,
+      treeCanopyStyle: 'sphere', treeCount: 45,
+      billboardStyle: 'minimal',
+      streetLightColor: 0xffddaa, streetLightDensity: 0.3,
+      groundTexture: 'grass',
+      kerbColor: 0x778866, shoulderColor: 0x445533,
+    },
+  },
+  {
+    name: 'Underground',
+    fogColor: 0x0a0a0a, fogDensity: 0.001,
+    skyTop: 0x050505, skyBottom: 0x0a0a0a, skyHorizon: 0x111111,
+    hemiSky: 0x333333, hemiGround: 0x111111, hemiIntensity: 0.3,
+    dirColor: 0xffffff, dirIntensity: 0.8, dirPosition: [0, 80, 0],
+    groundColor: 0x0a0a0a, exposure: 1.3,
+    scenery: {
+      roadColor: 0x222225, roadRoughness: 0.7,
+      barrierColor: 0x333338,
+      buildingPalette: [0x1a1a1e, 0x222228, 0x2a2a30],
+      buildingHeightRange: [4, 8],
+      windowLitChance: 0.0, windowColor: 0x000000,
+      treeTrunkColor: 0x111111, treeCanopyColor: 0x111111,
+      treeCanopyStyle: 'none', treeCount: 0,
+      billboardStyle: 'neon',
+      streetLightColor: 0xffffff, streetLightDensity: 2.0,
+      groundTexture: 'concrete',
+      kerbColor: 0x444448, shoulderColor: 0x1a1a1e,
+    },
   },
 ];
 
@@ -264,6 +475,7 @@ export async function initScene(container: HTMLElement) {
 
 /** Apply an environment preset to the scene. Call after initScene. */
 export function applyEnvironment(preset: EnvironmentPreset) {
+  _currentPreset = preset;
   // Configure fog from preset
   scene.fog = new THREE.FogExp2(preset.fogColor, preset.fogDensity);
 
@@ -355,3 +567,10 @@ export function getRenderer() { return renderer; }
 export function getScene() { return scene; }
 export function getCamera() { return camera; }
 export function getDirLight() { return dirLight; }
+
+let _currentPreset: EnvironmentPreset = ENVIRONMENTS[0];
+
+/** Get the currently active scenery theme. */
+export function getCurrentTheme(): SceneryTheme { return _currentPreset.scenery; }
+/** Get the currently active environment preset. */
+export function getCurrentPreset(): EnvironmentPreset { return _currentPreset; }
