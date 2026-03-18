@@ -1,14 +1,26 @@
-/* ── Hood Racer — VFX (Particles & Effects) ── */
+/* ── Hood Racer — VFX Hub (Particles & Effects) ──
+ *
+ * This file contains smoke-pool-based effects (tire smoke, damage smoke,
+ * damage flames, damage zone smoke, tire blowout), speed lines, name tags,
+ * and underglow. All other VFX are extracted into focused modules.
+ */
 
 import * as THREE from 'three/webgpu';
-import { MeshBasicNodeMaterial } from 'three/webgpu';
-import { attribute, float, vec4, mul, max, sub, clamp, mix, uniform as tslUniform } from 'three/tsl';
 import { spawnGPUSparks, spawnGPUBackfire } from './gpu-particles';
+
+// ── Re-exports from extracted modules ──
 import { initBoostFlame, updateBoostFlame, triggerBoostBurst, triggerBackfireSequence, initNitroTrail, spawnNitroTrail, updateNitroTrail, initBoostShockwave, initNitroFlash, triggerBoostShockwave, updateBoostShockwave, destroyBoostVFX } from './vfx-boost';
 export { initBoostFlame, updateBoostFlame, triggerBoostBurst, triggerBackfireSequence, initNitroTrail, spawnNitroTrail, updateNitroTrail, initBoostShockwave, initNitroFlash, triggerBoostShockwave, updateBoostShockwave } from './vfx-boost';
 import { initRainDroplets, updateRainDroplets, initImpactFlash, triggerImpactFlash, updateImpactFlash, initAmbientParticles, updateAmbientParticles, initHeatShimmer, updateHeatShimmer, initLensFlares, updateLensFlares, initLightning, setLightningEnabled, updateLightning, initNearMissStreaks, triggerNearMiss, updateNearMissStreaks, initNearMissWhoosh, triggerNearMissWhoosh, updateNearMissWhoosh, initVictoryConfetti, spawnVictoryConfetti, setConfettiContinuous, updateVictoryConfetti, destroyEnvironmentVFX } from './vfx-environment';
 export { initRainDroplets, updateRainDroplets, initImpactFlash, triggerImpactFlash, updateImpactFlash, initAmbientParticles, updateAmbientParticles, initHeatShimmer, updateHeatShimmer, initLensFlares, updateLensFlares, initLightning, setLightningEnabled, updateLightning, initNearMissStreaks, triggerNearMiss, updateNearMissStreaks, initNearMissWhoosh, triggerNearMissWhoosh, updateNearMissWhoosh, initVictoryConfetti, spawnVictoryConfetti, setConfettiContinuous, updateVictoryConfetti } from './vfx-environment';
 export { initRimSparks, spawnRimSparks, updateRimSparks, initBackfire, spawnBackfire, updateBackfire, createBrakeDiscs, updateBrakeDiscs, initShoulderDust, spawnShoulderDust, updateShoulderDust } from './vfx-contact';
+
+// Skid marks
+import { initDebrisVFX, warmupDebrisVFX, destroyDebrisVFX} from './vfx-debris';
+export { initSkidMarks, addSkidQuad, updateSkidMarks, destroySkidMarks, updateSkidGlowTime } from './vfx-skidmarks';
+
+// Debris + glass + engine smoke
+export { spawnDebris, updateDebris, triggerGlassShardBurst, updateGlassShards, updateEngineSmoke } from './vfx-debris';
 
 
 // ── Tire Smoke Pool ──
@@ -34,6 +46,9 @@ export function initVFX(scene: THREE.Scene) {
     scene.add(mesh);
     smokePool.push(mesh);
   }
+
+  // Init debris scene ref
+  initDebrisVFX(scene);
 }
 
 interface SmokeParticle {
@@ -110,9 +125,6 @@ export function updateVFX(dt: number) {
     p.mesh.scale.setScalar(1.5 - lifeFrac * 0.8);
     i++;
   }
-
-  // Metal debris (tumble, gravity, bounce)
-  updateDebris(dt);
 }
 
 // ── Speed Lines (screen-space, canvas 2D overlay) ──
@@ -189,144 +201,6 @@ export function updateSpeedLines(speedRatio: number, isNitroActive = false) {
   }
 }
 
-// BOOST FLAME SYSTEM — extracted to vfx-boost.ts
-// initBoostFlame, updateBoostFlame, triggerBoostBurst, triggerBackfireSequence are re-exported above.
-
-
-// ── Skid Marks (road-surface quads placed during drift) ──
-const SKID_MAX_QUADS = 200;
-const SKID_VERTS = SKID_MAX_QUADS * 6; // 2 triangles per quad = 6 verts
-let skidMesh: THREE.Mesh | null = null;
-let skidPositions: Float32Array | null = null;
-let skidAlphas: Float32Array | null = null;
-let skidAges: Float32Array | null = null; // per-vertex spawn timestamp
-let skidIdx = 0;
-let skidCount = 0;
-const _skidRight = new THREE.Vector3();
-
-// TSL uniform for current time — updated each frame via updateSkidGlowTime()
-const uSkidTime = tslUniform(0.0);
-
-/** Call once per frame before render to drive skid burn glow decay. */
-export function updateSkidGlowTime() {
-  uSkidTime.value = performance.now() / 1000;
-}
-
-export function initSkidMarks(scene: THREE.Scene) {
-  const geo = new THREE.BufferGeometry();
-  skidPositions = new Float32Array(SKID_VERTS * 3);
-  skidAlphas = new Float32Array(SKID_VERTS);
-  skidAges = new Float32Array(SKID_VERTS);
-  geo.setAttribute('position', new THREE.BufferAttribute(skidPositions, 3));
-  geo.setAttribute('alpha', new THREE.BufferAttribute(skidAlphas, 1));
-  geo.setAttribute('spawnTime', new THREE.BufferAttribute(skidAges, 1));
-  geo.setDrawRange(0, 0);
-
-  const skidMat = new MeshBasicNodeMaterial({
-    transparent: true,
-    depthWrite: false,
-  });
-  const vertAlpha = float(attribute('alpha'));
-
-  // Burn glow: compute age from spawnTime, fade orange→dark over 0.8s
-  const spawnT = float(attribute('spawnTime'));
-  const age = max(sub(uSkidTime, spawnT), float(0));
-  const glowFrac = clamp(sub(float(1), age.div(0.8)), 0, 1); // 1→0 over 0.8s
-  const glowR = mix(float(0.08), float(1.0), glowFrac);
-  const glowG = mix(float(0.08), float(0.45), glowFrac);
-  const glowB = float(0.08);
-  skidMat.colorNode = vec4(glowR, glowG, glowB, float(1));
-  skidMat.opacityNode = mul(vertAlpha, 0.6);
-
-  skidMesh = new THREE.Mesh(geo, skidMat);
-  skidMesh.frustumCulled = false;
-  scene.add(skidMesh);
-}
-
-export function addSkidQuad(
-  posL: THREE.Vector3, posR: THREE.Vector3,
-  prevL: THREE.Vector3, prevR: THREE.Vector3,
-  alpha: number,
-) {
-  if (!skidPositions || !skidAlphas) return;
-
-  const base = (skidIdx % SKID_MAX_QUADS) * 18; // 6 verts × 3 components
-  const aBase = (skidIdx % SKID_MAX_QUADS) * 6;
-
-  // Triangle 1: prevL, prevR, posL
-  skidPositions[base]     = prevL.x; skidPositions[base + 1] = prevL.y + 0.02; skidPositions[base + 2] = prevL.z;
-  skidPositions[base + 3] = prevR.x; skidPositions[base + 4] = prevR.y + 0.02; skidPositions[base + 5] = prevR.z;
-  skidPositions[base + 6] = posL.x;  skidPositions[base + 7] = posL.y + 0.02;  skidPositions[base + 8] = posL.z;
-  // Triangle 2: prevR, posR, posL
-  skidPositions[base + 9]  = prevR.x; skidPositions[base + 10] = prevR.y + 0.02; skidPositions[base + 11] = prevR.z;
-  skidPositions[base + 12] = posR.x;  skidPositions[base + 13] = posR.y + 0.02;  skidPositions[base + 14] = posR.z;
-  skidPositions[base + 15] = posL.x;  skidPositions[base + 16] = posL.y + 0.02;  skidPositions[base + 17] = posL.z;
-
-  const a = Math.min(alpha, 1);
-  for (let i = 0; i < 6; i++) skidAlphas[aBase + i] = a;
-
-  // Record spawn timestamp for burn glow decay
-  const now = performance.now() / 1000;
-  for (let i = 0; i < 6; i++) skidAges![aBase + i] = now;
-
-  skidIdx++;
-  skidCount = Math.min(skidCount + 1, SKID_MAX_QUADS);
-
-  const geo = skidMesh!.geometry;
-  geo.setDrawRange(0, skidCount * 6);
-  (geo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-  (geo.attributes.alpha as THREE.BufferAttribute).needsUpdate = true;
-  (geo.attributes.spawnTime as THREE.BufferAttribute).needsUpdate = true;
-}
-
-const _skidPrevL = new THREE.Vector3();
-const _skidPrevR = new THREE.Vector3();
-const _skidCurL = new THREE.Vector3();
-const _skidCurR = new THREE.Vector3();
-let _skidHasPrev = false;
-
-export function updateSkidMarks(
-  carPos: THREE.Vector3, heading: number,
-  driftIntensity: number, carY: number,
-) {
-  if (!skidMesh || driftIntensity < 0.15) {
-    _skidHasPrev = false;
-    return;
-  }
-
-  const sinH = Math.sin(heading);
-  const cosH = Math.cos(heading);
-  const rearX = carPos.x - sinH * 1.3;
-  const rearZ = carPos.z - cosH * 1.3;
-
-  _skidRight.set(cosH * 0.7, 0, -sinH * 0.7);
-  _skidCurL.set(rearX - _skidRight.x, carY, rearZ - _skidRight.z);
-  _skidCurR.set(rearX + _skidRight.x, carY, rearZ + _skidRight.z);
-
-  if (_skidHasPrev) {
-    addSkidQuad(_skidCurL, _skidCurR, _skidPrevL, _skidPrevR, driftIntensity);
-  }
-
-  _skidPrevL.copy(_skidCurL);
-  _skidPrevR.copy(_skidCurR);
-  _skidHasPrev = true;
-}
-
-export function destroySkidMarks() {
-  if (skidMesh) {
-    skidMesh.parent?.remove(skidMesh);
-    skidMesh.geometry.dispose();
-    (skidMesh.material as THREE.Material).dispose();
-    skidMesh = null;
-  }
-  skidPositions = null;
-  skidAlphas = null;
-  skidAges = null;
-  skidIdx = 0;
-  skidCount = 0;
-  _skidHasPrev = false;
-}
-
 // ── Remote player name tags ──
 export function createNameTag(name: string, scene: THREE.Scene): THREE.Sprite {
   const canvas = document.createElement('canvas');
@@ -359,7 +233,6 @@ export function updateNameTag(sprite: THREE.Sprite, pos: THREE.Vector3) {
   sprite.position.set(pos.x, pos.y + 3.5, pos.z);
 }
 
-// ── Collision Sparks ──
 // ── Damage Smoke ──
 let damageSmokeCooldown = 0;
 
@@ -426,155 +299,9 @@ export function spawnFlameParticle(pos: THREE.Vector3, intensity: number, dt = 0
   }
 }
 
-// ── Metal Debris (tumbling rectangular shards on heavy impacts) ──
-
-const DEBRIS_POOL_SIZE = 30;
-const debrisPool: THREE.Mesh[] = [];
-let debrisIdx = 0;
-
-interface DebrisParticle {
-  mesh: THREE.Mesh;
-  vx: number; vy: number; vz: number;
-  ax: number; ay: number; az: number;  // angular velocity
-  life: number;
-  bounced: boolean;
-  active: boolean;
-}
-
-// Pre-allocated debris state pool (avoids per-spawn object allocation)
-const debrisStates: DebrisParticle[] = [];
-let debrisStatesReady = false;
-
-function ensureDebrisStates() {
-  if (debrisStatesReady) return;
-  for (let i = 0; i < DEBRIS_POOL_SIZE; i++) {
-    debrisStates.push({
-      mesh: null!,
-      vx: 0, vy: 0, vz: 0,
-      ax: 0, ay: 0, az: 0,
-      life: 0,
-      bounced: false,
-      active: false,
-    });
-  }
-  debrisStatesReady = true;
-}
-
-function ensureDebrisPool() {
-  if (debrisPool.length > 0 || !smokeScene) return;
-  const geo = new THREE.BoxGeometry(0.12, 0.04, 0.08);
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x999999,
-    roughness: 0.4,
-    metalness: 0.8,
-    transparent: true,
-    opacity: 1,
-  });
-  for (let i = 0; i < DEBRIS_POOL_SIZE; i++) {
-    const m = new THREE.Mesh(geo, mat.clone());
-    m.visible = false;
-    smokeScene.add(m);
-    debrisPool.push(m);
-  }
-  ensureDebrisStates();
-}
-
-/** Eagerly initialize debris pool at race start (avoids lazy-init stall on first explosion). */
-export function warmupVFX() {
-  ensureDebrisPool();
-}
-
-/** Spawn metal debris particles at impact point. force controls count + speed. */
-export function spawnDebris(pos: THREE.Vector3, force: number, carVelX = 0, carVelZ = 0) {
-  if (!smokeScene) return;
-  ensureDebrisPool();
-
-  const count = Math.min(Math.floor(force * 0.3), 8);
-  for (let i = 0; i < count; i++) {
-    const meshSlot = debrisIdx % DEBRIS_POOL_SIZE;
-    const mesh = debrisPool[meshSlot];
-    const state = debrisStates[meshSlot];
-    debrisIdx++;
-    mesh.position.copy(pos);
-    mesh.position.x += (Math.random() - 0.5) * 0.5;
-    mesh.position.y += 0.3 + Math.random() * 0.3;
-    mesh.position.z += (Math.random() - 0.5) * 0.5;
-    mesh.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
-    mesh.scale.set(0.5 + Math.random(), 0.5 + Math.random(), 0.5 + Math.random());
-    mesh.visible = true;
-    const mat = mesh.material as THREE.MeshStandardMaterial;
-    mat.opacity = 1;
-
-    // Inherit car velocity + random burst
-    const speed = 3 + Math.random() * force * 0.5;
-    const theta = Math.random() * Math.PI * 2;
-    // Reuse pre-allocated state (zero allocation)
-    state.mesh = mesh;
-    state.vx = carVelX * 0.3 + Math.cos(theta) * speed;
-    state.vy = 2 + Math.random() * 4;
-    state.vz = carVelZ * 0.3 + Math.sin(theta) * speed;
-    state.ax = (Math.random() - 0.5) * 15;
-    state.ay = (Math.random() - 0.5) * 15;
-    state.az = (Math.random() - 0.5) * 15;
-    state.life = 2.0 + Math.random() * 1.5;
-    state.bounced = false;
-    state.active = true;
-  }
-}
-
-/** Update debris physics (gravity, ground bounce, fade). Call in updateVFX. */
-function updateDebris(dt: number) {
-  for (let i = 0; i < DEBRIS_POOL_SIZE; i++) {
-    const d = debrisStates[i];
-    if (!d || !d.active) continue;
-    d.life -= dt;
-    if (d.life <= 0) {
-      d.mesh.visible = false;
-      d.active = false;
-      continue;
-    }
-
-    // Gravity
-    d.vy -= 12 * dt;
-
-    // Position
-    d.mesh.position.x += d.vx * dt;
-    d.mesh.position.y += d.vy * dt;
-    d.mesh.position.z += d.vz * dt;
-
-    // Rotation (tumble)
-    d.mesh.rotation.x += d.ax * dt;
-    d.mesh.rotation.y += d.ay * dt;
-    d.mesh.rotation.z += d.az * dt;
-
-    // Ground bounce
-    if (d.mesh.position.y < 0.05) {
-      d.mesh.position.y = 0.05;
-      d.vy = Math.abs(d.vy) * 0.3;
-      d.vx *= 0.7;
-      d.vz *= 0.7;
-      d.ax *= 0.5;
-      d.ay *= 0.5;
-      d.az *= 0.5;
-      d.bounced = true;
-    }
-
-    // Fade out in last 0.5s
-    if (d.life < 0.5) {
-      (d.mesh.material as THREE.MeshStandardMaterial).opacity = d.life * 2;
-    }
-  }
-}
-
-// ── Sustained Damage Zone Smoke (continuous trail from critically damaged zones) ──
+// ── Sustained Damage Zone Smoke ──
 let dmgSmokeCd = 0;
 
-/**
- * Spawn continuous dark smoke from a critically damaged zone.
- * Call every frame for each zone with HP < 30%.
- * @param pos — world position of the damaged zone
- * @param severity — 0..1 (1 = zone at 0 HP)
- */
 export function spawnDamageZoneSmoke(pos: THREE.Vector3, severity: number, dt: number) {
   if (!smokeScene || severity < 0.3) return;
   dmgSmokeCd -= dt;
@@ -603,14 +330,8 @@ export function spawnDamageZoneSmoke(pos: THREE.Vector3, severity: number, dt: n
   activeSmoke.push({ mesh, velocity: vel, life: 0.6 + severity * 0.4, maxLife: 1.0 });
 }
 
-
-
 // ── Tire Blowout VFX ──
 
-/**
- * Spawn rubber debris particles at a blown tire position.
- * Uses the existing smoke pool with dark color for rubber chunks.
- */
 export function spawnTireBlowout(pos: THREE.Vector3) {
   if (!smokeScene) return;
 
@@ -641,9 +362,9 @@ export function spawnTireBlowout(pos: THREE.Vector3) {
   }
 }
 
-// ── Neon Underglow (colored PointLight under car body) ──
+// ── Neon Underglow ──
 
-const _nitroCyanColor = new THREE.Color(0x44aaff); // reusable — avoid per-frame alloc
+const _nitroCyanColor = new THREE.Color(0x44aaff);
 const UNDERGLOW_COLORS = [
   0x00aaff, // Blue
   0xff00aa, // Pink
@@ -656,250 +377,44 @@ const UNDERGLOW_COLORS = [
 export function createUnderglow(carGroup: THREE.Group, colorIndex: number): THREE.PointLight {
   const color = UNDERGLOW_COLORS[colorIndex % UNDERGLOW_COLORS.length];
   const light = new THREE.PointLight(color, 2.5, 8, 2);
-  light.position.set(0, -0.3, 0); // Under the car body
+  light.position.set(0, -0.3, 0);
   carGroup.add(light);
   return light;
 }
 
-/**
- * Update underglow pulsing effect.
- * @param light — the PointLight from createUnderglow
- * @param speed — current car speed (for intensity variation)
- * @param time — current timestamp in seconds
- * @param isNitroActive — whether nitrous is currently burning
- */
 export function updateUnderglow(light: THREE.PointLight, speed: number, time: number, isNitroActive = false) {
   const speedFactor = Math.min(Math.abs(speed) / 40, 1);
 
   if (isNitroActive) {
-    // Nitrous mode: shift to bright cyan-blue, 3× intensity, 8Hz rapid pulse
     const pulse = 0.8 + Math.sin(time * 8) * 0.15 + Math.sin(time * 13) * 0.05;
     light.intensity = (4.5 + speedFactor * 3.0) * pulse;
     light.distance = 10 + speedFactor * 5;
-    light.color.lerp(_nitroCyanColor, 0.15); // Smooth shift to cyan
+    light.color.lerp(_nitroCyanColor, 0.15);
   } else {
-    // Normal mode: gentle pulse
     const pulse = 0.7 + Math.sin(time * 3) * 0.15 + Math.sin(time * 7.3) * 0.08;
     light.intensity = (1.5 + speedFactor * 2.0) * pulse;
     light.distance = 6 + speedFactor * 4;
   }
 }
 
-// NITRO TRAIL + SHOCKWAVE — extracted to vfx-boost.ts
-// initNitroTrail, spawnNitroTrail, updateNitroTrail, initBoostShockwave, initNitroFlash, triggerBoostShockwave, updateBoostShockwave are re-exported above.
+// ── Warmup (eagerly initialize all pools) ──
 
-
-
-// ── Glass Shard Burst VFX (pooled) ──
-const GLASS_POOL_SIZE = 15;
-
-interface GlassShardState {
-  active: boolean;
-  vx: number; vy: number; vz: number;
-  life: number;
+export function warmupVFX() {
+  warmupDebrisVFX();
 }
-
-const _glassGeo = new THREE.PlaneGeometry(0.08, 0.08);
-const _glassPool: THREE.Mesh[] = [];
-const _glassStates: GlassShardState[] = [];
-let _glassPoolReady = false;
-let _glassScene: THREE.Scene | null = null;
-let _glassWriteIdx = 0;
-
-function ensureGlassPool(scene: THREE.Scene) {
-  if (_glassPoolReady) return;
-  _glassPoolReady = true;
-  _glassScene = scene;
-  for (let i = 0; i < GLASS_POOL_SIZE; i++) {
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0xaaddff,
-      transparent: true,
-      opacity: 0.6,
-      side: THREE.DoubleSide,
-      roughness: 0.1,
-      metalness: 0.8,
-    });
-    const mesh = new THREE.Mesh(_glassGeo, mat);
-    mesh.visible = false;
-    scene.add(mesh);
-    _glassPool.push(mesh);
-    _glassStates.push({ active: false, vx: 0, vy: 0, vz: 0, life: 0 });
-  }
-}
-
-export function triggerGlassShardBurst(scene: THREE.Scene, x: number, y: number, z: number) {
-  ensureGlassPool(scene);
-  const SHARD_COUNT = 10;
-  for (let i = 0; i < SHARD_COUNT; i++) {
-    const idx = _glassWriteIdx % GLASS_POOL_SIZE;
-    _glassWriteIdx++;
-    const mesh = _glassPool[idx];
-    const st = _glassStates[idx];
-    mesh.position.set(x, y, z);
-    mesh.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
-    mesh.scale.setScalar(0.5 + Math.random() * 1.5);
-    (mesh.material as THREE.MeshStandardMaterial).opacity = 0.6;
-    mesh.visible = true;
-    st.active = true;
-    st.vx = (Math.random() - 0.5) * 6;
-    st.vy = 2 + Math.random() * 4;
-    st.vz = (Math.random() - 0.5) * 6;
-    st.life = 1.5;
-  }
-}
-
-export function updateGlassShards(dt: number) {
-  for (let i = 0; i < GLASS_POOL_SIZE; i++) {
-    const st = _glassStates[i];
-    if (!st.active) continue;
-    st.life -= dt;
-    if (st.life <= 0) {
-      st.active = false;
-      _glassPool[i].visible = false;
-      continue;
-    }
-    st.vy -= 9.8 * dt;
-    const mesh = _glassPool[i];
-    mesh.position.x += st.vx * dt;
-    mesh.position.y += st.vy * dt;
-    mesh.position.z += st.vz * dt;
-    mesh.rotation.x += dt * 5;
-    mesh.rotation.z += dt * 3;
-    (mesh.material as THREE.MeshStandardMaterial).opacity = Math.min(0.6, st.life / 0.5);
-  }
-}
-
-
-// ── Engine Smoke VFX (pooled) ──
-const SMOKE_ENG_POOL_SIZE = 30;
-
-interface EngineSmokeState {
-  active: boolean;
-  vx: number; vy: number; vz: number;
-  life: number;
-  maxLife: number;
-}
-
-const _smokeEngGeo = new THREE.PlaneGeometry(0.5, 0.5);
-const _smokeEngPool: THREE.Mesh[] = [];
-const _smokeEngStates: EngineSmokeState[] = [];
-let _smokeEngPoolReady = false;
-let _smokeEngWriteIdx = 0;
-
-function ensureSmokeEngPool(scene: THREE.Scene) {
-  if (_smokeEngPoolReady) return;
-  _smokeEngPoolReady = true;
-  for (let i = 0; i < SMOKE_ENG_POOL_SIZE; i++) {
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0xcccccc,
-      transparent: true,
-      opacity: 0.2,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    const mesh = new THREE.Mesh(_smokeEngGeo, mat);
-    mesh.visible = false;
-    scene.add(mesh);
-    _smokeEngPool.push(mesh);
-    _smokeEngStates.push({ active: false, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 1 });
-  }
-}
-
-export function updateEngineSmoke(
-  scene: THREE.Scene,
-  dt: number,
-  frontHP: number,
-  carX: number, carY: number, carZ: number,
-  heading: number,
-) {
-  ensureSmokeEngPool(scene);
-
-  // Emit new smoke if front HP < 30%
-  if (frontHP < 30) {
-    const severity = 1 - frontHP / 30;
-    const emitCount = Math.min(1 + Math.floor(severity * 2), 3);
-    const sinH = Math.sin(heading);
-    const cosH = Math.cos(heading);
-    const hoodX = carX + sinH * (-1.0);
-    const hoodZ = carZ + cosH * (-1.0);
-    const hoodY = carY + 1.2;
-
-    for (let e = 0; e < emitCount; e++) {
-      const idx = _smokeEngWriteIdx % SMOKE_ENG_POOL_SIZE;
-      _smokeEngWriteIdx++;
-      const mesh = _smokeEngPool[idx];
-      const st = _smokeEngStates[idx];
-      mesh.position.set(
-        hoodX + (Math.random() - 0.5) * 0.4,
-        hoodY,
-        hoodZ + (Math.random() - 0.5) * 0.4,
-      );
-      mesh.rotation.z = Math.random() * Math.PI;
-      mesh.scale.setScalar(0.3);
-      mesh.visible = true;
-      const maxLife = 1.0 + Math.random() * 0.8;
-      st.active = true;
-      st.vx = (Math.random() - 0.5) * 0.8;
-      st.vy = 2 + Math.random() * 2;
-      st.vz = (Math.random() - 0.5) * 0.8;
-      st.life = maxLife;
-      st.maxLife = maxLife;
-    }
-  }
-
-  // Update existing smoke
-  for (let i = 0; i < SMOKE_ENG_POOL_SIZE; i++) {
-    const st = _smokeEngStates[i];
-    if (!st.active) continue;
-    st.life -= dt;
-    if (st.life <= 0) {
-      st.active = false;
-      _smokeEngPool[i].visible = false;
-      continue;
-    }
-    const mesh = _smokeEngPool[i];
-    mesh.position.x += st.vx * dt;
-    mesh.position.y += st.vy * dt;
-    mesh.position.z += st.vz * dt;
-    const age = 1 - st.life / st.maxLife;
-    mesh.scale.setScalar(0.3 + age * 1.5);
-    const mat = mesh.material as THREE.MeshStandardMaterial;
-    mat.opacity = (1 - age) * 0.25;
-    const grey = 0.8 - age * 0.4;
-    mat.color.setRGB(grey, grey, grey);
-  }
-}
-
 
 /** Remove all VFX objects from the scene and DOM. Call between races. */
 export function destroyVFX() {
-  const sceneRef = smokeScene;
-
   // Clear smoke particles
   for (const p of activeSmoke) p.mesh.visible = false;
   activeSmoke.length = 0;
 
-  // Clear debris
-  for (const d of debrisStates) {
-    if (d.active && d.mesh) d.mesh.visible = false;
-    d.active = false;
-  }
-  if (sceneRef) {
-    for (const mesh of debrisPool) {
-      sceneRef.remove(mesh);
-      mesh.geometry?.dispose();
-      (mesh.material as THREE.Material)?.dispose();
-    }
-  }
-  debrisPool.length = 0;
-  debrisIdx = 0;
-
   damageSmokeCooldown = 0;
   flameCooldown = 0;
 
-  if (sceneRef) {
+  if (smokeScene) {
     for (const mesh of smokePool) {
-      sceneRef.remove(mesh);
+      smokeScene.remove(mesh);
       mesh.geometry?.dispose();
       (mesh.material as THREE.Material)?.dispose();
     }
@@ -919,9 +434,12 @@ export function destroyVFX() {
     speedLinesCtx = null;
   }
 
-  // Boost + nitro cleanup (extracted to vfx-boost.ts)
+  // Debris + glass + engine smoke cleanup
+  destroyDebrisVFX();
+
+  // Boost + nitro cleanup
   destroyBoostVFX();
 
-  // Environment + atmosphere cleanup (extracted to vfx-environment.ts)
+  // Environment + atmosphere cleanup
   destroyEnvironmentVFX();
 }
