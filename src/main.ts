@@ -14,6 +14,7 @@ import { RaceEngine } from './race-engine';
 import { createHUD, updateHUD, updateMinimap, updateDamageHUD, updateGapHUD, updateNitroHUD, updateHeatHUD, showHUD, destroyHUD, showLapOverlay } from './hud';
 import { runCountdown } from './countdown';
 import { initAudio, updateEngineAudio, playCheckpointSFX, playLapFanfare, playFinishFanfare, playDriftSFX, playCollisionSFX, playPositionSFX, stopAudio, playNitroActivate, startNitroBurn, stopNitroBurn, updateNitroBurnIntensity, updateDepletionWarning, stopDepletionWarning, playNitroRelease, playCountdownRevs, stopCountdownRevs, playRumbleStrip } from './audio';
+import { showResults, resolvePlayerName } from './results-screen';
 import { AIRacer, OpponentInfo } from './ai-racer';
 import { initGarage, updateGarage, destroyGarage } from './garage';
 import { NetPeer } from './net-peer';
@@ -902,7 +903,7 @@ function showSpectateHUD() {
 
 function updateSpectateHUD() {
   if (!G.spectateHudEl || !G.spectateTargetId) return;
-  const name = resolvePlayerName(G.spectateTargetId);
+  const name = resolvePlayerName(G.spectateTargetId, G);
   G.spectateHudEl.innerHTML = `
     <span class="spectate-label">SPECTATING</span>
     <span class="arrow arrow-left" id="spec-left">◀</span>
@@ -919,202 +920,17 @@ function destroySpectateHUD() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// RESULTS SCREEN
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// RESULTS SCREEN — extracted to results-screen.ts
+// showResults() and resolvePlayerName() are imported at the top of this file.
 
-const AI_DRIVER_NAMES = [
-  'Blaze', 'Nitro', 'Ghost', 'Viper', 'Smoke', 'Flash',
-  'Turbo', 'Clutch', 'Drift', 'Razor', 'Burn', 'Apex',
-];
-
-
-
-function resolvePlayerName(id: string): string {
-  if (id === 'local') return 'You';
-  if (id.startsWith('ai_')) {
-    const idx = parseInt(id.replace('ai_', ''), 10) || 0;
-    return AI_DRIVER_NAMES[idx % AI_DRIVER_NAMES.length];
-  }
-  const netName = G.netPeer?.getRemotePlayers().find(rp => rp.id === id)?.name;
-  if (netName && netName !== 'Racer') return netName;
-  const mpName = G.mpPlayersList.find(p => p.id === id)?.name;
-  return mpName || netName || id.slice(0, 8);
-}
-
-function buildRewardHTML(rankings: any[], localProgress: any): string {
-  // Process rewards via progression system
-  const localRank = rankings.findIndex((r: any) => r.id === 'local') + 1;
-  const bestLap = localProgress?.lapTimes?.length > 0 ? Math.min(...localProgress.lapTimes) : 0;
-  const raceResult: RaceResult = {
-    placement: localRank || 1,
-    totalRacers: rankings.length,
-    lapTimes: localProgress?.lapTimes ?? [],
-    bestLap: bestLap / 1000, // convert to seconds
-    collisionCount: G.raceStats.collisionCount,
-    driftTime: G.raceStats.totalDriftTime,
-    topSpeed: G.raceStats.topSpeed,
-    trackLength: G.trackData?.totalLength ?? 500,
-    lapsCompleted: localProgress?.lapTimes?.length ?? 0,
-  };
-  const rewards = processRaceRewards(raceResult);
-  const prog = getProgress();
-  const lvlPct = Math.round(levelProgress() * 100);
-
-  let html = `<div class="lap-breakdown" style="margin-top:8px;">
-    <div class="lap-breakdown-title">REWARDS</div>
-    <div class="lap-breakdown-row"><span>Race Complete</span><span>+${rewards.baseXP} XP / +${rewards.baseCredits} CR</span></div>`;
-  if (rewards.winBonus > 0) html += `<div class="lap-breakdown-row best"><span>🏆 Victory!</span><span>+${rewards.winBonus} XP / +${rewards.winCreditsBonus} CR</span></div>`;
-  if (rewards.podiumBonus > 0) html += `<div class="lap-breakdown-row"><span>🥇 Podium</span><span>+${rewards.podiumBonus} XP / +${rewards.podiumCreditsBonus} CR</span></div>`;
-  if (rewards.cleanBonus > 0) html += `<div class="lap-breakdown-row"><span>✨ Clean Race</span><span>+${rewards.cleanBonus} XP</span></div>`;
-  if (rewards.driftBonus > 0) html += `<div class="lap-breakdown-row"><span>🔥 Drift Bonus</span><span>+${rewards.driftBonus} XP</span></div>`;
-  html += `<div class="lap-breakdown-row" style="border-top:1px solid rgba(255,255,255,0.15);padding-top:4px;font-weight:700;"><span>Total</span><span>+${rewards.totalXP} XP / +${rewards.totalCredits} CR</span></div>`;
-  if (rewards.leveledUp) html += `<div class="lap-breakdown-row best" style="color:#ffcc00;font-weight:700;"><span>⬆ LEVEL UP!</span><span>Level ${rewards.newLevel}</span></div>`;
-  html += `<div class="lap-breakdown-row" style="margin-top:6px;"><span>Level ${prog.level}</span><span>${xpToNextLevel()} XP to next</span></div>`;
-  html += `<div style="background:rgba(255,255,255,0.1);border-radius:4px;height:6px;margin:4px 0;"><div style="background:var(--col-orange);border-radius:4px;height:100%;width:${lvlPct}%;transition:width 0.5s;"></div></div>`;
-  html += `<div class="lap-breakdown-row"><span>Credits</span><span style="color:#ffcc00;font-weight:700;">${prog.credits} CR</span></div>`;
-  html += `</div>`;
-  return html;
-}
-
-function showResults() {
-  G.gameState = GameState.RESULTS;
-  // Victory confetti burst!
-  if (G.playerVehicle) {
-    spawnVictoryConfetti(G.playerVehicle.group.position);
-    setConfettiContinuous(true, G.playerVehicle.group.position);
-  }
-
-  // Record session wins
-  const preRankings = G.raceEngine?.getRankings() ?? [];
-  if (preRankings.length > 0 && !preRankings[0].dnf && preRankings[0].finished) {
-    const winnerId = preRankings[0].id;
-    G.sessionWins.set(winnerId, (G.sessionWins.get(winnerId) || 0) + 1);
-  }
-  G.netPeer?.stopBroadcasting();
-  G.netPeer?.stopPinging();
-  showTouchControls(false);
-  G.replayRecorder?.stop();
-
-  if (G.postWinnerTimer) clearTimeout(G.postWinnerTimer);
-  G.postWinnerTimer = window.setTimeout(() => {
-    if (G.raceEngine) {
-      for (const r of G.raceEngine.getRankings()) {
-        if (!r.finished) G.raceEngine.markDnf(r.id);
-      }
-    }
-    G.postWinnerTimer = null;
-  }, 15000);
-
-  const rankings = G.raceEngine?.getRankings() ?? [];
-  const winner = rankings[0];
-  const winnerName = winner ? resolvePlayerName(winner.id) : '???';
-  const isMultiplayer = !!G.netPeer;
-  const isHost = G.netPeer?.getIsHost() ?? false;
-  const hasReplay = G.replayRecorder?.hasData() ?? false;
-
-  const el = document.createElement('div');
-  el.className = 'results-overlay';
-  // Build per-lap breakdown for the local player
-  const localProgress = G.raceEngine?.getProgress('local');
-  const localBestLap = G.raceEngine?.getBestLap('local');
-  const lapBreakdownHtml = localProgress && localProgress.lapTimes.length > 0
-    ? `<div class="lap-breakdown">
-        <div class="lap-breakdown-title">YOUR LAPS</div>
-        ${localProgress.lapTimes.map((t, i) => {
-          const isBest = localBestLap != null && t <= localBestLap;
-          return `<div class="lap-breakdown-row${isBest ? ' best' : ''}">
-            <span>Lap ${i + 1}</span>
-            <span>${RaceEngine.formatTime(t)}${isBest ? ' ★' : ''}</span>
-          </div>`;
-        }).join('')}
-       </div>` : '';
-
-  el.innerHTML = `
-    <div class="results-title">${winner?.dnf ? 'RACE COMPLETE' : `${winnerName.toUpperCase()} ${winner?.id === 'local' ? 'WIN' : 'WINS'}!`}</div>
-    <table class="results-table">
-      <thead><tr>
-        <th>POS</th>
-        <th>RACER</th>
-        <th>TIME</th>
-        <th>BEST LAP</th>
-      </tr></thead>
-      <tbody>
-        ${rankings.map((r, i) => {
-          const name = resolvePlayerName(r.id);
-          const isSelf = r.id === 'local';
-          const isDnf = r.dnf;
-          const bestLap = r.lapTimes.length > 0 ? Math.min(...r.lapTimes) : null;
-          const delayMs = (i + 1) * 150;
-          const wins = G.sessionWins.get(r.id) || 0;
-          const winsHtml = wins > 0 ? ` <span class="session-wins">${wins}W</span>` : '';
-          const crownHtml = G.sessionWins.size > 0 && wins === Math.max(...G.sessionWins.values()) && wins > 0 ? ' 👑' : '';
-          return `
-            <tr class="${isSelf ? 'local' : ''} ${isDnf ? 'dnf' : ''} ${i === 0 && !isDnf ? 'winner' : ''}" style="animation-delay:${delayMs}ms;">
-              <td>${isDnf ? '—' : i + 1}</td>
-              <td>${name}${crownHtml}${winsHtml}${isDnf ? ' <span style="color:#ff4444;font-size:11px;">DNF</span>' : ''}</td>
-              <td>${isDnf ? '—' : r.finished ? RaceEngine.formatTime(r.finishTime) : 'Racing...'}</td>
-              <td>${bestLap !== null ? RaceEngine.formatTime(bestLap) : '—'}</td>
-            </tr>
-          `;
-        }).join('')}
-      </tbody>
-    </table>
-    ${lapBreakdownHtml}
-    <div class="lap-breakdown" style="margin-top:8px;">
-      <div class="lap-breakdown-title">RACE STATS</div>
-      <div class="lap-breakdown-row"><span>Top Speed</span><span>${Math.floor(G.raceStats.topSpeed)} MPH</span></div>
-      <div class="lap-breakdown-row"><span>Drift Time</span><span>${G.raceStats.totalDriftTime.toFixed(1)}s</span></div>
-      <div class="lap-breakdown-row"><span>Avg Position</span><span>${G.raceStats.positionSampleCount > 0 ? (G.raceStats.avgPosition / G.raceStats.positionSampleCount).toFixed(1) : '—'}</span></div>
-      <div class="lap-breakdown-row"><span>Collisions</span><span>${G.raceStats.collisionCount}</span></div>
-      <div class="lap-breakdown-row"><span>Near Misses</span><span>${G.raceStats.nearMissCount}</span></div>
-    </div>
-    ${buildRewardHTML(rankings, localProgress)}
-    <div class="menu-buttons" style="width:240px; margin-top:8px;">
-      ${hasReplay ? '<button class="menu-btn" id="btn-replay" style="border-color:var(--col-cyan);color:var(--col-cyan);">WATCH REPLAY</button>' : ''}
-      ${isMultiplayer ? '<button class="menu-btn" id="btn-rematch" style="background:var(--col-green);">REMATCH</button>' : ''}
-      ${!isMultiplayer ? '<button class="menu-btn" id="btn-play-again">PLAY AGAIN</button>' : ''}
-      <button class="menu-btn" id="btn-main-menu">MAIN MENU</button>
-    </div>
-  `;
-  uiOverlay.appendChild(el);
-
-  document.getElementById('btn-replay')?.addEventListener('click', () => {
-    el.remove();
-    destroyLeaderboard();
-    startReplayPlayback();
-  });
-  document.getElementById('btn-play-again')?.addEventListener('click', () => {
-    el.remove();
-    if (G.postWinnerTimer) { clearTimeout(G.postWinnerTimer); G.postWinnerTimer = null; }
-    startRace();
-  });
-  document.getElementById('btn-rematch')?.addEventListener('click', () => {
-    el.remove();
-    if (G.postWinnerTimer) { clearTimeout(G.postWinnerTimer); G.postWinnerTimer = null; }
-    if (isHost) {
-      G.raceReadyCount = 0;
-      G.trackSeed = Math.floor(Math.random() * 99999);
-      const rematchPlayers = [{ id: G.netPeer!.getLocalId(), name: G.localPlayerName, carId: G.selectedCar.id }];
-      for (const rp of G.netPeer!.getRemotePlayers()) rematchPlayers.push({ id: rp.id, name: rp.name, carId: rp.carId });
-      G.mpPlayersList = rematchPlayers;
-      G.netPeer!.broadcastEvent(EventType.REMATCH_REQUEST, { seed: G.trackSeed, laps: G.totalLaps, players: rematchPlayers });
-      destroyLeaderboard();
-      startRace();
-    } else {
-      G.netPeer!.broadcastEvent(EventType.REMATCH_ACCEPT, {});
-      showToast(uiOverlay, 'Rematch requested...');
-    }
-  });
-  document.getElementById('btn-main-menu')!.addEventListener('click', () => {
-    el.remove();
-    if (G.postWinnerTimer) { clearTimeout(G.postWinnerTimer); G.postWinnerTimer = null; }
-    G.netPeer?.destroy();
-    G.netPeer = null;
-    clearRaceObjects();
-    destroyLeaderboard();
-    destroySpectateHUD();
-    G.sessionWins.clear();
-    showTitleScreen();
+function callShowResults() {
+  showResults(G, uiOverlay, {
+    startRace,
+    showTitleScreen,
+    startReplayPlayback,
+    clearRaceObjects,
+    destroyLeaderboard,
+    destroySpectateHUD,
   });
 }
 
@@ -1400,7 +1216,7 @@ function stopReplayPlayback() {
   }
   const style = document.getElementById('replay-styles');
   if (style) style.remove();
-  showResults();
+  callShowResults();
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1423,7 +1239,7 @@ function updateLeaderboard() {
 
   const rankings = G.raceEngine.getRankings();
   G.lbEl.innerHTML = rankings.map((r, i) => {
-    const name = r.id === 'local' ? 'YOU' : resolvePlayerName(r.id);
+    const name = r.id === 'local' ? 'YOU' : resolvePlayerName(r.id, G);
     const isSelf = r.id === 'local';
     let rttDot = '';
     if (G.netPeer && !isSelf && !r.id.startsWith('ai_')) {
@@ -1819,7 +1635,7 @@ function gameLoop(timestamp: number) {
             }
             setTimeout(() => showEngineDestroyedText(), 800);
             setTimeout(() => { hideLetterbox(); setExplosionMode(false); }, 3500);
-            setTimeout(() => showResults(), 4000);
+            setTimeout(() => callShowResults(), 4000);
           }
 
           // Frame 3: glass shards
@@ -2574,11 +2390,11 @@ applySettingsToRenderer();
 initMultiplayerHandler(uiOverlay, scene, {
   startRace,
   showTitleScreen,
-  showResults,
+  showResults: callShowResults,
   clearRaceObjects,
   destroyLeaderboard,
   destroySpectateHUD,
-  resolvePlayerName,
+  resolvePlayerName: (id: string) => resolvePlayerName(id, G),
 });
 
 G.lastTime = performance.now();
@@ -2610,7 +2426,7 @@ bus.on('finish', (e) => {
   }
   setTimeout(() => {
     enterSpectatorMode();
-    showResults();
+    callShowResults();
   }, 3000);
 });
 
