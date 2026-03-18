@@ -43,7 +43,7 @@ export class Vehicle {
   throttle = 0;
   brake = 0;
   driftAngle = 0;      // visual drift, for VFX / audio
-  nitro = 100;         // 0–100 nitro meter (limited supply — starts full)
+  nitro = 150;         // 0–150 nitro meter (finite supply — no auto-recharge)
   private _nitroActive = false; // actual nitro burn state (requires nitro > 0)
 
   // ── Engine Heat System ──
@@ -696,21 +696,17 @@ export class Vehicle {
     } else {
       this._nitroActive = false;
     }
-    // Drift recharge (slow trickle — NOS is a limited resource, not infinitely renewable)
-    if (!this._nitroActive && Math.abs(this.driftAngle) > 0.15 && absSpeed > 5) {
-      this.nitro = Math.min(100, this.nitro + Math.abs(this.driftAngle) * 4 * dt);
-    }
-    // Nitro is primarily a finite supply — drift recharge is a small bonus, not a refill
+    // Nitro is a finite resource — no auto-recharge, only near-miss rewards
 
     // ── Engine Heat accumulation ──
     if (!this._engineDead) {
-      // Heat sources (tuned for longer survival — engines should be hard to destroy)
-      if (this._nitroActive) this._engineHeat += 25 * dt;       // nitro heat (reduced from 40)
-      this._engineHeat += absSpeed * 0.2 * dt;                   // high-RPM heat (reduced from 0.3)
-      // Cooling (scaled by front HP — damaged radiator = less cooling)
+      // Heat sources (tuned for aggressive overheating — engines blow up!)
+      if (this._nitroActive) this._engineHeat += 40 * dt;       // nitro heat (aggressive)
+      this._engineHeat += absSpeed * 0.35 * dt;                  // high-RPM heat
+      // Cooling (reduced — harder to keep cool)
       const radiatorEff = fHP;                                   // 1.0 pristine → 0.0 destroyed
-      this._engineHeat -= 12 * radiatorEff * dt;                 // passive radiator cooling (up from 8)
-      this._engineHeat -= absSpeed * 0.18 * dt;                  // air cooling at speed (up from 0.12)
+      this._engineHeat -= 8 * radiatorEff * dt;                  // passive radiator cooling (reduced)
+      this._engineHeat -= absSpeed * 0.10 * dt;                  // air cooling at speed (reduced)
       this._engineHeat = Math.max(0, Math.min(100, this._engineHeat));
 
       // Overheat explosion!
@@ -1126,7 +1122,7 @@ export class Vehicle {
 
   /** Add nitro from external source (slipstream, near-miss). */
   addNitro(amount: number) {
-    this.nitro = Math.min(100, this.nitro + amount);
+    this.nitro = Math.min(150, this.nitro + amount);
   }
 
   /** Whether nitro boost is currently firing. */
@@ -1243,7 +1239,7 @@ export class Vehicle {
     this.driftAngle = 0;
     this._roadPitch = 0;
     this._roadRoll = 0;
-    this.nitro = 100;
+    this.nitro = 150;
     this._nitroActive = false;
     this._engineHeat = 0;
     this._engineDead = false;
