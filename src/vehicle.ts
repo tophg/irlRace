@@ -135,6 +135,29 @@ export class Vehicle {
     this.group.rotation.set(0, 0, 0, 'YXZ');
     // Body group: clear cosmetic pitch, roll, drift yaw
     this._bodyGroup.rotation.set(0, 0, 0);
+
+    // ── Restore body mesh visibility (explosion hides all children) ──
+    // The destruction system (vehicle-destruction.ts line 407-414) sets
+    // child.visible=false for every non-light child and zeros light intensity.
+    // We must reverse both for replays.
+    this._bodyGroup.traverse((child: THREE.Object3D) => {
+      if (child === this._bodyGroup) return; // skip root
+      if ((child as any).isLight) {
+        // Restore spotlight intensity (headlights default to ~5)
+        if ((child as any).isSpotLight) {
+          (child as any).intensity = 5;
+        }
+      } else {
+        child.visible = true;
+      }
+    });
+
+    // Reset destruction state
+    this._destroyed = false;
+    this._engineDead = false;
+    this._engineHeat = 0;
+    this._engineJustExploded = false;
+
     // Procedural wheel containers: force invisible recursively.
     // These containers (torus/hub/spoke) exist for physics positioning only.
     // The visible wheels are part of the GLB model inside _bodyGroup.
