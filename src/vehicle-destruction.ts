@@ -32,7 +32,13 @@ const _fragPool: DestructionFragment[] = [];  // pre-allocated, reused each expl
 const _poolMeshes: THREE.Mesh[] = [];         // pre-created mesh shells (stay in scene)
 let _poolReady = false;
 let _poolPreWarmed = false; // true if pool meshes already have real fragment geometry
-const _dummyGeo = new THREE.BufferGeometry(); // placeholder for idle pool meshes
+// Placeholder geometry with valid attributes — prevents Three.js 'position not found'
+// errors during shader builds. Empty BufferGeometry with NO attributes causes
+// cascading shader build failures in the WebGPU node material system.
+const _dummyGeo = new THREE.BufferGeometry();
+_dummyGeo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0], 3));
+_dummyGeo.setAttribute('normal', new THREE.Float32BufferAttribute([0, 1, 0], 3));
+_dummyGeo.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0], 2));
 const _lastEmissive = new Float32Array(FRAG_POOL_SIZE + WHEEL_POOL_SIZE); // cached emissive per fragment (Fix E)
 
 // ── Pre-allocated explosion assets (created once, recycled across explosions) ──
@@ -199,13 +205,12 @@ export function warmupFragmentMaterials(
 
   renderer.compile(scene, camera);
 
-  // Hide pool meshes after compile. The light count is stable (explosion
-  // PointLight is already visible at 0 intensity), so when pool meshes
-  // become visible at explosion time, WebGPU won't need to recompile
-  // shaders — the light configuration hasn't changed.
-  for (let i = 0; i < count; i++) {
-    _poolMeshes[i].visible = false;
-  }
+  // DO NOT hide pool meshes. They must stay visible at y=-100.
+  // renderer.compile() only builds node trees for the BASE renderer,
+  // but the actual game renders through the postFX pipeline (created
+  // AFTER warmup in race-lifecycle.ts). Pool meshes need to be visible
+  // when the postFX pipeline first renders so it compiles their shaders
+  // during loading frames — not at explosion time (1.8s stall).
   _poolPreWarmed = true;
 }
 
