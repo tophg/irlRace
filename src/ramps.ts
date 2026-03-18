@@ -249,7 +249,7 @@ const RAMP_ARCHETYPES: Record<RampType, RampArchetype> = {
   // Standard — yellow chevrons, medium size
   standard: {
     lengthRange: [18, 28],
-    heightRange: [3, 5],
+    heightRange: [1.5, 3],
     flatTopRange: [0.08, 0.12],
     side: 'full',
     meshColor: 0x666670,
@@ -271,7 +271,7 @@ const RAMP_ARCHETYPES: Record<RampType, RampArchetype> = {
   // Half-ramp — one side only, asymmetric launch
   half_ramp: {
     lengthRange: [14, 22],
-    heightRange: [3, 5.5],
+    heightRange: [1.5, 3],
     flatTopRange: [0.08, 0.12],
     side: 'random', // randomly left or right
     meshColor: 0x5566aa,
@@ -282,7 +282,7 @@ const RAMP_ARCHETYPES: Record<RampType, RampArchetype> = {
   // Mega — tall and long, maximum air
   mega: {
     lengthRange: [25, 35],
-    heightRange: [5.5, 8],
+    heightRange: [3, 4.5],
     flatTopRange: [0.10, 0.15],
     side: 'full',
     meshColor: 0x885533,
@@ -293,7 +293,7 @@ const RAMP_ARCHETYPES: Record<RampType, RampArchetype> = {
   // Kicker — short and steep, quick vertical lift
   kicker: {
     lengthRange: [8, 14],
-    heightRange: [3.5, 6],
+    heightRange: [2, 3.5],
     flatTopRange: [0.03, 0.06],
     side: 'full',
     meshColor: 0x558855,

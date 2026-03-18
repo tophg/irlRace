@@ -804,7 +804,7 @@ export class Vehicle {
     let usedRaycast = false;
 
     // ── Airborne physics constants ──
-    const GRAVITY = 15;            // m/s² (~1.5g for arcade feel)
+    const GRAVITY = 20;            // m/s² (~2g for arcade feel, snappy landings)
     const LAUNCH_VEL_THRESHOLD = 0.5; // min velY to trigger airborne
     const LAUNCH_GAP_THRESHOLD = 0.08; // min gap above road to trigger airborne
     const MAX_AIR_TIME = 5.0;      // safety: force-land after 5s
@@ -872,7 +872,7 @@ export class Vehicle {
             this._airborne = true;
             this._airTime = 0;
             this._airPitch = 0;
-            this._velY = Math.max(prevVelY, 0) + roadDrop * 0.6 + 3; // guaranteed minimum launch + proportional boost
+            this._velY = Math.max(prevVelY * 0.8, roadDrop * 0.3); // proportional to climbing speed
             this._prevRoadY = roadY;
           } else {
             // Normal grounded: smooth Y tracking
