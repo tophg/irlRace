@@ -69,9 +69,11 @@ function setupTouchControls() {
   container.innerHTML = `
     <div class="touch-steer" id="touch-steer-zone"></div>
     <div class="touch-pedals">
-      <div class="touch-gas" id="touch-gas">GAS</div>
       <div class="touch-brake" id="touch-brake">BRAKE</div>
-      <div class="touch-boost" id="touch-boost">BOOST</div>
+      <div class="touch-gas" id="touch-gas">
+        <span class="gas-label">GAS</span>
+        <span class="gas-nitro-hint">⇧ NITRO</span>
+      </div>
     </div>
   `;
   document.body.appendChild(container);
@@ -167,29 +169,102 @@ function setupTouchControls() {
     steerZoneEl.addEventListener('touchcancel', endSteer);
   }
 
-  // ── Pedal buttons (right side) ──
-  const bindBtn = (id: string, key: 'up' | 'down' | 'boost') => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('touchstart', (e) => {
+  // ── Brake button (simple press) ──
+  const brakeEl = document.getElementById('touch-brake');
+  if (brakeEl) {
+    brakeEl.addEventListener('touchstart', (e) => {
       e.preventDefault();
-      state[key] = true;
-      el.classList.add('pressed');
+      state.down = true;
+      brakeEl.classList.add('pressed');
       haptic(15);
     }, { passive: false });
-    el.addEventListener('touchend', () => {
-      state[key] = false;
-      el.classList.remove('pressed');
+    brakeEl.addEventListener('touchend', () => {
+      state.down = false;
+      brakeEl.classList.remove('pressed');
     });
-    el.addEventListener('touchcancel', () => {
-      state[key] = false;
-      el.classList.remove('pressed');
+    brakeEl.addEventListener('touchcancel', () => {
+      state.down = false;
+      brakeEl.classList.remove('pressed');
     });
-  };
+  }
 
-  bindBtn('touch-gas', 'up');
-  bindBtn('touch-brake', 'down');
-  bindBtn('touch-boost', 'boost');
+  // ── GAS button with swipe-up boost & double-tap toggle ──
+  const gasEl = document.getElementById('touch-gas');
+  if (gasEl) {
+    let gasTouchId: number | null = null;
+    let gasTouchStartY = 0;
+    let boostFromSwipe = false;
+    let lastGasTapTime = 0;
+    const SWIPE_THRESHOLD = 30; // px upward to activate boost
+    const DOUBLE_TAP_MS = 300;
+    let boostToggled = false; // double-tap toggle state
+
+    gasEl.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      const touch = e.changedTouches[0];
+      gasTouchId = touch.identifier;
+      gasTouchStartY = touch.clientY;
+      state.up = true;
+      gasEl.classList.add('pressed');
+      haptic(10);
+
+      // Double-tap detection
+      const now = performance.now();
+      if (now - lastGasTapTime < DOUBLE_TAP_MS) {
+        boostToggled = !boostToggled;
+        state.boost = boostToggled;
+        if (boostToggled) {
+          gasEl.classList.add('boost-active');
+          haptic([15, 30, 15]);
+        } else {
+          gasEl.classList.remove('boost-active');
+          haptic(10);
+        }
+      }
+      lastGasTapTime = now;
+    }, { passive: false });
+
+    gasEl.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const touch = e.changedTouches[i];
+        if (touch.identifier === gasTouchId) {
+          const dy = gasTouchStartY - touch.clientY; // positive = swiped up
+
+          if (dy >= SWIPE_THRESHOLD && !boostFromSwipe) {
+            // Swipe up → activate boost
+            boostFromSwipe = true;
+            boostToggled = false; // cancel any double-tap toggle
+            state.boost = true;
+            gasEl.classList.add('boost-active');
+            haptic([15, 30, 15]); // triple-pulse for boost
+          } else if (dy < SWIPE_THRESHOLD * 0.5 && boostFromSwipe) {
+            // Swiped back down → deactivate swipe boost
+            boostFromSwipe = false;
+            state.boost = false;
+            gasEl.classList.remove('boost-active');
+          }
+          break;
+        }
+      }
+    }, { passive: false });
+
+    const endGas = (e: TouchEvent) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === gasTouchId) {
+          gasTouchId = null;
+          state.up = false;
+          state.boost = false;
+          boostFromSwipe = false;
+          boostToggled = false;
+          gasEl.classList.remove('pressed', 'boost-active');
+          break;
+        }
+      }
+    };
+    gasEl.addEventListener('touchend', endGas);
+    gasEl.addEventListener('touchcancel', endGas);
+  }
 }
 
 

@@ -600,7 +600,7 @@ canvas { display: block; }
 }
 @media (max-height: 500px) and (orientation: landscape) {
   .touch-controls { height: min(35vh, 180px); }
-  .touch-pedals { width: min(18vw, 120px); gap: 4px; padding: 6px; }
+  .touch-pedals { width: min(30vw, 180px); gap: 4px; padding: 6px; }
 }
 .touch-steer {
   flex: 1;
@@ -652,25 +652,73 @@ canvas { display: block; }
   box-shadow: 0 0 12px rgba(255, 77, 0, 0.3);
 }
 .touch-pedals {
-  width: min(22vw, 160px);
-  display: flex; flex-direction: column; gap: 8px;
+  width: min(35vw, 220px);
+  display: flex; flex-direction: row; gap: 8px;
   padding: 12px;
 }
-.touch-gas, .touch-brake, .touch-boost {
+.touch-gas, .touch-brake {
   flex: 1;
   border-radius: var(--radius);
-  display: flex; align-items: center; justify-content: center;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
   font-family: var(--font-display);
   font-size: clamp(12px, 2.5vw, 18px);
   letter-spacing: 2px;
-  transition: transform 0.08s, box-shadow 0.08s, background 0.08s;
+  transition: transform 0.08s, box-shadow 0.08s, background 0.08s, border-color 0.2s;
+  touch-action: none;
+  position: relative;
 }
-.touch-gas { background: rgba(57,255,20,0.15); border: 2px solid rgba(57,255,20,0.3); color: var(--col-green); }
-.touch-brake { background: rgba(255,23,68,0.15); border: 2px solid rgba(255,23,68,0.3); color: var(--col-red); }
-.touch-boost { background: rgba(0,229,255,0.15); border: 2px solid rgba(0,229,255,0.3); color: var(--col-cyan); }
-.touch-gas:active, .touch-gas.pressed { background: rgba(57,255,20,0.35); transform: scale(1.06); box-shadow: 0 0 12px rgba(57,255,20,0.4); }
-.touch-brake:active, .touch-brake.pressed { background: rgba(255,23,68,0.35); transform: scale(1.06); box-shadow: 0 0 12px rgba(255,23,68,0.4); }
-.touch-boost:active, .touch-boost.pressed { background: rgba(0,229,255,0.35); transform: scale(1.06); box-shadow: 0 0 12px rgba(0,229,255,0.4); }
+.touch-gas {
+  flex: 1.5;
+  background: rgba(57,255,20,0.15);
+  border: 2px solid rgba(57,255,20,0.3);
+  color: var(--col-green);
+}
+.touch-brake {
+  background: rgba(255,23,68,0.15);
+  border: 2px solid rgba(255,23,68,0.3);
+  color: var(--col-red);
+}
+.touch-gas:active, .touch-gas.pressed {
+  background: rgba(57,255,20,0.35);
+  transform: scale(1.04);
+  box-shadow: 0 0 12px rgba(57,255,20,0.4);
+}
+.touch-brake:active, .touch-brake.pressed {
+  background: rgba(255,23,68,0.35);
+  transform: scale(1.04);
+  box-shadow: 0 0 12px rgba(255,23,68,0.4);
+}
+/* Boost-active state: GAS turns cyan */
+.touch-gas.boost-active {
+  background: rgba(0,229,255,0.3);
+  border-color: rgba(0,229,255,0.6);
+  color: var(--col-cyan);
+  box-shadow: 0 0 18px rgba(0,229,255,0.5), inset 0 0 8px rgba(0,229,255,0.15);
+  transform: scale(1.06);
+  animation: boost-pulse 0.4s infinite alternate;
+}
+@keyframes boost-pulse {
+  from { box-shadow: 0 0 18px rgba(0,229,255,0.5), inset 0 0 8px rgba(0,229,255,0.15); }
+  to { box-shadow: 0 0 28px rgba(0,229,255,0.7), inset 0 0 14px rgba(0,229,255,0.25); }
+}
+/* GAS sub-elements */
+.gas-label { pointer-events: none; }
+.gas-nitro-hint {
+  font-size: clamp(8px, 1.8vw, 11px);
+  color: rgba(0,229,255,0.4);
+  letter-spacing: 1px;
+  margin-top: 2px;
+  pointer-events: none;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+.touch-gas.boost-active .gas-label { display: none; }
+.touch-gas.boost-active .gas-nitro-hint {
+  font-size: clamp(11px, 2.2vw, 15px);
+  color: var(--col-cyan);
+  opacity: 1;
+}
 
 /* ── Damage Indicator ── */
 .hud-damage {
@@ -1302,7 +1350,7 @@ canvas { display: block; }
     padding-left: var(--safe-left);
     padding-right: var(--safe-right);
   }
-  .touch-pedals { width: min(22vw, 160px); }
+  .touch-pedals { width: min(32vw, 200px); }
   /* Replay toolbar */
   #replay-hud { padding-bottom: calc(20px + var(--safe-bottom)) !important; }
   .replay-ctrl { min-width: 44px; min-height: 44px; }
@@ -1321,10 +1369,9 @@ canvas { display: block; }
   .hud-minimap { display: none; }
   .hud-nitro, .hud-heat { display: none; }
   .hud-damage { transform: scale(0.6); }
-  .touch-pedals { width: min(24vw, 100px); gap: 3px; padding: 6px; }
+  .touch-pedals { width: min(28vw, 140px); gap: 3px; padding: 6px; }
   .touch-pedals .touch-gas,
-  .touch-pedals .touch-brake,
-  .touch-pedals .touch-boost { font-size: clamp(10px, 2.5vw, 14px); }
+  .touch-pedals .touch-brake { font-size: clamp(10px, 2.5vw, 14px); }
 }
 
 /* ── S: 376–430px (iPhone 14/15, most Androids) ── */
@@ -1340,7 +1387,7 @@ canvas { display: block; }
 /* ── Landscape mobile ── */
 @media (pointer: coarse) and (max-height: 500px) and (orientation: landscape) {
   .touch-controls { height: min(35dvh, 180px); }
-  .touch-pedals { width: min(18vw, 120px); gap: 4px; padding: 6px; }
+  .touch-pedals { width: min(28vw, 170px); gap: 4px; padding: 6px; }
   .hud-speedo-canvas {
     bottom: calc(min(35dvh, 180px) + 4px + var(--safe-bottom));
     width: clamp(80px, 18vw, 110px);
