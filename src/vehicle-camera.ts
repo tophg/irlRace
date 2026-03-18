@@ -405,6 +405,9 @@ export class VehicleCamera {
 
     if (rawProgress >= 1) {
       this.flyoverComplete = true;
+      this.initialized = false; // force chase cam to snap to correct position
+      this.camera.fov = FOV_MIN;
+      this.camera.updateProjectionMatrix();
       return true;
     }
     return false;
@@ -419,6 +422,9 @@ export class VehicleCamera {
   skipFlyover() {
     this.flyoverComplete = true;
     this.mode = 'chase';
+    this.initialized = false; // force chase cam to snap to correct position
+    this.camera.fov = FOV_MIN;
+    this.camera.updateProjectionMatrix();
   }
 
   /** Reset for new race. */
