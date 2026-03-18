@@ -324,7 +324,9 @@ async function startRace() {
   G.raceStarting = true;
 
   try {
-    // State stays at TITLE during loading — prevents physics from running on incomplete track
+    // Immediately stop garage rendering and show loading overlay
+    G.gameState = GameState.TITLE; // prevents game loop from rendering empty garage
+    renderer.clearColor();
     showLoading();
 
     clearRaceObjects();
