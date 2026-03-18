@@ -308,7 +308,8 @@ export async function startRace() {
 
     clearRaceObjects();
     G.physicsAccumulator = 0;
-    G._drsFrameTimes.length = 0;
+    G._drsFrameTimes = new Array(30).fill(0);
+    G._drsWriteIdx = 0;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
 

@@ -196,10 +196,20 @@ function stopReplay() {
 // MAIN GAME LOOP
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+let _drsPendingPR = 0; // >0 means a DRS resize is pending
+
 function gameLoop(timestamp: number) {
   requestAnimationFrame(gameLoop);
 
   const { renderer, scene, camera, uiOverlay } = _deps;
+
+  // Apply pending DRS resize BEFORE any rendering to prevent
+  // framebuffer invalidation mid-render (which causes black frames on WebGPU).
+  if (_drsPendingPR > 0) {
+    renderer.setPixelRatio(_drsPendingPR);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    _drsPendingPR = 0;
+  }
 
   const frameDt = Math.min((timestamp - G.lastTime) / 1000, MAX_FRAME_DT);
   G.lastTime = timestamp;
@@ -990,8 +1000,9 @@ function gameLoop(timestamp: number) {
 
     // DRS (Dynamic Resolution Scaling)
     // Evaluate every 30 frames: average frame time → adjust pixel ratio.
-    // Resize is deferred to next rAF to avoid invalidating the framebuffer
-    // mid-render (which causes blank/black frames on WebGPU).
+    // Resize is applied at the START of the next game loop iteration (see below)
+    // to avoid invalidating the framebuffer mid-render (which causes blank/black
+    // frames on WebGPU).
     G._drsFrameTimes[G._drsWriteIdx % 30] = frameDt;
     G._drsWriteIdx++;
     if (G._drsWriteIdx >= 30) {
@@ -999,22 +1010,22 @@ function gameLoop(timestamp: number) {
       let sum = 0;
       for (let drsI = 0; drsI < 30; drsI++) sum += G._drsFrameTimes[drsI];
       const avgDt = sum / 30;
-      const avgFps = 1 / avgDt;
-      const currentPR = renderer.getPixelRatio();
-      const basePR = Math.min(window.devicePixelRatio, 2);
-      let newPR = currentPR;
-      if (avgFps < 45 && currentPR > 0.5) {
-        newPR = Math.max(currentPR - 0.15, 0.5);
-      } else if (avgFps > 56 && currentPR < basePR) {
-        newPR = Math.min(currentPR + 0.05, basePR);
-      }
-      if (newPR !== currentPR) {
-        // Defer resize to next frame to prevent framebuffer invalidation mid-render
-        const w = window.innerWidth, h = window.innerHeight;
-        requestAnimationFrame(() => {
-          renderer.setPixelRatio(newPR);
-          renderer.setSize(w, h);
-        });
+      // Guard against NaN/Infinity from corrupted frame times
+      if (!isFinite(avgDt) || avgDt <= 0) {
+        // Skip this DRS evaluation — bad data
+      } else {
+        const avgFps = 1 / avgDt;
+        const currentPR = renderer.getPixelRatio();
+        const basePR = Math.min(window.devicePixelRatio, 2);
+        let newPR = currentPR;
+        if (avgFps < 45 && currentPR > 0.5) {
+          newPR = Math.max(currentPR - 0.15, 0.5);
+        } else if (avgFps > 56 && currentPR < basePR) {
+          newPR = Math.min(currentPR + 0.05, basePR);
+        }
+        if (newPR !== currentPR) {
+          _drsPendingPR = newPR;
+        }
       }
     }
 
