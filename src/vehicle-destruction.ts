@@ -31,6 +31,7 @@ const TOTAL_POOL = FRAG_POOL_SIZE + WHEEL_POOL_SIZE;
 const _fragPool: DestructionFragment[] = [];  // pre-allocated, reused each explosion
 const _poolMeshes: THREE.Mesh[] = [];         // pre-created mesh shells (stay in scene)
 let _poolReady = false;
+let _poolPreWarmed = false; // true if pool meshes already have real fragment geometry
 const _dummyGeo = new THREE.BufferGeometry(); // placeholder for idle pool meshes
 const _lastEmissive = new Float32Array(FRAG_POOL_SIZE + WHEEL_POOL_SIZE); // cached emissive per fragment (Fix E)
 
@@ -162,7 +163,9 @@ export function warmupFragmentMaterials(
 ) {
   if (!_poolReady || fragments.length === 0) return;
   const count = Math.min(fragments.length, FRAG_POOL_SIZE);
-  // Temporarily assign real materials to pool meshes and compile
+  // Assign real fragment geometry+material to pool meshes PERMANENTLY.
+  // This ensures the WebGPU pipeline compiled here matches exactly what's used
+  // at explosion time — preventing synchronous pipeline recompilation (2s+ stall).
   for (let i = 0; i < count; i++) {
     _poolMeshes[i].geometry = fragments[i].mesh.geometry;
     _poolMeshes[i].material = fragments[i].mesh.material;
@@ -171,12 +174,14 @@ export function warmupFragmentMaterials(
     _poolMeshes[i].frustumCulled = false;
   }
   renderer.compile(scene, camera);
-  // Reset pool back to idle state
+  // Keep fragment geometry+material on pool meshes (hidden off-screen).
+  // Do NOT revert to _dummyGeo — that would change the attribute layout and
+  // invalidate the compiled WebGPU pipeline, forcing recompilation at explosion.
   for (let i = 0; i < count; i++) {
-    _poolMeshes[i].geometry = _dummyGeo;
     _poolMeshes[i].visible = false;
-    _poolMeshes[i].position.set(0, 0, 0);
+    // Keep position off-screen until explosion activates them
   }
+  _poolPreWarmed = true;
 }
 
 /**
@@ -218,9 +223,13 @@ export function triggerVehicleDestruction(
       const frag = _fragPool[i];
       const mesh = _poolMeshes[i];
 
-      // Swap geometry + material (shared references, no clone)
-      mesh.geometry = src.mesh.geometry;
-      mesh.material = src.mesh.material;
+      // Only swap geometry+material if pool wasn't pre-warmed with real fragments.
+      // When pre-warmed, pool meshes already have the correct geometry+material,
+      // so skip reassignment to avoid WebGPU pipeline recompilation.
+      if (!_poolPreWarmed) {
+        mesh.geometry = src.mesh.geometry;
+        mesh.material = src.mesh.material;
+      }
       mesh.position.copy(_center);
       mesh.quaternion.copy(_worldQuat);
       mesh.scale.setScalar(1);
