@@ -201,16 +201,16 @@ export async function initScene(container: HTMLElement) {
   // Operates in the XZ plane of the undisplaced geometry (before rotation)
   const gx = positionLocal.x;
   const gz = positionLocal.y; // PlaneGeometry lies in XY, rotated to XZ
-  const hill1 = sin(mul(gx, 0.008)).mul(cos(mul(gz, 0.012))).mul(8.0);
-  const hill2 = sin(mul(gx, 0.022).add(3.7)).mul(sin(mul(gz, 0.018).add(1.2))).mul(3.0);
-  const hill3 = cos(mul(gx, 0.045).add(7.1)).mul(sin(mul(gz, 0.035).add(5.3))).mul(1.5);
+  const hill1 = sin(mul(gx, 0.008)).mul(cos(mul(gz, 0.012))).mul(2.0);
+  const hill2 = sin(mul(gx, 0.022).add(3.7)).mul(sin(mul(gz, 0.018).add(1.2))).mul(1.0);
+  const hill3 = cos(mul(gx, 0.045).add(7.1)).mul(sin(mul(gz, 0.035).add(5.3))).mul(0.5);
   const terrain = add(add(hill1, hill2), hill3);
   // Displace along Z (which becomes Y after -90° X rotation)
   groundMat.positionNode = add(positionLocal, vec3(0, 0, terrain));
 
   groundMesh = new THREE.Mesh(groundGeo, groundMat);
   groundMesh.rotation.x = -Math.PI / 2;
-  groundMesh.position.y = -30;
+  groundMesh.position.y = -5;
   groundMesh.receiveShadow = true;
   scene.add(groundMesh);
 
