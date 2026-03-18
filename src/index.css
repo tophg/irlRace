@@ -917,7 +917,10 @@ canvas { display: block; }
   position: absolute; inset: 0;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  background: rgb(10,10,15);
+  background:
+    linear-gradient(180deg, rgba(10,10,15,0.1) 0%, rgba(10,10,15,0.3) 60%, rgba(10,10,15,0.7) 100%),
+    url('/title-bg.jpg') center/cover no-repeat;
+  background-color: rgb(10,10,15);
   z-index: 95;
 }
 .loading-text {
