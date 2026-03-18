@@ -84,18 +84,42 @@ export class RaceEngine {
     // Update fractional trackT for sub-checkpoint positioning
     if (rawT !== undefined) {
       racer.trackT = this.computeFractionalT(rawT, racer.checkpointIndex);
-      racer.prevT = rawT;
     }
 
     // Grace period: skip checkpoint detection for first 1.5s to prevent instant triggers
-    if (now < this.graceMs) return null;
+    if (now < this.graceMs) {
+      if (rawT !== undefined) racer.prevT = rawT;
+      return null;
+    }
 
-    // ── Checkpoint proximity detection ──
+    // ── Checkpoint detection ──
     const nextCP = this.checkpoints[racer.checkpointIndex];
     if (!nextCP) return null;
 
+    // Method 1: Proximity check (original)
     const dist = worldPos.distanceTo(nextCP.position);
-    if (dist > this.cpThreshold) return null;
+    let triggered = dist <= this.cpThreshold;
+
+    // Method 2: Spline-t crossing check (catches high-speed skip-past)
+    // If the racer's rawT crossed over the checkpoint's t between frames, trigger it
+    if (!triggered && rawT !== undefined && racer.prevT !== undefined) {
+      const cpT = nextCP.t;
+      const prevT = racer.prevT;
+      const currT = rawT;
+
+      // Normal forward crossing (prevT < cpT <= currT)
+      if (prevT < cpT && currT >= cpT) {
+        triggered = true;
+      }
+      // Wrap-around crossing for checkpoint 0 at t≈0 (prevT near 1.0, currT near 0.0)
+      else if (cpT < 0.05 && prevT > 0.9 && currT < 0.1) {
+        triggered = true;
+      }
+    }
+
+    if (rawT !== undefined) racer.prevT = rawT;
+
+    if (!triggered) return null;
 
     // Directional check: racer must be moving forward through checkpoint
     if (heading !== undefined) {

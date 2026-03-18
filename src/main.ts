@@ -13,7 +13,7 @@ import { VehicleCamera } from './vehicle-camera';
 import { RaceEngine } from './race-engine';
 import { createHUD, updateHUD, updateMinimap, updateDamageHUD, updateGapHUD, updateNitroHUD, updateHeatHUD, showHUD, destroyHUD, showLapOverlay } from './hud';
 import { runCountdown } from './countdown';
-import { initAudio, updateEngineAudio, playCheckpointSFX, playLapFanfare, playDriftSFX, playCollisionSFX, playPositionSFX, stopAudio, playNitroActivate, startNitroBurn, stopNitroBurn, updateNitroBurnIntensity, updateDepletionWarning, stopDepletionWarning, playNitroRelease } from './audio';
+import { initAudio, updateEngineAudio, playCheckpointSFX, playLapFanfare, playFinishFanfare, playDriftSFX, playCollisionSFX, playPositionSFX, stopAudio, playNitroActivate, startNitroBurn, stopNitroBurn, updateNitroBurnIntensity, updateDepletionWarning, stopDepletionWarning, playNitroRelease } from './audio';
 import { AIRacer, OpponentInfo } from './ai-racer';
 import { initGarage, updateGarage, destroyGarage } from './garage';
 import { NetPeer } from './net-peer';
@@ -2222,6 +2222,7 @@ function gameLoop(timestamp: number) {
           isBest: bestLap !== null && lastLapTime <= bestLap,
         });
       } else if (event === 'finish') {
+        playFinishFanfare();
         const finishTime = G.raceEngine.getProgress('local')?.finishTime ?? 0;
         bus.emit('finish', { racerId: 'local', finishTime });
       }

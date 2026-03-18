@@ -250,21 +250,36 @@ function playExhaustCrackle() {
   src.start();
 }
 
-/** Play a checkpoint chirp. */
+/** Play a checkpoint chirp with sub-bass thump. */
 export function playCheckpointSFX() {
   if (!audioCtx || !masterGain) return;
   const sv = getSettings().sfxVolume;
+  const now = audioCtx.currentTime;
+
+  // High chirp (ascending sine)
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(1800, audioCtx.currentTime + 0.1);
-  gain.gain.setValueAtTime(0.15 * sv, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+  osc.frequency.setValueAtTime(1200, now);
+  osc.frequency.exponentialRampToValueAtTime(1800, now + 0.1);
+  gain.gain.setValueAtTime(0.15 * sv, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
   osc.connect(gain);
   gain.connect(masterGain);
   osc.start();
-  osc.stop(audioCtx.currentTime + 0.15);
+  osc.stop(now + 0.15);
+
+  // Sub-bass thump (80Hz sine, 120ms)
+  const bass = audioCtx.createOscillator();
+  const bassGain = audioCtx.createGain();
+  bass.type = 'sine';
+  bass.frequency.value = 80;
+  bassGain.gain.setValueAtTime(0.2 * sv, now);
+  bassGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+  bass.connect(bassGain);
+  bassGain.connect(masterGain);
+  bass.start();
+  bass.stop(now + 0.12);
 }
 
 /** Play a lap completion fanfare. */
@@ -285,6 +300,48 @@ export function playLapFanfare() {
     gain.connect(dest);
     osc.start(audioCtx!.currentTime + i * 0.08);
     osc.stop(audioCtx!.currentTime + i * 0.08 + 0.4);
+  });
+}
+
+/** Play a race finish fanfare — triumphant ascending arpeggio + sustained chord. */
+export function playFinishFanfare() {
+  if (!audioCtx || !masterGain) return;
+  const sv = getSettings().sfxVolume;
+  const dest = masterGain;
+  const now = audioCtx.currentTime;
+
+  // Ascending arpeggio: C5→E5→G5→C6
+  const notes = [523, 659, 784, 1047];
+  notes.forEach((freq, i) => {
+    const osc = audioCtx!.createOscillator();
+    const gain = audioCtx!.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    const start = now + i * 0.1;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.15 * sv, start + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.6);
+    osc.connect(gain);
+    gain.connect(dest);
+    osc.start(start);
+    osc.stop(start + 0.6);
+  });
+
+  // Sustained major chord after arpeggio (C5+E5+G5, sine, 1s)
+  const chordNotes = [523, 659, 784];
+  chordNotes.forEach((freq) => {
+    const osc = audioCtx!.createOscillator();
+    const gain = audioCtx!.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const start = now + 0.4;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.08 * sv, start + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 1.2);
+    osc.connect(gain);
+    gain.connect(dest);
+    osc.start(start);
+    osc.stop(start + 1.2);
   });
 }
 

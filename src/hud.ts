@@ -29,6 +29,7 @@ let hudWrapperEl: HTMLElement | null = null;
 let cachedMinimapPoints: THREE.Vector3[] | null = null;
 let cachedMinimapSpline: THREE.CatmullRomCurve3 | null = null;
 let cachedMinX = 0, cachedMaxX = 0, cachedMinZ = 0, cachedMaxZ = 0;
+let _smoothMph = 0;
 
 export function createHUD(overlay: HTMLElement): HTMLElement {
   hudWrapperEl = document.createElement('div');
@@ -55,8 +56,10 @@ export function updateHUD(
 ) {
   if (!disposeSolid) return;
 
-  const mph = Math.floor(Math.abs(speed) * 2.5);
-  setSpeedMPH(mph);
+  // Smooth the speedometer (lerp toward actual speed for analog feel)
+  const rawMph = Math.abs(speed) * 2.5;
+  _smoothMph += (rawMph - _smoothMph) * 0.15;
+  setSpeedMPH(Math.floor(_smoothMph));
 
   setLapInfo({ current: Math.min(lapIndex + 1, totalLaps), total: totalLaps });
 

@@ -1144,12 +1144,13 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
       map: adTex,
       emissive: new THREE.Color(`hsl(${hue}, 60%, 20%)`),
       emissiveIntensity: 0.3,
-      side: THREE.DoubleSide,
     });
 
     const board = new THREE.Mesh(adGeo.clone(), adMat);
     board.position.set(x, p.y + 2.5, z);
-    board.lookAt(p);
+    // Face approaching drivers: orient to road tangent direction
+    const facing = p.clone().add(tangent.clone().multiplyScalar(-10));
+    board.lookAt(facing);
     group.add(board);
   }
 
