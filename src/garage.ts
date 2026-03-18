@@ -16,7 +16,6 @@ let garageRenderer: THREE.WebGPURenderer;
 let currentIndex = 0;
 let currentModel: THREE.Group | null = null;
 let platform: THREE.Mesh;
-let _rotationAngle = 0;
 let onSelectCallback: ((car: CarDef) => void) | null = null;
 let uiEl: HTMLElement | null = null;
 
@@ -43,7 +42,6 @@ const ORBIT_HEIGHT = 2.8;
 const ORBIT_LOOK_Y = 0.8;
 
 // Swipe navigation
-let _swipeTouchId: number | null = null;
 let swipeStartX = 0;
 const SWIPE_THRESHOLD = 60;
 

@@ -31,7 +31,6 @@ import {
   updateUnderglow,
   triggerBoostShockwave, updateBoostShockwave,
   triggerBoostBurst, triggerBackfireSequence,
-  updateBrakeDiscs,
   updateHeatShimmer,
   updateLensFlares,
   updateLightning,

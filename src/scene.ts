@@ -8,9 +8,9 @@
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import {
-  mix, smoothstep, normalWorld, uniform, vec3, vec4, float,
-  sin, cos, mul, add, sub, fract, dot, abs, max, min, clamp,
-  step, positionLocal, positionWorld,
+  mix, smoothstep, normalWorld, uniform, vec3, float,
+  sin, cos, mul, add, fract, max,
+  step, positionLocal,
 } from 'three/tsl';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
@@ -449,7 +449,7 @@ export async function initScene(container: HTMLElement) {
 
   // ── Ground terrain (TSL NodeMaterial with vertex displacement) ──
   const groundGeo = new THREE.PlaneGeometry(1200, 1200, 128, 128);
-  const groundTex = createGroundTexture();
+  const _groundTex = createGroundTexture();
   const groundMat = new MeshStandardNodeMaterial({
     roughness: 0.85, metalness: 0.05,
   });

@@ -18,10 +18,6 @@ const ORBIT_SPEED = 0.15; // radians/s
 const SPECTATE_FOV = 65;
 
 // Explosion orbit params (tight, dramatic)
-const EXPLOSION_ORBIT_RADIUS = 8;
-const EXPLOSION_ORBIT_HEIGHT = 3.5;
-const EXPLOSION_ORBIT_SPEED = 0.7; // radians/s — fast dramatic rotation
-const EXPLOSION_FOV = 55;
 
 // ── Camera controls ──
 // Scroll = distance, Shift+scroll = tilt, right-click drag = tilt, 2-finger swipe = tilt

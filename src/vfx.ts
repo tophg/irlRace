@@ -9,9 +9,9 @@ import * as THREE from 'three/webgpu';
 
 
 // ── Re-exports from extracted modules ──
-import { initBoostFlame, updateBoostFlame, triggerBoostBurst, triggerBackfireSequence, initNitroTrail, spawnNitroTrail, updateNitroTrail, initBoostShockwave, initNitroFlash, triggerBoostShockwave, updateBoostShockwave, destroyBoostVFX } from './vfx-boost';
+import { destroyBoostVFX } from './vfx-boost';
 export { initBoostFlame, updateBoostFlame, triggerBoostBurst, triggerBackfireSequence, initNitroTrail, spawnNitroTrail, updateNitroTrail, initBoostShockwave, initNitroFlash, triggerBoostShockwave, updateBoostShockwave } from './vfx-boost';
-import { initRainDroplets, updateRainDroplets, initImpactFlash, triggerImpactFlash, updateImpactFlash, initAmbientParticles, updateAmbientParticles, initHeatShimmer, updateHeatShimmer, initLensFlares, updateLensFlares, initLightning, setLightningEnabled, updateLightning, initNearMissStreaks, triggerNearMiss, updateNearMissStreaks, initNearMissWhoosh, triggerNearMissWhoosh, updateNearMissWhoosh, initVictoryConfetti, spawnVictoryConfetti, setConfettiContinuous, updateVictoryConfetti, destroyEnvironmentVFX } from './vfx-environment';
+import { destroyEnvironmentVFX } from './vfx-environment';
 export { initRainDroplets, updateRainDroplets, initImpactFlash, triggerImpactFlash, updateImpactFlash, initAmbientParticles, updateAmbientParticles, initHeatShimmer, updateHeatShimmer, initLensFlares, updateLensFlares, initLightning, setLightningEnabled, updateLightning, initNearMissStreaks, triggerNearMiss, updateNearMissStreaks, initNearMissWhoosh, triggerNearMissWhoosh, updateNearMissWhoosh, initVictoryConfetti, spawnVictoryConfetti, setConfettiContinuous, updateVictoryConfetti } from './vfx-environment';
 export { initRimSparks, spawnRimSparks, updateRimSparks, initBackfire, spawnBackfire, updateBackfire, createBrakeDiscs, updateBrakeDiscs, initShoulderDust, spawnShoulderDust, updateShoulderDust } from './vfx-contact';
 

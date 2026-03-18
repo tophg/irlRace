@@ -807,7 +807,7 @@ export class Vehicle {
     const LAUNCH_VEL_THRESHOLD = 0.5; // min velY to trigger airborne
     const LAUNCH_GAP_THRESHOLD = 0.08; // min gap above road to trigger airborne
     const MAX_AIR_TIME = 5.0;      // safety: force-land after 5s
-    const AIR_STEER_FACTOR = 0.15; // steering multiplier while airborne
+    const _AIR_STEER_FACTOR = 0.15; // steering multiplier while airborne
 
     if (this.roadMesh) {
       const flY = this.castWheelRay(sinH, cosH, -WHEEL_SIDE_X, WHEEL_FRONT_Z);

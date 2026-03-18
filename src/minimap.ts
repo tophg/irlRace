@@ -8,7 +8,7 @@ const MAP_MARGIN = 14;       // px from screen edge
 const TRACK_SAMPLES = 200;   // polyline resolution
 const PLAYER_DOT = 6;        // radius px
 const AI_DOT = 4;
-const DOT_TRAIL_LEN = 3;     // frames of motion trail
+const _DOT_TRAIL_LEN = 3;     // frames of motion trail
 
 // Precomputed track polyline (screen-space)
 let trackPoints: { x: number; y: number }[] = [];

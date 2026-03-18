@@ -1,7 +1,6 @@
 /* ── Hood Racer — Procedural Track Generator (v2 — Convex Hull + Elevation) ── */
 
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Checkpoint, TrackData, RampDef } from './types';
 import { SplineBVH } from './bvh';
 import { buildRampGroup, placeRampsOnStraights } from './ramps';

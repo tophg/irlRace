@@ -32,7 +32,7 @@ interface GhostData {
 // ── Recording State ──
 let recording = false;
 let currentSnapshots: GhostSnapshot[] = [];
-let recordInterval: number | null = null;
+let _recordInterval: number | null = null;
 let lapStartTime = 0;
 
 // ── Playback State ──

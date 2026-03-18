@@ -15,8 +15,8 @@
 
 import * as THREE from 'three/webgpu';
 import {
-  pass, uniform, float, vec2, vec3, vec4,
-  screenUV, length, smoothstep, mix, mul, sub, add, abs, clamp, max,
+  pass, uniform, float, vec2, vec4,
+  screenUV, length, smoothstep, mix, mul, sub, add, clamp, max,
 } from 'three/tsl';
 import { bloom } from 'three/examples/jsm/tsl/display/BloomNode.js';
 
@@ -48,12 +48,12 @@ export function initPostFX(
   const dir = screenUV.sub(center);
   const caStrength = mul(uImpactIntensity, float(0.012)); // max 1.2% RGB split
 
-  const uvR = screenUV.add(mul(dir, caStrength));
-  const uvB = screenUV.sub(mul(dir, caStrength));
+  const _uvR = screenUV.add(mul(dir, caStrength));
+  const _uvB = screenUV.sub(mul(dir, caStrength));
 
   // Sample the combined scene at offset UVs for R and B channels
   const colCenter = combined;
-  const colR = scenePass.add(bloomPass); // same graph, different UV won't work directly
+  const _colR = scenePass.add(bloomPass); // same graph, different UV won't work directly
   // Note: TSL node-based CA requires sampling the texture at offset UVs
   // For a simpler fallback, we'll use a color-shift approximation
   const caShift = mul(dir, caStrength);
@@ -73,10 +73,10 @@ export function initPostFX(
   );
   const distFromCenter = length(dir);
   const blurFade = smoothstep(0.2, 0.8, distFromCenter); // stronger at edges
-  const blurOffset = mul(dir, mul(blurStrength, blurFade));
+  const _blurOffset = mul(dir, mul(blurStrength, blurFade));
 
   // Simple 2-tap blur toward center
-  const blurredColor = mix(combined, combined, float(0.5)); // placeholder — TSL can't easily re-sample
+  const _blurredColor = mix(combined, combined, float(0.5)); // placeholder — TSL can't easily re-sample
   // Instead, apply a darkening vignette that simulates radial blur perception
   const radialDarken = mul(blurFade, max(uBoostIntensity, uImpactIntensity)).mul(float(0.3));
 

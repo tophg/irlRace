@@ -383,7 +383,7 @@ export function updateLensFlares(cameraPos: THREE.Vector3, time: number) {
 let lightningDiv: HTMLDivElement | null = null;
 let lightningIntensity = 0;
 let lightningTimer = 0;
-let lightningInterval = 5; // seconds between flashes
+let _lightningInterval = 5; // seconds between flashes
 let lightningEnabled = false;
 
 export function initLightning(container: HTMLElement) {
