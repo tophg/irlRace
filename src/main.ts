@@ -2390,6 +2390,15 @@ function gameLoop(timestamp: number) {
       const precip = getPrecipMesh();
       if (precip) precip.visible = false;
 
+      // Hide godrays during mirror render (additive cones cause artifacts in scissored viewports)
+      const godrays = scene.getObjectByName('godrays');
+      if (godrays) godrays.visible = false;
+
+      // Fix winding order: X-flip reverses triangle windings, which causes BackSide
+      // sky dome and other materials to be culled incorrectly. Reverse front face.
+      const gl = (renderer as any).getContext?.() as WebGLRenderingContext | undefined;
+      if (gl?.frontFace) gl.frontFace(gl.CW);
+
       // Scissor / Viewport
       const w = 320, h = 120;
       const x = Math.floor(window.innerWidth / 2 - w / 2);
@@ -2412,8 +2421,12 @@ function gameLoop(timestamp: number) {
       renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
       renderer.autoClear = oldAutoClear;
 
-      // Restore weather particles
+      // Restore winding order
+      if (gl?.frontFace) gl.frontFace(gl.CCW);
+
+      // Restore hidden objects
       if (precip) precip.visible = true;
+      if (godrays) godrays.visible = true;
     }
 
     // ── Dynamic Resolution Scaling ──
