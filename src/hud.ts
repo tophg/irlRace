@@ -16,6 +16,7 @@ import {
   setGapInfo,
   setHeatPct,
   setIsEngineDead,
+  setSpeedRatio,
 } from './HUDUI';
 import type { DamageState } from './types';
 import { RaceEngine } from './race-engine';
@@ -56,6 +57,7 @@ export function updateHUD(
   const rawMph = Math.abs(speed) * 2.5;
   _smoothMph += (rawMph - _smoothMph) * 0.15;
   setSpeedMPH(Math.floor(_smoothMph));
+  setSpeedRatio(Math.min(1, _smoothMph / 160));
 
   setLapInfo({ current: Math.min(lapIndex + 1, totalLaps), total: totalLaps });
 

@@ -19,6 +19,7 @@ export const [damageState, setDamageState] = createSignal({
   front: 100, rear: 100, left: 100, right: 100
 });
 export const [gapInfo, setGapInfo] = createSignal({ ahead: '', behind: '' });
+export const [speedRatio, setSpeedRatio] = createSignal(0); // 0-1 ratio of current/max speed
 
 
 
@@ -180,8 +181,27 @@ export const RacingHUD = () => {
     drawSpeedo(speedMPH());
   });
 
+  // ── Speed-dependent HUD opacity (mobile only) ──
+  const isMobile = window.matchMedia('(pointer: coarse)').matches;
+  const hudOpacity = () => {
+    if (!isMobile) return 1;
+    const r = speedRatio();
+    if (r > 0.95) return 0.4;
+    if (r > 0.8) return 0.6;
+    return 1;
+  };
+
+  // ── Context-adaptive visibility ──
+  const showNitro = () => nitroPct() > 0 || isNitroActive();
+  const showHeat = () => heatPct() > 15;
+  const showDamage = () => {
+    const d = damageState();
+    return d.front < 80 || d.rear < 80 || d.left < 80 || d.right < 80;
+  };
+  const showGap = () => gapInfo().ahead !== '' || gapInfo().behind !== '';
+
   return (
-    <div class="hud">
+    <div class="hud" style={{ opacity: hudOpacity(), transition: 'opacity 0.4s ease-in-out' }}>
       <div class="hud-timer" id="hud-timer">{timerText()}</div>
       <canvas class="hud-speedo-canvas" id="hud-speed" ref={speedoCanvas} />
       <div class="hud-lap" id="hud-lap">LAP {lapInfo().current}/{lapInfo().total}</div>
@@ -199,6 +219,7 @@ export const RacingHUD = () => {
 
       <div classList={{ 'hud-boost': true, 'boost-active': isBoostActive() }} id="hud-boost">BOOST</div>
       
+      <Show when={showNitro()}>
       <div classList={{ 'hud-nitro': true, 'nitro-burning': isNitroActive(), 'nitro-depleting': isNitroActive() && nitroPct() < 15 }} id="hud-nitro">
         <div class="hud-nitro-label">{isNitroActive() ? '⚡ NITROUS' : 'NITROUS'}</div>
         <div class="hud-nitro-track">
@@ -229,7 +250,9 @@ export const RacingHUD = () => {
           />
         </div>
       </div>
+      </Show>
 
+      <Show when={showHeat()}>
       <div classList={{ 'hud-heat': true, 'heat-danger': heatPct() > 80, 'heat-dead': isEngineDead() }} id="hud-heat">
         <div class="hud-heat-label">
           {isEngineDead() ? '💀 ENGINE DEAD' : heatPct() > 90 ? '🔥 OVERHEAT!' : 'HEAT'}
@@ -249,9 +272,11 @@ export const RacingHUD = () => {
           />
         </div>
       </div>
+      </Show>
 
 
 
+      <Show when={showDamage()}>
       <div class="hud-damage" id="hud-damage">
         <div class={`dmg-zone dmg-front ${getDamageClass(damageState().front)}`} />
         <div class={`dmg-zone dmg-rear ${getDamageClass(damageState().rear)}`} />
@@ -268,8 +293,11 @@ export const RacingHUD = () => {
           <div class="dmg-warning" style="animation: dmg-flash 0.5s infinite alternate">⚠ HANDLING</div>
         )}
       </div>
+      </Show>
 
+      <Show when={showGap()}>
       <div class="hud-gap" id="hud-gap" innerHTML={`${gapInfo().ahead}<br/>${gapInfo().behind}`} />
+      </Show>
     </div>
   );
 };

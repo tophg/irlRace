@@ -3,6 +3,12 @@
 import { InputState } from './types';
 import { getSettings } from './settings';
 
+/** Fire haptic feedback if enabled and available. */
+export function haptic(pattern: number | number[]) {
+  if (!getSettings().hapticEnabled) return;
+  if (navigator.vibrate) navigator.vibrate(pattern);
+}
+
 const state: InputState = {
   up: false,
   down: false,
@@ -101,7 +107,7 @@ function setupTouchControls() {
       }
 
       // Haptic pulse on touch
-      if (navigator.vibrate) navigator.vibrate(10);
+      haptic(10);
     }, { passive: false });
 
     steerZoneEl.addEventListener('touchmove', (e) => {
@@ -169,7 +175,7 @@ function setupTouchControls() {
       e.preventDefault();
       state[key] = true;
       el.classList.add('pressed');
-      if (navigator.vibrate) navigator.vibrate(15);
+      haptic(15);
     }, { passive: false });
     el.addEventListener('touchend', () => {
       state[key] = false;

@@ -14,6 +14,7 @@ export interface GameSettings {
   touchOpacity: number;    // 0.3–1.0
   touchScale: number;      // 0.6–1.2
   paintHue: number;          // 0–360, -1 = default
+  hapticEnabled: boolean;    // vibration feedback on touch
 }
 
 const STORAGE_KEY = 'hr-settings';
@@ -30,6 +31,7 @@ const DEFAULT_SETTINGS: GameSettings = {
   touchOpacity: 0.8,
   touchScale: 1.0,
   paintHue: -1,
+  hapticEnabled: true,
 };
 
 let current: GameSettings = { ...DEFAULT_SETTINGS };
@@ -175,6 +177,7 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
       touchOpacity: get('set-touch-opacity') / 100,
       touchScale: get('set-touch-scale') / 100,
       paintHue: getSettings().paintHue, // Preserved; paint is set in garage
+      hapticEnabled: getSettings().hapticEnabled, // Preserved; no UI toggle yet
     });
     destroySettings();
     updateMusicVolume();
