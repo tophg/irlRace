@@ -459,7 +459,7 @@ export async function startRace() {
       overflow: hidden;
     `;
     uiOverlay.appendChild(G.mirrorBorder);
-    showTouchControls(true);
+    if (window.matchMedia('(pointer: coarse)').matches) showTouchControls(true);
     initAudio();
 
     renderer.render(scene, camera);
