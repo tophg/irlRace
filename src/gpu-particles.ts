@@ -266,29 +266,37 @@ export function spawnGPUSparks(pos: THREE.Vector3, force: number) {
   // flushToGPU() removed — caller is responsible for batched flush
 }
 
-/** Spawn explosion burst particles (sparks + dark smoke + molten debris). */
+/** Spawn explosion burst — Phase 1: white-hot flash sparks + molten debris + dark smoke. */
 export function spawnGPUExplosion(pos: THREE.Vector3, force: number) {
-  const sparkCount = Math.min(Math.floor(force * 0.8), 25);
+  const sparkCount = Math.min(Math.floor(force * 1.2), 50);
   for (let i = 0; i < sparkCount; i++) {
-    const speed = 5 + Math.random() * 12;
+    const speed = 6 + Math.random() * 15;
     const theta = Math.random() * Math.PI * 2;
     const phi = Math.random() * Math.PI;
     const roll = Math.random();
 
     // Temperature-gradient coloring: white-hot → orange → deep red
-    let r: number, g: number, b: number, size: number;
-    if (roll < 0.3) {
+    let r: number, g: number, b: number, size: number, life: number;
+    if (roll < 0.25) {
       // White-hot core sparks (brightest, fastest)
-      r = 1.0; g = 0.95; b = 0.7;
-      size = 0.3 + Math.random() * 0.2;
-    } else if (roll < 0.7) {
+      r = 1.0; g = 0.97; b = 0.85;
+      size = 0.2 + Math.random() * 0.15;
+      life = 0.2 + Math.random() * 0.25;
+    } else if (roll < 0.6) {
       // Standard orange sparks
-      r = 1.0; g = 0.4 + Math.random() * 0.3; b = 0.1;
-      size = 0.4 + Math.random() * 0.3;
-    } else {
+      r = 1.0; g = 0.4 + Math.random() * 0.3; b = 0.08;
+      size = 0.35 + Math.random() * 0.25;
+      life = 0.3 + Math.random() * 0.35;
+    } else if (roll < 0.85) {
       // Deep red trailing embers (slower, longer-lived)
-      r = 0.8; g = 0.12 + Math.random() * 0.1; b = 0.05;
+      r = 0.85; g = 0.12 + Math.random() * 0.1; b = 0.03;
       size = 0.5 + Math.random() * 0.4;
+      life = 0.5 + Math.random() * 0.4;
+    } else {
+      // Bright yellow-white streaks (fastest)
+      r = 1.0; g = 0.9; b = 0.5;
+      size = 0.15 + Math.random() * 0.1;
+      life = 0.15 + Math.random() * 0.15;
     }
 
     writeParticle(
@@ -297,14 +305,14 @@ export function spawnGPUExplosion(pos: THREE.Vector3, force: number) {
       Math.abs(Math.cos(phi)) * speed * 0.7 + 2,
       Math.sin(phi) * Math.sin(theta) * speed,
       r, g, b, 1.0,
-      0.4 + Math.random() * 0.4,
+      life,
       PType.SPARK,
       size,
     );
   }
 
   // Molten debris chunks (large, slow, dark gray)
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 5; i++) {
     const angle = Math.random() * Math.PI * 2;
     const spd = 2 + Math.random() * 4;
     writeParticle(
@@ -319,8 +327,8 @@ export function spawnGPUExplosion(pos: THREE.Vector3, force: number) {
     );
   }
 
-  // Dark smoke cloud
-  for (let i = 0; i < 6; i++) {
+  // Dark smoke cloud (thicker, more particles)
+  for (let i = 0; i < 10; i++) {
     writeParticle(
       pos.x + (Math.random() - 0.5) * 1.5,
       pos.y + 0.5 + Math.random() * 0.5,
@@ -328,13 +336,96 @@ export function spawnGPUExplosion(pos: THREE.Vector3, force: number) {
       (Math.random() - 0.5) * 3,
       1 + Math.random() * 2,
       (Math.random() - 0.5) * 3,
-      0.13, 0.13, 0.13, 0.5,
-      1.2 + Math.random() * 0.3,
+      0.1, 0.1, 0.1, 0.6,
+      1.5 + Math.random() * 0.5,
       PType.SMOKE,
-      1.5 + Math.random(),
+      1.8 + Math.random() * 1.2,
     );
   }
-  // flushToGPU() removed — caller is responsible for batched flush
+}
+
+/** Spawn fireball wave — Phase 2: orange/yellow expanding fireball particles. */
+export function spawnGPUFireballWave(pos: THREE.Vector3) {
+  for (let i = 0; i < 15; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const speed = 3 + Math.random() * 6;
+    const roll = Math.random();
+    const r = 1.0;
+    const g = roll < 0.5 ? 0.4 + Math.random() * 0.3 : 0.7 + Math.random() * 0.2;
+    const b = roll < 0.3 ? 0.0 : 0.1;
+    writeParticle(
+      pos.x + (Math.random() - 0.5) * 0.8,
+      pos.y + 0.3 + Math.random() * 0.5,
+      pos.z + (Math.random() - 0.5) * 0.8,
+      Math.cos(theta) * speed,
+      1 + Math.random() * 2,
+      Math.sin(theta) * speed,
+      r, g, b, 0.9,
+      0.4 + Math.random() * 0.3,
+      PType.FLAME,
+      0.6 + Math.random() * 0.5,
+    );
+  }
+}
+
+/** Spawn trailing embers — Phase 3: slow, long-lived red-orange embers that rain down. */
+export function spawnGPUEmberRain(pos: THREE.Vector3) {
+  for (let i = 0; i < 12; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const speed = 1 + Math.random() * 3;
+    const isGlowing = Math.random() > 0.4;
+    writeParticle(
+      pos.x + (Math.random() - 0.5) * 3,
+      pos.y + 1 + Math.random() * 3,
+      pos.z + (Math.random() - 0.5) * 3,
+      Math.cos(theta) * speed,
+      Math.random() * 1.5,  // gentle upward, gravity pulls down
+      Math.sin(theta) * speed,
+      isGlowing ? 1.0 : 0.8,
+      isGlowing ? 0.3 + Math.random() * 0.2 : 0.1,
+      0.02, 0.9,
+      2.0 + Math.random() * 1.0,
+      PType.SPARK,
+      isGlowing ? 0.12 + Math.random() * 0.08 : 0.08 + Math.random() * 0.05,
+    );
+  }
+}
+
+/** Spawn secondary micro-explosion — simulates fuel line / electrical fires igniting. */
+export function spawnGPUSecondaryExplosion(pos: THREE.Vector3) {
+  // Small burst of orange sparks
+  for (let i = 0; i < 8; i++) {
+    const speed = 3 + Math.random() * 6;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.random() * Math.PI;
+    writeParticle(
+      pos.x + (Math.random() - 0.5) * 1.5,
+      pos.y + 0.3 + Math.random() * 0.5,
+      pos.z + (Math.random() - 0.5) * 1.5,
+      Math.sin(phi) * Math.cos(theta) * speed,
+      Math.abs(Math.cos(phi)) * speed * 0.5 + 1.5,
+      Math.sin(phi) * Math.sin(theta) * speed,
+      1.0, 0.35 + Math.random() * 0.3, 0.05, 1.0,
+      0.25 + Math.random() * 0.2,
+      PType.SPARK,
+      0.2 + Math.random() * 0.15,
+    );
+  }
+  // Puff of dark smoke
+  for (let i = 0; i < 4; i++) {
+    writeParticle(
+      pos.x + (Math.random() - 0.5) * 1,
+      pos.y + 0.5 + Math.random() * 0.3,
+      pos.z + (Math.random() - 0.5) * 1,
+      (Math.random() - 0.5) * 2,
+      0.5 + Math.random() * 1.5,
+      (Math.random() - 0.5) * 2,
+      0.12, 0.12, 0.12, 0.5,
+      1.0 + Math.random() * 0.3,
+      PType.SMOKE,
+      1.0 + Math.random() * 0.6,
+    );
+  }
 }
 
 /** Spawn outward dust/dirt kick-up wave from explosion concussion. */

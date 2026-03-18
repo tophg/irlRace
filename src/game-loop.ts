@@ -41,7 +41,8 @@ import {
 } from './vfx';
 import {
   updateGPUParticles,
-  spawnGPUExplosion, spawnGPUDamageSmoke, spawnGPUFlame,
+  spawnGPUExplosion, spawnGPUFireballWave, spawnGPUEmberRain,
+  spawnGPUSecondaryExplosion, spawnGPUDamageSmoke, spawnGPUFlame,
   spawnGPUGlassShards, spawnGPUShoulderDust,
   spawnGPUNitroTrail, spawnGPURimSparks, spawnGPUBackfire,
   spawnGPUSlipstream, flushToGPU,
@@ -355,9 +356,11 @@ function gameLoop(timestamp: number) {
       _hoodExplosionPos.x += sinH * 2.2;
       _hoodExplosionPos.z += cosH * 2.2;
 
+      console.time('[EXPLOSION] particle spawn');
       spawnGPUExplosion(_hoodExplosionPos, 40);
       flashDamage(0.9);
-      setImpactIntensity(1.0);
+      setImpactIntensity(1.5); // Stronger initial CA spike
+      console.timeEnd('[EXPLOSION] particle spawn');
 
       const pvx = G.playerVehicle.velX, pvz = G.playerVehicle.velZ;
       const isRacing = G.raceEngine && s === GameState.RACING;
@@ -367,12 +370,20 @@ function gameLoop(timestamp: number) {
       const cachedFrags = G.playerVehicle.cachedFragments;
       const expPos = _hoodExplosionPos.clone();
 
+      // ── Phase 2 (frame +1): Fireball wave + vehicle destruction ──
       requestAnimationFrame(() => {
+        console.time('[EXPLOSION] fireball+destruction');
+        spawnGPUFireballWave(expPos);
         if (isRacing) {
           triggerVehicleDestruction(bodyRef, vGroup, getScene(), pvx, pvz, wheelRefs, cachedFrags);
           if (G.playerVehicle) G.playerVehicle.destroyed = true;
         }
+        console.timeEnd('[EXPLOSION] fireball+destruction');
+
+        // ── Phase 3 (frame +2): Cinematic + ember rain + glass ──
         requestAnimationFrame(() => {
+          spawnGPUEmberRain(expPos);
+          spawnGPUGlassShards(expPos);
           if (isRacing) {
             showExplosionFlash();
             showLetterbox();
@@ -384,14 +395,17 @@ function gameLoop(timestamp: number) {
             setTimeout(() => { hideLetterbox(); setExplosionMode(false); }, 3500);
             setTimeout(() => _deps.callShowResults(), 4000);
           }
+
+          // ── Phase 4 (frame +3): Ground debris ──
           requestAnimationFrame(() => {
-            spawnGPUGlassShards(expPos);
-            requestAnimationFrame(() => {
-              spawnDebris(expPos, 35, pvx, pvz);
-            });
+            spawnDebris(expPos, 35, pvx, pvz);
           });
         });
       });
+
+      // ── Delayed secondary explosions (fuel line / electrical fires) ──
+      setTimeout(() => spawnGPUSecondaryExplosion(expPos), 300);
+      setTimeout(() => spawnGPUSecondaryExplosion(expPos), 800);
 
       if (isRacing) {
         G.raceEngine!.markDnf('local');
@@ -947,9 +961,13 @@ function gameLoop(timestamp: number) {
       const isNitro = G.playerVehicle?.isNitroActive ?? false;
       updatePostFX(Math.min(speedRatio, 1), isNitro, frameDt);
       if (isNitro) setBoostActive(true);
+      console.time('[RENDER] main render');
       G.postFXPipeline.render();
+      console.timeEnd('[RENDER] main render');
     } else {
+      console.time('[RENDER] main render');
       renderer.render(scene, camera);
+      console.timeEnd('[RENDER] main render');
     }
 
     // Rear-view mirror
