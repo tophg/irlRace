@@ -131,7 +131,7 @@ export function initTrackRadar(
   (mapCanvas as any)._onResize = onResize;
 }
 
-/** Convert world XZ position to minimap pixel coordinates. */
+/** Convert world XZ position to minimap pixel coordinates (unrotated). */
 function worldToMap(x: number, z: number): { mx: number; my: number } {
   return {
     mx: (x - minX + padX) * scaleX + 8,
@@ -139,7 +139,8 @@ function worldToMap(x: number, z: number): { mx: number; my: number } {
   };
 }
 
-/** Draw one frame of the minimap. Call every render frame. */
+/** Draw one frame of the minimap. Call every render frame.
+ *  Player-centered rotational: player stays at center, map rotates with heading. */
 export function updateTrackRadar(
   playerPos: THREE.Vector3,
   playerHeading: number,
@@ -147,67 +148,101 @@ export function updateTrackRadar(
 ) {
   if (!mapCtx || !mapCanvas) return;
   const ctx = mapCtx;
-  const W = MAP_SIZE;
+  // Use actual canvas CSS size (responsive)
+  const W = mapCanvas.width / 2; // retina: canvas is 2x
 
-  // Clear with semi-transparent dark background
+  // Player position in map space
+  const { mx: px, my: py } = worldToMap(playerPos.x, playerPos.z);
+  const halfW = W / 2;
+
+  // Clear
   ctx.clearRect(0, 0, W, W);
-  ctx.fillStyle = 'rgba(8, 8, 20, 0.75)';
+
+  // Clip to rounded rect
+  ctx.save();
   ctx.beginPath();
   ctx.roundRect(0, 0, W, W, 12);
-  ctx.fill();
+  ctx.clip();
 
-  // Draw cached static track
+  // Dark background
+  ctx.fillStyle = 'rgba(8, 8, 20, 0.8)';
+  ctx.fillRect(0, 0, W, W);
+
+  // ── Rotate around center so player faces "up" ──
+  ctx.save();
+  ctx.translate(halfW, halfW);
+  ctx.rotate(-playerHeading);
+  ctx.translate(-px, -py);
+
+  // Draw cached static track (rotated around player)
   if (offscreenCanvas) {
     ctx.drawImage(offscreenCanvas, 0, 0, W, W);
   }
 
-  // Draw AI dots
+  // Draw AI dots (rotated)
   for (const ai of aiPositions) {
     const { mx, my } = worldToMap(ai.pos.x, ai.pos.z);
-    // Outer glow
     ctx.fillStyle = 'rgba(180, 180, 200, 0.3)';
     ctx.beginPath();
     ctx.arc(mx, my, AI_DOT + 2, 0, Math.PI * 2);
     ctx.fill();
-    // Dot
     ctx.fillStyle = '#99aacc';
     ctx.beginPath();
     ctx.arc(mx, my, AI_DOT, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Draw player dot (with heading indicator)
-  const { mx: px, my: py } = worldToMap(playerPos.x, playerPos.z);
+  ctx.restore(); // un-rotate
 
-  // Direction triangle
-  const arrowLen = PLAYER_DOT + 5;
-  // heading is in radians, translate to canvas coords (Z is forward in world)
-  const dx = Math.sin(playerHeading) * arrowLen;
-  const dy = Math.cos(playerHeading) * arrowLen;
-  ctx.strokeStyle = '#ff6600';
-  ctx.lineWidth = 2;
+  // ── Heading cone (FOV wedge, ~60°) — drawn in screen space ──
+  const coneAngle = Math.PI / 6; // 30° each side = 60° total
+  const coneLen = halfW * 0.75;
+  ctx.save();
+  ctx.translate(halfW, halfW);
+  ctx.fillStyle = 'rgba(255, 102, 0, 0.08)';
   ctx.beginPath();
-  ctx.moveTo(px, py);
-  ctx.lineTo(px + dx, py + dy);
-  ctx.stroke();
+  ctx.moveTo(0, 0);
+  // Cone points upward (player always faces up after rotation)
+  ctx.arc(0, 0, coneLen, -Math.PI / 2 - coneAngle, -Math.PI / 2 + coneAngle);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
 
-  // Player glow
+  // ── Player dot (fixed at center) ──
+  // Outer glow
   ctx.fillStyle = 'rgba(255, 102, 0, 0.3)';
   ctx.beginPath();
-  ctx.arc(px, py, PLAYER_DOT + 3, 0, Math.PI * 2);
+  ctx.arc(halfW, halfW, PLAYER_DOT + 3, 0, Math.PI * 2);
   ctx.fill();
-
-  // Player dot
+  // Main dot
   ctx.fillStyle = '#ff6600';
   ctx.beginPath();
-  ctx.arc(px, py, PLAYER_DOT, 0, Math.PI * 2);
+  ctx.arc(halfW, halfW, PLAYER_DOT, 0, Math.PI * 2);
   ctx.fill();
-
-  // White center pip
+  // Center pip
   ctx.fillStyle = '#fff';
   ctx.beginPath();
-  ctx.arc(px, py, 2, 0, Math.PI * 2);
+  ctx.arc(halfW, halfW, 2, 0, Math.PI * 2);
   ctx.fill();
+
+  // ── Direction arrow (points up from center) ──
+  const arrowLen = PLAYER_DOT + 6;
+  ctx.strokeStyle = '#ff6600';
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(halfW, halfW);
+  ctx.lineTo(halfW, halfW - arrowLen);
+  ctx.stroke();
+
+  // ── Radial edge fade (vignette mask) ──
+  const grad = ctx.createRadialGradient(halfW, halfW, halfW * 0.6, halfW, halfW, halfW);
+  grad.addColorStop(0, 'rgba(8, 8, 20, 0)');
+  grad.addColorStop(1, 'rgba(8, 8, 20, 0.9)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, W);
+
+  ctx.restore(); // un-clip
 }
 
 /** Remove the minimap from DOM. */
