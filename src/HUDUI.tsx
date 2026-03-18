@@ -62,12 +62,33 @@ export const RacingHUD = () => {
     return 'dmg-red';
   };
 
+  // Position badge animation on rank change
+  let positionEl: HTMLDivElement | undefined;
+  let prevRank = 1;
+  createEffect(() => {
+    const rank = positionInfo().rank;
+    if (rank !== prevRank && positionEl) {
+      positionEl.classList.remove('position-changed');
+      // Force reflow to restart animation
+      void positionEl.offsetWidth;
+      positionEl.classList.add('position-changed');
+      setTimeout(() => positionEl?.classList.remove('position-changed'), 600);
+    }
+    prevRank = rank;
+  });
+
   return (
     <div class="hud">
       <div class="hud-timer" id="hud-timer">{timerText()}</div>
       <div class="hud-speed" id="hud-speed">{speedMPH()}<span>MPH</span></div>
       <div class="hud-lap" id="hud-lap">LAP {lapInfo().current}/{lapInfo().total}</div>
-      <div class="hud-position" id="hud-position" innerHTML={`${positionInfo().rank}<sup>${positionInfo().suffix}</sup>`} />
+      <div
+        class="hud-position"
+        id="hud-position"
+        ref={positionEl}
+        classList={{ 'position-first': positionInfo().rank === 1 }}
+        innerHTML={`${positionInfo().rank}<sup>${positionInfo().suffix}</sup>`}
+      />
       
       <Show when={isWrongWay()}>
         <div class="hud-wrong-way" id="hud-wrong-way">WRONG WAY</div>
