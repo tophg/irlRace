@@ -388,7 +388,7 @@ export function spawnGPUFlame(pos: THREE.Vector3, intensity: number, dt = 0.016)
   if (intensity < 0.1) return;
   flameCD -= dt;
   if (flameCD > 0) return;
-  flameCD = 0.03;
+  flameCD = 0.05;
 
   const count = Math.ceil(intensity * 2);
   for (let n = 0; n < count; n++) {

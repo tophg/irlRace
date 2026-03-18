@@ -47,7 +47,7 @@ import {
   spawnGPUSlipstream, flushToGPU,
 } from './gpu-particles';
 import { updateTrackRadar } from './minimap';
-import { updateDestructionFragments, triggerVehicleDestruction } from './vehicle-destruction';
+import { updateDestructionFragments, triggerVehicleDestruction, isDestructionActive } from './vehicle-destruction';
 import { updateWeather, getCurrentWeather, getPrecipMesh } from './weather';
 import { updatePostFX, setImpactIntensity, setBoostActive, setExplosionMode } from './post-fx';
 import { showExplosionFlash, showLetterbox, hideLetterbox, showEngineDestroyedText } from './screen-effects';
@@ -419,8 +419,9 @@ function gameLoop(timestamp: number) {
     }
 
     // ── Hood smoke/flames at high engine heat ──
+    // Skip if destruction is active (destruction system handles its own fire)
     const heat = G.playerVehicle.engineHeat;
-    if (heat > 60) {
+    if (heat > 60 && !isDestructionActive()) {
       const sinH = Math.sin(G.playerVehicle.heading);
       const cosH = Math.cos(G.playerVehicle.heading);
       _hoodExplosionPos.copy(G.playerVehicle.group.position);

@@ -22,6 +22,7 @@ const _wreckPos = new THREE.Vector3();   // reusable — no .clone() at detonati
 let wreckPosition: THREE.Vector3 | null = null;
 let destructionTime = 0;
 let destructionActive = false;
+let _destructionFrame = 0;
 
 // ── Pre-allocated fragment/wheel mesh pool ──
 const FRAG_POOL_SIZE = 12;
@@ -197,6 +198,7 @@ export function triggerVehicleDestruction(
   destructionScene = scene;
   destructionTime = 0;
   destructionActive = true;
+  _destructionFrame = 0;
   activeFragCount = 0;
   _lastEmissive.fill(0.6); // reset cached emissive for delta-gating
 
@@ -527,7 +529,9 @@ export function updateDestructionFragments(dt: number): boolean {
     }
   }
 
-  // ── Phase 3: Enhanced fire system ──
+  // ── Phase 3: Enhanced fire system (throttled to prevent lag) ──
+  // Use frame counter to stagger spawns: only 1-2 particle calls per frame
+  _destructionFrame++;
   if (wreckPosition) {
     // Initial fireball (first 0.5s — reduced from 3 flames/frame to 1 per ~3 frames)
     if (destructionTime < 0.5) {
@@ -542,8 +546,8 @@ export function updateDestructionFragments(dt: number): boolean {
       if (destructionTime < dt * 2) spawnGPUExplosion(wreckPosition, 8);
     }
 
-    // Mushroom plume (0.3–3s — upward rising thick smoke with fire)
-    if (destructionTime > 0.3 && destructionTime < 3.0) {
+    // Mushroom plume (0.3–3s) — throttled to every 3rd frame
+    if (destructionTime > 0.3 && destructionTime < 3.0 && _destructionFrame % 3 === 0) {
       _firePos.copy(wreckPosition);
       _firePos.y += 1.0 + destructionTime * 1.5; // rises over time
       _firePos.x += (Math.random() - 0.5) * 0.8;
@@ -554,8 +558,8 @@ export function updateDestructionFragments(dt: number): boolean {
       }
     }
 
-    // Ground fire pool (0.5–5s — radial flickering flames at road level)
-    if (destructionTime > 0.5 && destructionTime < 5.0) {
+    // Ground fire pool (0.5–5s) — throttled to every 2nd frame
+    if (destructionTime > 0.5 && destructionTime < 5.0 && _destructionFrame % 2 === 0) {
       const angle = Math.random() * Math.PI * 2;
       const dist = Math.random() * 2.0;
       _firePos.copy(wreckPosition);
@@ -566,8 +570,8 @@ export function updateDestructionFragments(dt: number): boolean {
       spawnGPUDamageSmoke(_firePos, 0.4, dt);
     }
 
-    // Ember rain (1–6s — slow-falling tiny glowing particles)
-    if (destructionTime > 1.0 && destructionTime < 6.0) {
+    // Ember rain (1–6s) — throttled to every 4th frame
+    if (destructionTime > 1.0 && destructionTime < 6.0 && _destructionFrame % 4 === 0) {
       _firePos.copy(wreckPosition);
       _firePos.y += 2 + Math.random() * 3;
       _firePos.x += (Math.random() - 0.5) * 4;
@@ -640,6 +644,7 @@ export function cleanupDestruction() {
 
   destructionActive = false;
   destructionTime = 0;
+  _destructionFrame = 0;
   wreckPosition = null;
   destructionScene = null;
 }
