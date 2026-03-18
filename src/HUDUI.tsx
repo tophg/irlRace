@@ -1,8 +1,7 @@
 /* ── Hood Racer — Solid.js HUD ── */
 
 import { createSignal, createEffect, onMount, onCleanup, Show } from 'solid-js';
-import * as THREE from 'three';
-import { RaceEngine } from './race-engine';
+
 
 // ── Shared Reactive State ──
 // This state is updated externally by the hud.ts proxy functions

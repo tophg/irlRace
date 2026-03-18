@@ -18,7 +18,7 @@ import * as THREE from 'three/webgpu';
 import { SpriteNodeMaterial } from 'three/webgpu';
 import {
   storage, uniform, instanceIndex, compute, Fn,
-  float, vec3, vec4, If,
+  float, If,
 } from 'three/tsl';
 
 // ── Configuration ──

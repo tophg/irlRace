@@ -1,7 +1,7 @@
 /* ── Hood Racer — AI Racer (v2 — Curvature-Aware + Personalities) ── */
 
 import * as THREE from 'three';
-import { CarDef, InputState, VehicleState } from './types';
+import { CarDef, InputState } from './types';
 import { Vehicle } from './vehicle';
 import { getClosestSplinePoint, getSpeedProfileAt } from './track';
 import type { SplineBVH } from './bvh';
