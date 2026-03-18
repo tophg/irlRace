@@ -160,8 +160,8 @@ export function fractureMesh(
       const c = m.clone();
       c.transparent = true;
       if ('emissive' in c) {
-        (c as any).emissive = new THREE.Color(0xFF6600);
-        (c as any).emissiveIntensity = 0.6;
+        (c as THREE.MeshStandardMaterial).emissive = new THREE.Color(0xFF6600);
+        (c as THREE.MeshStandardMaterial).emissiveIntensity = 0.6;
       }
       return c;
     });
@@ -169,8 +169,8 @@ export function fractureMesh(
     sharedMaterial = srcMesh.material.clone();
     sharedMaterial.transparent = true;
     if ('emissive' in sharedMaterial) {
-      (sharedMaterial as any).emissive = new THREE.Color(0xFF6600);
-      (sharedMaterial as any).emissiveIntensity = 0.6;
+      (sharedMaterial as THREE.MeshStandardMaterial).emissive = new THREE.Color(0xFF6600);
+      (sharedMaterial as THREE.MeshStandardMaterial).emissiveIntensity = 0.6;
     }
   }
 

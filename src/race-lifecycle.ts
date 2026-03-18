@@ -388,7 +388,7 @@ export async function startRace() {
 
     const lightPositions: THREE.Vector3[] = [];
     trackData.sceneryGroup.traverse((child: THREE.Object3D) => {
-      if ((child as any).isPointLight) {
+      if (child instanceof THREE.PointLight) {
         lightPositions.push(child.position.clone());
       }
     });

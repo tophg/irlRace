@@ -506,11 +506,11 @@ export function updateDestructionFragments(dt: number): boolean {
         if (Array.isArray(f.mesh.material)) {
           for (const m of f.mesh.material) {
             if ('emissiveIntensity' in m) {
-              (m as any).emissiveIntensity = newEmissive;
+              (m as THREE.MeshStandardMaterial).emissiveIntensity = newEmissive;
             }
           }
-        } else if ('emissiveIntensity' in (f.mesh.material as any)) {
-          (f.mesh.material as any).emissiveIntensity = newEmissive;
+        } else if ('emissiveIntensity' in (f.mesh.material as THREE.MeshStandardMaterial)) {
+          (f.mesh.material as THREE.MeshStandardMaterial).emissiveIntensity = newEmissive;
         }
       }
     }
