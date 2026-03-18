@@ -58,6 +58,8 @@ export function buildTrackFromControlPoints(
         controlPoints3D[i].y = avg / 9;
       }
     }
+    // Clamp elevation: road must stay above ground plane (Y=-0.5)
+    for (const p of controlPoints3D) p.y = Math.max(p.y, 0);
   }
 
   // Build spline & enforce constraints
@@ -270,6 +272,9 @@ function applyElevation(pts2D: THREE.Vector2[], rng: () => number): THREE.Vector
       pts3D[i].y = avg / 9;
     }
   }
+
+  // Clamp elevation: road must stay above ground plane (Y=-0.5)
+  for (const p of pts3D) p.y = Math.max(p.y, 0);
 
   return pts3D;
 }
