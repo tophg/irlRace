@@ -1,6 +1,6 @@
 /* ── Hood Racer — Solid.js HUD ── */
 
-import { createSignal, createEffect, Show } from 'solid-js';
+import { createSignal, createEffect, onMount, Show } from 'solid-js';
 
 
 // ── Shared Reactive State ──
@@ -61,10 +61,129 @@ export const RacingHUD = () => {
     prevRank = rank;
   });
 
+  // ── Radial Speedometer Canvas ──
+  let speedoCanvas: HTMLCanvasElement | undefined;
+  const MAX_SPEED = 160;
+  const ARC_START = Math.PI * 0.75;  // 7 o'clock
+  const ARC_END = Math.PI * 2.25;   // 5 o'clock (240°)
+  const ARC_RANGE = ARC_END - ARC_START;
+
+  const drawSpeedo = (mph: number) => {
+    if (!speedoCanvas) return;
+    const ctx = speedoCanvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const cssW = speedoCanvas.clientWidth;
+    const cssH = speedoCanvas.clientHeight;
+    speedoCanvas.width = cssW * dpr;
+    speedoCanvas.height = cssH * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const cx = cssW / 2;
+    const cy = cssH / 2;
+    const R = Math.min(cx, cy) - 6;
+    const ratio = Math.min(1, Math.max(0, mph / MAX_SPEED));
+    const needleAngle = ARC_START + ratio * ARC_RANGE;
+
+    ctx.clearRect(0, 0, cssW, cssH);
+
+    // Background arc (dim)
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, ARC_START, ARC_END);
+    ctx.stroke();
+
+    // Active arc with gradient
+    if (mph > 0) {
+      const grad = ctx.createConicGradient(ARC_START, cx, cy);
+      grad.addColorStop(0, '#0088ff');          // blue at 0%
+      grad.addColorStop(0.5, '#ff8800');         // orange at ~50%
+      grad.addColorStop(0.75, '#ff4400');         // red-orange
+      grad.addColorStop(1, '#ff1100');            // red at 100%
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, ARC_START, needleAngle);
+      ctx.stroke();
+
+      // Glow on active arc
+      ctx.shadowColor = ratio > 0.8 ? 'rgba(255,34,0,0.6)' : 'rgba(0,136,255,0.4)';
+      ctx.shadowBlur = 10;
+      ctx.strokeStyle = ratio > 0.8 ? '#ff2200' : '#0088ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, Math.max(ARC_START, needleAngle - 0.3), needleAngle);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    // Tick marks
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = `${Math.max(8, R * 0.14)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let s = 0; s <= MAX_SPEED; s += 30) {
+      const a = ARC_START + (s / MAX_SPEED) * ARC_RANGE;
+      const isMajor = s % 60 === 0;
+      const innerR = R - (isMajor ? 10 : 6);
+      ctx.strokeStyle = isMajor ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.2)';
+      ctx.lineWidth = isMajor ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * innerR, cy + Math.sin(a) * innerR);
+      ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R);
+      ctx.stroke();
+      if (isMajor) {
+        const labelR = R - 16;
+        ctx.fillText(`${s}`, cx + Math.cos(a) * labelR, cy + Math.sin(a) * labelR);
+      }
+    }
+
+    // Needle
+    const needleLen = R - 14;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = 'rgba(255,255,255,0.5)';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(needleAngle) * needleLen, cy + Math.sin(needleAngle) * needleLen);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Center hub
+    ctx.fillStyle = '#222';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ff6600';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Digital readout
+    ctx.font = `bold ${Math.max(14, R * 0.32)}px sans-serif`;
+    ctx.fillStyle = ratio > 0.9 ? '#ff4400' : '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`${Math.round(mph)}`, cx, cy + 10);
+    ctx.font = `${Math.max(8, R * 0.13)}px sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillText('MPH', cx, cy + 10 + Math.max(16, R * 0.35));
+  };
+
+  createEffect(() => {
+    drawSpeedo(speedMPH());
+  });
+
   return (
     <div class="hud">
       <div class="hud-timer" id="hud-timer">{timerText()}</div>
-      <div class="hud-speed" id="hud-speed">{speedMPH()}<span>MPH</span></div>
+      <canvas class="hud-speedo-canvas" id="hud-speed" ref={speedoCanvas} />
       <div class="hud-lap" id="hud-lap">LAP {lapInfo().current}/{lapInfo().total}</div>
       <div
         class="hud-position"

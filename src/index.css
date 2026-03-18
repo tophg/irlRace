@@ -298,18 +298,13 @@ canvas { display: block; }
   z-index: 30;
 }
 
-.hud-speed {
+.hud-speedo-canvas {
   position: absolute;
-  bottom: 24px; right: 24px;
-  font-family: var(--font-display);
-  font-size: 56px;
-  color: var(--col-text);
-  text-shadow: 0 0 12px rgba(0,229,255,0.4);
-}
-.hud-speed span {
-  font-size: 18px;
-  color: var(--col-text-dim);
-  margin-left: 4px;
+  bottom: 16px; right: 16px;
+  width: 140px;
+  height: 140px;
+  pointer-events: none;
+  z-index: 10;
 }
 
 .hud-lap {
@@ -1258,12 +1253,12 @@ canvas { display: block; }
 
 /* ── Mobile HUD repositioning ── */
 @media (pointer: coarse) {
-  .hud-speed {
-    font-size: clamp(32px, 8vw, 48px);
-    bottom: calc(min(28dvh, 200px) + 8px + var(--safe-bottom));
-    right: calc(12px + var(--safe-right));
+  .hud-speedo-canvas {
+    width: clamp(90px, 22vw, 130px);
+    height: clamp(90px, 22vw, 130px);
+    bottom: calc(min(28dvh, 200px) + 4px + var(--safe-bottom));
+    right: calc(8px + var(--safe-right));
   }
-  .hud-speed span { font-size: clamp(12px, 3vw, 16px); }
   .hud-lap {
     top: calc(6px + var(--safe-top));
     right: calc(10px + var(--safe-right));
@@ -1346,9 +1341,10 @@ canvas { display: block; }
 @media (pointer: coarse) and (max-height: 500px) and (orientation: landscape) {
   .touch-controls { height: min(35dvh, 180px); }
   .touch-pedals { width: min(18vw, 120px); gap: 4px; padding: 6px; }
-  .hud-speed {
+  .hud-speedo-canvas {
     bottom: calc(min(35dvh, 180px) + 4px + var(--safe-bottom));
-    font-size: clamp(28px, 6vw, 40px);
+    width: clamp(80px, 18vw, 110px);
+    height: clamp(80px, 18vw, 110px);
   }
   .hud-nitro, .hud-heat {
     bottom: calc(min(35dvh, 180px) + 4px + var(--safe-bottom));
