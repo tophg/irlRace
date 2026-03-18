@@ -60,6 +60,8 @@ export function buildTrackFromControlPoints(
     }
     // Clamp elevation: road must stay above ground plane (Y=-0.5)
     for (const p of controlPoints3D) p.y = Math.max(p.y, 0);
+    // Flatten start/finish zone so checkerboard line sits flush on road
+    flattenStartZone(controlPoints3D);
   }
 
   // Build spline & enforce constraints
@@ -275,8 +277,31 @@ function applyElevation(pts2D: THREE.Vector2[], rng: () => number): THREE.Vector
 
   // Clamp elevation: road must stay above ground plane (Y=-0.5)
   for (const p of pts3D) p.y = Math.max(p.y, 0);
+  // Flatten start/finish zone so checkerboard line sits flush on road
+  flattenStartZone(pts3D);
 
   return pts3D;
+}
+
+/** Force the start/finish zone to Y=0 for flat grid + proper checkerboard rendering. */
+function flattenStartZone(pts: THREE.Vector3[]) {
+  const n = pts.length;
+  if (n < 6) return;
+  // Force first 2 and last 2 control points to Y=0 (they neighbor the start on a closed spline)
+  const flatCount = 2;
+  const blendCount = 3; // additional points that blend from 0 to their original elevation
+  for (let i = 0; i < flatCount; i++) {
+    pts[i].y = 0;
+    pts[n - 1 - i].y = 0;
+  }
+  // Smooth blend from flat zone to natural elevation
+  for (let i = 0; i < blendCount; i++) {
+    const t = (i + 1) / (blendCount + 1); // 0.25, 0.5, 0.75
+    const fwdIdx = flatCount + i;
+    const bwdIdx = n - 1 - flatCount - i;
+    if (fwdIdx < n) pts[fwdIdx].y *= t;
+    if (bwdIdx >= 0 && bwdIdx !== fwdIdx) pts[bwdIdx].y *= t;
+  }
 }
 
 /** Simple seeded 2D value noise (gradient-hash based, no external deps). */
