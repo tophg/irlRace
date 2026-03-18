@@ -691,6 +691,64 @@ export function playNitroRelease() {
   }
 }
 
+// ── Countdown engine rev (rising idle) ──
+let countdownRevTimers: number[] = [];
+export function playCountdownRevs() {
+  stopCountdownRevs();
+  if (!audioCtx || !masterGain) return;
+  const vol = getSettings().sfxVolume * 0.25;
+  if (vol <= 0) return;
+  const ctx = audioCtx;
+  const dest = masterGain;
+
+  const revFreqs = [100, 120, 160]; // rising pitch per countdown step
+  revFreqs.forEach((freq, i) => {
+    const id = window.setTimeout(() => {
+      if (!ctx || ctx.state === 'closed') return;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(vol, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(vol * 1.5, ctx.currentTime + 0.3);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
+      osc.connect(gain);
+      gain.connect(dest);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.85);
+    }, i * 900);
+    countdownRevTimers.push(id);
+  });
+}
+
+export function stopCountdownRevs() {
+  for (const id of countdownRevTimers) clearTimeout(id);
+  countdownRevTimers = [];
+}
+
+// ── Rumble strip audio (kerb contact) ──
+let rumbleCooldown = 0;
+export function playRumbleStrip() {
+  if (!audioCtx || !masterGain) return;
+  const now = performance.now();
+  if (now - rumbleCooldown < 80) return; // debounce
+  rumbleCooldown = now;
+
+  const vol = getSettings().sfxVolume * 0.15;
+  if (vol <= 0) return;
+  const ctx = audioCtx;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = 60;
+  gain.gain.setValueAtTime(vol, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+  osc.connect(gain);
+  gain.connect(masterGain);
+  osc.start();
+  osc.stop(ctx.currentTime + 0.08);
+}
+
 export function stopAudio() {
   stopAllMusic();
   for (const osc of engineOscs) { try { osc.stop(); } catch {} }

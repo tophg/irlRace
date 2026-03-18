@@ -13,7 +13,7 @@ import { VehicleCamera } from './vehicle-camera';
 import { RaceEngine } from './race-engine';
 import { createHUD, updateHUD, updateMinimap, updateDamageHUD, updateGapHUD, updateNitroHUD, updateHeatHUD, showHUD, destroyHUD, showLapOverlay } from './hud';
 import { runCountdown } from './countdown';
-import { initAudio, updateEngineAudio, playCheckpointSFX, playLapFanfare, playFinishFanfare, playDriftSFX, playCollisionSFX, playPositionSFX, stopAudio, playNitroActivate, startNitroBurn, stopNitroBurn, updateNitroBurnIntensity, updateDepletionWarning, stopDepletionWarning, playNitroRelease } from './audio';
+import { initAudio, updateEngineAudio, playCheckpointSFX, playLapFanfare, playFinishFanfare, playDriftSFX, playCollisionSFX, playPositionSFX, stopAudio, playNitroActivate, startNitroBurn, stopNitroBurn, updateNitroBurnIntensity, updateDepletionWarning, stopDepletionWarning, playNitroRelease, playCountdownRevs, stopCountdownRevs, playRumbleStrip } from './audio';
 import { AIRacer, OpponentInfo } from './ai-racer';
 import { initGarage, updateGarage, destroyGarage } from './garage';
 import { NetPeer } from './net-peer';
@@ -115,6 +115,24 @@ function flashDamage(intensity: number) {
   _damageFlashTimer = window.setTimeout(() => {
     if (_damageFlashEl) _damageFlashEl.style.opacity = '0';
   }, 80);
+}
+
+// ── Drafting/slipstream HUD indicator ──
+let _draftingEl: HTMLDivElement | null = null;
+let _draftingTimer = 0;
+
+function showDraftingIndicator() {
+  if (!_draftingEl) {
+    _draftingEl = document.createElement('div');
+    _draftingEl.className = 'drafting-indicator';
+    _draftingEl.textContent = 'DRAFTING';
+    uiOverlay.appendChild(_draftingEl);
+  }
+  _draftingEl.style.opacity = '1';
+  clearTimeout(_draftingTimer);
+  _draftingTimer = window.setTimeout(() => {
+    if (_draftingEl) _draftingEl.style.opacity = '0';
+  }, 300);
 }
 
 // ── Scene (async — WebGPU renderer init) ──
@@ -570,7 +588,9 @@ async function startRace() {
       }
     }
 
+    playCountdownRevs();
     await runCountdown(uiOverlay);
+    stopCountdownRevs();
     playGameMusic();
 
     resetRaceStats();
@@ -1733,6 +1753,8 @@ function gameLoop(timestamp: number) {
             G.playerVehicle.addNitro(draftStrength * frameDt);
             // Slipstream air-streak particles from AI car's rear
             spawnGPUSlipstream(aPos, ai.vehicle.heading, G.playerVehicle.speed);
+            // Drafting HUD indicator
+            showDraftingIndicator();
           }
         }
       }
@@ -2250,7 +2272,15 @@ function gameLoop(timestamp: number) {
 
     // Checkpoint detection (local player)
     if (s === GameState.RACING && G.raceEngine) {
-      const localT = getClosestSplinePoint(G.trackData.spline, G.playerVehicle.group.position, G.trackData.bvh).t;
+      const closestPt = getClosestSplinePoint(G.trackData.spline, G.playerVehicle.group.position, G.trackData.bvh);
+      const localT = closestPt.t;
+
+      // Shoulder rumble strip detection
+      const lateralDist = G.playerVehicle.group.position.distanceTo(closestPt.point);
+      if (lateralDist > 4.5 && G.playerVehicle.speed > 5) {
+        playRumbleStrip();
+      }
+
       const event = G.raceEngine.updateRacer('local', G.playerVehicle.group.position, localT, G.playerVehicle.heading);
       const progress = G.raceEngine.getProgress('local');
 
@@ -2572,9 +2602,16 @@ bus.on('lap', (e) => {
 bus.on('finish', (e) => {
   G.netPeer?.broadcastEvent(EventType.RACE_FINISH, { finishTime: e.finishTime });
   destroyLeaderboard();
+  playFinishFanfare();
   spawnConfetti();
-  enterSpectatorMode();
-  showResults();
+  // Celebration orbit camera around player car for ~3s before results
+  if (G.vehicleCamera && G.playerVehicle) {
+    G.vehicleCamera.startOrbit(G.playerVehicle.group.position.clone());
+  }
+  setTimeout(() => {
+    enterSpectatorMode();
+    showResults();
+  }, 3000);
 });
 
 bus.on('position_change', (e) => {
