@@ -10,8 +10,7 @@
  */
 
 import * as THREE from 'three';
-import { GameState, CarDef, CAR_ROSTER } from './types';
-import type { TrackData } from './types';
+import { GameState, CarDef, CAR_ROSTER, type TrackData } from './types';
 import { Vehicle } from './vehicle';
 import { VehicleCamera } from './vehicle-camera';
 import { RaceEngine } from './race-engine';

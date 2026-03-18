@@ -7,8 +7,7 @@
  */
 
 import * as THREE from 'three';
-import { GameState, CAR_ROSTER, EventType } from './types';
-import type { TrackData } from './types';
+import { GameState, CAR_ROSTER, EventType, type TrackData } from './types';
 import { G, resetRaceStats } from './game-context';
 import { getScene, applyEnvironment, getEnvironmentForSeed, getEnvironmentByName } from './scene';
 import { loadCarModel } from './loaders';
@@ -18,8 +17,7 @@ import { VehicleCamera } from './vehicle-camera';
 import { RaceEngine } from './race-engine';
 import { createHUD, showHUD, destroyHUD } from './hud';
 import { runCountdown } from './countdown';
-import { initAudio, stopAudio, playCountdownRevs, stopCountdownRevs } from './audio';
-import { playGameMusic } from './audio';
+import { initAudio, stopAudio, playCountdownRevs, stopCountdownRevs, playGameMusic } from './audio';
 import { AIRacer } from './ai-racer';
 import {
   initVFX, destroyVFX, warmupVFX,
@@ -34,8 +32,7 @@ import { initTrackRadar, destroyTrackRadar } from './minimap';
 import { warmupDestruction, warmupFragmentMaterials, cleanupDestruction, disposeDestructionAssets } from './vehicle-destruction';
 import { resetTimeScale } from './time-scale';
 import { cleanupScreenEffects } from './screen-effects';
-import { setExplosionMode } from './post-fx';
-import { initPostFX } from './post-fx';
+import { setExplosionMode, initPostFX } from './post-fx';
 import { loadGhostForSeed, startGhostPlayback, startGhostRecording, destroyGhost } from './ghost';
 import { initRapierWorld, addBarrierCollider, addCarBody, destroyRapierWorld } from './rapier-world';
 import { rollbackManager } from './rollback-netcode';

@@ -47,11 +47,10 @@ import {
   spawnGPUSlipstream, flushToGPU,
 } from './gpu-particles';
 import { updateTrackRadar } from './minimap';
-import { updateDestructionFragments } from './vehicle-destruction';
+import { updateDestructionFragments, triggerVehicleDestruction } from './vehicle-destruction';
 import { updateWeather, getCurrentWeather, getPrecipMesh } from './weather';
 import { updatePostFX, setImpactIntensity, setBoostActive, setExplosionMode } from './post-fx';
 import { showExplosionFlash, showLetterbox, hideLetterbox, showEngineDestroyedText } from './screen-effects';
-import { triggerVehicleDestruction } from './vehicle-destruction';
 import {
   updateEngineAudio, playDriftSFX,
   playNitroActivate, startNitroBurn, stopNitroBurn,
