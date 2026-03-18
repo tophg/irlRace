@@ -23,6 +23,12 @@
   --gap: 8px;
   --radius: 8px;
   --radius-lg: 16px;
+
+  /* safe area insets */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -361,7 +367,17 @@ canvas { display: block; }
   border: 2px solid rgba(255,255,255,0.15);
   border-radius: var(--radius);
   background: rgba(10,10,15,0.7);
+  -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
+}
+.track-radar-canvas {
+  position: fixed;
+  top: calc(14px + var(--safe-top));
+  left: calc(14px + var(--safe-left));
+  z-index: 50;
+  pointer-events: none;
+  border-radius: 12px;
+  opacity: 0.85;
 }
 
 /* ── Countdown ── */
@@ -578,10 +594,11 @@ canvas { display: block; }
 /* ── Mobile Touch Controls ── */
 .touch-controls {
   position: absolute; bottom: 0; left: 0; right: 0;
-  height: min(28vh, 200px);
+  height: min(28dvh, 200px);
   display: none;
   z-index: 20;
   transition: opacity 0.2s;
+  padding-bottom: var(--safe-bottom);
 }
 @media (pointer: coarse) {
   .touch-controls { display: flex; }
@@ -1233,4 +1250,129 @@ canvas { display: block; }
   0% { opacity: 1; transform: translateY(0) scale(1); }
   70% { opacity: 1; transform: translateY(-40px) scale(1.2); }
   100% { opacity: 0; transform: translateY(-60px) scale(0.8); }
+}
+
+/* ══════════════════════════════════════════════════════
+   MOBILE RESPONSIVE LAYOUT
+   ══════════════════════════════════════════════════════ */
+
+/* ── Mobile HUD repositioning ── */
+@media (pointer: coarse) {
+  .hud-speed {
+    font-size: clamp(32px, 8vw, 48px);
+    bottom: calc(min(28dvh, 200px) + 8px + var(--safe-bottom));
+    right: calc(12px + var(--safe-right));
+  }
+  .hud-speed span { font-size: clamp(12px, 3vw, 16px); }
+  .hud-lap {
+    top: calc(6px + var(--safe-top));
+    right: calc(10px + var(--safe-right));
+    font-size: clamp(14px, 3.5vw, 20px);
+  }
+  .hud-position {
+    top: calc(6px + var(--safe-top));
+    left: calc(10px + var(--safe-left));
+    font-size: clamp(28px, 7vw, 36px);
+  }
+  .hud-position sup { font-size: clamp(12px, 3vw, 16px); }
+  .hud-timer {
+    top: calc(6px + var(--safe-top));
+    font-size: clamp(14px, 3.5vw, 18px);
+  }
+  .hud-nitro {
+    bottom: calc(min(28dvh, 200px) + 4px + var(--safe-bottom));
+  }
+  .hud-nitro-track { width: clamp(100px, 28vw, 180px); }
+  .hud-heat {
+    bottom: calc(min(28dvh, 200px) + 24px + var(--safe-bottom));
+  }
+  .hud-heat-track { width: clamp(100px, 28vw, 180px); }
+  .hud-boost { display: none; }
+  .hud-damage {
+    bottom: calc(min(28dvh, 200px) + 8px + var(--safe-bottom));
+    right: calc(12px + var(--safe-right));
+    transform: scale(0.75);
+    transform-origin: bottom right;
+  }
+  .hud-wrong-way { font-size: clamp(28px, 7vw, 40px); }
+  .hud-minimap {
+    top: calc(40px + var(--safe-top));
+    left: calc(10px + var(--safe-left));
+    bottom: auto;
+    width: clamp(100px, 22vw, 140px);
+    height: clamp(100px, 22vw, 140px);
+  }
+  /* Touch controls safe areas */
+  .touch-controls {
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+  .touch-pedals { width: min(22vw, 160px); }
+  /* Replay toolbar */
+  #replay-hud { padding-bottom: calc(20px + var(--safe-bottom)) !important; }
+  .replay-ctrl { min-width: 44px; min-height: 44px; }
+  /* Menu buttons */
+  .menu-btn { min-height: 48px; font-size: clamp(16px, 4vw, 22px); }
+  .select-btn { min-height: 48px; font-size: clamp(18px, 4.5vw, 22px); padding: 14px 36px; }
+  /* Settings panel */
+  .settings-panel { padding: 24px 20px; }
+  .settings-row select, .settings-row input[type="text"] { font-size: 16px; min-height: 36px; }
+  .settings-row input[type="range"] { height: 8px; }
+}
+
+/* ── XS: ≤375px (iPhone SE, small Androids) ── */
+@media (pointer: coarse) and (max-width: 375px) {
+  .leaderboard { display: none; }
+  .hud-minimap { display: none; }
+  .hud-nitro, .hud-heat { display: none; }
+  .hud-damage { transform: scale(0.6); }
+  .touch-pedals { width: min(24vw, 100px); gap: 3px; padding: 6px; }
+  .touch-pedals .touch-gas,
+  .touch-pedals .touch-brake,
+  .touch-pedals .touch-boost { font-size: clamp(10px, 2.5vw, 14px); }
+}
+
+/* ── S: 376–430px (iPhone 14/15, most Androids) ── */
+@media (pointer: coarse) and (min-width: 376px) and (max-width: 430px) {
+  .leaderboard { display: none; }
+}
+
+/* ── M: 431–768px (Pro Max, small tablets) ── */
+@media (pointer: coarse) and (min-width: 431px) and (max-width: 768px) {
+  .hud-minimap { width: 120px; height: 120px; }
+}
+
+/* ── Landscape mobile ── */
+@media (pointer: coarse) and (max-height: 500px) and (orientation: landscape) {
+  .touch-controls { height: min(35dvh, 180px); }
+  .touch-pedals { width: min(18vw, 120px); gap: 4px; padding: 6px; }
+  .hud-speed {
+    bottom: calc(min(35dvh, 180px) + 4px + var(--safe-bottom));
+    font-size: clamp(28px, 6vw, 40px);
+  }
+  .hud-nitro, .hud-heat {
+    bottom: calc(min(35dvh, 180px) + 4px + var(--safe-bottom));
+  }
+}
+
+/* ── Portrait orientation prompt ── */
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 768px) {
+  .touch-controls::before {
+    content: '↻ Rotate for best experience';
+    position: absolute;
+    top: -28px; left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-display);
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: rgba(255, 255, 255, 0.3);
+    white-space: nowrap;
+    pointer-events: none;
+    animation: portrait-hint 3s ease-in-out forwards;
+  }
+}
+@keyframes portrait-hint {
+  0% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
 }

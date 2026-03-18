@@ -21,6 +21,35 @@ let minX = Infinity, maxX = -Infinity;
 let minZ = Infinity, maxZ = -Infinity;
 let scaleX = 1, scaleZ = 1, padX = 0, padZ = 0;
 
+/** Draw the track circuit to an offscreen canvas context. */
+function drawTrackToOffscreen(ctx: CanvasRenderingContext2D, size: number) {
+  ctx.clearRect(0, 0, size, size);
+  // Track outline
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for (let i = 0; i < trackPoints.length; i++) {
+    const p = trackPoints[i];
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  if (trackPoints.length > 0) ctx.lineTo(trackPoints[0].x, trackPoints[0].y);
+  ctx.stroke();
+  // Brighter racing line
+  ctx.strokeStyle = 'rgba(255, 140, 0, 0.2)';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  for (let i = 0; i < trackPoints.length; i++) {
+    const p = trackPoints[i];
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  if (trackPoints.length > 0) ctx.lineTo(trackPoints[0].x, trackPoints[0].y);
+  ctx.stroke();
+}
+
 /** Initialize the minimap for a given track spline. Call once per race. */
 export function initTrackRadar(
   spline: THREE.CatmullRomCurve3,
@@ -62,52 +91,44 @@ export function initTrackRadar(
   offscreenCanvas.height = MAP_SIZE * 2;
   const offCtx = offscreenCanvas.getContext('2d')!;
   offCtx.scale(2, 2);
-
-  // Draw track circuit to off-screen buffer
-  offCtx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
-  offCtx.lineWidth = 2.5;
-  offCtx.lineCap = 'round';
-  offCtx.lineJoin = 'round';
-  offCtx.beginPath();
-  for (let i = 0; i < trackPoints.length; i++) {
-    const p = trackPoints[i];
-    if (i === 0) offCtx.moveTo(p.x, p.y);
-    else offCtx.lineTo(p.x, p.y);
-  }
-  if (trackPoints.length > 0) offCtx.lineTo(trackPoints[0].x, trackPoints[0].y);
-  offCtx.stroke();
-
-  // Brighter racing line on top
-  offCtx.strokeStyle = 'rgba(255, 140, 0, 0.2)';
-  offCtx.lineWidth = 5;
-  offCtx.beginPath();
-  for (let i = 0; i < trackPoints.length; i++) {
-    const p = trackPoints[i];
-    if (i === 0) offCtx.moveTo(p.x, p.y);
-    else offCtx.lineTo(p.x, p.y);
-  }
-  if (trackPoints.length > 0) offCtx.lineTo(trackPoints[0].x, trackPoints[0].y);
-  offCtx.stroke();
+  drawTrackToOffscreen(offCtx, MAP_SIZE);
 
   // Create main canvas element
   mapCanvas = document.createElement('canvas');
-  mapCanvas.width = MAP_SIZE * 2;  // 2x for retina
-  mapCanvas.height = MAP_SIZE * 2;
-  mapCanvas.style.cssText = `
-    position: fixed;
-    top: ${MAP_MARGIN}px;
-    left: ${MAP_MARGIN}px;
-    width: ${MAP_SIZE}px;
-    height: ${MAP_SIZE}px;
-    z-index: 50;
-    pointer-events: none;
-    border-radius: 12px;
-    opacity: 0.85;
-  `;
+  const computedSize = Math.min(Math.max(window.innerWidth * 0.22, 100), MAP_SIZE);
+  mapCanvas.width = computedSize * 2;  // 2x for retina
+  mapCanvas.height = computedSize * 2;
+  mapCanvas.className = 'track-radar-canvas';
+  mapCanvas.style.width = `${computedSize}px`;
+  mapCanvas.style.height = `${computedSize}px`;
   container.appendChild(mapCanvas);
 
   mapCtx = mapCanvas.getContext('2d')!;
   mapCtx.scale(2, 2); // retina scaling
+
+  // Recompute on resize/orientation change
+  const onResize = () => {
+    if (!mapCanvas || !mapCtx) return;
+    const newSize = Math.min(Math.max(window.innerWidth * 0.22, 100), MAP_SIZE);
+    mapCanvas.width = newSize * 2;
+    mapCanvas.height = newSize * 2;
+    mapCanvas.style.width = `${newSize}px`;
+    mapCanvas.style.height = `${newSize}px`;
+    mapCtx.setTransform(1, 0, 0, 1, 0, 0);
+    mapCtx.scale(2, 2);
+    // Rebuild offscreen cache at new size
+    if (offscreenCanvas) {
+      offscreenCanvas.width = newSize * 2;
+      offscreenCanvas.height = newSize * 2;
+      const offCtx = offscreenCanvas.getContext('2d')!;
+      offCtx.setTransform(1, 0, 0, 1, 0, 0);
+      offCtx.scale(2, 2);
+      drawTrackToOffscreen(offCtx, newSize);
+    }
+  };
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', onResize);
+  (mapCanvas as any)._onResize = onResize;
 }
 
 /** Convert world XZ position to minimap pixel coordinates. */
@@ -192,6 +213,11 @@ export function updateTrackRadar(
 /** Remove the minimap from DOM. */
 export function destroyTrackRadar() {
   if (mapCanvas) {
+    const onResize = (mapCanvas as any)._onResize;
+    if (onResize) {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    }
     mapCanvas.remove();
     mapCanvas = null;
     mapCtx = null;
