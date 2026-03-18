@@ -13,22 +13,23 @@ const _up = new THREE.Vector3(0, 1, 0);
 /**
  * Asymmetric ramp profile for launching vehicles airborne.
  * Returns 0..1 representing height fraction at position `f` (0..1 along ramp).
- *   - approach zone (~65%): gradual cosine ease-in from 0 to 1
- *   - flat top zone  (~15%): holds at 1
- *   - lip/drop zone  (~20%): steep linear drop from 1 to 0 (creates launch lip)
+ *   - approach zone (~80%): gradual cosine ease-in from 0 to 1
+ *   - flat top zone  (passed in): holds at 1
+ *   - cliff lip      (~3%): near-vertical drop — car overshoots in one frame
  */
 function rampProfile(f: number, flatTop: number): number {
-  const approach = 0.65;
-  const descent = 1 - approach - flatTop;
+  const clampedFlatTop = Math.min(flatTop, 0.15); // cap to leave room
+  const approach = 0.97 - clampedFlatTop; // ~80% approach
+  const cliff = 0.03; // 3% — near-vertical drop
   if (f < approach) {
     // Gradual ease-in: 0 → 1
     return 0.5 * (1 - Math.cos(Math.PI * f / approach));
-  } else if (f < approach + flatTop) {
+  } else if (f < approach + clampedFlatTop) {
     return 1;
   } else {
-    // Sharp linear drop: 1 → 0 (launch lip)
-    const t = (f - approach - flatTop) / descent;
-    return 1 - t;
+    // Near-vertical cliff: drops from 1 → 0 in just 3% of ramp length
+    const t = (f - approach - clampedFlatTop) / cliff;
+    return Math.max(0, 1 - t);
   }
 }
 
