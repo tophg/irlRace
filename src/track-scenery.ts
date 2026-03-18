@@ -245,52 +245,232 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   group.add(poleIM);
   group.add(fixIM);
 
-  // ── Start/Finish line ──
+  // ── Start/Finish line (road-conforming checkerboard + 3D gantry arch) ──
   {
-    const t = 0;
-    const p = spline.getPointAt(t);
-    const tangent = spline.getTangentAt(t).normalize();
-    
-    // Calculate properly banked orthonormal basis
-    const right = new THREE.Vector3(tangent.z, 0, -tangent.x).normalize();
-    const kappa = estimateCurvature(spline, t);
-    const bankQuat = new THREE.Quaternion().setFromAxisAngle(tangent, -kappa * 2.5);
-    right.applyQuaternion(bankQuat);
-    
-    const up = new THREE.Vector3().crossVectors(right, tangent).normalize();
+    // ── 1. Road-conforming checkerboard strip ──
+    // Build a narrow strip of quads at closely-spaced t-values around t=0,
+    // using the same banked right/up vectors as the road mesh so the pattern
+    // matches the road surface exactly.
+    const STRIP_SAMPLES = 6;
+    const STRIP_T_RANGE = 0.003; // t range around 0 in each direction
+    const stripVerts: number[] = [];
+    const stripUVs: number[] = [];
+    const stripNormals: number[] = [];
+    const stripIndices: number[] = [];
+    const halfW = ROAD_WIDTH / 2;
 
-    // Checkerboard pattern start line
-    const lineGeo = new THREE.PlaneGeometry(ROAD_WIDTH, 2);
-    const canvas = document.createElement('canvas');
-    canvas.width = 128; canvas.height = 32;
-    const ctx = canvas.getContext('2d')!;
-    const sqW = 16, sqH = 16;
-    for (let row = 0; row < 2; row++) {
-      for (let col = 0; col < 8; col++) {
-        ctx.fillStyle = (row + col) % 2 === 0 ? '#ffffff' : '#111111';
-        ctx.fillRect(col * sqW, row * sqH, sqW, sqH);
+    for (let i = 0; i <= STRIP_SAMPLES; i++) {
+      const frac = i / STRIP_SAMPLES;
+      const t = ((1 - frac) * (1 - STRIP_T_RANGE) + frac * STRIP_T_RANGE) % 1;
+      // wrap-safe: at frac=0 → t≈0.997, at frac=1 → t=0.003 
+      const p = spline.getPointAt(t);
+      const tangent = spline.getTangentAt(t).normalize();
+      const right = new THREE.Vector3(tangent.z, 0, -tangent.x).normalize();
+      const kappa = estimateCurvature(spline, t);
+      const bankQuat = new THREE.Quaternion().setFromAxisAngle(tangent, -kappa * 2.5);
+      const bankedRight = right.clone().applyQuaternion(bankQuat);
+      const up = new THREE.Vector3().crossVectors(bankedRight, tangent).normalize();
+
+      // Left edge
+      stripVerts.push(
+        p.x - bankedRight.x * halfW, p.y + 0.02 - bankedRight.y * halfW, p.z - bankedRight.z * halfW
+      );
+      // Right edge
+      stripVerts.push(
+        p.x + bankedRight.x * halfW, p.y + 0.02 + bankedRight.y * halfW, p.z + bankedRight.z * halfW
+      );
+      stripUVs.push(0, frac);
+      stripUVs.push(1, frac);
+      stripNormals.push(up.x, up.y, up.z, up.x, up.y, up.z);
+
+      if (i < STRIP_SAMPLES) {
+        const base = i * 2;
+        stripIndices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
       }
     }
-    const lineTex = new THREE.CanvasTexture(canvas);
-    const lineMat = new THREE.MeshStandardMaterial({
-      map: lineTex,
-      roughness: 0.7,
-      transparent: true,
-      depthWrite: true,
+
+    const stripGeo = new THREE.BufferGeometry();
+    stripGeo.setAttribute('position', new THREE.Float32BufferAttribute(stripVerts, 3));
+    stripGeo.setAttribute('uv', new THREE.Float32BufferAttribute(stripUVs, 2));
+    stripGeo.setAttribute('normal', new THREE.Float32BufferAttribute(stripNormals, 3));
+    stripGeo.setIndex(stripIndices);
+
+    // Checkerboard canvas texture
+    const checkerCanvas = document.createElement('canvas');
+    checkerCanvas.width = 128; checkerCanvas.height = 32;
+    const checkerCtx = checkerCanvas.getContext('2d')!;
+    for (let row = 0; row < 2; row++) {
+      for (let col = 0; col < 8; col++) {
+        checkerCtx.fillStyle = (row + col) % 2 === 0 ? '#ffffff' : '#111111';
+        checkerCtx.fillRect(col * 16, row * 16, 16, 16);
+      }
+    }
+    const checkerTex = new THREE.CanvasTexture(checkerCanvas);
+    checkerTex.wrapS = THREE.RepeatWrapping;
+    checkerTex.wrapT = THREE.RepeatWrapping;
+
+    const checkerMat = new THREE.MeshStandardMaterial({
+      map: checkerTex,
+      roughness: 0.6,
       polygonOffset: true,
-      polygonOffsetFactor: -1,
+      polygonOffsetFactor: -2,
       polygonOffsetUnits: -4,
     });
-    const lineMesh = new THREE.Mesh(lineGeo, lineMat);
-    lineMesh.renderOrder = -1; // Draw before vehicles
-    lineMesh.position.copy(p);
-    lineMesh.position.y += 0.005; // Barely above road surface
-    // Rotate plane to lie flat on the road, properly aligned with pitched and banked track
-    lineMesh.quaternion.setFromRotationMatrix(
-      new THREE.Matrix4().makeBasis(right, up, tangent)
+    const checkerMesh = new THREE.Mesh(stripGeo, checkerMat);
+    checkerMesh.renderOrder = 1;
+    group.add(checkerMesh);
+
+    // ── 2. 3D Gantry Arch ──
+    const gantryT = 0;
+    const gP = spline.getPointAt(gantryT);
+    const gTangent = spline.getTangentAt(gantryT).normalize();
+    const gRight = new THREE.Vector3(gTangent.z, 0, -gTangent.x).normalize();
+
+    const postHeight = 7;
+    const postWidth = 0.3;
+    const crossbarHeight = 0.4;
+    const archSpan = ROAD_WIDTH + 2; // slightly wider than road
+
+    const postGeo = new THREE.BoxGeometry(postWidth, postHeight, postWidth);
+    const crossbarGeo = new THREE.BoxGeometry(archSpan, crossbarHeight, postWidth * 1.5);
+    const gantryMat = new THREE.MeshStandardMaterial({
+      color: 0x333333,
+      metalness: 0.8,
+      roughness: 0.3,
+    });
+
+    // Left post
+    const leftPost = new THREE.Mesh(postGeo, gantryMat);
+    leftPost.position.set(
+      gP.x - gRight.x * (archSpan / 2), gP.y + postHeight / 2, gP.z - gRight.z * (archSpan / 2)
     );
-    lineMesh.rotateX(-Math.PI / 2);
-    group.add(lineMesh);
+    group.add(leftPost);
+
+    // Right post
+    const rightPost = new THREE.Mesh(postGeo, gantryMat);
+    rightPost.position.set(
+      gP.x + gRight.x * (archSpan / 2), gP.y + postHeight / 2, gP.z + gRight.z * (archSpan / 2)
+    );
+    group.add(rightPost);
+
+    // Crossbar
+    const crossbar = new THREE.Mesh(crossbarGeo, gantryMat);
+    crossbar.position.set(gP.x, gP.y + postHeight, gP.z);
+    // Orient crossbar perpendicular to track
+    const gantryAngle = Math.atan2(gRight.x, gRight.z);
+    crossbar.rotation.y = gantryAngle;
+    group.add(crossbar);
+
+    // Banner on the crossbar ("START / FINISH")
+    const bannerCanvas = document.createElement('canvas');
+    bannerCanvas.width = 512; bannerCanvas.height = 64;
+    const bannerCtx = bannerCanvas.getContext('2d')!;
+    // Checkerboard border strip
+    for (let col = 0; col < 32; col++) {
+      bannerCtx.fillStyle = col % 2 === 0 ? '#ffffff' : '#111111';
+      bannerCtx.fillRect(col * 16, 0, 16, 8);
+      bannerCtx.fillRect(col * 16, 56, 16, 8);
+    }
+    bannerCtx.fillStyle = '#000000';
+    bannerCtx.fillRect(0, 8, 512, 48);
+    bannerCtx.fillStyle = '#ffffff';
+    bannerCtx.font = 'bold 36px sans-serif';
+    bannerCtx.textAlign = 'center';
+    bannerCtx.fillText('START / FINISH', 256, 44);
+
+    const bannerTex = new THREE.CanvasTexture(bannerCanvas);
+    const bannerGeo = new THREE.PlaneGeometry(archSpan * 0.8, 1.2);
+    const bannerMat = new THREE.MeshStandardMaterial({
+      map: bannerTex,
+      emissive: new THREE.Color('#ffffff'),
+      emissiveIntensity: 0.15,
+      side: THREE.DoubleSide,
+    });
+    const banner = new THREE.Mesh(bannerGeo, bannerMat);
+    banner.position.set(gP.x, gP.y + postHeight - 1.2, gP.z);
+    // Face along the track tangent
+    banner.lookAt(gP.x + gTangent.x, gP.y + postHeight - 1.2, gP.z + gTangent.z);
+    group.add(banner);
+
+    // Emissive gantry lights (green)
+    for (let li = 0; li < 4; li++) {
+      const frac = (li + 0.5) / 4;
+      const lx = gP.x + gRight.x * (frac - 0.5) * archSpan * 0.9;
+      const lz = gP.z + gRight.z * (frac - 0.5) * archSpan * 0.9;
+      const lightGeo = new THREE.SphereGeometry(0.12, 8, 8);
+      const lightMat = new THREE.MeshStandardMaterial({
+        color: 0x00ff44,
+        emissive: new THREE.Color(0x00ff44),
+        emissiveIntensity: 2,
+      });
+      const lightMesh = new THREE.Mesh(lightGeo, lightMat);
+      lightMesh.position.set(lx, gP.y + postHeight + 0.15, lz);
+      group.add(lightMesh);
+    }
+
+    // ── 3. Grid box lane markings ──
+    // Paint 2 columns × 3 rows of grid boxes behind the start line
+    const gridCanvas = document.createElement('canvas');
+    gridCanvas.width = 128; gridCanvas.height = 128;
+    const gridCtx = gridCanvas.getContext('2d')!;
+    gridCtx.fillStyle = 'rgba(0,0,0,0)';
+    gridCtx.clearRect(0, 0, 128, 128);
+    gridCtx.strokeStyle = '#ffffff';
+    gridCtx.lineWidth = 3;
+    // Grid box outline
+    gridCtx.strokeRect(8, 8, 112, 112);
+    // Center divider
+    gridCtx.beginPath();
+    gridCtx.moveTo(64, 8);
+    gridCtx.lineTo(64, 120);
+    gridCtx.stroke();
+    // Row number
+    gridCtx.fillStyle = '#ffffff';
+    gridCtx.font = 'bold 40px sans-serif';
+    gridCtx.textAlign = 'center';
+
+    const gridTex = new THREE.CanvasTexture(gridCanvas);
+    const gridBoxGeo = new THREE.PlaneGeometry(3.5, 5);
+
+    // Place grid boxes at t slightly behind start (t = 0.002 to 0.008)
+    const gridTs = [0.003, 0.003, 0.006, 0.006, 0.009, 0.009];
+    const gridLanes = [-1, 1, -1, 1, -1, 1];
+
+    for (let gi = 0; gi < 6; gi++) {
+      const gt = gridTs[gi];
+      const gPt = spline.getPointAt(gt);
+      const gTan = spline.getTangentAt(gt).normalize();
+      const gRt = new THREE.Vector3(gTan.z, 0, -gTan.x).normalize();
+      const kappa2 = estimateCurvature(spline, gt);
+      const bankQuat2 = new THREE.Quaternion().setFromAxisAngle(gTan, -kappa2 * 2.5);
+      const bankedRt = gRt.clone().applyQuaternion(bankQuat2);
+      const upVec = new THREE.Vector3().crossVectors(bankedRt, gTan).normalize();
+
+      const laneX = gridLanes[gi] * 3.0; // ±3m from center
+
+      const gridMat2 = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.35,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -2,
+        side: THREE.DoubleSide,
+      });
+
+      const gridMesh = new THREE.Mesh(gridBoxGeo.clone(), gridMat2);
+      gridMesh.position.set(
+        gPt.x + bankedRt.x * laneX,
+        gPt.y + 0.015 + bankedRt.y * laneX,
+        gPt.z + bankedRt.z * laneX,
+      );
+      gridMesh.quaternion.setFromRotationMatrix(
+        new THREE.Matrix4().makeBasis(bankedRt, upVec, gTan)
+      );
+      gridMesh.rotateX(-Math.PI / 2);
+      gridMesh.renderOrder = 1;
+      group.add(gridMesh);
+    }
   }
 
   // ── Tire walls at tight corners (InstancedMesh) ──
