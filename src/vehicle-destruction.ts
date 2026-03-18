@@ -95,7 +95,8 @@ export function warmupDestruction(
   });
   _ringMesh = new THREE.Mesh(_ringGeo, _ringMat);
   _ringMesh.rotation.x = -Math.PI / 2;
-  _ringMesh.visible = false;
+  _ringMesh.visible = true;  // Keep visible (opacity=0) — prevents pipeline invalidation
+  _ringMesh.position.set(0, -100, 0);
   scene.add(_ringMesh);
 
   // Scorch mark — pre-create geometry + material
@@ -108,12 +109,19 @@ export function warmupDestruction(
   });
   _scorchMesh = new THREE.Mesh(_scorchGeo, _scorchMat);
   _scorchMesh.rotation.x = -Math.PI / 2;
-  _scorchMesh.visible = false;
+  _scorchMesh.visible = true;  // Keep visible (opacity=0) — prevents pipeline invalidation
+  _scorchMesh.position.set(0, -100, 0);
   scene.add(_scorchMesh);
 
-  // Explosion point light — pre-create with zero intensity
+  // Explosion point light — ALWAYS visible at zero intensity.
+  // Changing light visibility alters the scene's active light count, which is
+  // a compile-time shader constant in WebGPU. If a light goes from hidden→visible,
+  // ALL MeshStandardMaterial pipelines must be recompiled (~1.8s stall).
+  // By keeping it always visible at intensity=0, shaders compile with the
+  // correct light count from the very first render.
   _expLight = new THREE.PointLight(0xFF8800, 0, 30, 2);
-  _expLight.visible = false;
+  _expLight.visible = true;
+  _expLight.position.set(0, -100, 0);
   scene.add(_expLight);
 
   // ── Pre-allocate fragment/wheel mesh pool ──
@@ -142,10 +150,8 @@ export function warmupDestruction(
   // Warm GPU pipelines for these materials in the ACTUAL scene
   renderer.compile(scene, camera as THREE.PerspectiveCamera);
 
-  // Hide until needed
-  _ringMesh.visible = false;
-  _scorchMesh.visible = false;
-  _expLight.visible = false;
+  // Ring, scorch, and light stay visible (at zero opacity/intensity).
+  // This prevents WebGPU pipeline invalidation at explosion time.
 
   _assetsWarmed = true;
 }
@@ -164,24 +170,15 @@ export function warmupFragmentMaterials(
 ) {
   if (!_poolReady || fragments.length === 0) return;
   const count = Math.min(fragments.length, FRAG_POOL_SIZE);
-  // Assign real fragment geometry+material to pool meshes PERMANENTLY
-  // and keep them VISIBLE at y=-100. On WebGPU, renderer.compile() only
-  // builds node material trees — it does NOT create actual GPU pipelines.
-  // Pipelines are created lazily on the first renderer.render() that
-  // includes these objects. By keeping them visible (but off-screen),
-  // the pipelines compile during the first race render (loading phase)
-  // rather than at explosion time (1.8s stall).
+  // Assign real fragment geometry+material to pool meshes so
+  // renderer.compile() builds their node material trees.
   for (let i = 0; i < count; i++) {
     _poolMeshes[i].geometry = fragments[i].mesh.geometry;
     _poolMeshes[i].material = fragments[i].mesh.material;
-    _poolMeshes[i].visible = true;       // STAY visible for pipeline warmup
-    _poolMeshes[i].position.set(0, -100, 0); // off-screen — invisible to player
-    _poolMeshes[i].frustumCulled = false; // ensure renderer always processes them
+    _poolMeshes[i].visible = true;
+    _poolMeshes[i].position.set(0, -100, 0);
+    _poolMeshes[i].frustumCulled = false;
   }
-  renderer.compile(scene, camera);
-  // Do NOT set visible=false — that prevents WebGPU pipeline creation.
-  // Pool meshes stay visible at y=-100 until triggerVehicleDestruction
-  // moves them into the explosion position.
 
   // Also pre-warm wheel pool slots [FRAG_POOL_SIZE..TOTAL_POOL-1]
   if (wheels) {
@@ -198,6 +195,16 @@ export function warmupFragmentMaterials(
       }
       wi++;
     }
+  }
+
+  renderer.compile(scene, camera);
+
+  // Hide pool meshes after compile. The light count is stable (explosion
+  // PointLight is already visible at 0 intensity), so when pool meshes
+  // become visible at explosion time, WebGPU won't need to recompile
+  // shaders — the light configuration hasn't changed.
+  for (let i = 0; i < count; i++) {
+    _poolMeshes[i].visible = false;
   }
   _poolPreWarmed = true;
 }
@@ -394,7 +401,7 @@ export function triggerVehicleDestruction(
     shockwaveRing.position.y += 0.3;
     shockwaveRing.scale.set(1, 1, 1);
     _ringMat.opacity = 0.7;
-    shockwaveRing.visible = true;
+    // shockwaveRing already visible (at opacity 0) — just reposition
   }
 
   // ── Phase 3b: Dynamic explosion point light (reuse pre-allocated) ──
@@ -403,7 +410,7 @@ export function triggerVehicleDestruction(
     explosionLight.position.copy(wreckPosition!);
     explosionLight.position.y += 1.5;
     explosionLight.intensity = 8;
-    explosionLight.visible = true;
+    // explosionLight already visible (at intensity 0) — just set intensity
   }
 
   // ── Phase 3c: Ground scorch mark (reuse pre-allocated) ──
@@ -412,7 +419,7 @@ export function triggerVehicleDestruction(
     scorchMark.position.copy(wreckPosition!);
     scorchMark.position.y = 0.02;
     _scorchMat.opacity = 0;
-    scorchMark.visible = true;
+    // scorchMark already visible (at opacity 0) — just reposition
   }
 
   // ── Phase 3d: Dust kick-up wave (deferred to next frame — reduces trigger frame particle budget) ──
@@ -652,20 +659,23 @@ export function cleanupDestruction() {
   }
   activeFragCount = 0;
 
-  // Hide pre-allocated assets (don't dispose — they're reused)
+  // Reset pre-allocated assets BUT KEEP THEM VISIBLE.
+  // Setting visible=false would change the active light count on next
+  // warmup, triggering WebGPU pipeline recompilation for all lit materials.
   if (shockwaveRing) {
-    shockwaveRing.visible = false;
     shockwaveRing.scale.set(1, 1, 1);
+    shockwaveRing.position.set(0, -100, 0);
+    if (_ringMat) _ringMat.opacity = 0;
     shockwaveRing = null;
   }
   if (explosionLight) {
-    explosionLight.visible = false;
     explosionLight.intensity = 0;
+    explosionLight.position.set(0, -100, 0);
     explosionLight = null;
   }
   if (scorchMark) {
-    scorchMark.visible = false;
     if (_scorchMat) _scorchMat.opacity = 0;
+    scorchMark.position.set(0, -100, 0);
     scorchMark = null;
   }
 
