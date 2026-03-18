@@ -59,7 +59,9 @@ function showSpectateHUD() {
 
 function updateSpectateHUD() {
   if (!G.spectateHudEl || !G.spectateTargetId) return;
-  const name = resolvePlayerName(G.spectateTargetId, G);
+  const rawName = resolvePlayerName(G.spectateTargetId, G);
+  // Escape HTML entities to prevent XSS from malicious player names
+  const name = rawName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   G.spectateHudEl.innerHTML = `
     <span class="spectate-label">SPECTATING</span>
     <span class="arrow arrow-left" id="spec-left">◀</span>

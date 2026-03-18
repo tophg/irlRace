@@ -383,7 +383,7 @@ let collisionSfxCooldown = 0;
 
 /** Play metallic collision impact sound. intensity 0–1. */
 export function playCollisionSFX(intensity: number) {
-  if (!audioCtx || intensity < 0.1) return;
+  if (!audioCtx || !masterGain || intensity < 0.1) return;
   const now = audioCtx.currentTime;
   if (now - collisionSfxCooldown < 0.08) return;
   collisionSfxCooldown = now;

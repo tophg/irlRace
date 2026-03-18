@@ -108,7 +108,8 @@ export function showResults(
 
   const rankings = G.raceEngine?.getRankings() ?? [];
   const winner = rankings[0];
-  const winnerName = winner ? resolvePlayerName(winner.id, G) : '???';
+  const escHtml = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const winnerName = winner ? escHtml(resolvePlayerName(winner.id, G)) : '???';
   const isMultiplayer = !!G.netPeer;
   const isHost = G.netPeer?.getIsHost() ?? false;
   const hasReplay = G.replayRecorder?.hasData() ?? false;
@@ -140,7 +141,7 @@ export function showResults(
       </tr></thead>
       <tbody>
         ${rankings.map((r, i) => {
-          const name = resolvePlayerName(r.id, G);
+          const name = escHtml(resolvePlayerName(r.id, G));
           const isSelf = r.id === 'local';
           const isDnf = r.dnf;
           const bestLap = r.lapTimes.length > 0 ? Math.min(...r.lapTimes) : null;

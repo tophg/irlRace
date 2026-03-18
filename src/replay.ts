@@ -353,12 +353,9 @@ export class ReplayPlayer {
       time,
       // Vehicle visual state — interpolate with angle-wrapping for wheelSpin
       steer: a.steer + (b.steer - a.steer) * t,
-      wheelSpin: (() => {
-        let dw = b.wheelSpin - a.wheelSpin;
-        if (dw > Math.PI) dw -= Math.PI * 2;
-        if (dw < -Math.PI) dw += Math.PI * 2;
-        return a.wheelSpin + dw * t;
-      })(),
+      // wheelSpin is accumulated radians (monotonically increasing), not a cyclic angle.
+      // Simple linear interpolation is correct here.
+      wheelSpin: a.wheelSpin + (b.wheelSpin - a.wheelSpin) * t,
       driftAngle: a.driftAngle + (b.driftAngle - a.driftAngle) * t,
       bodyPitchX: a.bodyPitchX + (b.bodyPitchX - a.bodyPitchX) * t,
       bodyRollZ: a.bodyRollZ + (b.bodyRollZ - a.bodyRollZ) * t,

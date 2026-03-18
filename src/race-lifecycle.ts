@@ -226,7 +226,7 @@ export async function spawnAI(td: TrackData) {
       model.scale.setScalar(1);
       model.rotation.set(0, 0, 0);
       ai.vehicle.setModel(model, renderer, camera, scene);
-    } catch {}
+    } catch (err) { console.warn('[race-lifecycle] Failed to load AI model:', def.file, err); }
 
     ai.vehicle.setRoadMesh(G.trackData!.roadMesh, [G.trackData!.rampGroup]);
     ai.place(G.trackData!.spline, startTs[i] ?? 0.02, laneOffsets[i] ?? 0, G.trackData!.bvh);
@@ -287,7 +287,7 @@ export async function spawnRemoteVehicles() {
 
       const tag = createNameTag(player.name || 'Racer', scene);
       G.remoteNameTags.set(player.id, tag);
-    } catch {}
+    } catch (err) { console.warn('[race-lifecycle] Failed to load remote player model:', player.id, err); }
 
     G.raceEngine!.addRacer(player.id, 0);
   }

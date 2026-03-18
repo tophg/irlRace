@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { CAR_ROSTER, CarDef } from './types';
 import { loadCarModel, loadCarModelWithProgress } from './loaders';
-import { isCarUnlocked, getUnlockCost, unlockCar, getProgress } from './progression';
+import { isCarUnlocked, getUnlockCost, unlockCar, getProgress, saveProgress } from './progression';
 import { getSettings, saveSettings } from './settings';
 import { initCalibrationStudio, onStudioCarLoaded } from './calibration-studio';
 import { applyPaintToModel, restoreOriginalColors, shouldSkipForPaint } from './garage-paint';
@@ -537,7 +537,7 @@ function buildGarageUI(overlay: HTMLElement) {
       return;
     }
     prog.credits -= PAINT_COST;
-    localStorage.setItem('hoodracer_progress', JSON.stringify(prog));
+    saveProgress();
     const s = getSettings();
     s.paintHue = _previewHue;
     saveSettings(s);

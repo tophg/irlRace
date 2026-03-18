@@ -77,7 +77,10 @@ export function finalizeGhostLap(
   seed: number,
   carId: string,
 ): boolean {
-  const snapshots = stopGhostRecording();
+  // Capture snapshots BEFORE stopping, in case startGhostRecording was
+  // already called for the next lap (which would clear currentSnapshots).
+  const snapshots = currentSnapshots.length > 0 ? [...currentSnapshots] : stopGhostRecording();
+  if (recording) stopGhostRecording(); // clean up recording state
   if (snapshots.length < 5) return false; // Too short to be valid
 
   // Check if this beats the stored ghost for this seed

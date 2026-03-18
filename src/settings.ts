@@ -134,7 +134,7 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
       <div class="settings-section">PLAYER</div>
       <label class="settings-row">
         <span>Name</span>
-        <input type="text" maxlength="12" value="${s.playerName}" id="set-name" class="lobby-input" style="width:140px;letter-spacing:3px;font-size:16px;padding:6px 12px;">
+        <input type="text" maxlength="12" value="${s.playerName.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}" id="set-name" class="lobby-input" style="width:140px;letter-spacing:3px;font-size:16px;padding:6px 12px;">
       </label>
 
       <div style="display:flex;gap:12px;justify-content:center;margin-top:20px;">

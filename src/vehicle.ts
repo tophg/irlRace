@@ -1294,8 +1294,9 @@ export class Vehicle {
     }
   }
 
-  // Original material colors cache — prevents cumulative darkening
+  // Cache original color + metalness on first encounter
   private _originalMaterialColors = new Map<THREE.MeshStandardMaterial, THREE.Color>();
+  private _originalMaterialMetalness = new Map<THREE.MeshStandardMaterial, number>();
 
   /** Progressively darken and roughen materials on the damaged zone. */
   private applyMaterialDamage(zone: 'front' | 'rear' | 'left' | 'right') {
@@ -1319,11 +1320,13 @@ export class Vehicle {
 
       if (!inZone) return;
 
-      // Cache original color on first encounter
+      // Cache original color + metalness on first encounter
       if (!this._originalMaterialColors.has(mat)) {
         this._originalMaterialColors.set(mat, mat.color.clone());
+        this._originalMaterialMetalness.set(mat, mat.metalness ?? 0.5);
       }
       const original = this._originalMaterialColors.get(mat)!;
+      const originalMetalness = this._originalMaterialMetalness.get(mat)!;
 
       // Darken from ORIGINAL color based on absolute damage (prevents compounding)
       const darkFactor = Math.max(0.5, 1 - severity * 0.4);
@@ -1334,8 +1337,8 @@ export class Vehicle {
       // Increase roughness (fresh paint → scraped metal)
       mat.roughness = Math.min(0.3 + severity * 0.6, 0.9);
 
-      // Reduce metalness slightly (paint loss)
-      mat.metalness = Math.max(0.1, (mat.metalness || 0.5) - severity * 0.2);
+      // Reduce metalness from ORIGINAL (prevents compounding)
+      mat.metalness = Math.max(0.1, originalMetalness - severity * 0.2);
     });
   }
 

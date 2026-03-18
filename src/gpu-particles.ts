@@ -220,6 +220,10 @@ export function flushToGPU() {
 
   _dirtyStart = Infinity;
   _dirtyEnd = -1;
+
+  // Update spawn time so the compute shader idle-skip in updateGPUParticles
+  // knows there are fresh particles to simulate.
+  lastSpawnTime = performance.now() / 1000;
 }
 
 /** Spawn tire smoke particles at the given world position. */

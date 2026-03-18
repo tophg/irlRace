@@ -143,8 +143,9 @@ export function updateLeaderboard() {
   }
 
   const rankings = G.raceEngine.getRankings();
+  const escHtml = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   G.lbEl.innerHTML = rankings.map((r, i) => {
-    const name = r.id === 'local' ? 'YOU' : resolvePlayerName(r.id, G);
+    const name = escHtml(r.id === 'local' ? 'YOU' : resolvePlayerName(r.id, G));
     const isSelf = r.id === 'local';
     let rttDot = '';
     if (G.netPeer && !isSelf && !r.id.startsWith('ai_')) {
@@ -987,10 +988,14 @@ function gameLoop(timestamp: number) {
       if (godrays) godrays.visible = true;
     }
 
-    // DRS
+    // DRS (Dynamic Resolution Scaling)
+    // Evaluate every 30 frames: average frame time → adjust pixel ratio.
+    // Resize is deferred to next rAF to avoid invalidating the framebuffer
+    // mid-render (which causes blank/black frames on WebGPU).
     G._drsFrameTimes[G._drsWriteIdx % 30] = frameDt;
     G._drsWriteIdx++;
     if (G._drsWriteIdx >= 30) {
+      G._drsWriteIdx = 0; // reset so we sample a fresh 30-frame window
       let sum = 0;
       for (let drsI = 0; drsI < 30; drsI++) sum += G._drsFrameTimes[drsI];
       const avgDt = sum / 30;
@@ -1004,8 +1009,12 @@ function gameLoop(timestamp: number) {
         newPR = Math.min(currentPR + 0.05, basePR);
       }
       if (newPR !== currentPR) {
-        renderer.setPixelRatio(newPR);
-        renderer.setSize(window.innerWidth, window.innerHeight);
+        // Defer resize to next frame to prevent framebuffer invalidation mid-render
+        const w = window.innerWidth, h = window.innerHeight;
+        requestAnimationFrame(() => {
+          renderer.setPixelRatio(newPR);
+          renderer.setSize(w, h);
+        });
       }
     }
 

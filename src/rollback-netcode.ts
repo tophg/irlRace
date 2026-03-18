@@ -182,6 +182,10 @@ export class RollbackManager {
       const framesBack = this.currentFrame - frame;
       if (framesBack <= MAX_ROLLBACK_FRAMES) {
         this._rollbacksThisSecond++;
+        // Invoke rollback callback so the game loop can resimulate
+        if (this.onRollback) {
+          this.onRollback(frame, this.currentFrame);
+        }
         return true;
       }
     }

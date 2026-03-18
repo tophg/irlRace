@@ -51,9 +51,14 @@ export function stepPhysics(dt: number, s: GameState) {
   if (s !== GameState.RACING) return;
 
   // ── Player vehicle physics ──
-  if (G.vehicleCamera?.mode === 'chase') {
+  // Always run physics regardless of camera mode so the car coasts naturally
+  // during spectate/explosion cinematics instead of freezing in place.
+  {
     const wp = getWeatherPhysics();
-    G.playerVehicle.update(dt, getInput(), G.trackData.spline, G.trackData.bvh, wp);
+    const input = G.vehicleCamera?.mode === 'chase'
+      ? getInput()
+      : { up: false, down: false, left: false, right: false, boost: false, steerAnalog: 0 };
+    G.playerVehicle.update(dt, input, G.trackData.spline, G.trackData.bvh, wp);
   }
 
   // ── AI vehicle physics ──

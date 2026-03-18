@@ -240,10 +240,16 @@ export function stepRapierWorld(dt: number): RapierCollisionEvent[] {
           const vel = body.linvel();
           const impactForce = Math.sqrt(vel.x * vel.x + vel.z * vel.z) * 0.3;
 
+          // Estimate wall normal from the car's velocity direction
+          // (points opposite to travel — the wall pushes back against motion)
+          const velMag = Math.sqrt(vel.x * vel.x + vel.z * vel.z) || 1;
+          const nx = -vel.x / velMag;
+          const nz = -vel.z / velMag;
+
           events.push({
             type: 'car-wall',
             carIdA: carId!,
-            normalX: 0, normalZ: 0, // Wall normal would need manifold query
+            normalX: nx, normalZ: nz,
             impactForce,
           });
         }
