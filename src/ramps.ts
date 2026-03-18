@@ -285,7 +285,7 @@ export function placeRampsOnStraights(
       ramps.push({
         t,
         length: 15 + rng() * 15, // 15-30 units
-        height: 2 + rng() * 3,   // 2-5 units
+        height: 3.5 + rng() * 3.5, // 3.5-7 units (tall enough for dramatic jumps)
         flatTop: 0.15 + rng() * 0.2, // 0.15-0.35
         side: 'full',
       });

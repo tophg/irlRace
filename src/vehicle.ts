@@ -861,6 +861,7 @@ export class Vehicle {
 
           // Derive vertical velocity from road slope × forward speed
           // (this is what gives launch velocity when leaving a ramp)
+          const prevVelY = this._velY;
           if (this._prevRoadY !== 0) {
             this._velY = (roadY - this._prevRoadY) / dt;
           }
@@ -872,7 +873,14 @@ export class Vehicle {
             this._airborne = true;
             this._airTime = 0;
             this._airPitch = 0;
-            // velY carries forward from road slope derivative
+            this._velY *= 1.5; // arcade boost for dramatic jumps
+          }
+          // Ramp lip detection: road dropped away while we had upward climbing momentum
+          else if (gap > LAUNCH_GAP_THRESHOLD && prevVelY > LAUNCH_VEL_THRESHOLD && this._velY < 0) {
+            this._airborne = true;
+            this._airTime = 0;
+            this._airPitch = 0;
+            this._velY = prevVelY * 1.5; // carry forward climbing momentum with arcade boost
           }
         }
 
