@@ -416,7 +416,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     // Build a narrow strip of quads at closely-spaced t-values around t=0,
     // using the same banked right/up vectors as the road mesh so the pattern
     // matches the road surface exactly.
-    const STRIP_SAMPLES = 6;
+    const STRIP_SAMPLES = 12;
     const STRIP_T_RANGE = 0.003; // t range around 0 in each direction
     const stripVerts: number[] = [];
     const stripUVs: number[] = [];
@@ -424,20 +424,23 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const stripIndices: number[] = [];
     const halfW = ROAD_WIDTH / 2;
 
+    // Compute banking ONCE at the strip center (t=0) and apply uniformly.
+    // Per-sample banking over this tiny t-range produces visible tilt differences
+    // between quads, making each "tile" appear individually rotated.
+    const centerTangent = spline.getTangentAt(0).normalize();
+    const centerRight = new THREE.Vector3(centerTangent.z, 0, -centerTangent.x).normalize();
+    const centerKappa = estimateCurvature(spline, 0);
+    const centerBankQuat = new THREE.Quaternion().setFromAxisAngle(centerTangent, -centerKappa * 2.5);
+    const bankedRight = centerRight.clone().applyQuaternion(centerBankQuat);
+    const stripUp = new THREE.Vector3().crossVectors(bankedRight, centerTangent).normalize();
+
     for (let i = 0; i <= STRIP_SAMPLES; i++) {
       const frac = i / STRIP_SAMPLES;
       // Wrap through t=0: go from (1 - range) to (1 + range), then mod 1
       const t = (1 - STRIP_T_RANGE + frac * 2 * STRIP_T_RANGE) % 1;
-      // at frac=0 → t=0.997, at frac=1 → t=0.003 (wrapping through 0)
       const p = spline.getPointAt(t);
-      const tangent = spline.getTangentAt(t).normalize();
-      const right = new THREE.Vector3(tangent.z, 0, -tangent.x).normalize();
-      const kappa = estimateCurvature(spline, t);
-      const bankQuat = new THREE.Quaternion().setFromAxisAngle(tangent, -kappa * 2.5);
-      const bankedRight = right.clone().applyQuaternion(bankQuat);
-      const up = new THREE.Vector3().crossVectors(bankedRight, tangent).normalize();
 
-      // Left edge
+      // Left edge — use consistent bankedRight for the entire strip
       stripVerts.push(
         p.x - bankedRight.x * halfW, p.y + 0.02 - bankedRight.y * halfW, p.z - bankedRight.z * halfW
       );
@@ -447,7 +450,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       );
       stripUVs.push(0, frac);
       stripUVs.push(1, frac);
-      stripNormals.push(up.x, up.y, up.z, up.x, up.y, up.z);
+      stripNormals.push(stripUp.x, stripUp.y, stripUp.z, stripUp.x, stripUp.y, stripUp.z);
 
       if (i < STRIP_SAMPLES) {
         const base = i * 2;
