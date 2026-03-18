@@ -292,7 +292,7 @@ export class Vehicle {
 
     // Per-model height offset — the loader positions cars at ground level,
     // so groundOffset is just the optional per-model tuning value.
-    this.groundOffset = this.def.heightOffset ?? 0;
+    this.groundOffset = (this.def.heightOffset ?? 0) + 0.15; // universal lift to prevent clipping
 
     this.buildWheels();
     this.buildLights();
