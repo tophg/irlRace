@@ -206,21 +206,53 @@ export function destroyPause() {
 // LOADING SCREEN
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+let _loadingTipTimer: number | null = null;
+
 export function showLoading() {
   const uiOverlay = document.getElementById('ui-overlay')!;
   const el = document.createElement('div');
   el.className = 'loading-overlay';
+
+  const tips = [
+    'Drift through corners to build boost meter',
+    'Watch your engine heat — overheating means explosion',
+    'Use nitrous wisely — supplies are limited',
+    'Near misses with AI cars give bonus speed',
+    'Heavy collisions damage your car zones',
+    'Tap BRAKE before corners for tighter turns',
+    'Each environment changes grip and visibility',
+    'Replay your best laps from the results screen',
+    'Scroll wheel adjusts camera distance',
+    'Custom paint jobs cost 100 credits in the garage',
+  ];
+  const tipIdx = Math.floor(Math.random() * tips.length);
+
   el.innerHTML = `
     <div class="title-logo" style="font-size:clamp(36px,8vw,72px);margin-bottom:12px;">HOOD RACER</div>
     <div class="title-subtitle" style="margin-bottom:40px;">Street Legends Never Stop</div>
     <div class="loading-text">GENERATING TRACK<span class="loading-dots"></span></div>
+    <div class="loading-tip" style="margin-top:24px;font-size:13px;color:rgba(255,255,255,0.5);font-style:italic;transition:opacity 0.4s;max-width:360px;text-align:center;">${tips[tipIdx]}</div>
   `;
   uiOverlay.appendChild(el);
   G.loadingEl = el;
+
+  // Rotate tips every 3s
+  let currentTip = tipIdx;
+  const tipEl = el.querySelector('.loading-tip') as HTMLElement;
+  _loadingTipTimer = window.setInterval(() => {
+    if (!tipEl) return;
+    tipEl.style.opacity = '0';
+    setTimeout(() => {
+      currentTip = (currentTip + 1) % tips.length;
+      tipEl.textContent = tips[currentTip];
+      tipEl.style.opacity = '1';
+    }, 400);
+  }, 3000);
 }
 
 export function hideLoading() {
   if (G.loadingEl) { G.loadingEl.remove(); G.loadingEl = null; }
+  if (_loadingTipTimer) { clearInterval(_loadingTipTimer); _loadingTipTimer = null; }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -354,6 +386,9 @@ export function showControlsRef() {
 // TITLE SCREEN
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+let _titleEmberCanvas: HTMLCanvasElement | null = null;
+let _titleEmberRAF = 0;
+
 export function showTitleScreen(callbacks: {
   onSingleplayer: () => void;
   onMultiplayer: () => void;
@@ -381,18 +416,26 @@ export function showTitleScreen(callbacks: {
   `;
   uiOverlay.appendChild(titleEl);
 
-  document.getElementById('btn-singleplayer')!.addEventListener('click', () => {
+  // ── Falling ember particles ──
+  startTitleEmbers(titleEl);
+
+  const removeTitleScreen = () => {
+    stopTitleEmbers();
     titleEl.remove();
+  };
+
+  document.getElementById('btn-singleplayer')!.addEventListener('click', () => {
+    removeTitleScreen();
     callbacks.onSingleplayer();
   });
 
   document.getElementById('btn-multiplayer')!.addEventListener('click', () => {
-    titleEl.remove();
+    removeTitleScreen();
     callbacks.onMultiplayer();
   });
 
   document.getElementById('btn-track-editor')!.addEventListener('click', () => {
-    titleEl.remove();
+    removeTitleScreen();
     callbacks.onTrackEditor();
   });
 
@@ -405,4 +448,58 @@ export function showTitleScreen(callbacks: {
   document.getElementById('btn-settings')!.addEventListener('click', () => {
     showSettings(uiOverlay, callbacks.onApplySettings);
   });
+}
+
+function startTitleEmbers(container: HTMLElement) {
+  const canvas = document.createElement('canvas');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  canvas.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:0;';
+  container.insertBefore(canvas, container.firstChild);
+  _titleEmberCanvas = canvas;
+  const ctx = canvas.getContext('2d')!;
+
+  const embers: { x: number; y: number; vx: number; vy: number; size: number; alpha: number; hue: number; }[] = [];
+  for (let i = 0; i < 60; i++) {
+    embers.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: (Math.random() - 0.5) * 0.5,
+      vy: 0.3 + Math.random() * 0.8,
+      size: 1 + Math.random() * 2.5,
+      alpha: 0.3 + Math.random() * 0.5,
+      hue: 15 + Math.random() * 25, // orange-amber range
+    });
+  }
+
+  const animate = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const e of embers) {
+      e.x += e.vx;
+      e.y += e.vy;
+      e.alpha *= 0.998;
+      // Wrap
+      if (e.y > canvas.height + 5) { e.y = -5; e.alpha = 0.3 + Math.random() * 0.5; }
+      if (e.x < -5) e.x = canvas.width + 5;
+      if (e.x > canvas.width + 5) e.x = -5;
+      // Draw glow
+      ctx.save();
+      ctx.globalAlpha = e.alpha;
+      ctx.fillStyle = `hsl(${e.hue}, 90%, 55%)`;
+      ctx.shadowColor = `hsl(${e.hue}, 100%, 50%)`;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+    _titleEmberRAF = requestAnimationFrame(animate);
+  };
+  _titleEmberRAF = requestAnimationFrame(animate);
+}
+
+function stopTitleEmbers() {
+  if (_titleEmberRAF) cancelAnimationFrame(_titleEmberRAF);
+  _titleEmberRAF = 0;
+  if (_titleEmberCanvas) { _titleEmberCanvas.remove(); _titleEmberCanvas = null; }
 }

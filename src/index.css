@@ -53,6 +53,25 @@ canvas { display: block; }
 }
 #ui-overlay > * { pointer-events: auto; }
 
+/* Wrong-way pulsing red border */
+#ui-overlay.wrong-way-flash {
+  box-shadow: inset 0 0 80px 20px rgba(255,0,0,0.35);
+  animation: wrong-way-pulse 0.6s ease-in-out infinite alternate;
+}
+@keyframes wrong-way-pulse {
+  from { box-shadow: inset 0 0 60px 15px rgba(255,0,0,0.25); }
+  to   { box-shadow: inset 0 0 100px 30px rgba(255,0,0,0.45); }
+}
+
+/* Collision impact red vignette flash */
+#ui-overlay.impact-vignette {
+  animation: impact-flash 0.25s ease-out;
+}
+@keyframes impact-flash {
+  0%   { box-shadow: inset 0 0 100px 40px rgba(255,30,0,0.5); }
+  100% { box-shadow: inset 0 0 0 0 rgba(255,30,0,0); }
+}
+
 /* ── Title Screen ── */
 .title-screen {
   position: absolute; inset: 0;

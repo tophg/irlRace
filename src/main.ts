@@ -1505,6 +1505,8 @@ function stepPhysics(dt: number, s: GameState) {
       spawnGPUSparks(G._sparkPos, evt.impactForce);
       if (evt.impactForce > 20) spawnGPUExplosion(G._sparkPos, evt.impactForce);
       playCollisionSFX(Math.min(evt.impactForce / 30, 1));
+      // Haptic feedback for mobile
+      if (navigator.vibrate) navigator.vibrate(Math.min(Math.floor(evt.impactForce * 3), 150));
     }
   }
 
@@ -1523,6 +1525,11 @@ function stepPhysics(dt: number, s: GameState) {
     G.playerVehicle.applyDamage(G._impactDir, b.force * 0.7);
     G.raceStats.collisionCount++;
     playCollisionSFX(Math.min(b.force / 25, 1));
+    // Haptic feedback for mobile
+    if (navigator.vibrate) navigator.vibrate(Math.min(Math.floor(b.force * 4), 200));
+    // Red vignette flash
+    uiOverlay.classList.add('impact-vignette');
+    setTimeout(() => uiOverlay.classList.remove('impact-vignette'), 250);
 
     // Glass shard burst: trigger when any zone drops below 40% HP for the first time
     const zones: Array<'front' | 'rear' | 'left' | 'right'> = ['front', 'rear', 'left', 'right'];
@@ -2250,6 +2257,8 @@ function gameLoop(timestamp: number) {
         G.playerVehicle.heading,
         G.trackData.checkpoints[progress?.checkpointIndex ?? 0]?.tangent ?? G._defaultTangent,
       );
+      // Wrong-way screen flash
+      uiOverlay.classList.toggle('wrong-way-flash', wrongWay);
 
       updateHUD(
         G.playerVehicle.speed,
