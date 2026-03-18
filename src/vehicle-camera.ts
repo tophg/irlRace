@@ -5,8 +5,8 @@ import * as THREE from 'three';
 let CHASE_DISTANCE = 5;
 let CHASE_HEIGHT_RATIO = 0.45;  // height proportional to distance (adjustable via Shift+scroll)
 const LOOK_AHEAD = 2;
-const POSITION_LERP = 0.14;
-const LOOK_LERP = 0.08;
+const POSITION_RATE = 12;   // exponential smoothing rate (higher = tighter follow)
+const LOOK_RATE = 10;       // look-at smoothing rate
 const FOV_MIN = 60;
 const FOV_MAX = 78;
 const FOV_LERP = 0.04;
@@ -162,8 +162,9 @@ export class VehicleCamera {
       this.initialized = true;
     }
 
-    // Smooth position follow
-    this.smoothPos.lerp(_desired, POSITION_LERP);
+    // Smooth position follow (frame-rate-independent exponential smoothing)
+    const posAlpha = 1 - Math.exp(-POSITION_RATE * dt);
+    this.smoothPos.lerp(_desired, posAlpha);
     this.camera.position.copy(this.smoothPos);
 
     // Look-at point: slightly ahead of the vehicle
@@ -172,7 +173,8 @@ export class VehicleCamera {
       targetPos.y + 1.5,
       targetPos.z + Math.cos(heading) * LOOK_AHEAD,
     );
-    this.currentLookAt.lerp(_lookTarget, LOOK_LERP);
+    const lookAlpha = 1 - Math.exp(-LOOK_RATE * dt);
+    this.currentLookAt.lerp(_lookTarget, lookAlpha);
     this.camera.lookAt(this.currentLookAt);
 
     // Speed-based FOV
