@@ -732,7 +732,7 @@ export function updateGlassShards(dt: number) {
     s.life -= dt;
     if (s.life <= 0) {
       if (_glassScene) _glassScene.remove(s.mesh);
-      s.mesh.geometry.dispose();
+      // Only dispose material (cloned per-shard); geometry is shared (_glassGeo)
       (s.mesh.material as THREE.Material).dispose();
       glassShards.splice(i, 1);
       continue;

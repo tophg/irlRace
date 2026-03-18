@@ -299,8 +299,8 @@ function flattenStartZone(pts: THREE.Vector3[]) {
     const t = (i + 1) / (blendCount + 1); // 0.25, 0.5, 0.75
     const fwdIdx = flatCount + i;
     const bwdIdx = n - 1 - flatCount - i;
-    if (fwdIdx < n) pts[fwdIdx].y *= t;
-    if (bwdIdx >= 0 && bwdIdx !== fwdIdx) pts[bwdIdx].y *= t;
+    if (fwdIdx < n && fwdIdx < bwdIdx) pts[fwdIdx].y *= t; // guard: no overlap
+    if (bwdIdx >= 0 && bwdIdx > fwdIdx) pts[bwdIdx].y *= t; // guard: no overlap
   }
 }
 

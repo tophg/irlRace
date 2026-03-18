@@ -57,6 +57,11 @@ let placeholderMesh: THREE.Mesh | null = null;
 // Loading progress bar
 let progressBarEl: HTMLElement | null = null;
 
+// Stored event handlers for cleanup
+let _pointerDownHandler: ((e: PointerEvent) => void) | null = null;
+let _pointerMoveHandler: ((e: PointerEvent) => void) | null = null;
+let _pointerUpHandler: ((e: PointerEvent) => void) | null = null;
+
 export function initGarage(
   renderer: THREE.WebGPURenderer,
   overlay: HTMLElement,
@@ -296,7 +301,7 @@ function buildBackdropPanels() {
 // ── Canvas Interactions (pointer events) ──
 function wireCanvasInteractions() {
   // Unified pointer events handling mouse and touch
-  window.addEventListener('pointerdown', (e) => {
+  _pointerDownHandler = (e: PointerEvent) => {
     // Only handle primary pointer (usually touches[0] or left click)
     if (!e.isPrimary) return;
     
@@ -313,9 +318,10 @@ function wireCanvasInteractions() {
     if (document.body.classList.contains('gizmo-active')) {
       isDragging = false;
     }
-  });
+  };
+  window.addEventListener('pointerdown', _pointerDownHandler);
 
-  window.addEventListener('pointermove', (e) => {
+  _pointerMoveHandler = (e: PointerEvent) => {
     if (!isDragging || !e.isPrimary) return;
     if (document.body.classList.contains('gizmo-active')) {
       isDragging = false;
@@ -325,9 +331,10 @@ function wireCanvasInteractions() {
     orbitVelocity = dx * 0.003;
     lastPointerX = e.clientX;
     lastInteractionTime = performance.now();
-  });
+  };
+  window.addEventListener('pointermove', _pointerMoveHandler);
 
-  const onPointerUp = (e: PointerEvent) => {
+  _pointerUpHandler = (e: PointerEvent) => {
     if (!e.isPrimary) return;
     
     if (isDragging) {
@@ -345,8 +352,8 @@ function wireCanvasInteractions() {
     }
   };
 
-  window.addEventListener('pointerup', onPointerUp);
-  window.addEventListener('pointercancel', onPointerUp);
+  window.addEventListener('pointerup', _pointerUpHandler);
+  window.addEventListener('pointercancel', _pointerUpHandler);
 
   // ── Setup Calibration Studio ──
   initCalibrationStudio(garageRenderer as any, uiEl!);
@@ -878,6 +885,15 @@ export function destroyGarage() {
 
   // Unwire keyboard navigation
   unwireKeyboardNav();
+
+  // Unwire pointer event listeners
+  if (_pointerDownHandler) { window.removeEventListener('pointerdown', _pointerDownHandler); _pointerDownHandler = null; }
+  if (_pointerMoveHandler) { window.removeEventListener('pointermove', _pointerMoveHandler); _pointerMoveHandler = null; }
+  if (_pointerUpHandler) {
+    window.removeEventListener('pointerup', _pointerUpHandler);
+    window.removeEventListener('pointercancel', _pointerUpHandler);
+    _pointerUpHandler = null;
+  }
 
   // Dispose current car model
   if (currentModel) {

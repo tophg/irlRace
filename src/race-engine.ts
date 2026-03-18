@@ -179,7 +179,7 @@ export class RaceEngine {
    * This eliminates the t-wraparound bug entirely.
    */
   getRankings(): RacerProgress[] {
-    const list = this._racersList;
+    const list = this._racersList.slice(); // copy to avoid mutation
     const N = this.checkpoints.length;
 
     return list.sort((a, b) => {

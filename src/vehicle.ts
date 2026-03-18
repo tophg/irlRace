@@ -79,6 +79,7 @@ export class Vehicle {
   private _justLanded = false;   // single-frame flag for landing VFX
   private _landingImpact = 0;    // 0-1 severity of last landing
   private _airPitch = 0;         // accumulated nose-dip pitch while airborne
+  private _physicsTime = 0;      // accumulated physics time (deterministic, for wind etc.)
 
   /** Whether the vehicle is currently airborne (in air after a ramp/jump). */
   get airborne(): boolean { return this._airborne; }
@@ -570,6 +571,7 @@ export class Vehicle {
 
   update(dt: number, input: InputState, spline?: THREE.CatmullRomCurve3, bvh?: SplineBVH, weather?: WeatherPhysics) {
     dt = Math.min(dt, 0.05);
+    this._physicsTime += dt;
     const { def } = this;
 
     // ── Input mapping ──
@@ -678,9 +680,10 @@ export class Vehicle {
       this._engineDeadTimer -= dt;
       // Kill throttle/nitro while engine is dead
       this._nitroActive = false;
-      // Apply heavy drag to coast to a stop
-      const deadDrag = vForward * 3.0;
-      // We'll use this below by zeroing tyreForce contribution
+      // Apply heavy drag to coast to a stop (exponential decay)
+      const deadDecay = Math.exp(-3.0 * dt);
+      this._velX *= deadDecay;
+      this._velZ *= deadDecay;
       if (this._engineDeadTimer <= 0) {
         // Engine restarts — heat partially cooled
         this._engineDead = false;
@@ -772,9 +775,8 @@ export class Vehicle {
 
     // ── Crosswind lateral push ──
     if (weather?.crosswindForce && absSpeed > 3) {
-      // Use deterministic per-frame time from physics accumulator
-      const windTime = performance.now() * 0.001; // smooth, monotonic
-      const variance = 1 + Math.sin(windTime) * (weather.crosswindVariance ?? 0);
+      // Use deterministic accumulated physics time (not performance.now)
+      const variance = 1 + Math.sin(this._physicsTime) * (weather.crosswindVariance ?? 0);
       const windForce = weather.crosswindForce * absSpeed * absSpeed * 0.0001 * variance;
       this._velX += windForce * cosH * dt;
       this._velZ -= windForce * sinH * dt;
@@ -1245,6 +1247,15 @@ export class Vehicle {
     this._engineDead = false;
     this._engineDeadTimer = 0;
     this._engineJustExploded = false;
+    this._prevRoadY = 0;
+    this._airborne = false;
+    this._airTime = 0;
+    this._airPitch = 0;
+    this._velY = 0;
+    this._justLanded = false;
+    this._landingImpact = 0;
+    this._physicsTime = 0;
+    this.lastBarrierImpact = null;
     this.damage = createDamageState();
     this.detachedZones.clear();
   }
