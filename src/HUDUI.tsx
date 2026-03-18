@@ -1,6 +1,6 @@
 /* ── Hood Racer — Solid.js HUD ── */
 
-import { createSignal, createEffect, onMount, onCleanup, Show } from 'solid-js';
+import { createSignal, createEffect, Show } from 'solid-js';
 
 
 // ── Shared Reactive State ──
@@ -20,24 +20,9 @@ export const [damageState, setDamageState] = createSignal({
 });
 export const [gapInfo, setGapInfo] = createSignal({ ahead: '', behind: '' });
 
-// Minimap imperative access
-export let minimapCtx: CanvasRenderingContext2D | null = null;
-export let minimapCanvasEl: HTMLCanvasElement | null = null;
+
 
 export const RacingHUD = () => {
-  let canvasRef: HTMLCanvasElement | undefined;
-
-  onMount(() => {
-    if (canvasRef) {
-      minimapCanvasEl = canvasRef;
-      minimapCtx = canvasRef.getContext('2d');
-    }
-  });
-
-  onCleanup(() => {
-    minimapCtx = null;
-    minimapCanvasEl = null;
-  });
 
   const getNitroGradient = () => {
     const pct = nitroPct();
@@ -146,7 +131,7 @@ export const RacingHUD = () => {
         </div>
       </div>
 
-      <canvas class="hud-minimap" id="hud-minimap" width="160" height="160" ref={canvasRef} />
+
 
       <div class="hud-damage" id="hud-damage">
         <div class={`dmg-zone dmg-front ${getDamageClass(damageState().front)}`} />

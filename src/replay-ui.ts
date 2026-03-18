@@ -197,7 +197,7 @@ export function startReplayPlayback(ctx: ReplayContext) {
     }
   };
 
-  // ── Scrub bar click/drag ──
+  // ── Scrub bar click/drag + touch ──
   const scrubBar = document.getElementById('replay-scrub')!;
   let scrubbing = false;
   const handleScrub = (e: MouseEvent) => {
@@ -206,9 +206,21 @@ export function startReplayPlayback(ctx: ReplayContext) {
     G.replayPlayer?.seekTo(progress);
     updateHUD();
   };
+  const handleTouchScrub = (e: TouchEvent) => {
+    const rect = scrubBar.getBoundingClientRect();
+    const touch = e.touches[0] || e.changedTouches[0];
+    if (!touch) return;
+    const progress = Math.max(0, Math.min(1, (touch.clientX - rect.left) / rect.width));
+    G.replayPlayer?.seekTo(progress);
+    updateHUD();
+  };
   scrubBar.addEventListener('mousedown', (e) => { scrubbing = true; handleScrub(e); });
   document.addEventListener('mousemove', (e) => { if (scrubbing) handleScrub(e); });
   document.addEventListener('mouseup', () => { scrubbing = false; });
+  scrubBar.addEventListener('touchstart', (e) => { e.preventDefault(); scrubbing = true; handleTouchScrub(e); }, { passive: false });
+  scrubBar.addEventListener('touchmove', (e) => { if (scrubbing) { e.preventDefault(); handleTouchScrub(e); } }, { passive: false });
+  scrubBar.addEventListener('touchend', () => { scrubbing = false; });
+  scrubBar.addEventListener('touchcancel', () => { scrubbing = false; });
 
   // ── Button handlers ──
   document.getElementById('rp-play-pause')!.addEventListener('click', () => {

@@ -59,7 +59,7 @@ import {
   playNitroRelease, playRumbleStrip, playFinishFanfare,
 } from './audio';
 import {
-  updateHUD, updateMinimap, updateDamageHUD,
+  updateHUD, updateDamageHUD,
   updateGapHUD, updateNitroHUD, updateHeatHUD,
 } from './hud';
 import { sampleGhostFrame, updateGhostPlayback, finalizeGhostLap, startGhostRecording } from './ghost';
@@ -860,15 +860,7 @@ function gameLoop(timestamp: number) {
         G.playerVehicle.isNitroActive,
       );
 
-      const PEER_COLORS = ['#ff6600', '#e040fb', '#ffcc00', '#76ff03', '#ff1744', '#00bcd4'];
-      const minimapDots: { pos: THREE.Vector3; color?: string }[] = [];
-      G.aiRacers.forEach(ai => minimapDots.push({ pos: ai.vehicle.group.position, color: '#ff6600' }));
-      let peerIdx = 0;
-      for (const mesh of G.remoteMeshes.values()) {
-        minimapDots.push({ pos: mesh.position, color: PEER_COLORS[peerIdx % PEER_COLORS.length] });
-        peerIdx++;
-      }
-      updateMinimap(G.trackData.spline, G.playerVehicle.group.position, minimapDots);
+
 
       updateLeaderboard();
 
