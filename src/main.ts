@@ -501,6 +501,45 @@ async function startRace() {
     await new Promise(resolve => requestAnimationFrame(resolve));
 
     hideLoading();
+
+    // ── PRE-RACE FLYOVER — helicopter sweep of the track ──
+    G.gameState = GameState.FLYOVER;
+    G.vehicleCamera!.startFlyover(trackData.spline, 6);
+    showHUD(false);
+
+    // 'TRACK PREVIEW' label
+    const flyoverLabel = document.createElement('div');
+    flyoverLabel.className = 'flyover-label';
+    flyoverLabel.textContent = 'TRACK PREVIEW';
+    uiOverlay.appendChild(flyoverLabel);
+
+    // Wait for flyover to complete OR skip on any input
+    await new Promise<void>((resolve) => {
+      const onSkip = () => {
+        G.vehicleCamera?.skipFlyover();
+        resolve();
+      };
+      const keyHandler = (e: KeyboardEvent) => { if (e.key !== 'F11') onSkip(); };
+      const pointerHandler = () => onSkip();
+      window.addEventListener('keydown', keyHandler, { once: true });
+      window.addEventListener('pointerdown', pointerHandler, { once: true });
+
+      // Also resolve when flyover finishes naturally (polled via rAF)
+      const poll = () => {
+        if (G.vehicleCamera?.isFlyoverComplete()) {
+          window.removeEventListener('keydown', keyHandler);
+          window.removeEventListener('pointerdown', pointerHandler);
+          resolve();
+        } else {
+          requestAnimationFrame(poll);
+        }
+      };
+      requestAnimationFrame(poll);
+    });
+
+    flyoverLabel.remove();
+    showHUD(true);
+
     // NOW enter COUNTDOWN — track is fully built, all assets loaded
     G.gameState = GameState.COUNTDOWN;
 
@@ -1399,8 +1438,8 @@ function destroyLeaderboard() {
 function stepPhysics(dt: number, s: GameState) {
   if (!G.playerVehicle || !G.trackData) return;
 
-  // ── Countdown: zero-input physics so cars settle on road surface ──
-  if (s === GameState.COUNTDOWN) {
+  // ── Countdown / Flyover: zero-input physics so cars settle on road surface ──
+  if (s === GameState.COUNTDOWN || s === GameState.FLYOVER) {
     const neutralInput = { up: false, down: false, left: false, right: false, boost: false, steerAnalog: 0 };
     G.playerVehicle.update(dt, neutralInput, G.trackData.spline, G.trackData.bvh);
     for (const ai of G.aiRacers) {
@@ -1617,11 +1656,15 @@ function gameLoop(timestamp: number) {
     return;
   }
 
-  // ── Countdown / Racing / Results ──
-  if (s === GameState.COUNTDOWN || s === GameState.RACING || s === GameState.RESULTS) {
+  if (s === GameState.FLYOVER || s === GameState.COUNTDOWN || s === GameState.RACING || s === GameState.RESULTS) {
     if (!G.playerVehicle || !G.trackData) {
       renderer.render(scene, camera);
       return;
+    }
+
+    // ── Flyover camera update (before physics) ──
+    if (s === GameState.FLYOVER && G.vehicleCamera) {
+      G.vehicleCamera.updateFlyover(frameDt);
     }
 
     // ── FIXED-TIMESTEP PHYSICS ──

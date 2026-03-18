@@ -91,7 +91,7 @@ const _lookTarget = new THREE.Vector3();
 const _tiltQuat = new THREE.Quaternion();
 const _localZ = new THREE.Vector3(0, 0, 1);
 
-export type CameraMode = 'chase' | 'orbit' | 'follow' | 'explosion-orbit';
+export type CameraMode = 'chase' | 'orbit' | 'follow' | 'explosion-orbit' | 'flyover';
 
 export class VehicleCamera {
   private camera: THREE.PerspectiveCamera;
@@ -108,6 +108,12 @@ export class VehicleCamera {
   private shakeIntensity = 0;
   private shakeDecay = 0;
   private driftTilt = 0;
+
+  // Flyover state
+  private flyoverSpline: THREE.CatmullRomCurve3 | null = null;
+  private flyoverDuration = 6;
+  private flyoverElapsed = 0;
+  private flyoverComplete = false;
 
   constructor(camera: THREE.PerspectiveCamera) {
     this.camera = camera;
@@ -350,10 +356,78 @@ export class VehicleCamera {
     this.camera.updateProjectionMatrix();
   }
 
+  /** Start pre-race helicopter flyover along the track spline. */
+  startFlyover(spline: THREE.CatmullRomCurve3, duration = 6) {
+    this.mode = 'flyover';
+    this.flyoverSpline = spline;
+    this.flyoverDuration = duration;
+    this.flyoverElapsed = 0;
+    this.flyoverComplete = false;
+
+    // Initialize camera at start of spline, high up
+    const startPos = spline.getPointAt(0);
+    const lookPos = spline.getPointAt(0.02);
+    this.camera.position.set(startPos.x, startPos.y + 40, startPos.z);
+    this.currentLookAt.copy(lookPos);
+    this.currentLookAt.y += 2;
+    this.camera.lookAt(this.currentLookAt);
+    this.camera.fov = 75;
+    this.camera.updateProjectionMatrix();
+  }
+
+  /** Update flyover camera — returns true when flyover is complete. */
+  updateFlyover(dt: number): boolean {
+    if (this.mode !== 'flyover' || !this.flyoverSpline) return true;
+
+    this.flyoverElapsed += dt;
+    const rawProgress = Math.min(this.flyoverElapsed / this.flyoverDuration, 1);
+
+    // Smoothstep easing for acceleration/deceleration
+    const t = rawProgress * rawProgress * (3 - 2 * rawProgress);
+
+    // Position along spline at helicopter altitude
+    const splineT = t * 0.95; // don't go all the way to 1.0 (same as 0.0 on loop)
+    const pos = this.flyoverSpline.getPointAt(splineT);
+    _desired.set(pos.x, pos.y + 40, pos.z);
+    this.smoothPos.lerp(_desired, 0.08);
+    this.camera.position.copy(this.smoothPos);
+
+    // Look ahead on the spline
+    const lookT = Math.min(splineT + 0.05, 0.99);
+    const lookPos = this.flyoverSpline.getPointAt(lookT);
+    _lookTarget.set(lookPos.x, lookPos.y + 2, lookPos.z);
+    this.currentLookAt.lerp(_lookTarget, 0.06);
+    this.camera.lookAt(this.currentLookAt);
+
+    // Wide cinematic FOV
+    this.camera.fov += (75 - this.camera.fov) * 0.05;
+    this.camera.updateProjectionMatrix();
+
+    if (rawProgress >= 1) {
+      this.flyoverComplete = true;
+      return true;
+    }
+    return false;
+  }
+
+  /** Check if flyover is complete. */
+  isFlyoverComplete(): boolean {
+    return this.flyoverComplete;
+  }
+
+  /** Force-end the flyover (skip). */
+  skipFlyover() {
+    this.flyoverComplete = true;
+    this.mode = 'chase';
+  }
+
   /** Reset for new race. */
   reset() {
     this.initialized = false;
     this.mode = 'chase';
     this.orbitAngle = 0;
+    this.flyoverComplete = false;
+    this.flyoverElapsed = 0;
+    this.flyoverSpline = null;
   }
 }

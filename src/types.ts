@@ -8,6 +8,7 @@ export enum GameState {
   TITLE,
   GARAGE,
   LOBBY,
+  FLYOVER,
   COUNTDOWN,
   RACING,
   PAUSED,
