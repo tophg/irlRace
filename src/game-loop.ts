@@ -356,11 +356,9 @@ function gameLoop(timestamp: number) {
       _hoodExplosionPos.x += sinH * 2.2;
       _hoodExplosionPos.z += cosH * 2.2;
 
-      console.time('[EXPLOSION] particle spawn');
       spawnGPUExplosion(_hoodExplosionPos, 40);
       flashDamage(0.9);
       setImpactIntensity(1.5); // Stronger initial CA spike
-      console.timeEnd('[EXPLOSION] particle spawn');
 
       const pvx = G.playerVehicle.velX, pvz = G.playerVehicle.velZ;
       const isRacing = G.raceEngine && s === GameState.RACING;
@@ -372,13 +370,11 @@ function gameLoop(timestamp: number) {
 
       // ── Phase 2 (frame +1): Fireball wave + vehicle destruction ──
       requestAnimationFrame(() => {
-        console.time('[EXPLOSION] fireball+destruction');
         spawnGPUFireballWave(expPos);
         if (isRacing) {
           triggerVehicleDestruction(bodyRef, vGroup, getScene(), pvx, pvz, wheelRefs, cachedFrags);
           if (G.playerVehicle) G.playerVehicle.destroyed = true;
         }
-        console.timeEnd('[EXPLOSION] fireball+destruction');
 
         // ── Phase 3 (frame +2): Cinematic + ember rain + glass ──
         requestAnimationFrame(() => {
@@ -961,13 +957,9 @@ function gameLoop(timestamp: number) {
       const isNitro = G.playerVehicle?.isNitroActive ?? false;
       updatePostFX(Math.min(speedRatio, 1), isNitro, frameDt);
       if (isNitro) setBoostActive(true);
-      console.time('[RENDER] main render');
       G.postFXPipeline.render();
-      console.timeEnd('[RENDER] main render');
     } else {
-      console.time('[RENDER] main render');
       renderer.render(scene, camera);
-      console.timeEnd('[RENDER] main render');
     }
 
     // Rear-view mirror

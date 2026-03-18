@@ -289,7 +289,6 @@ export function triggerVehicleDestruction(
       frag.originalOpacity = 1.0;
       activeFragCount++;
     }
-    console.log(`[DESTRUCTION] ${count} fragments, preWarmed=${_poolPreWarmed}, center=(${_center.x.toFixed(1)},${_center.y.toFixed(1)},${_center.z.toFixed(1)}), firstVisible=${_poolMeshes[0]?.visible}, pos0=(${_poolMeshes[0]?.position.x.toFixed(1)},${_poolMeshes[0]?.position.y.toFixed(1)},${_poolMeshes[0]?.position.z.toFixed(1)})`);
     // Show deferred batch on next frame
     if (count > FIRST_BATCH) {
       requestAnimationFrame(() => {
@@ -465,27 +464,46 @@ export function updateDestructionFragments(dt: number): boolean {
       shockwaveRing.scale.set(s, s, 1);
       (shockwaveRing.material as THREE.MeshBasicMaterial).opacity = 0.7 * (1 - ringT);
     } else {
-      // Hide — DON'T dispose. Preserves warm WebGPU pipeline for next explosion.
-      shockwaveRing.visible = false;
+      // Keep visible at opacity=0, move offscreen — NEVER set visible=false
+      // (would need re-compilation if it ever becomes visible again)
+      (shockwaveRing.material as THREE.MeshBasicMaterial).opacity = 0;
+      shockwaveRing.position.set(0, -100, 0);
+      shockwaveRing.scale.set(1, 1, 1);
       shockwaveRing = null;
     }
   }
 
-  // ── Dynamic explosion light (flicker + decay) ──
+  // ── Dynamic explosion light (multi-phase flicker + decay) ──
   if (explosionLight) {
-    if (destructionTime < 0.3) {
-      // Initial flash decay: 8→3
-      explosionLight.intensity = 8 - (destructionTime / 0.3) * 5;
-    } else if (destructionTime < 4.0) {
-      // Fire flicker
-      explosionLight.intensity = 2.5 + Math.random() * 1.5;
-      // Color cools over time: orange → deep red
-      const cool = (destructionTime - 0.3) / 3.7;
-      explosionLight.color.setRGB(1.0, 0.53 - cool * 0.3, 0.0);
+    const t = destructionTime;
+    if (t < 0.15) {
+      // Phase 1: FLASH SURGE — white-hot, max intensity
+      const p = t / 0.15;
+      explosionLight.intensity = 8 + p * 4; // 8→12
+      explosionLight.color.setRGB(1.0, 0.95, 0.85); // warm white
+    } else if (t < 0.5) {
+      // Phase 2: RAPID DECAY — intensity drops, color shifts to orange
+      const p = (t - 0.15) / 0.35;
+      const flicker = 1 + Math.sin(t * 95) * 0.15 + Math.sin(t * 47) * 0.1;
+      explosionLight.intensity = (12 - p * 8) * flicker; // 12→4 with 15Hz flicker
+      explosionLight.color.setRGB(1.0, 0.6 - p * 0.15, 0.05);
+    } else if (t < 2.5) {
+      // Phase 3: FIRE FLICKER — pulsing ember light
+      const p = (t - 0.5) / 2.0;
+      const flicker = 0.7 + Math.sin(t * 23) * 0.15 + Math.sin(t * 11) * 0.1 + Math.sin(t * 37) * 0.05;
+      explosionLight.intensity = (4 - p * 3) * flicker; // 4→1 with irregular flicker
+      // Color cools: orange → deep red
+      explosionLight.color.setRGB(1.0, 0.45 - p * 0.3, 0.0);
+    } else if (t < 4.0) {
+      // Phase 4: DYING EMBERS — fading pulsing
+      const p = (t - 2.5) / 1.5;
+      const pulse = 0.5 + Math.sin(t * 7) * 0.3;
+      explosionLight.intensity = (1 - p) * pulse;
+      explosionLight.color.setRGB(0.8, 0.12, 0.0); // deep red
     } else {
-      // Hide — DON'T dispose. Preserves warm pipeline for next explosion.
-      explosionLight.visible = false;
+      // Keep visible at intensity=0, move offscreen — NEVER set visible=false
       explosionLight.intensity = 0;
+      explosionLight.position.set(0, -100, 0);
       explosionLight = null;
     }
   }
