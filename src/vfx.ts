@@ -6,7 +6,7 @@
  */
 
 import * as THREE from 'three/webgpu';
-import { spawnGPUSparks, spawnGPUBackfire } from './gpu-particles';
+
 
 // ── Re-exports from extracted modules ──
 import { initBoostFlame, updateBoostFlame, triggerBoostBurst, triggerBackfireSequence, initNitroTrail, spawnNitroTrail, updateNitroTrail, initBoostShockwave, initNitroFlash, triggerBoostShockwave, updateBoostShockwave, destroyBoostVFX } from './vfx-boost';

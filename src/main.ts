@@ -48,7 +48,7 @@ const uiOverlay = document.getElementById('ui-overlay')!;
 const { renderer, scene, camera } = await initScene(container);
 
 // ── Input ──
-const input = initInput();
+initInput();
 
 // ── Keyboard listener for spectator cycling + emotes ──
 const EMOTE_MAP: Record<string, string> = { '1': '👍', '2': '😂', '3': '💨', '4': '🔥' };

@@ -8,7 +8,7 @@ import { isCarUnlocked, getUnlockCost, unlockCar, getProgress } from './progress
 import { getSettings, saveSettings } from './settings';
 import { initCalibrationStudio, onStudioCarLoaded } from './calibration-studio';
 import { applyPaintToModel, restoreOriginalColors, shouldSkipForPaint } from './garage-paint';
-import { playClickSfx, playConfirmSfx, playUnlockSfx, playSpraySfx, destroyGarageSfx } from './garage-audio';
+import { playClickSfx, playConfirmSfx, playUnlockSfx, playSpraySfx } from './garage-audio';
 
 let garageScene: THREE.Scene;
 let garageCamera: THREE.PerspectiveCamera;
@@ -16,7 +16,7 @@ let garageRenderer: THREE.WebGPURenderer;
 let currentIndex = 0;
 let currentModel: THREE.Group | null = null;
 let platform: THREE.Mesh;
-let rotationAngle = 0;
+let _rotationAngle = 0;
 let onSelectCallback: ((car: CarDef) => void) | null = null;
 let uiEl: HTMLElement | null = null;
 
@@ -43,7 +43,7 @@ const ORBIT_HEIGHT = 2.8;
 const ORBIT_LOOK_Y = 0.8;
 
 // Swipe navigation
-let swipeTouchId: number | null = null;
+let _swipeTouchId: number | null = null;
 let swipeStartX = 0;
 const SWIPE_THRESHOLD = 60;
 

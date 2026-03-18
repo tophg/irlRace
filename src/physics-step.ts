@@ -7,7 +7,7 @@
  * Called by gameLoop() in game-loop.ts via stepPhysics(dt, state).
  */
 
-import * as THREE from 'three';
+
 import { GameState } from './types';
 import { G } from './game-context';
 import { getInput } from './input';

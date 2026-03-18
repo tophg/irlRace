@@ -8,7 +8,7 @@
 
 import * as THREE from 'three';
 import { GameState } from './types';
-import { G, PHYSICS_DT, PHYSICS_HZ, MAX_FRAME_DT, LB_UPDATE_INTERVAL } from './game-context';
+import { G, PHYSICS_DT, MAX_FRAME_DT, LB_UPDATE_INTERVAL } from './game-context';
 import { getInput } from './input';
 import { getScene, getDirLight, updateSkyTime } from './scene';
 import { getClosestSplinePoint, updateSceneryWind, updateCheckpointHighlight } from './track';
@@ -16,7 +16,6 @@ import { resolvePlayerName } from './results-screen';
 import { updateDebugOverlay } from './ui-screens';
 import { rollbackManager, packInput } from './rollback-netcode';
 import { updateGarage } from './garage';
-import { cycleSpectateTarget } from './spectator';
 import { bus } from './event-bus';
 
 // VFX imports
@@ -43,8 +42,8 @@ import {
 } from './vfx';
 import {
   updateGPUParticles,
-  spawnGPUSparks, spawnGPUExplosion, spawnGPUDamageSmoke, spawnGPUFlame,
-  spawnGPUScrapeSparks, spawnGPUGlassShards, spawnGPUShoulderDust,
+  spawnGPUExplosion, spawnGPUDamageSmoke, spawnGPUFlame,
+  spawnGPUGlassShards, spawnGPUShoulderDust,
   spawnGPUNitroTrail, spawnGPURimSparks, spawnGPUBackfire,
   spawnGPUSlipstream, flushToGPU,
 } from './gpu-particles';
@@ -61,13 +60,13 @@ import {
   playNitroRelease, playRumbleStrip, playFinishFanfare,
 } from './audio';
 import {
-  createHUD, updateHUD, updateMinimap, updateDamageHUD,
+  updateHUD, updateMinimap, updateDamageHUD,
   updateGapHUD, updateNitroHUD, updateHeatHUD,
 } from './hud';
 import { sampleGhostFrame, updateGhostPlayback, finalizeGhostLap, startGhostRecording } from './ghost';
-import { enterSpectatorMode } from './spectator';
+
 import { stepPhysics, initPhysicsStep } from './physics-step';
-import { startReplayPlayback as startReplayUI, stopReplayPlayback as stopReplayUI } from './replay-ui';
+import { stopReplayPlayback as stopReplayUI } from './replay-ui';
 
 // ── Dependency injection ──
 
