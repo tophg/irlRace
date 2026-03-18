@@ -805,8 +805,8 @@ export class Vehicle {
 
     // ── Airborne physics constants ──
     const GRAVITY = 15;            // m/s² (~1.5g for arcade feel)
-    const LAUNCH_VEL_THRESHOLD = 1.0; // min velY to trigger airborne
-    const LAUNCH_GAP_THRESHOLD = 0.15; // min gap above road to trigger airborne
+    const LAUNCH_VEL_THRESHOLD = 0.5; // min velY to trigger airborne
+    const LAUNCH_GAP_THRESHOLD = 0.08; // min gap above road to trigger airborne
     const MAX_AIR_TIME = 5.0;      // safety: force-land after 5s
     const AIR_STEER_FACTOR = 0.15; // steering multiplier while airborne
 
@@ -856,7 +856,7 @@ export class Vehicle {
           }
         } else {
           // ── GROUNDED: smooth Y tracking (both directions) ──
-          const yLerp = 1 - Math.exp(-30 * dt);
+          const yLerp = 1 - Math.exp(-15 * dt);
           this.group.position.y += (roadY - this.group.position.y) * yLerp;
 
           // Derive vertical velocity from road slope × forward speed

@@ -11,24 +11,24 @@ const _right = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 
 /**
- * Cosine-eased ramp height profile.
- * Returns a value 0..1 representing the ramp height fraction at position `f` (0..1 along ramp length).
- *   - approach zone: cosine ease-in from 0 to 1
- *   - flat top zone: holds at 1
- *   - descent zone: cosine ease-out from 1 to 0
+ * Asymmetric ramp profile for launching vehicles airborne.
+ * Returns 0..1 representing height fraction at position `f` (0..1 along ramp).
+ *   - approach zone (~65%): gradual cosine ease-in from 0 to 1
+ *   - flat top zone  (~15%): holds at 1
+ *   - lip/drop zone  (~20%): steep linear drop from 1 to 0 (creates launch lip)
  */
 function rampProfile(f: number, flatTop: number): number {
-  const approach = (1 - flatTop) / 2;
-  const descent = approach;
+  const approach = 0.65;
+  const descent = 1 - approach - flatTop;
   if (f < approach) {
-    // Ease in: 0 → 1
+    // Gradual ease-in: 0 → 1
     return 0.5 * (1 - Math.cos(Math.PI * f / approach));
   } else if (f < approach + flatTop) {
     return 1;
   } else {
-    // Ease out: 1 → 0
+    // Sharp linear drop: 1 → 0 (launch lip)
     const t = (f - approach - flatTop) / descent;
-    return 0.5 * (1 + Math.cos(Math.PI * t));
+    return 1 - t;
   }
 }
 
