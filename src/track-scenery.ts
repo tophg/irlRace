@@ -15,6 +15,9 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     treeCanopyStyle: 'sphere', treeCount: 30,
     billboardStyle: 'neon', streetLightColor: 0xffdd88, streetLightDensity: 1.0,
     groundTexture: 'grass', kerbColor: 0x888888, shoulderColor: 0x333333,
+    mountainColor: 0x1a1a2e, mountainHeight: 1, cloudOpacity: 0.3, cloudTint: 0x2a2a40,
+    fenceDensity: 1.0, rockDensity: 0.3, rockColor: 0x444450, bushDensity: 0.3,
+    spectatorDensity: 1.0, accentProps: [],
   };
   const group = new THREE.Group();
 
@@ -229,18 +232,23 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     } // end else (grass/dirt environments)
   }
 
-  // ── Street lights (InstancedMesh — NO PointLights) ──
-  const LIGHT_COUNT = 30;
+  // ── Street lights (InstancedMesh — themed) ──
+  const LIGHT_COUNT = Math.round(30 * T.streetLightDensity);
 
   // Poles
   const poleGeo = new THREE.CylinderGeometry(0.08, 0.1, 6, 6);
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x555566, metalness: 0.6, roughness: 0.3 });
-  const poleIM = new THREE.InstancedMesh(poleGeo, poleMat, LIGHT_COUNT);
+  const poleIM = new THREE.InstancedMesh(poleGeo, poleMat, Math.max(1, LIGHT_COUNT));
 
-  // Fixtures (emissive glow — replaces PointLight)
+  // Fixtures (emissive glow — themed color)
   const fixGeo = new THREE.SphereGeometry(0.3, 8, 6);
-  const fixMat = new THREE.MeshStandardMaterial({ color: 0xffffcc, emissive: 0xffdd66, emissiveIntensity: 0.8, roughness: 0.2 });
-  const fixIM = new THREE.InstancedMesh(fixGeo, fixMat, LIGHT_COUNT);
+  const fixMat = new THREE.MeshStandardMaterial({
+    color: T.streetLightColor,
+    emissive: T.streetLightColor,
+    emissiveIntensity: 0.8,
+    roughness: 0.2,
+  });
+  const fixIM = new THREE.InstancedMesh(fixGeo, fixMat, Math.max(1, LIGHT_COUNT));
 
   for (let i = 0; i < LIGHT_COUNT; i++) {
     const t = i / LIGHT_COUNT;
@@ -261,15 +269,146 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
     // Add real PointLights to every 10th lamp for visible road illumination pools
     if (i % 10 === 0) {
-      const light = new THREE.PointLight(0xffdd88, 1.5, 14, 2);
+      const light = new THREE.PointLight(T.streetLightColor, 1.5, 14, 2);
       light.position.set(x, 5.8, z);
       group.add(light);
     }
   }
-  poleIM.instanceMatrix.needsUpdate = true;
-  fixIM.instanceMatrix.needsUpdate = true;
-  group.add(poleIM);
-  group.add(fixIM);
+  if (LIGHT_COUNT > 0) {
+    poleIM.instanceMatrix.needsUpdate = true;
+    fixIM.instanceMatrix.needsUpdate = true;
+    group.add(poleIM);
+    group.add(fixIM);
+  }
+
+  // ── Chain-link fences along track edges (InstancedMesh) ──
+  if (T.fenceDensity > 0) {
+    const FENCE_COUNT = Math.round(20 * T.fenceDensity);
+    const fencePostGeo = new THREE.CylinderGeometry(0.06, 0.08, 3, 4);
+    const fencePostMat = new THREE.MeshStandardMaterial({ color: T.barrierColor, metalness: 0.5, roughness: 0.4 });
+    const fencePostIM = new THREE.InstancedMesh(fencePostGeo, fencePostMat, FENCE_COUNT * 2);
+
+    // Fence panels (semi-transparent chain-link texture)
+    const fencePanelCanvas = document.createElement('canvas');
+    fencePanelCanvas.width = 64; fencePanelCanvas.height = 64;
+    const fpCtx = fencePanelCanvas.getContext('2d')!;
+    fpCtx.clearRect(0, 0, 64, 64);
+    fpCtx.strokeStyle = 'rgba(150,150,150,0.3)';
+    fpCtx.lineWidth = 1;
+    for (let d = -64; d < 128; d += 6) {
+      fpCtx.beginPath(); fpCtx.moveTo(d, 0); fpCtx.lineTo(d + 64, 64); fpCtx.stroke();
+      fpCtx.beginPath(); fpCtx.moveTo(d, 64); fpCtx.lineTo(d + 64, 0); fpCtx.stroke();
+    }
+    const fenceTex = new THREE.CanvasTexture(fencePanelCanvas);
+    fenceTex.wrapS = THREE.RepeatWrapping; fenceTex.wrapT = THREE.RepeatWrapping;
+    const fencePanelGeo = new THREE.PlaneGeometry(8, 2.5);
+    const fencePanelMat = new THREE.MeshStandardMaterial({
+      map: fenceTex, transparent: true, alphaTest: 0.1,
+      side: THREE.DoubleSide, roughness: 0.6, metalness: 0.3,
+    });
+    const fencePanelIM = new THREE.InstancedMesh(fencePanelGeo, fencePanelMat, FENCE_COUNT);
+
+    let fencePostIdx = 0;
+    let fencePanelIdx = 0;
+    for (let i = 0; i < FENCE_COUNT; i++) {
+      const t = (i + 0.5) / FENCE_COUNT;
+      const kappa = estimateCurvature(spline, t);
+      if (Math.abs(kappa) > 0.03) continue; // skip corners
+      const p = spline.getPointAt(t);
+      const tangent = spline.getTangentAt(t).normalize();
+      const rx = tangent.z, rz = -tangent.x;
+      const side = i % 2 === 0 ? 1 : -1;
+      const offset = ROAD_WIDTH / 2 + BARRIER_THICKNESS + 3;
+      const x = p.x + rx * offset * side;
+      const z = p.z + rz * offset * side;
+
+      // Two posts per fence segment
+      _m.identity(); _m.setPosition(x - tangent.x * 4, 1.5, z - tangent.z * 4);
+      if (fencePostIdx < FENCE_COUNT * 2) fencePostIM.setMatrixAt(fencePostIdx++, _m);
+      _m.setPosition(x + tangent.x * 4, 1.5, z + tangent.z * 4);
+      if (fencePostIdx < FENCE_COUNT * 2) fencePostIM.setMatrixAt(fencePostIdx++, _m);
+
+      // Panel between posts
+      const panel = new THREE.Matrix4();
+      panel.setPosition(x, 1.5, z);
+      // Rotate to face perpendicular to road
+      const angle = Math.atan2(tangent.x, tangent.z);
+      panel.makeRotationY(angle);
+      panel.setPosition(x, 1.5, z);
+      if (fencePanelIdx < FENCE_COUNT) fencePanelIM.setMatrixAt(fencePanelIdx++, panel);
+    }
+    if (fencePostIdx > 0) {
+      fencePostIM.count = fencePostIdx;
+      fencePostIM.instanceMatrix.needsUpdate = true;
+      group.add(fencePostIM);
+    }
+    if (fencePanelIdx > 0) {
+      fencePanelIM.count = fencePanelIdx;
+      fencePanelIM.instanceMatrix.needsUpdate = true;
+      group.add(fencePanelIM);
+    }
+  }
+
+  // ── Rocks & boulders (InstancedMesh) ──
+  if (T.rockDensity > 0) {
+    const ROCK_COUNT = Math.round(40 * T.rockDensity);
+    const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+    const rockMat = new THREE.MeshStandardMaterial({ color: T.rockColor, roughness: 0.95, metalness: 0 });
+    const rockIM = new THREE.InstancedMesh(rockGeo, rockMat, ROCK_COUNT);
+    for (let i = 0; i < ROCK_COUNT; i++) {
+      const t = rng();
+      const p = spline.getPointAt(t);
+      const tangent = spline.getTangentAt(t).normalize();
+      const rx = tangent.z, rz2 = -tangent.x;
+      const side = rng() > 0.5 ? 1 : -1;
+      const offset = ROAD_WIDTH / 2 + 8 + rng() * 35;
+      const x = p.x + rx * offset * side;
+      const z = p.z + rz2 * offset * side;
+      const scale = 0.3 + rng() * 1.2;
+      _m.makeScale(scale, scale * (0.5 + rng() * 0.5), scale);
+      _m.setPosition(x, scale * 0.3 - 2, z);
+      rockIM.setMatrixAt(i, _m);
+      // Per-instance color variation
+      const rc = new THREE.Color(T.rockColor);
+      const v = 0.7 + rng() * 0.5;
+      _c.setRGB(rc.r * v, rc.g * v, rc.b * v);
+      rockIM.setColorAt(i, _c);
+    }
+    rockIM.instanceMatrix.needsUpdate = true;
+    rockIM.instanceColor!.needsUpdate = true;
+    group.add(rockIM);
+  }
+
+  // ── Bushes & shrubs (InstancedMesh — clustered near trees) ──
+  if (T.bushDensity > 0 && T.treeCanopyStyle !== 'none') {
+    const BUSH_COUNT = Math.round(60 * T.bushDensity);
+    const bushGeo = new THREE.SphereGeometry(1.0, 4, 3);
+    const bushMat = new THREE.MeshStandardMaterial({ color: T.treeCanopyColor, roughness: 0.85 });
+    const bushIM = new THREE.InstancedMesh(bushGeo, bushMat, BUSH_COUNT);
+    let bushIdx = 0;
+    for (let i = 0; i < BUSH_COUNT && bushIdx < BUSH_COUNT; i++) {
+      const t = rng();
+      const p = spline.getPointAt(t);
+      const tangent = spline.getTangentAt(t).normalize();
+      const rx = tangent.z, rz2 = -tangent.x;
+      const side = rng() > 0.5 ? 1 : -1;
+      const offset = ROAD_WIDTH / 2 + 4 + rng() * 25;
+      const x = p.x + rx * offset * side;
+      const z = p.z + rz2 * offset * side;
+      const scale = 0.4 + rng() * 0.8;
+      _m.makeScale(scale * (1 + rng() * 0.5), scale, scale * (1 + rng() * 0.5));
+      _m.setPosition(x, scale * 0.4 - 1.5, z);
+      bushIM.setMatrixAt(bushIdx, _m);
+      const bc = new THREE.Color(T.treeCanopyColor);
+      _c.setRGB(bc.r * (0.8 + rng() * 0.4), bc.g * (0.8 + rng() * 0.4), bc.b * (0.8 + rng() * 0.4));
+      bushIM.setColorAt(bushIdx, _c);
+      bushIdx++;
+    }
+    bushIM.count = bushIdx;
+    bushIM.instanceMatrix.needsUpdate = true;
+    bushIM.instanceColor!.needsUpdate = true;
+    group.add(bushIM);
+  }
 
   // ── Start/Finish line (road-conforming checkerboard + 3D gantry arch) ──
   {
@@ -788,7 +927,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   }
 
   // ── Distant mountain silhouettes (1 merged draw call) ──
-  {
+  if (T.mountainHeight > 0) {
     const trackCenter = new THREE.Vector3();
     for (let t = 0; t < 1; t += 0.01) {
       trackCenter.add(spline.getPointAt(t));
@@ -807,7 +946,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       // Generate jagged mountain profile (12 points)
       const PROFILE_PTS = 12;
       const mtnWidth = 60 + rng() * 40;
-      const mtnHeight = 15 + rng() * 30;
+      const mtnHeight = (15 + rng() * 30) * T.mountainHeight;
       const vertices: number[] = [];
       const indices: number[] = [];
 
@@ -851,7 +990,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const mergedGeo = mergeGeometries(mountainGeos);
       if (mergedGeo) {
         const mtnMat = new THREE.MeshBasicMaterial({
-          color: 0x1a1a2e, // dark silhouette — fog will blend naturally
+          color: T.mountainColor,
           fog: true,
           side: THREE.DoubleSide,
         });
@@ -862,8 +1001,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   }
 
   // ── Billboard cloud sprites (InstancedMesh — 1 draw call) ──
-  {
-    const CLOUD_COUNT = 40;
+  if (T.cloudOpacity > 0) {
+    const CLOUD_COUNT = Math.round(40 * Math.min(T.cloudOpacity * 2, 2));
     const cloudCanvas = document.createElement('canvas');
     cloudCanvas.width = 64;
     cloudCanvas.height = 64;
@@ -871,10 +1010,13 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
     // Procedural soft cloud texture (radial gradient with noise perturbation)
     const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grad.addColorStop(0, 'rgba(255,255,255,0.5)');
-    grad.addColorStop(0.4, 'rgba(255,255,255,0.25)');
-    grad.addColorStop(0.7, 'rgba(255,255,255,0.08)');
-    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    const ct = new THREE.Color(T.cloudTint);
+    const r = Math.round(ct.r * 255), g = Math.round(ct.g * 255), b = Math.round(ct.b * 255);
+    const a1 = T.cloudOpacity;
+    grad.addColorStop(0, `rgba(${r},${g},${b},${a1})`);
+    grad.addColorStop(0.4, `rgba(${r},${g},${b},${a1 * 0.5})`);
+    grad.addColorStop(0.7, `rgba(${r},${g},${b},${a1 * 0.15})`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 64, 64);
 
@@ -908,6 +1050,86 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     }
     cloudIM.instanceMatrix.needsUpdate = true;
     group.add(cloudIM);
+  }
+
+  // ── Spectator crowd (billboard sprites in grandstand) ──
+  if (T.spectatorDensity > 0) {
+    const SPEC_COUNT = Math.round(25 * T.spectatorDensity);
+    const specCanvas = document.createElement('canvas');
+    specCanvas.width = 32; specCanvas.height = 64;
+    const sctx = specCanvas.getContext('2d')!;
+    sctx.clearRect(0, 0, 32, 64);
+    // Simple silhouette figure
+    sctx.fillStyle = '#333333';
+    sctx.beginPath();
+    sctx.arc(16, 12, 8, 0, Math.PI * 2); // head
+    sctx.fill();
+    sctx.fillRect(10, 20, 12, 30); // body
+    sctx.fillRect(6, 50, 8, 14); // left leg
+    sctx.fillRect(18, 50, 8, 14); // right leg
+    const specTex = new THREE.CanvasTexture(specCanvas);
+    const specGeo = new THREE.PlaneGeometry(0.5, 1.2);
+    const specMat = new THREE.MeshBasicMaterial({
+      map: specTex, transparent: true, alphaTest: 0.3,
+      side: THREE.DoubleSide,
+    });
+    const specIM = new THREE.InstancedMesh(specGeo, specMat, SPEC_COUNT);
+    // Place in grandstand area near start/finish
+    const startP = spline.getPointAt(0);
+    const startTan = spline.getTangentAt(0).normalize();
+    const sRight = new THREE.Vector3(startTan.z, 0, -startTan.x);
+    const grandOff = ROAD_WIDTH / 2 + 8;
+    for (let i = 0; i < SPEC_COUNT; i++) {
+      const row = Math.floor(i / 5);
+      const col = (i % 5) - 2;
+      const sx = startP.x + sRight.x * (grandOff + row * 1.5) + startTan.x * col * 1.2;
+      const sz = startP.z + sRight.z * (grandOff + row * 1.5) + startTan.z * col * 1.2;
+      const sy = row * 0.8 + 0.8;
+      _m.identity();
+      _m.setPosition(sx, sy, sz);
+      specIM.setMatrixAt(i, _m);
+      // Vary colors
+      _c.setHSL(rng(), 0.4 + rng() * 0.3, 0.3 + rng() * 0.3);
+      specIM.setColorAt(i, _c);
+    }
+    specIM.instanceMatrix.needsUpdate = true;
+    specIM.instanceColor!.needsUpdate = true;
+    group.add(specIM);
+  }
+
+  // ── Road surface details: oil stains (InstancedMesh decals) ──
+  {
+    const STAIN_COUNT = 15;
+    const stainCanvas = document.createElement('canvas');
+    stainCanvas.width = 64; stainCanvas.height = 64;
+    const stctx = stainCanvas.getContext('2d')!;
+    stctx.clearRect(0, 0, 64, 64);
+    const stGrad = stctx.createRadialGradient(32, 32, 0, 32, 32, 28);
+    stGrad.addColorStop(0, 'rgba(0,0,0,0.15)');
+    stGrad.addColorStop(0.5, 'rgba(0,0,0,0.08)');
+    stGrad.addColorStop(1, 'rgba(0,0,0,0)');
+    stctx.fillStyle = stGrad;
+    stctx.fillRect(0, 0, 64, 64);
+    const stainTex = new THREE.CanvasTexture(stainCanvas);
+    const stainGeo = new THREE.PlaneGeometry(2.5, 2.5);
+    const stainMat = new THREE.MeshStandardMaterial({
+      map: stainTex, transparent: true, depthWrite: false, roughness: 0.3,
+    });
+    const stainIM = new THREE.InstancedMesh(stainGeo, stainMat, STAIN_COUNT);
+    let stainIdx = 0;
+    for (let i = 0; i < STAIN_COUNT; i++) {
+      const t = rng();
+      const p = spline.getPointAt(t);
+      const tangent = spline.getTangentAt(t).normalize();
+      const rightV = new THREE.Vector3(tangent.z, 0, -tangent.x);
+      const laneOff = (rng() - 0.5) * ROAD_WIDTH * 0.6;
+      _m.makeRotationX(-Math.PI / 2);
+      _m.setPosition(p.x + rightV.x * laneOff, p.y + 0.03, p.z + rightV.z * laneOff);
+      stainIM.setMatrixAt(stainIdx++, _m);
+    }
+    stainIM.count = stainIdx;
+    stainIM.instanceMatrix.needsUpdate = true;
+    group.add(stainIM);
   }
 
   return group;

@@ -38,7 +38,7 @@ export interface SceneryTheme {
   roadRoughness: number;
   barrierColor: number;
   buildingPalette: number[];
-  buildingHeightRange: [number, number]; // [min, max] in world units
+  buildingHeightRange: [number, number];
   windowLitChance: number;
   windowColor: number;
   treeTrunkColor: number;
@@ -51,6 +51,17 @@ export interface SceneryTheme {
   groundTexture: 'grass' | 'sand' | 'snow' | 'concrete' | 'dirt';
   kerbColor: number;
   shoulderColor: number;
+  // Phase 2 additions
+  mountainColor: number;
+  mountainHeight: number;   // 0=none, 1=normal, 2=tall
+  cloudOpacity: number;     // 0=none, 0.5=normal
+  cloudTint: number;
+  fenceDensity: number;      // 0=none, 1=normal
+  rockDensity: number;       // 0=none, 1=normal
+  rockColor: number;
+  bushDensity: number;       // 0=none, 1=normal
+  spectatorDensity: number;  // 0=none, 1=normal
+  accentProps: string[];
 }
 
 // ── Environment Presets ──
@@ -94,6 +105,9 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       streetLightColor: 0xffdd88, streetLightDensity: 1.0,
       groundTexture: 'concrete',
       kerbColor: 0x888888, shoulderColor: 0x333333,
+      mountainColor: 0x1a1a2e, mountainHeight: 1, cloudOpacity: 0.3, cloudTint: 0x2a2a40,
+      fenceDensity: 1.0, rockDensity: 0.3, rockColor: 0x444450, bushDensity: 0.3,
+      spectatorDensity: 1.0, accentProps: ['traffic_cone', 'dumpster'],
     },
   },
   {
@@ -115,6 +129,9 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       streetLightColor: 0xffaa55, streetLightDensity: 0.4,
       groundTexture: 'sand',
       kerbColor: 0xaa9966, shoulderColor: 0x665533,
+      mountainColor: 0x6a5533, mountainHeight: 1.5, cloudOpacity: 0.15, cloudTint: 0xffcc88,
+      fenceDensity: 0.3, rockDensity: 1.5, rockColor: 0x8a7755, bushDensity: 0.0,
+      spectatorDensity: 0.5, accentProps: ['cactus'],
     },
   },
   {
@@ -136,6 +153,9 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       streetLightColor: 0xffcc77, streetLightDensity: 0.6,
       groundTexture: 'grass',
       kerbColor: 0x778877, shoulderColor: 0x445544,
+      mountainColor: 0x334455, mountainHeight: 0.8, cloudOpacity: 0.4, cloudTint: 0xff8866,
+      fenceDensity: 0.5, rockDensity: 0.5, rockColor: 0x556655, bushDensity: 1.0,
+      spectatorDensity: 0.8, accentProps: ['palm_trunk'],
     },
   },
   {
@@ -157,6 +177,9 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       streetLightColor: 0xcc44ff, streetLightDensity: 1.5,
       groundTexture: 'concrete',
       kerbColor: 0x333355, shoulderColor: 0x111122,
+      mountainColor: 0x050510, mountainHeight: 0.5, cloudOpacity: 0.1, cloudTint: 0x1a0530,
+      fenceDensity: 1.2, rockDensity: 0.0, rockColor: 0x111122, bushDensity: 0.0,
+      spectatorDensity: 0.5, accentProps: ['neon_strip'],
     },
   },
   {
@@ -178,6 +201,9 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       streetLightColor: 0xccaa77, streetLightDensity: 0.8,
       groundTexture: 'dirt',
       kerbColor: 0x555555, shoulderColor: 0x2a2a2a,
+      mountainColor: 0x1a2020, mountainHeight: 1.2, cloudOpacity: 0.6, cloudTint: 0x2a3030,
+      fenceDensity: 0.8, rockDensity: 0.8, rockColor: 0x3a3a40, bushDensity: 0.5,
+      spectatorDensity: 0.3, accentProps: ['debris'],
     },
   },
   {
@@ -199,6 +225,9 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       streetLightColor: 0xeeeeff, streetLightDensity: 0.6,
       groundTexture: 'snow',
       kerbColor: 0xaabbcc, shoulderColor: 0x778899,
+      mountainColor: 0x556688, mountainHeight: 2.0, cloudOpacity: 0.3, cloudTint: 0xddddee,
+      fenceDensity: 0.5, rockDensity: 1.0, rockColor: 0x8899aa, bushDensity: 0.5,
+      spectatorDensity: 0.8, accentProps: ['snow_bollard'],
     },
   },
   {
@@ -220,6 +249,9 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       streetLightColor: 0xddddee, streetLightDensity: 0.4,
       groundTexture: 'snow',
       kerbColor: 0x99aabb, shoulderColor: 0x667788,
+      mountainColor: 0x778899, mountainHeight: 1.5, cloudOpacity: 0.8, cloudTint: 0xbbbbcc,
+      fenceDensity: 0.3, rockDensity: 0.5, rockColor: 0x8899aa, bushDensity: 0.3,
+      spectatorDensity: 0.2, accentProps: [],
     },
   },
   {
@@ -241,6 +273,9 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       streetLightColor: 0x88aadd, streetLightDensity: 0.7,
       groundTexture: 'concrete',
       kerbColor: 0x2a3a4a, shoulderColor: 0x0a1520,
+      mountainColor: 0x0a1020, mountainHeight: 1.0, cloudOpacity: 0.2, cloudTint: 0x1a2540,
+      fenceDensity: 0.8, rockDensity: 0.3, rockColor: 0x1a2535, bushDensity: 0.2,
+      spectatorDensity: 0.5, accentProps: [],
     },
   },
   // ── 4 New Environments ──
@@ -263,6 +298,9 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       streetLightColor: 0xffcc66, streetLightDensity: 0.5,
       groundTexture: 'grass',
       kerbColor: 0x557755, shoulderColor: 0x2a3a2a,
+      mountainColor: 0x1a2a20, mountainHeight: 1.0, cloudOpacity: 0.3, cloudTint: 0x1a3530,
+      fenceDensity: 0.4, rockDensity: 0.5, rockColor: 0x3a4a3a, bushDensity: 1.5,
+      spectatorDensity: 0.5, accentProps: ['tiki_torch'],
     },
   },
   {
@@ -284,6 +322,9 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       streetLightColor: 0xff8833, streetLightDensity: 1.2,
       groundTexture: 'dirt',
       kerbColor: 0x555544, shoulderColor: 0x2a2a22,
+      mountainColor: 0x332a1a, mountainHeight: 0.5, cloudOpacity: 0.5, cloudTint: 0x443520,
+      fenceDensity: 1.5, rockDensity: 0.3, rockColor: 0x555045, bushDensity: 0.2,
+      spectatorDensity: 0.3, accentProps: ['smokestack'],
     },
   },
   {
@@ -305,6 +346,9 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       streetLightColor: 0xffddaa, streetLightDensity: 0.3,
       groundTexture: 'grass',
       kerbColor: 0x778866, shoulderColor: 0x445533,
+      mountainColor: 0x445533, mountainHeight: 1.5, cloudOpacity: 0.25, cloudTint: 0xffcc88,
+      fenceDensity: 0.6, rockDensity: 0.5, rockColor: 0x667755, bushDensity: 1.0,
+      spectatorDensity: 0.5, accentProps: ['wind_turbine'],
     },
   },
   {
@@ -326,6 +370,9 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       streetLightColor: 0xffffff, streetLightDensity: 2.0,
       groundTexture: 'concrete',
       kerbColor: 0x444448, shoulderColor: 0x1a1a1e,
+      mountainColor: 0x050505, mountainHeight: 0.0, cloudOpacity: 0.0, cloudTint: 0x111111,
+      fenceDensity: 1.5, rockDensity: 0.0, rockColor: 0x222228, bushDensity: 0.0,
+      spectatorDensity: 0.0, accentProps: ['ceiling_panel'],
     },
   },
 ];
