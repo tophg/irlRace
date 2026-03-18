@@ -855,32 +855,38 @@ export class Vehicle {
             this._airPitch = 0;
           }
         } else {
-          // ── GROUNDED: smooth Y tracking (both directions) ──
-          const yLerp = 1 - Math.exp(-15 * dt);
-          this.group.position.y += (roadY - this.group.position.y) * yLerp;
+          // ── GROUNDED: detect ramp lip BEFORE yLerp can snap car down ──
 
-          // Derive vertical velocity from road slope × forward speed
-          // (this is what gives launch velocity when leaving a ramp)
+          // Derive road slope velocity (how fast the road surface is changing)
           const prevVelY = this._velY;
           if (this._prevRoadY !== 0) {
             this._velY = (roadY - this._prevRoadY) / dt;
           }
-          this._prevRoadY = roadY;
 
-          // Launch detection: car is above road AND has upward velocity
-          const gap = this.group.position.y - roadY;
-          if (gap > LAUNCH_GAP_THRESHOLD && this._velY > LAUNCH_VEL_THRESHOLD) {
+          // ── Ramp lip detection: road dropped suddenly while we had upward momentum ──
+          // Must check BEFORE yLerp to prevent the car being snapped down
+          const roadDrop = this._prevRoadY - roadY; // positive = road fell
+          if (this._prevRoadY !== 0 && roadDrop > 1.5 && prevVelY > 0.3) {
+            // Road surface dropped > 1.5 units in one frame — launch off the lip!
             this._airborne = true;
             this._airTime = 0;
             this._airPitch = 0;
-            this._velY *= 1.5; // arcade boost for dramatic jumps
-          }
-          // Ramp lip detection: road dropped away while we had upward climbing momentum
-          else if (gap > LAUNCH_GAP_THRESHOLD && prevVelY > LAUNCH_VEL_THRESHOLD && this._velY < 0) {
-            this._airborne = true;
-            this._airTime = 0;
-            this._airPitch = 0;
-            this._velY = prevVelY * 1.5; // carry forward climbing momentum with arcade boost
+            this._velY = Math.max(prevVelY, roadDrop * 0.5) * 1.5; // arcade boost
+            this._prevRoadY = roadY;
+          } else {
+            // Normal grounded: smooth Y tracking
+            const yLerp = 1 - Math.exp(-15 * dt);
+            this.group.position.y += (roadY - this.group.position.y) * yLerp;
+            this._prevRoadY = roadY;
+
+            // Standard launch: car drifted above road with upward velocity
+            const gap = this.group.position.y - roadY;
+            if (gap > LAUNCH_GAP_THRESHOLD && this._velY > LAUNCH_VEL_THRESHOLD) {
+              this._airborne = true;
+              this._airTime = 0;
+              this._airPitch = 0;
+              this._velY *= 1.5;
+            }
           }
         }
 
