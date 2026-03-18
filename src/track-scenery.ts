@@ -261,8 +261,9 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
     for (let i = 0; i <= STRIP_SAMPLES; i++) {
       const frac = i / STRIP_SAMPLES;
-      const t = ((1 - frac) * (1 - STRIP_T_RANGE) + frac * STRIP_T_RANGE) % 1;
-      // wrap-safe: at frac=0 → t≈0.997, at frac=1 → t=0.003 
+      // Wrap through t=0: go from (1 - range) to (1 + range), then mod 1
+      const t = (1 - STRIP_T_RANGE + frac * 2 * STRIP_T_RANGE) % 1;
+      // at frac=0 → t=0.997, at frac=1 → t=0.003 (wrapping through 0)
       const p = spline.getPointAt(t);
       const tangent = spline.getTangentAt(t).normalize();
       const right = new THREE.Vector3(tangent.z, 0, -tangent.x).normalize();
