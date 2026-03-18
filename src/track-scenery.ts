@@ -353,24 +353,31 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const canvas = document.createElement('canvas');
     canvas.width = 256; canvas.height = 86;
     const ctx = canvas.getContext('2d')!;
-    const hue = Math.floor(rng() * 360);
-    ctx.fillStyle = `hsl(${hue}, 70%, 25%)`;
+    ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, 256, 86);
-    ctx.fillStyle = `hsl(${hue}, 80%, 60%)`;
-    ctx.font = 'bold 36px sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 30px sans-serif';
     ctx.textAlign = 'center';
-    const sponsors = ['SPEED', 'TURBO', 'APEX', 'DRIFT', 'NITRO', 'BOOST', 'GRIP', 'RACE'];
-    ctx.fillText(sponsors[i % sponsors.length], 128, 55);
+    const slogans = ['OBEY', 'CONSUME', 'SUBMIT', 'CONFORM', 'STAY ASLEEP', 'NO THOUGHT', 'MARRY AND\nREPRODUCE', 'BUY', 'WATCH TV', 'DO NOT\nQUESTION', 'OBEY', 'CONSUME'];
+    const msg = slogans[i % slogans.length];
+    if (msg.includes('\n')) {
+      const lines = msg.split('\n');
+      ctx.font = 'bold 24px sans-serif';
+      ctx.fillText(lines[0], 128, 40);
+      ctx.fillText(lines[1], 128, 68);
+    } else {
+      ctx.fillText(msg, 128, 55);
+    }
     // Border
-    ctx.strokeStyle = `hsl(${hue}, 80%, 70%)`;
+    ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 4;
     ctx.strokeRect(4, 4, 248, 78);
 
     const adTex = new THREE.CanvasTexture(canvas);
     const adMat = new THREE.MeshStandardMaterial({
       map: adTex,
-      emissive: new THREE.Color(`hsl(${hue}, 60%, 20%)`),
-      emissiveIntensity: 0.3,
+      emissive: new THREE.Color('#333333'),
+      emissiveIntensity: 0.5,
     });
 
     const board = new THREE.Mesh(adGeo.clone(), adMat);
