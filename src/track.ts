@@ -896,7 +896,7 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
 
   // ── Enhancement 6: Ground cover grass patches (InstancedMesh — 1 draw call) ──
   {
-    const GRASS_COUNT = 200;
+    const GRASS_COUNT = 2000;
 
     // Procedural grass texture (canvas with blade silhouettes)
     const grassCanvas = document.createElement('canvas');
@@ -951,19 +951,19 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
       const tangent = spline.getTangentAt(t).normalize();
       const rx = tangent.z, rz = -tangent.x;
       const side = rng() > 0.5 ? 1 : -1;
-      const offset = ROAD_WIDTH / 2 + 2 + rng() * 20;
+      const offset = ROAD_WIDTH / 2 + 2 + rng() * 50;
       const x = p.x + rx * offset * side;
       const z = p.z + rz * offset * side;
-      const scale = 0.6 + rng() * 0.8;
+      const scale = 1.0 + rng() * 1.5;
       const rotY = rng() * Math.PI;
 
       _m.makeRotationY(rotY);
       _m.scale(new THREE.Vector3(scale, scale, scale));
-      _m.setPosition(x, p.y, z);
+      _m.setPosition(x, p.y - 0.3, z);
       grassIM.setMatrixAt(grassIdx, _m);
 
       // Vary grass color slightly
-      _c.setHSL(0.3 + rng() * 0.05, 0.5 + rng() * 0.2, 0.25 + rng() * 0.15);
+      _c.setHSL(0.28 + rng() * 0.08, 0.45 + rng() * 0.25, 0.2 + rng() * 0.2);
       grassIM.setColorAt(grassIdx, _c);
       grassIdx++;
     }

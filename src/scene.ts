@@ -59,7 +59,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     skyTop: 0x0d0d1a, skyBottom: 0x1a1a3a, skyHorizon: 0x2a1a30,
     hemiSky: 0x88aacc, hemiGround: 0x444422, hemiIntensity: 1.0,
     dirColor: 0xffeedd, dirIntensity: 2.0, dirPosition: [50, 80, 30],
-    groundColor: 0x222228, exposure: 1.15,
+    groundColor: 0x1a2a1a, exposure: 1.15,
   },
   {
     name: 'Desert Dawn',
@@ -67,7 +67,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     skyTop: 0x1a0a2e, skyBottom: 0xff6633, skyHorizon: 0xffaa44,
     hemiSky: 0xffddaa, hemiGround: 0x886633, hemiIntensity: 1.2,
     dirColor: 0xffcc88, dirIntensity: 2.2, dirPosition: [80, 30, 50],
-    groundColor: 0x3a3530, exposure: 1.3,
+    groundColor: 0x3a3520, exposure: 1.3,
   },
   {
     name: 'Coastal Sunset',
@@ -75,7 +75,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     skyTop: 0x0a1628, skyBottom: 0x2244aa, skyHorizon: 0xff6644,
     hemiSky: 0xaabbdd, hemiGround: 0x445566, hemiIntensity: 1.1,
     dirColor: 0xffaa77, dirIntensity: 2.2, dirPosition: [-60, 25, 60],
-    groundColor: 0x1a2030, exposure: 1.25,
+    groundColor: 0x1a2820, exposure: 1.25,
   },
   {
     name: 'Neon City',
@@ -91,7 +91,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     skyTop: 0x0a0f0f, skyBottom: 0x1a2525, skyHorizon: 0x2a3535,
     hemiSky: 0x556666, hemiGround: 0x222222, hemiIntensity: 0.55,
     dirColor: 0x8899aa, dirIntensity: 1.3, dirPosition: [40, 50, 20],
-    groundColor: 0x151a1a, exposure: 1.0,
+    groundColor: 0x152018, exposure: 1.0,
   },
   {
     name: 'Alpine Snow',
