@@ -2413,6 +2413,9 @@ function gameLoop(timestamp: number) {
       
       const oldAutoClear = renderer.autoClear;
       renderer.autoClear = false;
+      // Clear both color and depth in the mirror region to prevent bleed-through
+      // from the main render (avoids washed-out sky in mirror)
+      renderer.clearColor();
       renderer.clearDepth();
       
       renderer.render(scene, G.mirrorCamera);

@@ -1232,7 +1232,8 @@ function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number): THR
     }
 
     _m.makeScale(w, h, d);
-    _m.setPosition(x, p.y + h / 2, z);
+    // Buildings sit on the ground plane (y=-30), not floating at spline height
+    _m.setPosition(x, -30 + h / 2, z);
     buildingIM.setMatrixAt(i, _m);
 
     // Vary building color per instance
