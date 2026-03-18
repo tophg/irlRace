@@ -75,7 +75,7 @@ export function updateHUD(
 
 export function updateNitroHUD(nitro: number, isActive: boolean) {
   if (!disposeSolid) return;
-  setNitroPct(nitro / 1.5); // normalize 0-150 → 0-100 for HUD bar
+  setNitroPct(nitro);
   setIsNitroActive(isActive);
 }
 

@@ -43,7 +43,7 @@ export class Vehicle {
   throttle = 0;
   brake = 0;
   driftAngle = 0;      // visual drift, for VFX / audio
-  nitro = 150;         // 0–150 nitro meter (finite supply — no auto-recharge)
+  nitro = 100;         // 0–100 nitro meter (finite supply — no auto-recharge)
   private _nitroActive = false; // actual nitro burn state (requires nitro > 0)
 
   // ── Engine Heat System ──
@@ -692,7 +692,7 @@ export class Vehicle {
     // ── Nitro drain/recharge (must run before boostedMax) ──
     if (!this._engineDead && input.boost && this.nitro > 0) {
       this._nitroActive = true;
-      this.nitro = Math.max(0, this.nitro - 20 * dt);  // slower drain = longer burn window
+      this.nitro = Math.max(0, this.nitro - 12 * dt);  // slower drain = much longer burn window
     } else {
       this._nitroActive = false;
     }
@@ -1122,7 +1122,7 @@ export class Vehicle {
 
   /** Add nitro from external source (slipstream, near-miss). */
   addNitro(amount: number) {
-    this.nitro = Math.min(150, this.nitro + amount);
+    this.nitro = Math.min(100, this.nitro + amount);
   }
 
   /** Whether nitro boost is currently firing. */
@@ -1239,7 +1239,7 @@ export class Vehicle {
     this.driftAngle = 0;
     this._roadPitch = 0;
     this._roadRoll = 0;
-    this.nitro = 150;
+    this.nitro = 100;
     this._nitroActive = false;
     this._engineHeat = 0;
     this._engineDead = false;
