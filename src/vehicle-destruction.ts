@@ -160,26 +160,44 @@ export function warmupFragmentMaterials(
   renderer: { compile: (scene: THREE.Scene, camera: THREE.Camera) => void },
   camera: THREE.Camera,
   scene: THREE.Scene,
+  wheels?: (THREE.Mesh | null)[],
 ) {
   if (!_poolReady || fragments.length === 0) return;
   const count = Math.min(fragments.length, FRAG_POOL_SIZE);
-  // Assign real fragment geometry+material to pool meshes PERMANENTLY.
-  // This ensures the WebGPU pipeline compiled here matches exactly what's used
-  // at explosion time — preventing synchronous pipeline recompilation (2s+ stall).
+  // Assign real fragment geometry+material to pool meshes PERMANENTLY
+  // and keep them VISIBLE at y=-100. On WebGPU, renderer.compile() only
+  // builds node material trees — it does NOT create actual GPU pipelines.
+  // Pipelines are created lazily on the first renderer.render() that
+  // includes these objects. By keeping them visible (but off-screen),
+  // the pipelines compile during the first race render (loading phase)
+  // rather than at explosion time (1.8s stall).
   for (let i = 0; i < count; i++) {
     _poolMeshes[i].geometry = fragments[i].mesh.geometry;
     _poolMeshes[i].material = fragments[i].mesh.material;
-    _poolMeshes[i].visible = true;
-    _poolMeshes[i].position.set(0, -100, 0);
-    _poolMeshes[i].frustumCulled = false;
+    _poolMeshes[i].visible = true;       // STAY visible for pipeline warmup
+    _poolMeshes[i].position.set(0, -100, 0); // off-screen — invisible to player
+    _poolMeshes[i].frustumCulled = false; // ensure renderer always processes them
   }
   renderer.compile(scene, camera);
-  // Keep fragment geometry+material on pool meshes (hidden off-screen).
-  // Do NOT revert to _dummyGeo — that would change the attribute layout and
-  // invalidate the compiled WebGPU pipeline, forcing recompilation at explosion.
-  for (let i = 0; i < count; i++) {
-    _poolMeshes[i].visible = false;
-    // Keep position off-screen until explosion activates them
+  // Do NOT set visible=false — that prevents WebGPU pipeline creation.
+  // Pool meshes stay visible at y=-100 until triggerVehicleDestruction
+  // moves them into the explosion position.
+
+  // Also pre-warm wheel pool slots [FRAG_POOL_SIZE..TOTAL_POOL-1]
+  if (wheels) {
+    let wi = 0;
+    for (const wheel of wheels) {
+      if (!wheel || wi >= WHEEL_POOL_SIZE) continue;
+      const slot = FRAG_POOL_SIZE + wi;
+      if (slot < _poolMeshes.length) {
+        _poolMeshes[slot].geometry = wheel.geometry;
+        _poolMeshes[slot].material = wheel.material;
+        _poolMeshes[slot].visible = true;
+        _poolMeshes[slot].position.set(0, -100, 0);
+        _poolMeshes[slot].frustumCulled = false;
+      }
+      wi++;
+    }
   }
   _poolPreWarmed = true;
 }
@@ -213,7 +231,6 @@ export function triggerVehicleDestruction(
   wreckPosition = _wreckPos;
 
   // ── Phase 1: Assign cached fragments to pool meshes (zero alloc) ──
-  console.log('[DESTRUCTION] cachedFragments:', cachedFragments?.length ?? 'NONE', '_poolReady:', _poolReady, '_poolPreWarmed:', _poolPreWarmed);
   if (cachedFragments && cachedFragments.length > 0 && _poolReady) {
     vehicleGroup.getWorldQuaternion(_worldQuat);
     const count = Math.min(cachedFragments.length, FRAG_POOL_SIZE);

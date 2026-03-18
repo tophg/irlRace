@@ -377,7 +377,7 @@ export async function startRace() {
     initSkidMarks(scene);
 
     warmupDestruction(scene, renderer as any, camera);
-    warmupFragmentMaterials(G.playerVehicle.cachedFragments, renderer as any, camera, scene);
+    warmupFragmentMaterials(G.playerVehicle.cachedFragments, renderer as any, camera, scene, G.playerVehicle.wheelRefs);
 
     initRainDroplets(container);
     initImpactFlash(container);
