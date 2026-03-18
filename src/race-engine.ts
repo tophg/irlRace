@@ -98,6 +98,13 @@ export class RaceEngine {
       }
     }
 
+    // DEBUG: Log near checkpoint 0 (finish line) for lap/finish detection
+    if (id === 'local' && racer.checkpointIndex === 0) {
+      const cpT = nextCP.t;
+      const dist2 = worldPos.distanceTo(nextCP.position);
+      console.log(`[CP0] lap=${racer.lapIndex} dist=${dist2.toFixed(1)} prevT=${racer.prevT?.toFixed(4)} rawT=${rawT?.toFixed(4)} cpT=${cpT.toFixed(4)} triggered=${triggered}`);
+    }
+
     if (rawT !== undefined) racer.prevT = rawT;
 
     if (!triggered) return null;
