@@ -38,7 +38,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     });
     const groundMesh = new THREE.Mesh(groundGeo, groundMat);
     groundMesh.rotation.x = -Math.PI / 2; // lay flat
-    groundMesh.position.y = -0.5; // just below road surface
+    groundMesh.position.y = -2; // well below road surface to prevent clipping
     groundMesh.receiveShadow = true;
     group.add(groundMesh);
   }
