@@ -506,7 +506,7 @@ async function startRace() {
 
     // ── PRE-RACE FLYOVER — helicopter sweep of the track ──
     G.gameState = GameState.FLYOVER;
-    G.vehicleCamera!.startFlyover(trackData.spline, 5);
+    G.vehicleCamera!.startFlyover(trackData.spline, 10);
     showHUD(false);
 
     // 'TRACK PREVIEW' label

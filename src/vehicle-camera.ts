@@ -356,8 +356,8 @@ export class VehicleCamera {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Start pre-race helicopter flyover — orbits above the start area. */
-  startFlyover(spline: THREE.CatmullRomCurve3, duration = 5) {
+  /** Start pre-race helicopter flyover — orbits start, then surveys the track. */
+  startFlyover(spline: THREE.CatmullRomCurve3, duration = 10) {
     this.mode = 'flyover';
     this.flyoverSpline = spline;
     this.flyoverDuration = duration;
@@ -369,10 +369,11 @@ export class VehicleCamera {
     this.orbitCenter.copy(center);
     this.orbitAngle = 0;
 
-    // Initialize camera position
+    // Initialize camera high above start
     const startX = center.x + Math.sin(0) * 50;
     const startZ = center.z + Math.cos(0) * 50;
-    this.camera.position.set(startX, center.y + 35, startZ);
+    this.camera.position.set(startX, center.y + 40, startZ);
+    this.smoothPos.copy(this.camera.position);
     this.currentLookAt.copy(center);
     this.currentLookAt.y += 2;
     this.camera.lookAt(this.currentLookAt);
@@ -380,30 +381,50 @@ export class VehicleCamera {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Update flyover camera — helicopter orbit. Returns true when complete. */
+  /** Update flyover camera — orbit then sweep. Returns true when complete. */
   updateFlyover(dt: number): boolean {
-    if (this.mode !== 'flyover') return true;
+    if (this.mode !== 'flyover' || !this.flyoverSpline) return true;
 
     this.flyoverElapsed += dt;
     const rawProgress = Math.min(this.flyoverElapsed / this.flyoverDuration, 1);
 
-    // Orbit around start area
-    this.orbitAngle += 0.4 * dt;
-    const radius = 50;
-    const height = 35;
+    // Phase 1: orbit start area (first 40% of duration)
+    // Phase 2: sweep along track spline (remaining 60%)
+    const orbitPhase = 0.4;
 
-    _desired.set(
-      this.orbitCenter.x + Math.sin(this.orbitAngle) * radius,
-      this.orbitCenter.y + height,
-      this.orbitCenter.z + Math.cos(this.orbitAngle) * radius,
-    );
-    this.smoothPos.lerp(_desired, 0.06);
-    this.camera.position.copy(this.smoothPos);
+    if (rawProgress < orbitPhase) {
+      // ── Phase 1: Helicopter orbit ──
+      this.orbitAngle += 0.5 * dt;
+      _desired.set(
+        this.orbitCenter.x + Math.sin(this.orbitAngle) * 50,
+        this.orbitCenter.y + 40,
+        this.orbitCenter.z + Math.cos(this.orbitAngle) * 50,
+      );
+      this.smoothPos.lerp(_desired, 0.06);
+      this.camera.position.copy(this.smoothPos);
 
-    // Look at center of start area
-    _lookTarget.copy(this.orbitCenter);
-    _lookTarget.y += 2;
-    this.currentLookAt.lerp(_lookTarget, 0.05);
+      _lookTarget.copy(this.orbitCenter);
+      _lookTarget.y += 2;
+      this.currentLookAt.lerp(_lookTarget, 0.05);
+    } else {
+      // ── Phase 2: Track spline survey ──
+      const sweepProgress = (rawProgress - orbitPhase) / (1 - orbitPhase);
+      // Smoothstep for acceleration/deceleration
+      const t = sweepProgress * sweepProgress * (3 - 2 * sweepProgress);
+      const splineT = t * 0.7; // survey first 70% of the track
+
+      const pos = this.flyoverSpline.getPointAt(splineT);
+      _desired.set(pos.x, pos.y + 25, pos.z);
+      this.smoothPos.lerp(_desired, 0.04);
+      this.camera.position.copy(this.smoothPos);
+
+      // Look ahead on spline
+      const lookT = Math.min(splineT + 0.06, 0.95);
+      const lookPos = this.flyoverSpline.getPointAt(lookT);
+      _lookTarget.set(lookPos.x, lookPos.y + 2, lookPos.z);
+      this.currentLookAt.lerp(_lookTarget, 0.04);
+    }
+
     this.camera.lookAt(this.currentLookAt);
 
     // Cinematic FOV
@@ -412,6 +433,7 @@ export class VehicleCamera {
 
     if (rawProgress >= 1) {
       this.flyoverComplete = true;
+      this.mode = 'chase';
       this.initialized = false;
       this.camera.fov = FOV_MIN;
       this.camera.updateProjectionMatrix();
