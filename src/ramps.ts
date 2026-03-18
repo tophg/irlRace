@@ -182,16 +182,15 @@ export function buildRampGroup(
   }
   return group;
 }
-
-/** Create a canvas texture with chevron warning stripes for ramp surface. */
-function createRampTexture(): THREE.CanvasTexture {
+/** Create a canvas texture with configurable stripe color for ramp surface. */
+function createRampTexture(stripeColor = '#ffaa00', edgeColor = '#ff6600', baseColor = '#3e3e48'): THREE.CanvasTexture {
   const S = 256;
   const canvas = document.createElement('canvas');
   canvas.width = S; canvas.height = S;
   const ctx = canvas.getContext('2d')!;
 
-  // Base: dark asphalt
-  ctx.fillStyle = '#3e3e48';
+  // Base
+  ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, S, S);
 
   // Asphalt noise
@@ -204,10 +203,10 @@ function createRampTexture(): THREE.CanvasTexture {
   }
   ctx.putImageData(imgData, 0, 0);
 
-  // Yellow chevron warning stripes (diagonal)
+  // Chevron warning stripes (diagonal)
   ctx.save();
   ctx.globalAlpha = 0.5;
-  ctx.strokeStyle = '#ffaa00';
+  ctx.strokeStyle = stripeColor;
   ctx.lineWidth = 12;
   const spacing = 40;
   for (let y = -S; y < S * 2; y += spacing) {
@@ -218,8 +217,8 @@ function createRampTexture(): THREE.CanvasTexture {
   }
   ctx.restore();
 
-  // Orange edge lines
-  ctx.strokeStyle = '#ff6600';
+  // Edge lines
+  ctx.strokeStyle = edgeColor;
   ctx.lineWidth = 6;
   ctx.globalAlpha = 0.7;
   ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(4, S); ctx.stroke();
@@ -232,9 +231,113 @@ function createRampTexture(): THREE.CanvasTexture {
   return tex;
 }
 
+// ── Ramp type archetype definitions ──
+type RampType = 'standard' | 'speed_bump' | 'half_ramp' | 'mega' | 'kicker';
+
+interface RampArchetype {
+  lengthRange: [number, number];   // [min, max] world units
+  heightRange: [number, number];   // [min, max] units
+  flatTopRange: [number, number];  // [min, max] fraction
+  side: 'full' | 'left' | 'right' | 'random';
+  meshColor: number;
+  stripeColor: string;
+  edgeColor: string;
+  baseColor: string;
+}
+
+const RAMP_ARCHETYPES: Record<RampType, RampArchetype> = {
+  // Standard — yellow chevrons, medium size
+  standard: {
+    lengthRange: [18, 28],
+    heightRange: [3, 5],
+    flatTopRange: [0.08, 0.12],
+    side: 'full',
+    meshColor: 0x666670,
+    stripeColor: '#ffaa00',
+    edgeColor: '#ff6600',
+    baseColor: '#3e3e48',
+  },
+  // Speed bump — short, low, quick hop
+  speed_bump: {
+    lengthRange: [6, 10],
+    heightRange: [1.2, 2.0],
+    flatTopRange: [0.05, 0.10],
+    side: 'full',
+    meshColor: 0x777755,
+    stripeColor: '#ffffff',
+    edgeColor: '#cccccc',
+    baseColor: '#4a4a3e',
+  },
+  // Half-ramp — one side only, asymmetric launch
+  half_ramp: {
+    lengthRange: [14, 22],
+    heightRange: [3, 5.5],
+    flatTopRange: [0.08, 0.12],
+    side: 'random', // randomly left or right
+    meshColor: 0x5566aa,
+    stripeColor: '#44aaff',
+    edgeColor: '#2288dd',
+    baseColor: '#35354a',
+  },
+  // Mega — tall and long, maximum air
+  mega: {
+    lengthRange: [25, 35],
+    heightRange: [5.5, 8],
+    flatTopRange: [0.10, 0.15],
+    side: 'full',
+    meshColor: 0x885533,
+    stripeColor: '#ff4400',
+    edgeColor: '#cc2200',
+    baseColor: '#3a3028',
+  },
+  // Kicker — short and steep, quick vertical lift
+  kicker: {
+    lengthRange: [8, 14],
+    heightRange: [3.5, 6],
+    flatTopRange: [0.03, 0.06],
+    side: 'full',
+    meshColor: 0x558855,
+    stripeColor: '#44ff66',
+    edgeColor: '#22cc44',
+    baseColor: '#2e3e2e',
+  },
+};
+
+// Weighted random selection of ramp types
+const RAMP_TYPE_WEIGHTS: [RampType, number][] = [
+  ['standard', 3],
+  ['speed_bump', 3],
+  ['half_ramp', 2],
+  ['mega', 1],
+  ['kicker', 2],
+];
+
+function pickRampType(rng: () => number): RampType {
+  const total = RAMP_TYPE_WEIGHTS.reduce((s, [, w]) => s + w, 0);
+  let r = rng() * total;
+  for (const [type, weight] of RAMP_TYPE_WEIGHTS) {
+    r -= weight;
+    if (r <= 0) return type;
+  }
+  return 'standard';
+}
+
+/** Cache textures per ramp type to avoid recreating. */
+const _texCache = new Map<RampType, THREE.CanvasTexture>();
+
+function getRampTexture(type: RampType): THREE.CanvasTexture {
+  let tex = _texCache.get(type);
+  if (!tex) {
+    const a = RAMP_ARCHETYPES[type];
+    tex = createRampTexture(a.stripeColor, a.edgeColor, a.baseColor);
+    _texCache.set(type, tex);
+  }
+  return tex;
+}
+
 /**
  * Procedurally place ramps on long straights.
- * Scans the speed profile for sections where speed > threshold for consecutive samples.
+ * Now uses multiple ramp types for variety.
  */
 export function placeRampsOnStraights(
   curvatures: number[],
@@ -243,17 +346,17 @@ export function placeRampsOnStraights(
   rng: () => number,
 ): RampDef[] {
   const ramps: RampDef[] = [];
-  const MIN_STRAIGHT_SAMPLES = 25; // ~6% of track must be straight
-  const SPEED_THRESHOLD = 55;
-  const MIN_RAMP_SPACING_T = 0.08; // at least 8% of track between ramps
+  const MIN_STRAIGHT_SAMPLES = 15; // shorter straights now qualify
+  const SPEED_THRESHOLD = 40;       // lower speed threshold
+  const MIN_RAMP_SPACING_T = 0.05;  // 5% track spacing (was 8%)
 
-  // Find long straight sections
+  // Find straight sections
   type Straight = { startIdx: number; endIdx: number };
   const straights: Straight[] = [];
   let runStart = -1;
 
   for (let i = 0; i < speedProfile.length; i++) {
-    if (speedProfile[i] >= SPEED_THRESHOLD && Math.abs(curvatures[Math.min(i, curvatures.length - 1)]) < 0.02) {
+    if (speedProfile[i] >= SPEED_THRESHOLD && Math.abs(curvatures[Math.min(i, curvatures.length - 1)]) < 0.025) {
       if (runStart < 0) runStart = i;
     } else {
       if (runStart >= 0 && i - runStart >= MIN_STRAIGHT_SAMPLES) {
@@ -266,30 +369,32 @@ export function placeRampsOnStraights(
     straights.push({ startIdx: runStart, endIdx: speedProfile.length - 1 });
   }
 
-  // Place 1-2 ramps per straight
+  // Place 2-4 ramps per straight
   for (const s of straights) {
-    const numRamps = 1 + Math.floor(rng() * 1.5); // 1-2
+    const sLen = s.endIdx - s.startIdx;
+    const numRamps = 2 + Math.floor(rng() * 2.5); // 2-4
     for (let r = 0; r < numRamps; r++) {
-      // Random position within the straight (avoid edges)
-      const margin = 0.15; // 15% margin from straight edges
-      const sLen = s.endIdx - s.startIdx;
+      const margin = 0.10;
       const idx = s.startIdx + Math.floor(sLen * (margin + rng() * (1 - 2 * margin)));
       const t = idx / (speedProfile.length - 1);
 
-      // Skip near start/finish
-      if (t < 0.04 || t > 0.96) continue;
+      if (t < 0.03 || t > 0.97) continue;
 
-      // Check spacing from existing ramps
       const tooClose = ramps.some(existing => Math.abs(existing.t - t) < MIN_RAMP_SPACING_T);
       if (tooClose) continue;
 
-      ramps.push({
-        t,
-        length: 15 + rng() * 15, // 15-30 units
-        height: 3.5 + rng() * 3.5, // 3.5-7 units (tall enough for dramatic jumps)
-        flatTop: 0.15 + rng() * 0.2, // 0.15-0.35
-        side: 'full',
-      });
+      // Pick a random ramp type
+      const type = pickRampType(rng);
+      const arch = RAMP_ARCHETYPES[type];
+
+      const length = arch.lengthRange[0] + rng() * (arch.lengthRange[1] - arch.lengthRange[0]);
+      const height = arch.heightRange[0] + rng() * (arch.heightRange[1] - arch.heightRange[0]);
+      const flatTop = arch.flatTopRange[0] + rng() * (arch.flatTopRange[1] - arch.flatTopRange[0]);
+      let side: 'full' | 'left' | 'right' = arch.side === 'random'
+        ? (rng() > 0.5 ? 'left' : 'right')
+        : arch.side;
+
+      ramps.push({ t, length, height, flatTop, side });
     }
   }
 
