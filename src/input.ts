@@ -23,8 +23,10 @@ let steerTouchId: number | null = null;
 let steerOriginX = 0;
 const STEER_RADIUS = 80; // pixels for full deflection
 
-// Steering indicator element
-let steerIndicator: HTMLElement | null = null;
+// Steering indicator elements (floating joystick)
+let joystickBase: HTMLElement | null = null;
+let joystickThumb: HTMLElement | null = null;
+let steerZoneEl: HTMLElement | null = null;
 
 export function initInput(): InputState {
   // Keyboard — Left/Right are intentionally swapped here to compensate
@@ -59,10 +61,7 @@ function setupTouchControls() {
   container.className = 'touch-controls';
   container.id = 'touch-controls';
   container.innerHTML = `
-    <div class="touch-steer" id="touch-steer-zone">
-      <div class="steer-indicator" id="steer-indicator"></div>
-      <div class="steer-label">STEER</div>
-    </div>
+    <div class="touch-steer" id="touch-steer-zone"></div>
     <div class="touch-pedals">
       <div class="touch-gas" id="touch-gas">GAS</div>
       <div class="touch-brake" id="touch-brake">BRAKE</div>
@@ -70,36 +69,76 @@ function setupTouchControls() {
     </div>
   `;
   document.body.appendChild(container);
-  steerIndicator = container.querySelector('#steer-indicator');
 
-  // ── Analog steering zone (left side) ──
-  const steerZone = container.querySelector('#touch-steer-zone') as HTMLElement;
-  if (steerZone) {
-    steerZone.addEventListener('touchstart', (e) => {
+  // Create floating joystick elements (hidden until touch)
+  steerZoneEl = container.querySelector('#touch-steer-zone') as HTMLElement;
+  joystickBase = document.createElement('div');
+  joystickBase.className = 'joystick-base';
+  joystickThumb = document.createElement('div');
+  joystickThumb.className = 'joystick-thumb';
+  joystickBase.appendChild(joystickThumb);
+  steerZoneEl.appendChild(joystickBase);
+
+  // ── Floating analog joystick (left side) ──
+  if (steerZoneEl) {
+    steerZoneEl.addEventListener('touchstart', (e) => {
       e.preventDefault();
       if (steerTouchId !== null) return;
       const touch = e.changedTouches[0];
       steerTouchId = touch.identifier;
+      const zoneRect = steerZoneEl!.getBoundingClientRect();
       steerOriginX = touch.clientX;
-      updateSteerIndicator(0);
-      if (steerIndicator) {
-        steerIndicator.style.opacity = '1';
-        steerIndicator.style.left = `${touch.clientX - steerZone.getBoundingClientRect().left}px`;
-        steerIndicator.style.top = `${touch.clientY - steerZone.getBoundingClientRect().top}px`;
+      const originY = touch.clientY;
+
+      // Position joystick base at touch point
+      if (joystickBase) {
+        joystickBase.style.left = `${touch.clientX - zoneRect.left}px`;
+        joystickBase.style.top = `${originY - zoneRect.top}px`;
+        joystickBase.classList.add('active');
       }
+      if (joystickThumb) {
+        joystickThumb.style.transform = 'translate(-50%, -50%)';
+      }
+
+      // Haptic pulse on touch
+      if (navigator.vibrate) navigator.vibrate(10);
     }, { passive: false });
 
-    steerZone.addEventListener('touchmove', (e) => {
+    steerZoneEl.addEventListener('touchmove', (e) => {
       e.preventDefault();
       for (let i = 0; i < e.changedTouches.length; i++) {
         const touch = e.changedTouches[i];
         if (touch.identifier === steerTouchId) {
           const dx = touch.clientX - steerOriginX;
-          const normalized = Math.max(-1, Math.min(1, dx / STEER_RADIUS));
-          state.steerAnalog = -normalized;
-          state.left = normalized > 0.15;
-          state.right = normalized < -0.15;
-          updateSteerIndicator(normalized);
+          const raw = dx / STEER_RADIUS;
+          const clamped = Math.max(-1, Math.min(1, raw));
+
+          // Dead zone: 12% of radius
+          const DEAD_ZONE = 0.12;
+          let output = 0;
+          if (Math.abs(clamped) > DEAD_ZONE) {
+            output = (clamped - Math.sign(clamped) * DEAD_ZONE) / (1 - DEAD_ZONE);
+          }
+
+          state.steerAnalog = -output;
+          state.left = output > 0.15;
+          state.right = output < -0.15;
+
+          // Move thumb within base
+          if (joystickThumb) {
+            const thumbOffset = clamped * 22; // max px offset within base
+            joystickThumb.style.transform = `translate(calc(-50% + ${thumbOffset}px), -50%)`;
+          }
+
+          // Follow mode: if past radius, drag base
+          if (Math.abs(dx) > STEER_RADIUS) {
+            const overflow = dx - Math.sign(dx) * STEER_RADIUS;
+            steerOriginX += overflow;
+            if (joystickBase && steerZoneEl) {
+              const zoneRect = steerZoneEl.getBoundingClientRect();
+              joystickBase.style.left = `${steerOriginX - zoneRect.left}px`;
+            }
+          }
           break;
         }
       }
@@ -112,13 +151,14 @@ function setupTouchControls() {
           state.steerAnalog = 0;
           state.left = false;
           state.right = false;
-          if (steerIndicator) steerIndicator.style.opacity = '0';
+          if (joystickBase) joystickBase.classList.remove('active');
+          if (joystickThumb) joystickThumb.style.transform = 'translate(-50%, -50%)';
           break;
         }
       }
     };
-    steerZone.addEventListener('touchend', endSteer);
-    steerZone.addEventListener('touchcancel', endSteer);
+    steerZoneEl.addEventListener('touchend', endSteer);
+    steerZoneEl.addEventListener('touchcancel', endSteer);
   }
 
   // ── Pedal buttons (right side) ──
@@ -129,6 +169,7 @@ function setupTouchControls() {
       e.preventDefault();
       state[key] = true;
       el.classList.add('pressed');
+      if (navigator.vibrate) navigator.vibrate(15);
     }, { passive: false });
     el.addEventListener('touchend', () => {
       state[key] = false;
@@ -145,11 +186,6 @@ function setupTouchControls() {
   bindBtn('touch-boost', 'boost');
 }
 
-function updateSteerIndicator(value: number) {
-  if (!steerIndicator) return;
-  const offsetPx = value * 30;
-  steerIndicator.style.transform = `translate(${offsetPx}px, -50%)`;
-}
 
 // ── Tilt Steering ──
 

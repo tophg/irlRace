@@ -598,22 +598,46 @@ canvas { display: block; }
   position: relative;
   touch-action: none;
 }
-.steer-label {
-  font-family: var(--font-display);
-  font-size: clamp(14px, 3vw, 20px);
-  color: rgba(255,255,255,0.3);
-  letter-spacing: 4px;
-  pointer-events: none;
-}
-.steer-indicator {
+
+/* ── Floating Joystick ── */
+.joystick-base {
   position: absolute;
-  width: 36px; height: 36px;
-  border: 2px solid rgba(255,255,255,0.5);
+  width: 70px;
+  height: 70px;
   border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border: 2px solid rgba(255, 255, 255, 0.12);
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.15s, transform 0.06s;
-  transform: translate(0, -50%);
+  transform: translate(-50%, -50%);
+  transition: opacity 0.15s ease-out;
+}
+.joystick-base.active {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: 0 0 20px rgba(255, 77, 0, 0.15);
+}
+.joystick-thumb {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  transform: translate(-50%, -50%);
+  transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: none;
+}
+.joystick-base.active .joystick-thumb {
+  background: rgba(255, 77, 0, 0.2);
+  border-color: rgba(255, 77, 0, 0.4);
+  box-shadow: 0 0 12px rgba(255, 77, 0, 0.3);
 }
 .touch-pedals {
   width: min(22vw, 160px);
