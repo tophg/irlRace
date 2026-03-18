@@ -289,6 +289,7 @@ export function triggerVehicleDestruction(
       frag.originalOpacity = 1.0;
       activeFragCount++;
     }
+    console.log(`[DESTRUCTION] ${count} fragments, preWarmed=${_poolPreWarmed}, center=(${_center.x.toFixed(1)},${_center.y.toFixed(1)},${_center.z.toFixed(1)}), firstVisible=${_poolMeshes[0]?.visible}, pos0=(${_poolMeshes[0]?.position.x.toFixed(1)},${_poolMeshes[0]?.position.y.toFixed(1)},${_poolMeshes[0]?.position.z.toFixed(1)})`);
     // Show deferred batch on next frame
     if (count > FIRST_BATCH) {
       requestAnimationFrame(() => {
