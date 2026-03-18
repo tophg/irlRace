@@ -93,8 +93,7 @@ export const G = {
   _flamePos: new THREE.Vector3(),
   _leftTireBlown: false,
   _rightTireBlown: false,
-  _playerUnderglow: null as any,
-  _playerBrakeDiscs: null as any,
+  _playerUnderglow: null as THREE.PointLight | null,
   _prevSpeedRatio: 0,
   _nearMissCooldowns: new Map<string, number>(),
   _wasNitroActive: false,
@@ -138,7 +137,7 @@ export const G = {
   physicsAccumulator: 0,
 
   // ── Post-Processing ──
-  postFXPipeline: null as any,
+  postFXPipeline: null as { render(): void } | null,
 
   // ── Performance ──
   _lastShadowX: -999,
