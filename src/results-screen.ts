@@ -5,6 +5,7 @@ import { G } from './game-context';
 type GameContext = typeof G;
 import { RaceEngine } from './race-engine';
 import { processRaceRewards, getProgress, levelProgress, xpToNextLevel, type RaceResult } from './progression';
+import { playRewardsAnimation } from './rewards-animation';
 import { spawnVictoryConfetti, setConfettiContinuous } from './vfx';
 import { showTouchControls } from './input';
 import { showToast } from './mp-lobby';
@@ -28,21 +29,7 @@ export function resolvePlayerName(id: string, G: GameContext): string {
   return mpName || netName || id.slice(0, 8);
 }
 
-function buildRewardHTML(rankings: any[], localProgress: any, G: GameContext): string {
-  const localRank = rankings.findIndex((r: any) => r.id === 'local') + 1;
-  const bestLap = localProgress?.lapTimes?.length > 0 ? Math.min(...localProgress.lapTimes) : 0;
-  const raceResult: RaceResult = {
-    placement: localRank || 1,
-    totalRacers: rankings.length,
-    lapTimes: localProgress?.lapTimes ?? [],
-    bestLap: bestLap / 1000,
-    collisionCount: G.raceStats.collisionCount,
-    driftTime: G.raceStats.totalDriftTime,
-    topSpeed: G.raceStats.topSpeed,
-    trackLength: G.trackData?.totalLength ?? 500,
-    lapsCompleted: localProgress?.lapTimes?.length ?? 0,
-  };
-  const rewards = processRaceRewards(raceResult);
+function buildRewardHTML(rewards: import('./progression').RewardBreakdown): string {
   const prog = getProgress();
   const lvlPct = Math.round(levelProgress() * 100);
 
@@ -73,7 +60,7 @@ export interface ResultsCallbacks {
 }
 
 /** Show the results overlay with rankings, stats, rewards, and action buttons. */
-export function showResults(
+export async function showResults(
   G: GameContext,
   uiOverlay: HTMLElement,
   callbacks: ResultsCallbacks,
@@ -108,6 +95,26 @@ export function showResults(
 
   const rankings = G.raceEngine?.getRankings() ?? [];
   const winner = rankings[0];
+
+  // ── Rewards Animation (plays BEFORE building results HTML) ──
+  const localProgress = G.raceEngine?.getProgress('local');
+  const localRank = rankings.findIndex((r: any) => r.id === 'local') + 1;
+  const bestLapForReward = localProgress?.lapTimes?.length ? Math.min(...localProgress.lapTimes) : 0;
+  const prevLevelPct = levelProgress(); // capture BEFORE processRaceRewards mutates state
+  const earlyResult: RaceResult = {
+    placement: localRank || 1,
+    totalRacers: rankings.length,
+    lapTimes: localProgress?.lapTimes ?? [],
+    bestLap: bestLapForReward / 1000,
+    collisionCount: G.raceStats.collisionCount,
+    driftTime: G.raceStats.totalDriftTime,
+    topSpeed: G.raceStats.topSpeed,
+    trackLength: G.trackData?.totalLength ?? 500,
+    lapsCompleted: localProgress?.lapTimes?.length ?? 0,
+  };
+  const earlyRewards = processRaceRewards(earlyResult);
+  await playRewardsAnimation(earlyRewards, localRank || 1, prevLevelPct, uiOverlay);
+
   const escHtml = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const winnerName = winner ? escHtml(resolvePlayerName(winner.id, G)) : '???';
   const isMultiplayer = !!G.netPeer;
@@ -116,7 +123,6 @@ export function showResults(
 
   const el = document.createElement('div');
   el.className = 'results-overlay';
-  const localProgress = G.raceEngine?.getProgress('local');
   const localBestLap = G.raceEngine?.getBestLap('local');
   const lapBreakdownHtml = localProgress && localProgress.lapTimes.length > 0
     ? `<div class="lap-breakdown">
@@ -170,7 +176,7 @@ export function showResults(
         <div class="lap-breakdown-row"><span>Collisions</span><span>${G.raceStats.collisionCount}</span></div>
         <div class="lap-breakdown-row"><span>Near Misses</span><span>${G.raceStats.nearMissCount}</span></div>
       </div>
-      ${buildRewardHTML(rankings, localProgress, G)}
+      ${buildRewardHTML(earlyRewards)}
     </div>
     <div class="results-actions">
       <div class="menu-buttons" style="width:240px;">
