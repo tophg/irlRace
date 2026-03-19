@@ -515,6 +515,9 @@ function showTitleScreen() {
     await audioReady;
     // Start music immediately — we're inside a user gesture so autoplay is allowed
     playTitleMusic();
+    // Reset the cinematic animation timeline so it replays from scratch
+    titleStartTime = performance.now() / 1000;
+    titleMenuRevealed = false;
     // Remove splash and show full title
     splashEl.remove();
     renderFullTitleScreen();
