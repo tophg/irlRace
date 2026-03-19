@@ -189,12 +189,26 @@ export class RaceEngine {
 
   /**
    * Compute continuous progress as total distance traveled from the start line.
-   * Formula: lapIndex * totalLength + rawT * totalLength
-   * This is monotonically increasing, never wraps, and doesn't need
-   * checkpoint-segment fractions or wrap-around edge cases.
+   * Formula: effectiveLap * totalLength + rawT * totalLength
+   *
+   * Critical fix: rawT wraps from ~1.0 → ~0.0 when crossing the start line,
+   * but lapIndex only increments after checkpoint 0 actually triggers (which
+   * has a detection delay). During that window, naive progress drops by ~1 lap.
+   * We detect this wrap-around: if checkpointIndex === 0 (all interior CPs passed,
+   * waiting for start/finish) AND rawT is in the first 15% of the track, the racer
+   * has effectively started the next lap for ranking purposes.
    */
   private continuousProgress(r: RacerProgress): number {
-    return r.lapIndex * this.totalLength + r.rawT * this.totalLength;
+    let effectiveLap = r.lapIndex;
+
+    // Detect wrap-around: racer passed all checkpoints (cpIndex reset to 0)
+    // and rawT has crossed from end of track to start — they're effectively
+    // on the next lap but the lapIndex hasn't incremented yet.
+    if (r.checkpointIndex === 0 && r.rawT < 0.15 && r.lapIndex < this.totalLaps) {
+      effectiveLap += 1;
+    }
+
+    return effectiveLap * this.totalLength + r.rawT * this.totalLength;
   }
 
   /** Get a racer's progress. */
