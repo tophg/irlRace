@@ -260,12 +260,12 @@ canvas { display: block; }
 .title-subtitle {
   font-family: var(--font-body);
   font-size: clamp(11px, 2vw, 15px);
-  color: rgba(255,255,255,0.55);
+  color: rgba(255,255,255,0.75);
   letter-spacing: clamp(4px, 1.5vw, 10px);
   text-transform: uppercase;
   font-weight: 400;
   margin-bottom: 32px;
-  text-shadow: 0 1px 8px rgba(0,0,0,0.6);
+  text-shadow: 0 0 12px rgba(0,229,255,0.3), 0 1px 8px rgba(0,0,0,0.6);
 }
 
 .menu-buttons {
