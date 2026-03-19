@@ -89,6 +89,8 @@ let _deps: GameLoopDeps;
 const _rPos = new THREE.Vector3();
 const _hoodExplosionPos = new THREE.Vector3();
 const _nitroTrailOffset = new THREE.Vector3();
+const _swayQuat = new THREE.Quaternion();
+const _swayAxis = new THREE.Vector3(0, 0, 1); // roll axis (camera forward)
 
 // First-boost-per-race tracker
 let _firstBoostFired = false;
@@ -426,11 +428,14 @@ function updateWeatherEffects(
   }
 
   // Wind camera sway (heavy rain / blizzard)
+  // Applied via quaternion multiply to compose with VehicleCamera's lookAt + drift tilt
   if ((weatherType === 'heavy_rain' || weatherType === 'blizzard') && s === GameState.RACING) {
     const swayAmp = weatherType === 'blizzard' ? 0.005 : 0.003;
     const swayFreq = weatherType === 'blizzard' ? 1.5 : 2.0;
     const t = performance.now() * 0.001;
-    camera.rotation.z = Math.sin(t * swayFreq * Math.PI * 2) * swayAmp;
+    const swayAngle = Math.sin(t * swayFreq * Math.PI * 2) * swayAmp;
+    _swayQuat.setFromAxisAngle(_swayAxis, swayAngle);
+    camera.quaternion.multiply(_swayQuat);
   }
 
   // AI tire spray in rain
