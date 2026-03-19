@@ -11,6 +11,7 @@ import { showResults, resolvePlayerName } from './results-screen';
 import { enterSpectatorMode, cycleSpectateTarget, destroySpectateHUD } from './spectator';
 import { initGarage, destroyGarage } from './garage';
 import { loadCarModel } from './loaders';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { showTrackEditor, destroyTrackEditor } from './track-editor';
 import { loadProgress } from './progression';
 import { initInput, showTouchControls } from './input';
@@ -109,12 +110,22 @@ function createTitleScene() {
   titleScene = new THREE.Scene();
   titleScene.background = new THREE.Color(0x060610);
 
+  // ── Environment map (critical for PBR rendering — without this, metallic materials are black) ──
+  const pmremGen = new THREE.PMREMGenerator(renderer);
+  pmremGen.compileEquirectangularShader();
+  // Use RoomEnvironment for realistic indoor reflections
+  const envScene = new RoomEnvironment();
+  const envMap = pmremGen.fromScene(envScene, 0.04).texture;
+  titleScene.environment = envMap;
+  envScene.dispose?.();
+  pmremGen.dispose();
+
   titleCamera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
   titleCamera.position.set(0, 2.0, 7);
   titleCamera.lookAt(0, 0.4, 0);
 
   // ── Lighting — Dramatic dual rim ──
-  const ambient = new THREE.AmbientLight(0x222233, 0.5);
+  const ambient = new THREE.AmbientLight(0x222233, 0.8);
   titleScene.add(ambient);
 
   // Cyan rim light (right/front) — matches IRL glow
@@ -151,22 +162,21 @@ function createTitleScene() {
   titleScene.add(ground);
 
   // Load random car (async, non-blocking)
-  const randomCar = CAR_ROSTER[Math.floor(Math.random() * Math.min(5, CAR_ROSTER.length))]; // pick from first 5 unlocked-by-default
+  const carCount = Math.min(5, CAR_ROSTER.length);
+  if (carCount === 0) return;
+  const randomCar = CAR_ROSTER[Math.floor(Math.random() * carCount)];
+  console.log('[TitleScreen] Loading car:', randomCar.file);
   loadCarModel(randomCar.file).then((model: THREE.Group) => {
     if (!titleScene) return; // cleaned up before load finished
-    model.position.y = 0.3;
-    // Add clearcoat for premium look
-    model.traverse((child: any) => {
-      if (child.isMesh && child.material?.isMeshStandardMaterial) {
-        child.material.clearcoat = 0.8;
-        child.material.clearcoatRoughness = 0.05;
-        child.material.envMapIntensity = 1.0;
-        child.material.needsUpdate = true;
-      }
-    });
+    // processCarModel already centers the model with tires at y=0
+    // Just nudge up slightly to sit on the ground plane
+    model.position.y = 0;
     titleScene!.add(model);
     titleCarModel = model;
-  }).catch(() => { /* silent — title works without car */ });
+    console.log('[TitleScreen] Car loaded successfully:', randomCar.file);
+  }).catch((err) => {
+    console.warn('[TitleScreen] Failed to load car:', randomCar.file, err);
+  });
 }
 
 function updateTitleScene() {
