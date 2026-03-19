@@ -22,13 +22,9 @@ export interface SlowMoPreset {
 }
 
 const PRESETS: Record<string, SlowMoPreset> = {
-  finish:    { scale: 0.3,  rampDown: 0.2,  hold: 2.0, rampUp: 0.6, priority: 10 },
-  explosion: { scale: 0.2,  rampDown: 0.3,  hold: 2.5, rampUp: 0.5, priority: 9  },
-  lastLap:   { scale: 0.4,  rampDown: 0.2,  hold: 0.8, rampUp: 0.4, priority: 7  },
-  overtake:  { scale: 0.5,  rampDown: 0.15, hold: 0.6, rampUp: 0.3, priority: 6  },
-  collision: { scale: 0.35, rampDown: 0.08, hold: 0.5, rampUp: 0.3, priority: 5  },
-  nearMiss:  { scale: 0.4,  rampDown: 0.1,  hold: 0.4, rampUp: 0.25, priority: 4 },
-  boost:     { scale: 0.6,  rampDown: 0.1,  hold: 0.3, rampUp: 0.2, priority: 3  },
+  finish:    { scale: 0.4,  rampDown: 0.2,  hold: 1.2, rampUp: 0.5, priority: 10 },
+  lastLap:   { scale: 0.5,  rampDown: 0.15, hold: 0.5, rampUp: 0.3, priority: 7  },
+  overtake:  { scale: 0.6,  rampDown: 0.1,  hold: 0.4, rampUp: 0.25, priority: 6 },
 };
 
 // ── State ──
@@ -45,7 +41,7 @@ let _holdTimer = 0;
 let _currentRampUp = 0.5; // stored from preset for ramp-up phase
 
 // Cooldown: minimum gap between triggers (seconds)
-const COOLDOWN_DURATION = 3.0;
+const COOLDOWN_DURATION = 5.0;
 let _cooldownTimer = 0;
 
 /**
@@ -56,8 +52,8 @@ export function triggerSlowMo(presetName: string) {
   const preset = PRESETS[presetName];
   if (!preset) return;
 
-  // Cooldown check (explosion bypasses cooldown)
-  if (_cooldownTimer > 0 && presetName !== 'explosion' && presetName !== 'finish') return;
+  // Cooldown check (finish bypasses cooldown)
+  if (_cooldownTimer > 0 && presetName !== 'finish') return;
 
   // Priority check: can only trigger if higher priority than current
   if (_active && preset.priority <= _currentPriority) return;

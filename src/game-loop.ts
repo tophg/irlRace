@@ -468,7 +468,6 @@ function updateNearMissDetection(
           const sinH = Math.sin(G.playerVehicle.heading);
           const cross = dx * cosH - dz * sinH;
           triggerNearMiss(cross > 0 ? 'right' : 'left');
-          triggerSlowMo('nearMiss');
           triggerNearMissWhoosh(cross > 0 ? 'right' : 'left', camera.position, G.playerVehicle.heading);
           G.playerVehicle.addNitro(5);
           G.raceStats.nearMissCount = (G.raceStats.nearMissCount ?? 0) + 1;
@@ -720,7 +719,6 @@ function gameLoop(timestamp: number) {
       if (impact > 0.3) {
         setImpactIntensity(impact * 0.6);
         if (impact > 0.5) showDamageFlash();
-        if (impact > 0.6) triggerSlowMo('collision');
       }
       G.playerVehicle.clearLandingFlag();
     }
@@ -860,10 +858,6 @@ function gameLoop(timestamp: number) {
       playNitroActivate();
       startNitroBurn();
       _ensureSpeedLines()?.classList.add('active');
-      if (!_firstBoostFired) {
-        _firstBoostFired = true;
-        triggerSlowMo('boost');
-      }
     }
     if (isNitroNow) {
       updateNitroBurnIntensity(G.playerVehicle.nitro);
