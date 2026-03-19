@@ -802,93 +802,11 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   const rowCount = isMobile ? 1 : Math.min(3, Math.max(1, T.buildingRowCount ?? 2));
   const gapChance = isMobile ? Math.max(T.buildingGapChance ?? 0.15, 0.3) : (T.buildingGapChance ?? 0.15);
 
-  // ── Procedural Facade Atlas (canvas-drawn, 512×512, 4×4 grid) ──
+  // ── Facade Atlas (4×4 grid, 16 tiles) ──
   const ATLAS_COLS = 4, ATLAS_ROWS = 4;
-  const TILE_PX = 128;
-  const facadeCanvas = document.createElement('canvas');
-  facadeCanvas.width = ATLAS_COLS * TILE_PX;
-  facadeCanvas.height = ATLAS_ROWS * TILE_PX;
-  const fCtx = facadeCanvas.getContext('2d')!;
 
-  // Tile definitions
-  interface TileDef {
-    wall: string; win: string; ww: number; wh: number; cols: number; rows: number;
-    groundFloor?: boolean; accent?: string;
-  }
-  const TILE_DEFS: TileDef[] = [
-    /* 0  glass office    */ { wall: '#2a3040', win: '#6090bb', ww: 22, wh: 28, cols: 4, rows: 3, groundFloor: true },
-    /* 1  brick apartment */ { wall: '#7a4535', win: '#d4a855', ww: 16, wh: 20, cols: 5, rows: 4, groundFloor: true, accent: '#5a3025' },
-    /* 2  brutalist       */ { wall: '#555560', win: '#889098', ww: 24, wh: 14, cols: 4, rows: 5 },
-    /* 3  dark glass      */ { wall: '#1a2030', win: '#3a6080', ww: 26, wh: 30, cols: 3, rows: 3, groundFloor: true },
-    /* 4  stone ornate    */ { wall: '#a09070', win: '#e8d088', ww: 18, wh: 24, cols: 4, rows: 3, accent: '#887050' },
-    /* 5  warehouse       */ { wall: '#606058', win: '#889080', ww: 28, wh: 16, cols: 3, rows: 4 },
-    /* 6  neon commercial */ { wall: '#252535', win: '#cc44cc', ww: 24, wh: 20, cols: 4, rows: 3, groundFloor: true, accent: '#44ddee' },
-    /* 7  stucco          */ { wall: '#d0c0a0', win: '#a09060', ww: 14, wh: 18, cols: 5, rows: 4 },
-    /* 8  steel modern    */ { wall: '#353540', win: '#5580aa', ww: 20, wh: 26, cols: 4, rows: 3, groundFloor: true },
-    /* 9  brownstone      */ { wall: '#6a3a2a', win: '#cc9944', ww: 16, wh: 22, cols: 4, rows: 4, accent: '#4a2a1a' },
-    /* 10 art deco        */ { wall: '#3a3a30', win: '#ddbb55', ww: 16, wh: 28, cols: 5, rows: 3, accent: '#ccaa33' },
-    /* 11 japanese        */ { wall: '#4a4038', win: '#d0c890', ww: 20, wh: 16, cols: 4, rows: 5, accent: '#6a5040' },
-    /* 12 parking garage  */ { wall: '#707070', win: '#404040', ww: 30, wh: 10, cols: 3, rows: 6 },
-    /* 13 res tower       */ { wall: '#404850', win: '#7090a0', ww: 18, wh: 22, cols: 4, rows: 4, groundFloor: true },
-    /* 14 commercial      */ { wall: '#454550', win: '#80a0c0', ww: 22, wh: 18, cols: 4, rows: 4, groundFloor: true },
-    /* 15 night concrete  */ { wall: '#2a2a30', win: '#cc8833', ww: 14, wh: 18, cols: 5, rows: 5 },
-  ];
-
-  // Draw each tile onto canvas
-  for (let tileIdx = 0; tileIdx < 16; tileIdx++) {
-    const def = TILE_DEFS[tileIdx];
-    const tx = (tileIdx % ATLAS_COLS) * TILE_PX;
-    const ty = Math.floor(tileIdx / ATLAS_COLS) * TILE_PX;
-
-    // Wall background
-    fCtx.fillStyle = def.wall;
-    fCtx.fillRect(tx, ty, TILE_PX, TILE_PX);
-
-    // Accent band (if present)
-    if (def.accent) {
-      fCtx.fillStyle = def.accent;
-      fCtx.fillRect(tx, ty, TILE_PX, 4);
-      fCtx.fillRect(tx, ty + TILE_PX - 4, TILE_PX, 4);
-    }
-
-    // Windows grid
-    const padX = (TILE_PX - def.cols * def.ww) / (def.cols + 1);
-    const padY = (TILE_PX - def.rows * def.wh) / (def.rows + 1);
-    for (let row = 0; row < def.rows; row++) {
-      for (let col = 0; col < def.cols; col++) {
-        const wx = tx + padX + col * (def.ww + padX);
-        const wy = ty + padY + row * (def.wh + padY);
-        fCtx.fillStyle = def.win;
-        fCtx.globalAlpha = 0.6 + rng() * 0.4;
-        fCtx.fillRect(wx, wy, def.ww, def.wh);
-        fCtx.globalAlpha = 1.0;
-        fCtx.strokeStyle = def.wall;
-        fCtx.lineWidth = 1.5;
-        fCtx.strokeRect(wx, wy, def.ww, def.wh);
-        fCtx.beginPath();
-        fCtx.moveTo(wx + def.ww / 2, wy);
-        fCtx.lineTo(wx + def.ww / 2, wy + def.wh);
-        fCtx.stroke();
-      }
-    }
-
-    // Ground floor storefront
-    if (def.groundFloor) {
-      const gfY = ty + TILE_PX - 20;
-      fCtx.fillStyle = '#1a1a20';
-      fCtx.fillRect(tx, gfY, TILE_PX, 20);
-      fCtx.fillStyle = def.win;
-      fCtx.globalAlpha = 0.4;
-      for (let col = 0; col < def.cols; col++) {
-        const gx = tx + padX + col * (def.ww + padX);
-        fCtx.fillRect(gx, gfY + 3, def.ww, 14);
-      }
-      fCtx.globalAlpha = 1.0;
-    }
-  }
-
-  // Create Three.js texture from canvas
-  const atlasTexture = new THREE.CanvasTexture(facadeCanvas);
+  // Load the detailed facade atlas PNG
+  const atlasTexture = new THREE.TextureLoader().load('/buildings/facade_atlas.png');
   atlasTexture.wrapS = THREE.RepeatWrapping;
   atlasTexture.wrapT = THREE.RepeatWrapping;
   atlasTexture.magFilter = THREE.LinearFilter;
@@ -1053,7 +971,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
       for (let j = 0; j < tilePlacements.length; j++) {
         const pl = tilePlacements[j];
-        dummy.position.set(pl.x, pl.h / 2, pl.z);
+        dummy.position.set(pl.x, pl.h / 2 - 2, pl.z);
         dummy.scale.set(pl.w, pl.h, pl.d);
         dummy.rotation.set(0, pl.rotY, 0);
         dummy.updateMatrix();
