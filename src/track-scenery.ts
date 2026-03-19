@@ -1170,10 +1170,9 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
         // Recompute bounding box after scaling to find ground offset
         const scaledBox = new THREE.Box3().setFromObject(model);
-        const groundY = lmP.y; // use spline Y as ground reference
         const pos = new THREE.Vector3(
           lmP.x + lmRight.x * lmOffset * lmSide,
-          groundY - scaledBox.min.y, // offset so model bottom sits on ground
+          -scaledBox.min.y, // sit on ground plane (y=0), not elevated road
           lmP.z + lmRight.z * lmOffset * lmSide,
         );
         model.position.copy(pos);
