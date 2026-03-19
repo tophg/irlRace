@@ -579,6 +579,23 @@ function renderFullTitleScreen() {
   `;
   uiOverlay.appendChild(titleEl);
 
+  // ── iOS "Add to Home Screen" hint ──
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isStandalone = (window.navigator as any).standalone === true
+    || window.matchMedia('(display-mode: standalone)').matches;
+  if (isIOS && !isStandalone) {
+    const hint = document.createElement('div');
+    hint.className = 'ios-install-hint';
+    hint.innerHTML = `
+      <span>📲 Tap <strong style="font-size:1.2em">⎙</strong> then <strong>"Add to Home Screen"</strong> for the best experience</span>
+      <button class="ios-hint-close">✕</button>
+    `;
+    titleEl.appendChild(hint);
+    const dismiss = () => { hint.style.opacity = '0'; setTimeout(() => hint.remove(), 300); };
+    hint.querySelector('.ios-hint-close')!.addEventListener('click', dismiss);
+    setTimeout(dismiss, 8000);
+  }
+
   // Create ember overlay
   createEmberOverlay();
 
