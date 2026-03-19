@@ -313,7 +313,7 @@ export function hideLoading() {
 // Environment flavor text
 const ENV_FLAVOR: Record<string, string> = {
   'Random': 'Let fate decide your track',
-  'Brooklyn': 'Dark streets, warm lights, city heartbeat',
+  'Washington D.C.': 'Monuments, marble, government district nightlife',
   'Mojave': 'Sun-scorched highway, endless horizon',
   'Havana': 'Tropical heat, golden hour, palm shadows',
   'Shibuya': 'Neon-drenched megacity, wet reflections',
@@ -322,7 +322,7 @@ const ENV_FLAVOR: Record<string, string> = {
 
 const ENV_EMOJI: Record<string, string> = {
   'Random': '🎲',
-  'Brooklyn': '🌃',
+  'Washington D.C.': '🏛️',
   'Mojave': '🏜️',
   'Havana': '🌴',
   'Shibuya': '🌆',

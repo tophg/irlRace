@@ -97,9 +97,9 @@ export interface EnvironmentPreset {
 }
 
 export const ENVIRONMENTS: EnvironmentPreset[] = [
-  // ── Brooklyn — NYC dark urban streets, warm window glow ──
+  // ── Washington D.C. — Government district, marble and stone under city lights ──
   {
-    name: 'Brooklyn',
+    name: 'Washington D.C.',
     fogColor: 0x1a1a2e, fogDensity: 0.00025,
     skyTop: 0x0d0d1a, skyBottom: 0x1a1a3a, skyHorizon: 0x2a1a30,
     hemiSky: 0x88aacc, hemiGround: 0x444422, hemiIntensity: 1.0,
@@ -121,8 +121,8 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       fenceDensity: 1.0, rockDensity: 0.3, rockColor: 0x444450, bushDensity: 0.3,
       spectatorDensity: 1.0, accentProps: ['traffic_cone', 'dumpster', 'debris'],
       roadDecals: ['lane_paint', 'manhole', 'puddle'], buildingStyle: 'modern', treeVariant: 'standard',
-      buildingModels: ['skyscraper.glb', 'nyc_skyscraper.glb', 'nyc_skyscraper_b.glb', 'nyc_apartment.glb', 'nyc_apartment_b.glb', 'nyc_apartment_c.glb', 'nyc_apartment_d.glb', 'office_b.glb', 'highrise_a.glb', 'highrise_b.glb', 'highrise_c.glb', 'highrise_d.glb', 'highrise_e.glb', 'highrise_f.glb'],
-      buildingDensity: 1.5, buildingRowCount: 3, buildingGapChance: 0.12,
+      buildingModels: [],
+      buildingDensity: 2.0, buildingRowCount: 3, buildingGapChance: 0.08,
       treeModels: ['red_maple.glb', 'red_maple_b.glb', 'dogwood.glb', 'walnut.glb', 'walnut_b.glb', 'oak.glb'],
       ambientLights: ['window_spill', 'hazard_flasher'],
     },

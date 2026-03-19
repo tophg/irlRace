@@ -53,7 +53,7 @@ function getGroupData(group: THREE.Object3D): SceneryGroupData {
 }
 
 export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number, theme?: SceneryTheme, roadMesh?: THREE.Mesh): THREE.Group {
-  // Default theme fallback (Brooklyn style)
+  // Default theme fallback (Washington D.C. style)
   const T: SceneryTheme = theme ?? {
     roadColor: 0x2a2a30, roadRoughness: 0.85, barrierColor: 0x444450,
     buildingPalette: [0x1a1a2e, 0x22223a, 0x2a2a45, 0x181830],
