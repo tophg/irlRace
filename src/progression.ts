@@ -17,24 +17,24 @@ const CREDITS_PODIUM_BONUS = 100;
 // ── Car Unlock Costs (by id) ──
 const UNLOCK_COSTS: Record<string, number> = {
   // Entry tier — free
-  haven: 0,
+  obey: 0,
 
   // Mid tier
-  phantom: 500,
-  monarch: 600,
-  stallion: 800,
-  traverse: 700,
+  sleeper: 500,
+  conform: 600,
+  consume: 800,
+  formaldehyde: 700,
 
   // Exotic tier
-  venom: 1500,
-  precision: 1800,
-  apex: 2000,
-  summit: 1600,
+  bubblegum: 1500,
+  sunglasses: 1800,
+  nada: 2000,
+  drifter: 1600,
 
   // Elite tier
-  diablo: 4000,
-  expedition: 3500,
-  raptor: 4500,
+  kickass: 4000,
+  revelator: 3500,
+  submit: 4500,
 
 };
 
@@ -63,7 +63,7 @@ function defaultProgress(): PlayerProgress {
     bestLapTime: 0,
     totalDistance: 0,
     totalDriftTime: 0,
-    unlockedCars: ['haven'], // Entry tier free
+    unlockedCars: ['obey'], // Entry tier free
   };
 }
 
