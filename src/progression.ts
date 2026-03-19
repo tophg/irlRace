@@ -29,7 +29,7 @@ const UNLOCK_COSTS: Record<string, number> = {
   bubblegum: 1500,
   sunglasses: 1800,
   nada: 2000,
-  drifter: 1600,
+  reproduce: 1600,
 
   // Elite tier
   kickass: 4000,

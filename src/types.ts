@@ -61,8 +61,8 @@ export const CAR_ROSTER: CarDef[] = [
   { id: 'sunglasses',    name: 'Sunglasses',    file: 'Porsche_911.glb',    maxSpeed: 80, acceleration: 32, handling: 2.9, braking: 52, driftFactor: 0.24, gripCoeff: 0.96, latFriction: 6.0, suspStiffness: 0.03, steerSpeed: 3.4,  driftThreshold: 0.13, mass: 1420, cgHeight: 0.09, frontBias: 0.40, heightOffset: 0.0 },
   // Nada — rally-bred monster, raw turbo power, explosive acceleration
   { id: 'nada',          name: 'Nada',          file: 'Subaru_WRX3.glb',   maxSpeed: 78, acceleration: 38, handling: 2.8, braking: 48, driftFactor: 0.30, gripCoeff: 1.00, latFriction: 6.5, suspStiffness: 0.04, steerSpeed: 3.3,  driftThreshold: 0.14, mass: 1380, cgHeight: 0.10, frontBias: 0.48, heightOffset: 0.05 },
-  // Drifter — sporty SUV, surprisingly agile, high CG means dramatic body roll
-  { id: 'drifter',       name: 'Drifter',       file: 'Family_SUV_B.glb',  maxSpeed: 77, acceleration: 31, handling: 2.4, braking: 47, driftFactor: 0.32, gripCoeff: 0.86, latFriction: 5.0, suspStiffness: 0.06, steerSpeed: 2.9,  driftThreshold: 0.11, mass: 1750, cgHeight: 0.22, frontBias: 0.53, heightOffset: 0.30 },
+  // Reproduce — sporty SUV, surprisingly agile, high CG means dramatic body roll
+  { id: 'reproduce',     name: 'Reproduce',     file: 'Family_SUV_B.glb',  maxSpeed: 77, acceleration: 31, handling: 2.4, braking: 47, driftFactor: 0.32, gripCoeff: 0.86, latFriction: 5.0, suspStiffness: 0.06, steerSpeed: 2.9,  driftThreshold: 0.11, mass: 1750, cgHeight: 0.22, frontBias: 0.53, heightOffset: 0.30 },
 
   // ── ELITE TIER ──
   // Kick Ass — top speed king, lightweight, fragile glass cannon
