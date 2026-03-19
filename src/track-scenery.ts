@@ -841,12 +841,27 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       modelMap.set(name, { scene, bottom: bbox.min.y });
     }
 
+    // Per-model scale multipliers — residential buildings should be smaller than commercial
+    const MODEL_SCALE: Record<string, number> = {
+      'skyscraper.glb': 1.0,
+      'nyc_skyscraper.glb': 1.0,
+      'nyc_skyscraper_b.glb': 0.95,
+      'office.glb': 0.85,
+      'nyc_apartment.glb': 0.7,
+      'nyc_apartment_b.glb': 0.65,
+      'nyc_apartment_c.glb': 0.7,
+      'coastal_a.glb': 0.5,
+      'coastal_b.glb': 0.5,
+      'coastal_home.glb': 0.45,
+    };
+
     for (const pl of placementsWithModel) {
       const entry = modelMap.get(pl.model);
       if (!entry) continue;
 
       const clone = entry.scene.clone(true);
-      const baseScale = 12;
+      const modelMult = MODEL_SCALE[pl.model] ?? 0.7;
+      const baseScale = 12 * modelMult;
       clone.scale.set(baseScale * pl.scaleW, baseScale * pl.scaleH, baseScale * pl.scaleD);
       clone.position.set(pl.x, -5 - entry.bottom * baseScale * pl.scaleH, pl.z);
       clone.rotation.y = pl.rotY;
