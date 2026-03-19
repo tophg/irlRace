@@ -300,6 +300,7 @@ const ENV_EMOJI: Record<string, string> = {
 let _previewCanvas: HTMLCanvasElement | null = null;
 let _previewCtx: CanvasRenderingContext2D | null = null;
 let _previewRAF = 0;
+let _previewWeather = 'clear'; // tracks weather for preview particles
 
 // Target colors (hex)
 let _tgtSkyTop = { r: 0, g: 0, b: 0 };
@@ -434,6 +435,9 @@ function previewLoop(time: number) {
     }
   }
 
+  // ── Car silhouette on road ──
+  drawCarSilhouette(ctx, w, h, groundY);
+
   // ── Atmospheric fog wash ──
   const fogWash = ctx.createLinearGradient(0, skyH - 20, 0, skyH + groundH * 0.3);
   fogWash.addColorStop(0, rgbStr(_curFogC, 0.4));
@@ -441,7 +445,122 @@ function previewLoop(time: number) {
   ctx.fillStyle = fogWash;
   ctx.fillRect(0, skyH - 20, w, groundH * 0.3 + 20);
 
+  // ── Weather particles ──
+  drawWeatherParticles(ctx, w, h, time);
+
   _previewRAF = requestAnimationFrame(previewLoop);
+}
+
+/** Draw a simple car silhouette centered on the road. */
+function drawCarSilhouette(ctx: CanvasRenderingContext2D, w: number, h: number, groundY: number) {
+  const cx = w * 0.5;
+  const carY = groundY + (h - groundY) * 0.55; // 55% into the ground area
+  const carW = w * 0.08;
+  const carH = carW * 0.35;
+  const cabH = carW * 0.22;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(5,5,15,0.85)';
+  ctx.beginPath();
+  // Body
+  ctx.moveTo(cx - carW / 2, carY);
+  ctx.lineTo(cx + carW / 2, carY);
+  ctx.lineTo(cx + carW / 2, carY - carH);
+  ctx.lineTo(cx + carW * 0.35, carY - carH);
+  // Roof
+  ctx.lineTo(cx + carW * 0.25, carY - carH - cabH);
+  ctx.lineTo(cx - carW * 0.2, carY - carH - cabH);
+  // Windshield
+  ctx.lineTo(cx - carW * 0.3, carY - carH);
+  ctx.lineTo(cx - carW / 2, carY - carH);
+  ctx.closePath();
+  ctx.fill();
+
+  // Headlights (two small glowing dots)
+  const hlY = carY - carH * 0.5;
+  const hlR = carW * 0.04;
+  for (const side of [-1, 1]) {
+    const hlX = cx + side * carW * 0.42;
+    const hlGrad = ctx.createRadialGradient(hlX, hlY, 0, hlX, hlY, hlR * 6);
+    hlGrad.addColorStop(0, rgbStr(_curDirC, 0.6));
+    hlGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = hlGrad;
+    ctx.fillRect(hlX - hlR * 6, hlY - hlR * 6, hlR * 12, hlR * 12);
+    ctx.fillStyle = `rgba(255,255,240,0.9)`;
+    ctx.beginPath();
+    ctx.arc(hlX, hlY, hlR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** Draw weather particles based on _previewWeather. */
+function drawWeatherParticles(ctx: CanvasRenderingContext2D, w: number, h: number, time: number) {
+  if (_previewWeather === 'clear' || _previewWeather === 'random') return;
+
+  const isRain = _previewWeather === 'light_rain' || _previewWeather === 'heavy_rain';
+  const isSnow = _previewWeather === 'snow';
+  const isBlizzard = _previewWeather === 'blizzard';
+  const isIce = _previewWeather === 'ice';
+
+  ctx.save();
+
+  if (isRain) {
+    const count = _previewWeather === 'heavy_rain' ? 60 : 30;
+    ctx.strokeStyle = 'rgba(180,200,255,0.35)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < count; i++) {
+      const seed = i * 73.13;
+      const x = ((Math.sin(seed) * 0.5 + 0.5) * w + time * 0.05 * (i % 3 + 1)) % w;
+      const y = ((Math.cos(seed * 1.7) * 0.5 + 0.5) * h + time * 0.4 * (1 + (i % 3) * 0.3)) % h;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - 3, y + 12);
+      ctx.stroke();
+    }
+  }
+
+  if (isSnow || isBlizzard) {
+    const count = isBlizzard ? 50 : 25;
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    for (let i = 0; i < count; i++) {
+      const seed = i * 47.91;
+      const drift = Math.sin(time * 0.001 + i * 2.1) * 15;
+      const windDrift = isBlizzard ? time * 0.08 * (i % 2 + 1) : 0;
+      const x = ((Math.sin(seed) * 0.5 + 0.5) * w + drift + windDrift) % w;
+      const y = ((Math.cos(seed * 2.3) * 0.5 + 0.5) * h + time * 0.08 * (1 + (i % 4) * 0.2)) % h;
+      const r = 1.5 + (i % 3) * 0.8;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (isBlizzard) {
+      // Reduced visibility overlay
+      ctx.fillStyle = 'rgba(200,210,230,0.15)';
+      ctx.fillRect(0, 0, w, h);
+    }
+  }
+
+  if (isIce) {
+    // Blue-tinted vignette
+    const vigGrad = ctx.createRadialGradient(w * 0.5, h * 0.5, w * 0.2, w * 0.5, h * 0.5, w * 0.7);
+    vigGrad.addColorStop(0, 'transparent');
+    vigGrad.addColorStop(1, 'rgba(100,140,255,0.2)');
+    ctx.fillStyle = vigGrad;
+    ctx.fillRect(0, 0, w, h);
+    // Frost sparkle dots
+    ctx.fillStyle = 'rgba(200,220,255,0.4)';
+    for (let i = 0; i < 15; i++) {
+      const fx = (Math.sin(i * 83.7) * 0.5 + 0.5) * w;
+      const fy = (Math.cos(i * 127.3) * 0.5 + 0.5) * h;
+      const fa = 0.2 + Math.sin(time * 0.002 + i * 3.1) * 0.2;
+      ctx.globalAlpha = Math.max(0, fa);
+      ctx.fillRect(fx, fy, 2, 2);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
 }
 
 function startPreviewLoop() {
@@ -454,6 +573,7 @@ function destroyPreview() {
   _previewRAF = 0;
   _previewCanvas = null;
   _previewCtx = null;
+  _previewWeather = 'clear';
 }
 
 export function showRaceConfig(
@@ -551,7 +671,7 @@ export function showRaceConfig(
           </div>
         </div>
         <div class="race-config-actions">
-          <button class="rc-start-btn" id="cfg-go">START RACE</button>
+          <button class="rc-start-btn" id="cfg-go">START RACE<span class="rc-start-sub" id="rc-start-sub"></span></button>
           <button class="rc-back-btn" id="cfg-back">BACK</button>
         </div>
       </div>
@@ -607,6 +727,22 @@ export function showRaceConfig(
     }
   });
 
+  // Wire weather select → preview particles + subtitle update
+  const weatherSelect = el.querySelector('#cfg-weather') as HTMLSelectElement;
+  weatherSelect.addEventListener('change', () => {
+    _previewWeather = weatherSelect.value;
+    updateStartSub(el);
+  });
+
+  // Wire all config changes to update subtitle
+  el.querySelector('#cfg-laps')?.addEventListener('change', () => updateStartSub(el));
+  el.querySelector('#cfg-ai')?.addEventListener('change', () => updateStartSub(el));
+  el.querySelector('#cfg-difficulty')?.addEventListener('change', () => updateStartSub(el));
+  envList.addEventListener('change', () => setTimeout(() => updateStartSub(el), 10));
+
+  // Initial subtitle
+  updateStartSub(el);
+
   // Wire buttons
   document.getElementById('cfg-back')!.addEventListener('click', () => {
     destroyPreview();
@@ -626,6 +762,18 @@ export function showRaceConfig(
     el.remove();
     onStart(laps, ai, difficulty, seed, weather, environment);
   });
+}
+
+/** Update the START RACE button subtitle with current selections. */
+function updateStartSub(el: HTMLElement) {
+  const sub = el.querySelector('#rc-start-sub');
+  if (!sub) return;
+  const laps = (el.querySelector('#cfg-laps') as HTMLSelectElement)?.value || '3';
+  const envRadio = el.querySelector('input[name="env-select"]:checked') as HTMLInputElement;
+  const envName = envRadio?.value === 'random' ? 'Random' : (envRadio?.value || 'Random');
+  const weather = (el.querySelector('#cfg-weather') as HTMLSelectElement);
+  const weatherLabel = weather?.selectedOptions?.[0]?.textContent?.replace(/^\S+\s/, '') || 'Random';
+  sub.textContent = `${laps} Lap${laps === '1' ? '' : 's'} · ${envName} · ${weatherLabel}`;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

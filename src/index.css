@@ -1382,6 +1382,7 @@ canvas { display: block; }
 
 /* ── Race Config ── */
 /* ── Race Config — Split Panel ── */
+/* ── Race Config: Overlay ── */
 .race-config-overlay {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -1394,6 +1395,7 @@ canvas { display: block; }
   to   { opacity: 1; }
 }
 
+/* ── Panel: glassmorphism + entrance ── */
 .race-config-panel {
   display: flex;
   gap: 24px;
@@ -1404,11 +1406,18 @@ canvas { display: block; }
   border-radius: 16px;
   background: rgba(12,12,20,0.85);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255,255,255,0.06);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  border: 1px solid rgba(0,229,255,0.1);
+  box-shadow:
+    0 20px 60px rgba(0,0,0,0.6),
+    inset 0 0 40px rgba(0,229,255,0.03);
+  animation: rc-panel-in 0.5s cubic-bezier(0.22,1,0.36,1) both;
+}
+@keyframes rc-panel-in {
+  from { opacity: 0; transform: scale(0.95) translateY(12px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-/* Left controls panel */
+/* ── Left controls: slide-in entrance ── */
 .race-config-left {
   flex: 0 0 320px;
   display: flex;
@@ -1417,6 +1426,11 @@ canvas { display: block; }
   overflow-y: auto;
   max-height: 75vh;
   padding-right: 8px;
+  animation: rc-left-in 0.5s ease-out 0.15s both;
+}
+@keyframes rc-left-in {
+  from { opacity: 0; transform: translateX(-20px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 .race-config-left::-webkit-scrollbar { width: 4px; }
 .race-config-left::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
@@ -1441,7 +1455,7 @@ canvas { display: block; }
   border-bottom: 1px solid rgba(255,77,0,0.15);
 }
 
-/* Config rows */
+/* ── Config rows: micro-interactions ── */
 .rc-row {
   display: flex;
   justify-content: space-between;
@@ -1449,6 +1463,10 @@ canvas { display: block; }
   padding: 8px 0;
   font-size: 14px;
   color: var(--col-text);
+  transition: transform 0.15s ease;
+}
+.rc-row:hover {
+  transform: translateX(4px);
 }
 .rc-row span { color: var(--col-text-dim); }
 
@@ -1461,16 +1479,20 @@ canvas { display: block; }
   font-size: 14px;
   padding: 6px 10px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.rc-select:hover, .rc-input:hover {
+  background: rgba(255,255,255,0.08);
 }
 .rc-select:focus, .rc-input:focus {
   border-color: var(--col-cyan);
+  box-shadow: 0 0 10px rgba(0,229,255,0.15);
 }
 .rc-select { min-width: 110px; cursor: pointer; }
 .rc-input { width: 90px; letter-spacing: 2px; }
 .rc-input::placeholder { color: var(--col-text-dim); }
 
-/* Environment radio list */
+/* ── Environment radio list ── */
 .env-radio-list {
   display: flex;
   flex-direction: column;
@@ -1489,12 +1511,33 @@ canvas { display: block; }
   padding: 8px 12px;
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
   border-left: 3px solid transparent;
   background: rgba(255,255,255,0.02);
+  opacity: 0;
+  animation: rc-env-fade 0.35s ease-out forwards;
+}
+.env-radio-item:nth-child(1)  { animation-delay: 0.20s; }
+.env-radio-item:nth-child(2)  { animation-delay: 0.24s; }
+.env-radio-item:nth-child(3)  { animation-delay: 0.28s; }
+.env-radio-item:nth-child(4)  { animation-delay: 0.32s; }
+.env-radio-item:nth-child(5)  { animation-delay: 0.36s; }
+.env-radio-item:nth-child(6)  { animation-delay: 0.40s; }
+.env-radio-item:nth-child(7)  { animation-delay: 0.44s; }
+.env-radio-item:nth-child(8)  { animation-delay: 0.48s; }
+.env-radio-item:nth-child(9)  { animation-delay: 0.52s; }
+.env-radio-item:nth-child(10) { animation-delay: 0.56s; }
+.env-radio-item:nth-child(11) { animation-delay: 0.60s; }
+.env-radio-item:nth-child(12) { animation-delay: 0.64s; }
+.env-radio-item:nth-child(13) { animation-delay: 0.68s; }
+.env-radio-item:nth-child(14) { animation-delay: 0.72s; }
+@keyframes rc-env-fade {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 .env-radio-item:hover {
   background: rgba(255,255,255,0.06);
+  transform: translateX(2px);
 }
 .env-radio-item--selected {
   background: rgba(0,229,255,0.08);
@@ -1528,13 +1571,18 @@ canvas { display: block; }
   opacity: 0.7;
 }
 
-/* Right panel: preview + actions */
+/* ── Right panel: preview + actions, slide-in ── */
 .race-config-right {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: 16px;
   min-width: 0;
+  animation: rc-right-in 0.5s ease-out 0.2s both;
+}
+@keyframes rc-right-in {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
 .preview-container {
@@ -1575,7 +1623,7 @@ canvas { display: block; }
   font-style: italic;
 }
 
-/* Action buttons */
+/* ── Action buttons: pulsing START ── */
 .race-config-actions {
   display: flex;
   gap: 12px;
@@ -1593,10 +1641,28 @@ canvas { display: block; }
   cursor: pointer;
   transition: transform 0.15s, box-shadow 0.3s;
   box-shadow: 0 0 20px rgba(255,77,0,0.3);
+  animation: rc-start-pulse 2s ease-in-out infinite;
+}
+@keyframes rc-start-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(255,77,0,0.3); }
+  50%      { box-shadow: 0 0 40px rgba(255,77,0,0.6), 0 0 80px rgba(255,77,0,0.15); }
 }
 .rc-start-btn:hover {
   transform: scale(1.03);
-  box-shadow: 0 0 30px rgba(255,77,0,0.5);
+  box-shadow: 0 0 35px rgba(255,77,0,0.6);
+  animation: none;
+}
+.rc-start-btn:active {
+  transform: scale(0.97);
+}
+.rc-start-sub {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 1px;
+  opacity: 0.65;
+  margin-top: 2px;
 }
 .rc-back-btn {
   padding: 14px 24px;
@@ -1608,11 +1674,14 @@ canvas { display: block; }
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 10px;
   cursor: pointer;
-  transition: background 0.2s, color 0.2s;
+  transition: background 0.2s, color 0.2s, transform 0.15s;
 }
 .rc-back-btn:hover {
   background: rgba(255,255,255,0.1);
   color: var(--col-text);
+}
+.rc-back-btn:active {
+  transform: scale(0.97);
 }
 
 /* Responsive: stack vertically on mobile */
