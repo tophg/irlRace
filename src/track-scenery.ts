@@ -967,19 +967,12 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
             uv[base + v * 2 + 1] = roofV;
           }
         } else {
-          const hRepeat = (face === 0 || face === 1) ? repeatLR : repeatFB;
           for (let v = 0; v < 4; v++) {
             let rawU = uv[base + v * 2];
             let rawV = uv[base + v * 2 + 1];
-            // Tile the texture for wider/taller buildings
-            rawU = rawU * hRepeat;
-            rawV = rawV * repeatV;
-            // Fractional wrap (avoid collapse at integer boundaries)
-            rawU = rawU - Math.floor(rawU);
-            rawV = rawV - Math.floor(rawV);
-            // Horizontal flip
+            // Horizontal flip for asymmetry
             if (flipU) rawU = 1 - rawU;
-            // Map to tile sub-region with offset
+            // Map [0,1] → tile sub-region with offset for variety
             uv[base + v * 2]     = uMin + uShift + rawU * tileW * uScale;
             uv[base + v * 2 + 1] = vMin + vShift + rawV * tileH * vScale;
           }
