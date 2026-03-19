@@ -2564,7 +2564,7 @@ canvas { display: block; }
   max-width: 280px;
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 900px) {
+@media (pointer: coarse) and (hover: none) and (orientation: portrait) and (max-width: 900px) {
   #portrait-lock-overlay { display: flex; }
 }
 
