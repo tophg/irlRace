@@ -159,6 +159,10 @@ canvas { display: block; }
   align-items: center;
   gap: 8px;
   animation: title-content-in 1s ease-out;
+  /* Dark scrim behind menu for legibility over 3D car */
+  padding: 40px 60px 32px;
+  border-radius: 24px;
+  background: radial-gradient(ellipse at 50% 40%, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
 }
 @keyframes title-content-in {
   from { opacity: 0; transform: translateY(20px) scale(0.95); }
@@ -182,9 +186,10 @@ canvas { display: block; }
 .title-race {
   color: #ffffff;
   text-shadow:
-    0 0 20px rgba(255,255,255,0.3),
-    0 0 60px rgba(255,77,0,0.2),
-    0 4px 0 rgba(0,0,0,0.4);
+    0 0 30px rgba(255,255,255,0.5),
+    0 0 80px rgba(255,77,0,0.3),
+    0 2px 20px rgba(0,0,0,0.8),
+    0 4px 0 rgba(0,0,0,0.6);
 }
 .title-irl {
   color: var(--col-cyan);
@@ -203,11 +208,12 @@ canvas { display: block; }
 .title-subtitle {
   font-family: var(--font-body);
   font-size: clamp(11px, 2vw, 15px);
-  color: rgba(255,255,255,0.35);
+  color: rgba(255,255,255,0.55);
   letter-spacing: clamp(4px, 1.5vw, 10px);
   text-transform: uppercase;
   font-weight: 400;
   margin-bottom: 32px;
+  text-shadow: 0 1px 8px rgba(0,0,0,0.6);
 }
 
 .menu-buttons {
@@ -222,9 +228,9 @@ canvas { display: block; }
 
 .menu-btn {
   padding: 14px 32px;
-  border: 1px solid rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.18);
   border-radius: var(--radius);
-  background: rgba(255,255,255,0.04);
+  background: rgba(10,10,20,0.55);
   color: var(--col-text);
   font-family: var(--font-display);
   font-size: 18px;
@@ -232,32 +238,35 @@ canvas { display: block; }
   text-transform: uppercase;
   cursor: pointer;
   transition: all 0.2s ease;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  text-shadow: 0 1px 6px rgba(0,0,0,0.5);
 }
 .menu-btn:hover, .menu-btn:active {
-  background: rgba(255,255,255,0.1);
-  border-color: rgba(255,255,255,0.25);
+  background: rgba(20,20,40,0.7);
+  border-color: rgba(255,255,255,0.35);
   transform: scale(1.03);
-  box-shadow: 0 0 20px rgba(255,255,255,0.08);
+  box-shadow: 0 0 24px rgba(255,255,255,0.12), inset 0 0 20px rgba(255,255,255,0.03);
 }
 .menu-btn--accent {
-  border-color: rgba(255,77,0,0.3);
+  border-color: rgba(255,77,0,0.4);
   color: var(--col-accent);
+  text-shadow: 0 0 12px rgba(255,77,0,0.3);
 }
 .menu-btn--accent:hover {
-  background: rgba(255,77,0,0.15);
+  background: rgba(255,77,0,0.2);
   border-color: var(--col-accent);
-  box-shadow: 0 0 24px rgba(255,77,0,0.3);
+  box-shadow: 0 0 30px rgba(255,77,0,0.35), inset 0 0 15px rgba(255,77,0,0.1);
 }
 .menu-btn--cyan {
-  border-color: rgba(0,229,255,0.3);
+  border-color: rgba(0,229,255,0.4);
   color: var(--col-cyan);
+  text-shadow: 0 0 12px rgba(0,229,255,0.3);
 }
 .menu-btn--cyan:hover {
-  background: rgba(0,229,255,0.12);
+  background: rgba(0,229,255,0.15);
   border-color: var(--col-cyan);
-  box-shadow: 0 0 24px rgba(0,229,255,0.3);
+  box-shadow: 0 0 30px rgba(0,229,255,0.35), inset 0 0 15px rgba(0,229,255,0.1);
 }
 .menu-btn--small {
   padding: 10px 20px;

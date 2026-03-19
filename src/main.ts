@@ -170,7 +170,7 @@ function createTitleScene() {
   loadCarModel(titleCar.file).then((model: THREE.Group) => {
     if (!titleScene) return; // cleaned up before load finished
     // Raise slightly so wheels sit on the ground plane (processCarModel centers at tire contact)
-    model.position.y = 0.15;
+    model.position.y = 0.25;
     titleScene!.add(model);
     titleCarModel = model;
     console.log('[TitleScreen] Car loaded successfully:', titleCar.file);
