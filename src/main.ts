@@ -3,6 +3,9 @@
 import * as THREE from 'three/webgpu';
 import './index.css';
 
+// ── Vercel Analytics ──
+import { inject } from '@vercel/analytics';
+
 import { GameState, CarDef, EventType, CAR_ROSTER } from './types';
 import { initScene, getScene } from './scene';
 import { showLapOverlay } from './hud';
@@ -39,6 +42,10 @@ import { initGameLoop, startGameLoop, destroyLeaderboard } from './game-loop';
 
 // ── Extracted Race Lifecycle ──
 import { initRaceLifecycle, startRace, clearRaceObjects } from './race-lifecycle';
+
+
+// ── Initialize Vercel Analytics ──
+inject({ mode: (import.meta as any).env?.PROD ? 'production' : 'development' });
 
 
 // ── DOM ──
