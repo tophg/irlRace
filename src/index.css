@@ -2267,6 +2267,85 @@ canvas { display: block; }
   .settings-panel { padding: 24px 20px; }
   .settings-row select, .settings-row input[type="text"] { font-size: 16px; min-height: 36px; }
   .settings-row input[type="range"] { height: 8px; }
+
+  /* ── Garage: constrain to bottom so 3D car stays visible ── */
+  .garage-ui {
+    top: auto;
+    bottom: 0;
+    max-height: 45dvh;
+    padding-bottom: max(12px, var(--safe-bottom));
+    gap: 4px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    background: linear-gradient(to top, rgba(10,10,15,0.92) 0%, rgba(10,10,15,0.5) 80%, transparent 100%);
+  }
+  .car-name {
+    font-size: clamp(16px, 4.5vw, 20px);
+    padding: 4px 14px;
+  }
+  .car-stats {
+    padding: 6px 12px;
+    gap: 10px;
+  }
+  .stat-bar label {
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+  .stat-bar .bar-track {
+    width: 50px;
+    height: 4px;
+  }
+  .car-nav { gap: 10px; }
+  .car-nav-btn { width: 32px; height: 32px; font-size: 14px; }
+  .garage-dots { gap: 6px; margin-top: 4px; }
+  .garage-dot { width: 10px; height: 10px; }
+  .paint-shop-row { gap: 6px; margin-bottom: 4px; }
+  .paint-swatch { width: 24px; height: 24px; }
+  .paint-slider { width: 100px; }
+
+  /* ── Race Config: stack vertically, compact controls ── */
+  .race-config-panel {
+    flex-direction: column;
+    max-height: 95dvh;
+    padding: 12px;
+    gap: 8px;
+  }
+  .race-config-left {
+    flex: none;
+    max-height: 55dvh;
+    overflow-y: auto;
+  }
+  .race-config-title {
+    font-size: clamp(20px, 5vw, 28px);
+    margin-bottom: 8px;
+  }
+  .race-config-right {
+    flex: none;
+    min-height: 0;
+  }
+  .preview-container {
+    min-height: 120px;
+    max-height: 25dvh;
+  }
+  .env-radio-list {
+    padding: 2px 0 6px;
+  }
+  .env-radio-item {
+    min-width: 76px;
+    padding: 8px 10px 6px;
+  }
+  .env-radio-emoji { font-size: 22px; }
+  .env-radio-name { font-size: 10px; }
+
+  /* ── Results: constrain scroll ── */
+  .results-overlay {
+    max-height: 100dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .results-scroll {
+    max-height: 60dvh;
+  }
 }
 
 /* ── XS: ≤375px (iPhone SE, small Androids) ── */

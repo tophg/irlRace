@@ -39,7 +39,7 @@ export function initPostFX(
   const scenePass = pass(scene, camera);
 
   // ── Bloom (subtle glow on bright elements) ──
-  const bloomPass = bloom(scenePass, 0.5, 0.3, 0.8);
+  const bloomPass = bloom(scenePass, 0.2, 0.25, 0.9);
   let combined = scenePass.add(bloomPass);
 
   // ── Chromatic Aberration (on impact) ──
@@ -102,7 +102,7 @@ export function initPostFX(
  */
 export function updatePostFX(speedRatio: number, isNitroActive = false, dt = 1 / 60) {
   // Speed vignette: stronger during nitrous for tunnel vision
-  const baseVignette = 0.15 + speedRatio * 0.4;
+  const baseVignette = 0.1 + speedRatio * 0.3;
   uVignetteStrength.value = isNitroActive ? Math.max(baseVignette, 0.45 + speedRatio * 0.2) : baseVignette;
 
   // Boost intensity for radial effect during nitrous (dt-scaled linear decay)

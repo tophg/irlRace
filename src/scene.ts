@@ -97,11 +97,11 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
   // ── Brooklyn — NYC dark urban streets, warm window glow ──
   {
     name: 'Brooklyn',
-    fogColor: 0x1a1a2e, fogDensity: 0.00035,
+    fogColor: 0x1a1a2e, fogDensity: 0.00025,
     skyTop: 0x0d0d1a, skyBottom: 0x1a1a3a, skyHorizon: 0x2a1a30,
     hemiSky: 0x88aacc, hemiGround: 0x444422, hemiIntensity: 1.0,
-    dirColor: 0xffeedd, dirIntensity: 2.0, dirPosition: [50, 80, 30],
-    groundColor: 0x1a2a1a, exposure: 1.15,
+    dirColor: 0xffeedd, dirIntensity: 1.8, dirPosition: [50, 80, 30],
+    groundColor: 0x1a2a1a, exposure: 1.1,
     scenery: {
       roadColor: 0x2a2a30, roadRoughness: 0.85,
       barrierColor: 0x444450,
@@ -127,11 +127,11 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
   // ── Mojave — California desert highway at sunrise ──
   {
     name: 'Mojave',
-    fogColor: 0xccaa66, fogDensity: 0.00025,
+    fogColor: 0xccaa66, fogDensity: 0.00018,
     skyTop: 0x1a0a2e, skyBottom: 0xff6633, skyHorizon: 0xffaa44,
-    hemiSky: 0xffddaa, hemiGround: 0x886633, hemiIntensity: 1.2,
-    dirColor: 0xffcc88, dirIntensity: 2.2, dirPosition: [80, 30, 50],
-    groundColor: 0x3a3520, exposure: 1.3,
+    hemiSky: 0xffddaa, hemiGround: 0x886633, hemiIntensity: 1.1,
+    dirColor: 0xffcc88, dirIntensity: 1.9, dirPosition: [80, 30, 50],
+    groundColor: 0x3a3520, exposure: 1.1,
     scenery: {
       roadColor: 0x4a4035, roadRoughness: 0.9,
       barrierColor: 0x887755,
@@ -156,11 +156,11 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
   // ── Havana — Tropical Caribbean coast, golden hour, lush palms ──
   {
     name: 'Havana',
-    fogColor: 0x3a4a44, fogDensity: 0.00028,
+    fogColor: 0x3a4a44, fogDensity: 0.00020,
     skyTop: 0x0a1628, skyBottom: 0x2244aa, skyHorizon: 0xff6644,
-    hemiSky: 0xaabbdd, hemiGround: 0x445544, hemiIntensity: 1.15,
-    dirColor: 0xffaa77, dirIntensity: 2.3, dirPosition: [-60, 25, 60],
-    groundColor: 0x1a2820, exposure: 1.3,
+    hemiSky: 0xaabbdd, hemiGround: 0x445544, hemiIntensity: 1.0,
+    dirColor: 0xffaa77, dirIntensity: 2.0, dirPosition: [-60, 25, 60],
+    groundColor: 0x1a2820, exposure: 1.1,
     scenery: {
       roadColor: 0x353540, roadRoughness: 0.75,
       barrierColor: 0x556677,
@@ -187,11 +187,11 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
   // ── Shibuya — Tokyo neon-drenched megacity, wet reflective streets ──
   {
     name: 'Shibuya',
-    fogColor: 0x0a0a1e, fogDensity: 0.0004,
+    fogColor: 0x0a0a1e, fogDensity: 0.00030,
     skyTop: 0x050510, skyBottom: 0x0a0a2a, skyHorizon: 0x1a0530,
-    hemiSky: 0x4488ff, hemiGround: 0x220044, hemiIntensity: 0.7,
-    dirColor: 0xcc44ff, dirIntensity: 1.8, dirPosition: [30, 60, -40],
-    groundColor: 0x0a0a14, exposure: 1.5,
+    hemiSky: 0x4488ff, hemiGround: 0x220044, hemiIntensity: 0.65,
+    dirColor: 0xcc44ff, dirIntensity: 1.5, dirPosition: [30, 60, -40],
+    groundColor: 0x0a0a14, exposure: 1.15,
     scenery: {
       roadColor: 0x121218, roadRoughness: 0.35,
       barrierColor: 0x1a1a30,
