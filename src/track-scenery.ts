@@ -1006,7 +1006,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       emissiveMap: atlasTexture,
       emissive: new THREE.Color(T.windowColor ?? 0xffcc66),
       emissiveIntensity: windowGlow * 0.4,
-      vertexColors: true, // enable per-instance color tinting
     });
 
     const dummy = new THREE.Object3D();
