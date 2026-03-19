@@ -6,6 +6,26 @@ import { ROAD_WIDTH, BARRIER_THICKNESS, estimateCurvature, BANK_SCALE, MAX_BANK_
 import { loadGLB } from './loaders';
 import type { SceneryTheme } from './scene';
 
+// ── Typed data storage (replaces `as any` monkey-patching) ──
+interface WindShaderRef {
+  uniforms: { uWindTime: { value: number }; [k: string]: { value: unknown } };
+}
+interface SceneryGroupData {
+  crownMat: THREE.MeshStandardMaterial | null;
+  fxMats: THREE.MeshStandardMaterial[];
+}
+const _windShaders = new WeakMap<THREE.Material, WindShaderRef>();
+const _sceneryGroupData = new WeakMap<THREE.Object3D, SceneryGroupData>();
+
+function getGroupData(group: THREE.Object3D): SceneryGroupData {
+  let data = _sceneryGroupData.get(group);
+  if (!data) {
+    data = { crownMat: null, fxMats: [] };
+    _sceneryGroupData.set(group, data);
+  }
+  return data;
+}
+
 export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number, theme?: SceneryTheme, roadMesh?: THREE.Mesh): THREE.Group {
   // Default theme fallback (Brooklyn style)
   const T: SceneryTheme = theme ?? {
@@ -217,7 +237,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
          transformed.z += windZ * heightFactor;`
       );
       // Store shader ref for time updates
-      (crownMat as any)._windShader = shader;
+      _windShaders.set(crownMat, shader as unknown as WindShaderRef);
     };
 
     const crownIM = new THREE.InstancedMesh(crownGeo, crownMat, trees.length);
@@ -247,7 +267,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     group.add(crownIM);
 
     // Store crown material ref for wind time updates from game loop
-    (group as any)._crownMat = crownMat;
+    getGroupData(group).crownMat = crownMat;
   }
 
 
@@ -1307,7 +1327,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
       propIM.count = propIdx;
       propIM.instanceMatrix.needsUpdate = true;
-      if ((propIM as any).instanceColor) (propIM as any).instanceColor.needsUpdate = true;
+      if (propIM.instanceColor) propIM.instanceColor.needsUpdate = true;
       group.add(propIM);
 
       // Add emissive top for tiki torches
@@ -1604,7 +1624,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
          transformed.y += bobY;
          transformed.z += driftZ;`
       );
-      (fxMat as any)._windShader = shader;
+      _windShaders.set(fxMat, shader as unknown as WindShaderRef);
     };
 
     const fxIM = new THREE.InstancedMesh(fxGeo, fxMat, fxCount);
@@ -1637,8 +1657,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     group.add(fxIM);
 
     // Store material ref for wind time updates
-    if (!(group as any)._fxMats) (group as any)._fxMats = [];
-    (group as any)._fxMats.push(fxMat);
+    getGroupData(group).fxMats.push(fxMat);
   }
 
   // ── Ambient Lighting Accents ──
@@ -1704,7 +1723,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
              float blink = step(0.0, sin(uWindTime * 4.0 + hw.x * 3.0 + hw.z * 5.0));
              totalEmissiveRadiance *= blink;`
           );
-          (hazMat as any)._windShader = shader;
+          _windShaders.set(hazMat, shader as unknown as WindShaderRef);
         };
         const hazIM = new THREE.InstancedMesh(hazGeo, hazMat, hazCount);
         for (let i = 0; i < hazCount; i++) {
@@ -1720,8 +1739,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         }
         hazIM.instanceMatrix.needsUpdate = true;
         group.add(hazIM);
-        if (!(group as any)._fxMats) (group as any)._fxMats = [];
-        (group as any)._fxMats.push(hazMat);
+        getGroupData(group).fxMats.push(hazMat);
         break;
       }
       case 'neon_pool': {
@@ -1840,18 +1858,18 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 export function updateSceneryWind(sceneryGroup: THREE.Group | null, timestamp: number) {
   if (!sceneryGroup) return;
   const t = timestamp * 0.001;
-  const crownMat = (sceneryGroup as any)._crownMat;
-  if (crownMat?._windShader) {
-    crownMat._windShader.uniforms.uWindTime.value = t;
+  const data = _sceneryGroupData.get(sceneryGroup);
+  if (!data) return;
+
+  // Update crown material wind time
+  if (data.crownMat) {
+    const ws = _windShaders.get(data.crownMat);
+    if (ws) ws.uniforms.uWindTime.value = t;
   }
   // Update atmospheric effects + ambient light shader time uniforms
-  const fxMats = (sceneryGroup as any)._fxMats as any[] | undefined;
-  if (fxMats) {
-    for (const mat of fxMats) {
-      if (mat?._windShader?.uniforms?.uWindTime) {
-        mat._windShader.uniforms.uWindTime.value = t;
-      }
-    }
+  for (const mat of data.fxMats) {
+    const ws = _windShaders.get(mat);
+    if (ws) ws.uniforms.uWindTime.value = t;
   }
 }
 
@@ -1897,8 +1915,7 @@ export function destroyScenery(sceneryGroup: THREE.Group | null) {
   });
 
   // Clear stored shader refs
-  (sceneryGroup as any)._crownMat = null;
-  (sceneryGroup as any)._fxMats = null;
+  _sceneryGroupData.delete(sceneryGroup);
 
   // Remove all children
   while (sceneryGroup.children.length > 0) {

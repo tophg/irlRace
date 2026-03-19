@@ -31,6 +31,10 @@ export interface ReplayContext {
 }
 
 let _ctx: ReplayContext | null = null;
+let _replayKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+let _replayHudUpdater: (() => void) | null = null;
+
+type CameraMode = 'chase' | 'orbit' | 'trackside' | 'helicopter' | 'free' | 'auto';
 
 /**
  * Start replay playback with full HUD, scrub bar, and camera controls.
@@ -245,7 +249,7 @@ export function startReplayPlayback(ctx: ReplayContext) {
   // Camera mode buttons
   for (const btn of document.querySelectorAll('.replay-cam')) {
     btn.addEventListener('click', () => {
-      const mode = (btn as HTMLElement).dataset.cam as any;
+      const mode = (btn as HTMLElement).dataset.cam as CameraMode;
       G.replayPlayer?.setCameraMode(mode);
       document.querySelectorAll('.replay-cam').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
@@ -297,7 +301,7 @@ export function startReplayPlayback(ctx: ReplayContext) {
           '4': 'helicopter', '5': 'free', '0': 'auto',
         };
         const mode = modes[e.key]!;
-        G.replayPlayer.setCameraMode(mode as any);
+        G.replayPlayer.setCameraMode(mode as CameraMode);
         document.querySelectorAll('.replay-cam').forEach(b => {
           b.classList.toggle('active', (b as HTMLElement).dataset.cam === mode);
         });
@@ -307,8 +311,8 @@ export function startReplayPlayback(ctx: ReplayContext) {
   };
   document.addEventListener('keydown', replayKeyHandler);
   // Store handler ref for cleanup
-  (replayHud as any)._keyHandler = replayKeyHandler;
-  (replayHud as any)._updateHUD = updateHUD;
+  _replayKeyHandler = replayKeyHandler;
+  _replayHudUpdater = updateHUD;
 }
 
 /**
@@ -324,10 +328,11 @@ export function stopReplayPlayback() {
   }
   const hud = document.getElementById('replay-hud');
   if (hud) {
-    const handler = (hud as any)._keyHandler;
-    if (handler) document.removeEventListener('keydown', handler);
+    if (_replayKeyHandler) document.removeEventListener('keydown', _replayKeyHandler);
+    _replayKeyHandler = null;
     hud.remove();
   }
+  _replayHudUpdater = null;
   const style = document.getElementById('replay-styles');
   if (style) style.remove();
   _ctx.onShowResults();
@@ -337,6 +342,5 @@ export function stopReplayPlayback() {
  * Get the HUD update function (for external frame-loop calls).
  */
 export function getReplayHUDUpdater(): (() => void) | null {
-  const hud = document.getElementById('replay-hud');
-  return hud ? (hud as any)._updateHUD ?? null : null;
+  return _replayHudUpdater;
 }
