@@ -48,6 +48,11 @@ import { initRaceLifecycle, startRace, clearRaceObjects } from './race-lifecycle
 // ── Initialize Vercel Analytics ──
 inject({ mode: (import.meta as any).env?.PROD ? 'production' : 'development' });
 
+// ── Register Service Worker (production PWA) ──
+if ('serviceWorker' in navigator && (import.meta as any).env?.PROD) {
+  navigator.serviceWorker.register('/sw.js').catch(() => {});
+}
+
 
 // ── DOM ──
 const container = document.getElementById('game-container')!;
