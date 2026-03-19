@@ -999,11 +999,13 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const right = new THREE.Vector3(startTan.z, 0, -startTan.x);
     const grandstandOffset = ROAD_WIDTH / 2 + 6;
 
-    _asyncLoads.push(loadGLB('/buildings/spectator_stand.glb').then((standModel) => {
+    const grandstandGLB = T.grandstandModel ? `/buildings/${T.grandstandModel}` : '/buildings/spectator_stand.glb';
+    const grandstandTargetWidth = T.grandstandModel ? 20 : 8; // landmarks need more room
+
+    _asyncLoads.push(loadGLB(grandstandGLB).then((standModel) => {
       const bbox = new THREE.Box3().setFromObject(standModel);
       const size = bbox.getSize(new THREE.Vector3());
-      // Scale to fit ~8 units wide (2 car lengths)
-      const targetWidth = 8;
+      const targetWidth = grandstandTargetWidth;
       const scaleFactor = targetWidth / Math.max(size.x, size.z, 1);
       standModel.scale.setScalar(scaleFactor);
 
