@@ -42,7 +42,7 @@ import { getSettings } from './settings';
 import { ReplayRecorder } from './replay';
 import { getWeatherForSeed, initWeather, applyWetRoad, destroyWeather, getCurrentWeather } from './weather';
 import { showLoading, hideLoading } from './ui-screens';
-import { destroyLeaderboard } from './game-loop';
+import { destroyLeaderboard, cleanupGameLoopDOM } from './game-loop';
 import { destroySpectateHUD } from './spectator';
 
 // ── Dependency injection ──
@@ -187,6 +187,7 @@ export function clearRaceObjects() {
   destroyTrackRadar();
   destroyGhost(getScene());
   destroyLeaderboard();
+  cleanupGameLoopDOM();
 
   if (G.debugEl) { G.debugEl.remove(); G.debugEl = null; }
 

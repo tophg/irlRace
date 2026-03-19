@@ -128,6 +128,14 @@ function showDraftingIndicator() {
   }, 300);
 }
 
+/** Remove damage flash + drafting indicator DOM nodes between races. */
+export function cleanupGameLoopDOM() {
+  clearTimeout(_damageFlashTimer);
+  if (_damageFlashEl) { _damageFlashEl.remove(); _damageFlashEl = null; }
+  clearTimeout(_draftingTimer);
+  if (_draftingEl) { _draftingEl.remove(); _draftingEl = null; }
+}
+
 // ── Leaderboard ──
 
 export function updateLeaderboard() {
