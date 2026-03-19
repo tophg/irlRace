@@ -41,7 +41,7 @@ import { showTouchControls, resetInput } from './input';
 import { getSettings } from './settings';
 import { ReplayRecorder } from './replay';
 import { getWeatherForSeed, initWeather, applyWetRoad, destroyWeather, getCurrentWeather } from './weather';
-import { showLoading, hideLoading } from './ui-screens';
+import { showLoading, hideLoading, updateLoadingProgress } from './ui-screens';
 import { destroyLeaderboard, cleanupGameLoopDOM } from './game-loop';
 import { destroySpectateHUD } from './spectator';
 
@@ -306,7 +306,9 @@ export async function startRace() {
   try {
     G.gameState = GameState.TITLE;
     renderer.clearColor();
-    showLoading();
+    const envName = G._selectedEnvironment && G._selectedEnvironment !== 'random'
+      ? G._selectedEnvironment : undefined;
+    showLoading(envName);
 
     clearRaceObjects();
     resetInput(); // BUG-11 fix: zero out any stuck keys from previous race
@@ -326,6 +328,7 @@ export async function startRace() {
       ? getEnvironmentByName(selectedEnv)
       : getEnvironmentForSeed(seed);
     applyEnvironment(envPreset);
+    updateLoadingProgress(10, 'BUILDING WORLD');
 
     const selectedW = G._selectedWeather;
     const weatherType = (selectedW && selectedW !== 'random')
@@ -346,6 +349,7 @@ export async function startRace() {
       G.currentRaceSeed = seed;
       G.trackSeed = null;
       G.trackData = generateTrack(seed);
+      updateLoadingProgress(25, 'LOADING VEHICLES');
     }
     const trackData = G.trackData!;
 
@@ -363,6 +367,7 @@ export async function startRace() {
 
     G.raceEngine = new RaceEngine(trackData.checkpoints, G.totalLaps, trackData.totalLength);
 
+    updateLoadingProgress(35, 'LOADING VEHICLES');
     const playerModel = await loadCarModel(G.selectedCar.file);
     playerModel.position.set(0, 0, 0);
     playerModel.scale.setScalar(1);
@@ -379,6 +384,7 @@ export async function startRace() {
 
     G.vehicleCamera = new VehicleCamera(camera);
 
+    updateLoadingProgress(50, 'INITIALIZING VFX');
     initVFX(scene);
     warmupVFX();
     initBoostFlame(scene);
@@ -425,6 +431,7 @@ export async function startRace() {
       console.warn('[PostFX] Pipeline init failed, rendering without post-processing:', e);
       G.postFXPipeline = null;
     }
+    updateLoadingProgress(70, 'PHYSICS ENGINE');
     try {
       await initRapierWorld();
       addBarrierCollider(trackData.barrierLeft);
@@ -435,6 +442,7 @@ export async function startRace() {
       console.warn('[Rapier] WASM init failed, running without enhanced collision:', e);
     }
 
+    updateLoadingProgress(80, 'SPAWNING RACERS');
     if (!G.netPeer) await spawnAI(trackData);
 
     if (G.netPeer) {
@@ -455,6 +463,7 @@ export async function startRace() {
       G.netPeer.startHeartbeat();
     }
 
+    updateLoadingProgress(95, 'READY');
     createHUD(uiOverlay);
     showHUD(true);
 

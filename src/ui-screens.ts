@@ -21,6 +21,8 @@ let posCalloutTimer: number | null = null;
 export function showPositionCallout(gained: boolean, newRank: number) {
   const uiOverlay = document.getElementById('ui-overlay')!;
   if (posCalloutTimer) clearTimeout(posCalloutTimer);
+  // Haptic feedback for position change
+  if (navigator.vibrate) navigator.vibrate(gained ? [30, 20, 30] : 25);
   let el = document.getElementById('pos-callout');
   if (!el) {
     el = document.createElement('div');
@@ -229,7 +231,7 @@ export function destroyPause() {
 
 let _loadingTipTimer: number | null = null;
 
-export function showLoading() {
+export function showLoading(envName?: string) {
   const uiOverlay = document.getElementById('ui-overlay')!;
   const el = document.createElement('div');
   el.className = 'loading-overlay';
@@ -247,12 +249,18 @@ export function showLoading() {
     'Custom paint jobs cost 100 credits in the garage',
   ];
   const tipIdx = Math.floor(Math.random() * tips.length);
+  const emoji = envName ? (ENV_EMOJI[envName] || '') : '';
+  const envLabel = envName ? `${emoji} ${envName}` : '';
 
   el.innerHTML = `
     <div class="title-logo" style="font-size:clamp(36px,8vw,72px);margin-bottom:12px;">IRL RACE</div>
-    <div class="title-subtitle" style="margin-bottom:40px;">Street Legends Never Stop</div>
-    <div class="loading-text">GENERATING TRACK<span class="loading-dots"></span></div>
-    <div class="loading-tip" style="margin-top:24px;font-size:13px;color:rgba(255,255,255,0.5);font-style:italic;transition:opacity 0.4s;max-width:360px;text-align:center;">${tips[tipIdx]}</div>
+    <div class="title-subtitle" style="margin-bottom:24px;">Street Legends Never Stop</div>
+    ${envLabel ? `<div class="loading-env-name">${envLabel}</div>` : ''}
+    <div class="loading-bar-container">
+      <div class="loading-bar-fill" id="loading-bar-fill"></div>
+    </div>
+    <div class="loading-status" id="loading-status">GENERATING TRACK<span class="loading-dots"></span></div>
+    <div class="loading-tip" style="margin-top:20px;font-size:13px;color:rgba(255,255,255,0.5);font-style:italic;transition:opacity 0.4s;max-width:360px;text-align:center;">${tips[tipIdx]}</div>
   `;
   uiOverlay.appendChild(el);
   G.loadingEl = el;
@@ -269,6 +277,16 @@ export function showLoading() {
       tipEl.style.opacity = '1';
     }, 400);
   }, 3000);
+}
+
+/** Update loading progress bar (0–100) and optional status label. */
+export function updateLoadingProgress(pct: number, label?: string) {
+  const bar = document.getElementById('loading-bar-fill');
+  if (bar) bar.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+  if (label) {
+    const status = document.getElementById('loading-status');
+    if (status) status.innerHTML = `${label}<span class="loading-dots"></span>`;
+  }
 }
 
 export function hideLoading() {

@@ -210,7 +210,11 @@ export const RacingHUD = () => {
         class="hud-position"
         id="hud-position"
         ref={positionEl}
-        classList={{ 'position-first': positionInfo().rank === 1 }}
+        classList={{
+          'position-first': positionInfo().rank === 1,
+          'position-second': positionInfo().rank === 2,
+          'position-third': positionInfo().rank === 3,
+        }}
         innerHTML={`${positionInfo().rank}<sup>${positionInfo().suffix}</sup>`}
       />
       
