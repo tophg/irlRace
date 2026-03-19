@@ -655,22 +655,23 @@ export function showRaceConfig(
 
         <div class="race-config-section-label">⚡ RACE</div>
 
-        <div class="rc-row">
-          <span class="rc-label">Laps</span>
-          <div class="rc-toggle-group" data-cfg="laps">
-            <button class="rc-toggle" data-val="1">1</button>
-            <button class="rc-toggle rc-toggle--active" data-val="3">3</button>
-            <button class="rc-toggle" data-val="5">5</button>
-            <button class="rc-toggle" data-val="10">10</button>
+        <div class="rc-row-pair">
+          <div class="rc-row">
+            <span class="rc-label">Laps</span>
+            <div class="rc-toggle-group" data-cfg="laps">
+              <button class="rc-toggle" data-val="1">1</button>
+              <button class="rc-toggle rc-toggle--active" data-val="3">3</button>
+              <button class="rc-toggle" data-val="5">5</button>
+              <button class="rc-toggle" data-val="10">10</button>
+            </div>
           </div>
-        </div>
-
-        <div class="rc-row">
-          <span class="rc-label">AI Opponents</span>
-          <div class="rc-toggle-group" data-cfg="ai">
-            <button class="rc-toggle" data-val="0">None</button>
-            <button class="rc-toggle" data-val="2">2</button>
-            <button class="rc-toggle rc-toggle--active" data-val="4">4</button>
+          <div class="rc-row">
+            <span class="rc-label">AI</span>
+            <div class="rc-toggle-group" data-cfg="ai">
+              <button class="rc-toggle" data-val="0">None</button>
+              <button class="rc-toggle" data-val="2">2</button>
+              <button class="rc-toggle rc-toggle--active" data-val="4">4</button>
+            </div>
           </div>
         </div>
 
