@@ -5,6 +5,7 @@ import './index.css';
 
 // ── Vercel Analytics ──
 import { inject } from '@vercel/analytics';
+import { injectSpeedInsights } from '@vercel/speed-insights';
 
 import { GameState, CarDef, EventType, CAR_ROSTER } from './types';
 import { initScene, getScene } from './scene';
@@ -44,8 +45,9 @@ import { initGameLoop, startGameLoop, destroyLeaderboard } from './game-loop';
 import { initRaceLifecycle, startRace, clearRaceObjects } from './race-lifecycle';
 
 
-// ── Initialize Vercel Analytics ──
+// ── Initialize Vercel Analytics & Speed Insights ──
 inject({ mode: (import.meta as any).env?.PROD ? 'production' : 'development' });
+injectSpeedInsights();
 
 
 // ── DOM ──
