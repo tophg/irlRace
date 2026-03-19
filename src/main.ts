@@ -28,7 +28,7 @@ import { G } from './game-context';
 import {
   showPositionCallout, showEmoteBubble, spawnConfetti,
   togglePause, showRaceConfig, showControlsRef,
-  lockLandscape,
+  lockLandscape, isFullscreenSupported,
 } from './ui-screens';
 import { notifyPositionChanged } from './hud';
 
@@ -529,8 +529,12 @@ function showTitleScreen() {
   const launchTitle = async () => {
     // Wait for audio to finish downloading
     await audioReady;
-    // Attempt landscape lock on first user gesture (Android)
-    lockLandscape();
+    // Auto-fullscreen + landscape lock on first user gesture (mobile)
+    if (window.matchMedia('(pointer: coarse)').matches && isFullscreenSupported() && !document.fullscreenElement) {
+      document.documentElement.requestFullscreen().then(() => lockLandscape()).catch(() => {});
+    } else {
+      lockLandscape();
+    }
     // Start music immediately — we're inside a user gesture so autoplay is allowed
     playTitleMusic();
     // Reset the cinematic animation timeline so it replays from scratch

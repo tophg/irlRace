@@ -370,6 +370,16 @@ export function applyControlScheme() {
     el.style.transform = `scale(${s.touchScale})`;
     el.style.transformOrigin = 'bottom center';
   }
+
+  // Auto-gas: visually activate gas button when enabled
+  const gasEl = document.getElementById('touch-gas');
+  if (gasEl) {
+    if (getSettings().autoGas) {
+      gasEl.classList.add('auto-gas-active');
+    } else {
+      gasEl.classList.remove('auto-gas-active');
+    }
+  }
 }
 
 export function showTouchControls(visible: boolean) {
@@ -389,4 +399,8 @@ export function resetInput() {
   state.steerAnalog = 0;
 }
 
-export function getInput(): InputState { return state; }
+export function getInput(): InputState {
+  // Auto-gas: force acceleration when enabled
+  if (getSettings().autoGas) state.up = true;
+  return state;
+}

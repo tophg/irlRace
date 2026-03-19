@@ -1241,6 +1241,8 @@ canvas { display: block; }
   transition: transform 0.08s, box-shadow 0.08s, background 0.08s, border-color 0.2s;
   touch-action: none;
   position: relative;
+  min-height: 48px;
+  min-width: 48px;
 }
 .touch-gas {
   flex: 1.5;
@@ -1255,13 +1257,24 @@ canvas { display: block; }
 }
 .touch-gas:active, .touch-gas.pressed {
   background: rgba(57,255,20,0.35);
-  transform: scale(1.04);
-  box-shadow: 0 0 12px rgba(57,255,20,0.4);
+  transform: translateY(2px) scale(1.02);
+  box-shadow: 0 0 12px rgba(57,255,20,0.4), inset 0 2px 6px rgba(0,0,0,0.3);
 }
 .touch-brake:active, .touch-brake.pressed {
   background: rgba(255,23,68,0.35);
-  transform: scale(1.04);
-  box-shadow: 0 0 12px rgba(255,23,68,0.4);
+  transform: translateY(2px) scale(1.02);
+  box-shadow: 0 0 12px rgba(255,23,68,0.4), inset 0 2px 6px rgba(0,0,0,0.3);
+}
+/* Auto-gas persistent visual */
+.touch-gas.auto-gas-active {
+  background: rgba(57,255,20,0.25);
+  border-color: rgba(57,255,20,0.5);
+  box-shadow: 0 0 8px rgba(57,255,20,0.3);
+}
+.touch-gas.auto-gas-active .gas-label::after {
+  content: ' (AUTO)';
+  font-size: 0.65em;
+  opacity: 0.6;
 }
 /* Boost-active state: GAS turns cyan */
 .touch-gas.boost-active {
@@ -2280,12 +2293,49 @@ canvas { display: block; }
   #replay-hud { padding-bottom: calc(20px + var(--safe-bottom)) !important; }
   .replay-ctrl { min-width: 44px; min-height: 44px; }
   /* Menu buttons */
-  .menu-btn { min-height: 48px; font-size: clamp(16px, 4vw, 22px); }
-  .select-btn { min-height: 48px; font-size: clamp(18px, 4.5vw, 22px); padding: 14px 36px; }
+  .menu-btn { min-height: 56px; font-size: clamp(16px, 4vw, 22px); }
+  .select-btn { min-height: 56px; font-size: clamp(18px, 4.5vw, 22px); padding: 14px 36px; }
   /* Settings panel */
   .settings-panel { padding: 24px 20px; }
-  .settings-row select, .settings-row input[type="text"] { font-size: 16px; min-height: 36px; }
-  .settings-row input[type="range"] { height: 8px; }
+  .settings-row select, .settings-row input[type="text"] { font-size: 16px; min-height: 40px; }
+  .settings-row input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 10px;
+    border-radius: 5px;
+    background: rgba(255,255,255,0.12);
+  }
+  .settings-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--col-cyan);
+    border: 2px solid rgba(255,255,255,0.3);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0,229,255,0.4);
+  }
+  .settings-row input[type="range"]::-moz-range-thumb {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--col-cyan);
+    border: 2px solid rgba(255,255,255,0.3);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0,229,255,0.4);
+  }
+  .settings-row { gap: 12px; min-height: 44px; }
+  .settings-section { margin-top: 16px; }
+  /* Race config: landscape mobile overrides */
+  .race-config-panel {
+    max-height: 95dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .race-config-panel .select-btn {
+    width: 100%;
+    font-size: clamp(18px, 4.5vw, 24px);
+    min-height: 56px;
+  }
 
   /* ── Garage: constrain to bottom so 3D car stays visible ── */
   .garage-ui {
@@ -2314,10 +2364,10 @@ canvas { display: block; }
     width: 50px;
     height: 4px;
   }
-  .car-nav { gap: 10px; }
-  .car-nav-btn { width: 32px; height: 32px; font-size: 14px; }
-  .garage-dots { gap: 6px; margin-top: 4px; }
-  .garage-dot { width: 10px; height: 10px; }
+  .car-nav { gap: 12px; }
+  .car-nav-btn { width: 44px; height: 44px; font-size: 18px; }
+  .garage-dots { gap: 8px; margin-top: 4px; }
+  .garage-dot { width: 12px; height: 12px; }
   .paint-shop-row { gap: 6px; margin-bottom: 4px; }
   .paint-swatch { width: 24px; height: 24px; }
   .paint-slider { width: 100px; }

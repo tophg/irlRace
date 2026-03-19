@@ -15,6 +15,7 @@ export interface GameSettings {
   touchScale: number;      // 0.6–1.2
   paintHue: number;          // 0–360, -1 = default
   hapticEnabled: boolean;    // vibration feedback on touch
+  autoGas: boolean;          // auto-acceleration (no gas button needed)
 }
 
 const STORAGE_KEY = 'hr-settings';
@@ -32,6 +33,7 @@ const DEFAULT_SETTINGS: GameSettings = {
   touchScale: 1.0,
   paintHue: -1,
   hapticEnabled: true,
+  autoGas: false,
 };
 
 let current: GameSettings = { ...DEFAULT_SETTINGS };
@@ -132,6 +134,20 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
         <input type="range" min="60" max="120" value="${Math.round(s.touchScale * 100)}" id="set-touch-scale">
         <span class="set-val" id="set-touch-scale-val">${Math.round(s.touchScale * 100)}%</span>
       </label>
+      <label class="settings-row">
+        <span>Haptic Feedback</span>
+        <select id="set-haptic">
+          <option value="1" ${s.hapticEnabled ? 'selected' : ''}>On</option>
+          <option value="0" ${!s.hapticEnabled ? 'selected' : ''}>Off</option>
+        </select>
+      </label>
+      <label class="settings-row">
+        <span>Auto Gas</span>
+        <select id="set-auto-gas">
+          <option value="0" ${!s.autoGas ? 'selected' : ''}>Off</option>
+          <option value="1" ${s.autoGas ? 'selected' : ''}>On</option>
+        </select>
+      </label>
 
       <div class="settings-section">PLAYER</div>
       <label class="settings-row">
@@ -177,7 +193,8 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
       touchOpacity: get('set-touch-opacity') / 100,
       touchScale: get('set-touch-scale') / 100,
       paintHue: getSettings().paintHue, // Preserved; paint is set in garage
-      hapticEnabled: getSettings().hapticEnabled, // Preserved; no UI toggle yet
+      hapticEnabled: (settingsEl!.querySelector('#set-haptic') as HTMLSelectElement).value === '1',
+      autoGas: (settingsEl!.querySelector('#set-auto-gas') as HTMLSelectElement).value === '1',
     });
     destroySettings();
     updateMusicVolume();
