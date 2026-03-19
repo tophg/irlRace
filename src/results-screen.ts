@@ -131,50 +131,54 @@ export function showResults(
        </div>` : '';
 
   el.innerHTML = `
-    <div class="results-title">${winner?.dnf ? 'RACE COMPLETE' : `${winnerName.toUpperCase()} ${winner?.id === 'local' ? 'WIN' : 'WINS'}!`}</div>
-    <table class="results-table">
-      <thead><tr>
-        <th>POS</th>
-        <th>RACER</th>
-        <th>TIME</th>
-        <th>BEST LAP</th>
-      </tr></thead>
-      <tbody>
-        ${rankings.map((r, i) => {
-          const name = escHtml(resolvePlayerName(r.id, G));
-          const isSelf = r.id === 'local';
-          const isDnf = r.dnf;
-          const bestLap = r.lapTimes.length > 0 ? Math.min(...r.lapTimes) : null;
-          const delayMs = (i + 1) * 150;
-          const wins = G.sessionWins.get(r.id) || 0;
-          const winsHtml = wins > 0 ? ` <span class="session-wins">${wins}W</span>` : '';
-          const crownHtml = G.sessionWins.size > 0 && wins === Math.max(...G.sessionWins.values()) && wins > 0 ? ' 👑' : '';
-          return `
-            <tr class="${isSelf ? 'local' : ''} ${isDnf ? 'dnf' : ''} ${i === 0 && !isDnf ? 'winner' : ''}" style="animation-delay:${delayMs}ms;">
-              <td>${isDnf ? '—' : i + 1}</td>
-              <td>${name}${crownHtml}${winsHtml}${isDnf ? ' <span style="color:#ff4444;font-size:11px;">DNF</span>' : ''}</td>
-              <td>${isDnf ? '—' : r.finished ? RaceEngine.formatTime(r.finishTime) : 'Racing...'}</td>
-              <td>${bestLap !== null ? RaceEngine.formatTime(bestLap) : '—'}</td>
-            </tr>
-          `;
-        }).join('')}
-      </tbody>
-    </table>
-    ${lapBreakdownHtml}
-    <div class="lap-breakdown" style="margin-top:8px;">
-      <div class="lap-breakdown-title">RACE STATS</div>
-      <div class="lap-breakdown-row"><span>Top Speed</span><span>${Math.floor(G.raceStats.topSpeed)} MPH</span></div>
-      <div class="lap-breakdown-row"><span>Drift Time</span><span>${G.raceStats.totalDriftTime.toFixed(1)}s</span></div>
-      <div class="lap-breakdown-row"><span>Avg Position</span><span>${G.raceStats.positionSampleCount > 0 ? (G.raceStats.avgPosition / G.raceStats.positionSampleCount).toFixed(1) : '—'}</span></div>
-      <div class="lap-breakdown-row"><span>Collisions</span><span>${G.raceStats.collisionCount}</span></div>
-      <div class="lap-breakdown-row"><span>Near Misses</span><span>${G.raceStats.nearMissCount}</span></div>
+    <div class="results-scroll">
+      <div class="results-title">${winner?.dnf ? 'RACE COMPLETE' : `${winnerName.toUpperCase()} ${winner?.id === 'local' ? 'WIN' : 'WINS'}!`}</div>
+      <table class="results-table">
+        <thead><tr>
+          <th>POS</th>
+          <th>RACER</th>
+          <th>TIME</th>
+          <th>BEST LAP</th>
+        </tr></thead>
+        <tbody>
+          ${rankings.map((r, i) => {
+            const name = escHtml(resolvePlayerName(r.id, G));
+            const isSelf = r.id === 'local';
+            const isDnf = r.dnf;
+            const bestLap = r.lapTimes.length > 0 ? Math.min(...r.lapTimes) : null;
+            const delayMs = (i + 1) * 150;
+            const wins = G.sessionWins.get(r.id) || 0;
+            const winsHtml = wins > 0 ? ` <span class="session-wins">${wins}W</span>` : '';
+            const crownHtml = G.sessionWins.size > 0 && wins === Math.max(...G.sessionWins.values()) && wins > 0 ? ' 👑' : '';
+            return `
+              <tr class="${isSelf ? 'local' : ''} ${isDnf ? 'dnf' : ''} ${i === 0 && !isDnf ? 'winner' : ''}" style="animation-delay:${delayMs}ms;">
+                <td>${isDnf ? '—' : i + 1}</td>
+                <td>${name}${crownHtml}${winsHtml}${isDnf ? ' <span style="color:#ff4444;font-size:11px;">DNF</span>' : ''}</td>
+                <td>${isDnf ? '—' : r.finished ? RaceEngine.formatTime(r.finishTime) : 'Racing...'}</td>
+                <td>${bestLap !== null ? RaceEngine.formatTime(bestLap) : '—'}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+      ${lapBreakdownHtml}
+      <div class="lap-breakdown" style="margin-top:8px;">
+        <div class="lap-breakdown-title">RACE STATS</div>
+        <div class="lap-breakdown-row"><span>Top Speed</span><span>${Math.floor(G.raceStats.topSpeed)} MPH</span></div>
+        <div class="lap-breakdown-row"><span>Drift Time</span><span>${G.raceStats.totalDriftTime.toFixed(1)}s</span></div>
+        <div class="lap-breakdown-row"><span>Avg Position</span><span>${G.raceStats.positionSampleCount > 0 ? (G.raceStats.avgPosition / G.raceStats.positionSampleCount).toFixed(1) : '—'}</span></div>
+        <div class="lap-breakdown-row"><span>Collisions</span><span>${G.raceStats.collisionCount}</span></div>
+        <div class="lap-breakdown-row"><span>Near Misses</span><span>${G.raceStats.nearMissCount}</span></div>
+      </div>
+      ${buildRewardHTML(rankings, localProgress, G)}
     </div>
-    ${buildRewardHTML(rankings, localProgress, G)}
-    <div class="menu-buttons" style="width:240px; margin-top:8px;">
-      ${hasReplay ? '<button class="menu-btn" id="btn-replay" style="border-color:var(--col-cyan);color:var(--col-cyan);">WATCH REPLAY</button>' : ''}
-      ${isMultiplayer ? '<button class="menu-btn" id="btn-rematch" style="background:var(--col-green);">REMATCH</button>' : ''}
-      ${!isMultiplayer ? '<button class="menu-btn" id="btn-play-again">PLAY AGAIN</button>' : ''}
-      <button class="menu-btn" id="btn-main-menu">MAIN MENU</button>
+    <div class="results-actions">
+      <div class="menu-buttons" style="width:240px;">
+        ${hasReplay ? '<button class="menu-btn" id="btn-replay" style="border-color:var(--col-cyan);color:var(--col-cyan);">WATCH REPLAY</button>' : ''}
+        ${isMultiplayer ? '<button class="menu-btn" id="btn-rematch" style="background:var(--col-green);">REMATCH</button>' : ''}
+        ${!isMultiplayer ? '<button class="menu-btn" id="btn-play-again">PLAY AGAIN</button>' : ''}
+        <button class="menu-btn" id="btn-main-menu">MAIN MENU</button>
+      </div>
     </div>
   `;
   uiOverlay.appendChild(el);
