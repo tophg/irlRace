@@ -341,9 +341,8 @@ export async function startRace() {
       : getWeatherForSeed(seed);
     initWeather(scene, weatherType);
 
-    // Weather can override the environment (snow/ice → Zermatt)
+    // Weather darkening (applied to whatever environment the player chose)
     const w = getCurrentWeather();
-    if (w === 'snow' || w === 'blizzard' || w === 'ice') applyEnvironment(getEnvironmentByName('Zermatt'));
     applyWeatherSkyDarkening(w);
 
     // ── Now generate the track (scenery will use the correct theme) ──

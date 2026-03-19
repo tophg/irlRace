@@ -276,16 +276,18 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       crownIM.setMatrixAt(i, _m);
       const tc = new THREE.Color(T.treeCanopyColor);
       const g = tc.g + (t.green / 255) * 0.15;
-      // Snow-capped variant: blend upper instances toward white
+      // Always consume the same number of rng() calls regardless of variant
+      // to keep building generation deterministic across weather types
+      const rng1 = rng(), rng2 = rng(), rng3 = rng();
       if (treeVariant === 'snow_capped') {
-        const snowBlend = 0.3 + rng() * 0.4; // 30-70% white
+        const snowBlend = 0.3 + rng1 * 0.4; // 30-70% white
         _c.setRGB(
           tc.r * (1 - snowBlend) + snowBlend,
           (tc.g + (t.green / 255) * 0.15) * (1 - snowBlend) + snowBlend,
           tc.b * (1 - snowBlend) + snowBlend
         );
       } else {
-        _c.setRGB(tc.r * 0.9 + rng() * 0.1, g, tc.b * 0.9 + rng() * 0.1);
+        _c.setRGB(tc.r * 0.9 + rng1 * 0.1, g, tc.b * 0.9 + rng2 * 0.1);
       }
       crownIM.setColorAt(i, _c);
     }
