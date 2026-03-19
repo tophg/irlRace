@@ -66,6 +66,7 @@ import { sampleGhostFrame, updateGhostPlayback, finalizeGhostLap, startGhostReco
 
 import { stepPhysics, initPhysicsStep } from './physics-step';
 import { stopReplayPlayback as stopReplayUI } from './replay-ui';
+import { updateTimeScale, applyTimeScale, getTimeScale, triggerSlowMo, resetTimeScale } from './time-scale';
 
 // ── Dependency injection ──
 
@@ -86,6 +87,9 @@ let _deps: GameLoopDeps;
 const _rPos = new THREE.Vector3();
 const _hoodExplosionPos = new THREE.Vector3();
 const _nitroTrailOffset = new THREE.Vector3();
+
+// First-boost-per-race tracker
+let _firstBoostFired = false;
 
 // ── Damage flash overlay ──
 let _damageFlashEl: HTMLDivElement | null = null;
@@ -192,6 +196,11 @@ export function initGameLoop(deps: GameLoopDeps) {
   initPhysicsStep({ uiOverlay: deps.uiOverlay, flashDamage });
 }
 
+/** Reset per-race state in the game loop. */
+export function resetGameLoopState() {
+  _firstBoostFired = false;
+}
+
 /** Start the rAF loop. Should be called once after initGameLoop(). */
 export function startGameLoop() {
   requestAnimationFrame(gameLoop);
@@ -222,6 +231,10 @@ function gameLoop(timestamp: number) {
 
   const frameDt = Math.min((timestamp - G.lastTime) / 1000, MAX_FRAME_DT);
   G.lastTime = timestamp;
+
+  // ── Time-scale: slow-motion system ──
+  updateTimeScale(frameDt);
+  const gameDt = applyTimeScale(frameDt);
 
   // Animate sky + tree wind sway
   updateSkyTime(timestamp);
@@ -281,7 +294,7 @@ function gameLoop(timestamp: number) {
     }
 
     // ── FIXED-TIMESTEP PHYSICS ──
-    G.physicsAccumulator += frameDt;
+    G.physicsAccumulator += gameDt;
 
     let physicsStepsThisFrame = 0;
     while (G.physicsAccumulator >= PHYSICS_DT && physicsStepsThisFrame < 4) {
@@ -370,7 +383,8 @@ function gameLoop(timestamp: number) {
 
       spawnGPUExplosion(_hoodExplosionPos, 40);
       flashDamage(0.9);
-      setImpactIntensity(1.5); // Stronger initial CA spike
+      setImpactIntensity(1.5);
+      triggerSlowMo('explosion');
 
       const pvx = G.playerVehicle.velX, pvz = G.playerVehicle.velZ;
       const isRacing = G.raceEngine && s === GameState.RACING;
@@ -435,6 +449,7 @@ function gameLoop(timestamp: number) {
       }
       if (impact > 0.3) {
         setImpactIntensity(impact * 0.6);
+        if (impact > 0.6) triggerSlowMo('collision');
       }
       G.playerVehicle.clearLandingFlag();
     }
@@ -578,6 +593,10 @@ function gameLoop(timestamp: number) {
       triggerBoostBurst();
       playNitroActivate();
       startNitroBurn();
+      if (!_firstBoostFired) {
+        _firstBoostFired = true;
+        triggerSlowMo('boost');
+      }
     }
     if (isNitroNow) {
       updateNitroBurnIntensity(G.playerVehicle.nitro);
@@ -688,6 +707,7 @@ function gameLoop(timestamp: number) {
             const sinH = Math.sin(G.playerVehicle.heading);
             const cross = dx * cosH - dz * sinH;
             triggerNearMiss(cross > 0 ? 'right' : 'left');
+            triggerSlowMo('nearMiss');
             triggerNearMissWhoosh(cross > 0 ? 'right' : 'left', camera.position, G.playerVehicle.heading);
             G.playerVehicle.addNitro(5);
             G.raceStats.nearMissCount = (G.raceStats.nearMissCount ?? 0) + 1;
@@ -829,6 +849,10 @@ function gameLoop(timestamp: number) {
       } else if (event === 'lap') {
         const lastLapTime = progress?.lapTimes[progress.lapTimes.length - 1] ?? 0;
         const bestLap = G.raceEngine.getBestLap('local');
+        // Last lap slow-mo
+        if ((progress?.lapIndex ?? 0) === G.totalLaps - 1) {
+          triggerSlowMo('lastLap');
+        }
         finalizeGhostLap(lastLapTime, G.currentRaceSeed, G.selectedCar?.id ?? '');
         startGhostRecording(G.playerVehicle.group.position, G.playerVehicle.heading);
         bus.emit('lap', {
@@ -839,6 +863,7 @@ function gameLoop(timestamp: number) {
         });
       } else if (event === 'finish') {
         playFinishFanfare();
+        triggerSlowMo('finish');
         const finishTime = G.raceEngine.getProgress('local')?.finishTime ?? 0;
         bus.emit('finish', { racerId: 'local', finishTime });
       }
@@ -854,6 +879,7 @@ function gameLoop(timestamp: number) {
 
       if (G.prevMyRank > 0 && myRank !== G.prevMyRank && myRank > 0) {
         const gained = myRank < G.prevMyRank;
+        if (gained) triggerSlowMo('overtake');
         bus.emit('position_change', {
           racerId: 'local', oldRank: G.prevMyRank, newRank: myRank, gained,
         });

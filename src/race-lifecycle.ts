@@ -32,6 +32,7 @@ import { initGPUParticles, destroyGPUParticles } from './gpu-particles';
 import { initTrackRadar, destroyTrackRadar } from './minimap';
 import { warmupDestruction, warmupFragmentMaterials, cleanupDestruction, disposeDestructionAssets } from './vehicle-destruction';
 import { resetTimeScale } from './time-scale';
+import { resetGameLoopState } from './game-loop';
 import { cleanupScreenEffects } from './screen-effects';
 import { setExplosionMode, initPostFX } from './post-fx';
 import { loadGhostForSeed, startGhostPlayback, startGhostRecording, destroyGhost } from './ghost';
@@ -313,6 +314,8 @@ export async function startRace() {
     clearRaceObjects();
     resetInput(); // BUG-11 fix: zero out any stuck keys from previous race
     G.physicsAccumulator = 0;
+    resetTimeScale();
+    resetGameLoopState();
     G._drsFrameTimes = new Array(30).fill(0);
     G._drsWriteIdx = 0;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
