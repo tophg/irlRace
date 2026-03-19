@@ -34,7 +34,7 @@ import { warmupDestruction, warmupFragmentMaterials, cleanupDestruction, dispose
 import { resetTimeScale } from './time-scale';
 import { resetGameLoopState } from './game-loop';
 import { cleanupScreenEffects } from './screen-effects';
-import { setExplosionMode, initPostFX } from './post-fx';
+import { setExplosionMode, initPostFX, initAfterimage } from './post-fx';
 import { loadGhostForSeed, startGhostPlayback, startGhostRecording, destroyGhost } from './ghost';
 import { initRapierWorld, addBarrierCollider, addCarBody, destroyRapierWorld } from './rapier-world';
 import { rollbackManager } from './rollback-netcode';
@@ -425,6 +425,7 @@ export async function startRace() {
 
     try {
       G.postFXPipeline = initPostFX(renderer, scene, camera);
+      initAfterimage(renderer.domElement as HTMLCanvasElement);
       // Force ONE render through the postFX pipeline to compile shaders
       // for ALL currently visible objects (including pool meshes at y=-100).
       // renderer.compile() in warmupDestruction only builds node trees for

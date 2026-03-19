@@ -191,4 +191,105 @@ export function destroyPostFX() {
   pipeline = null;
   explosionMode = false;
   _smoothSlowMo = 0;
+  destroyAfterimage();
+}
+
+// ═══════════════════════════════════════════════════════
+// AFTERIMAGE / MOTION TRAILS (2D Canvas overlay)
+// ═══════════════════════════════════════════════════════
+
+let _afterCanvas: HTMLCanvasElement | null = null;
+let _afterCtx: CanvasRenderingContext2D | null = null;
+let _sourceCanvas: HTMLCanvasElement | null = null;
+let _afterFrameCount = 0;
+const AFTER_CAPTURE_INTERVAL = 2; // capture every N frames during slow-mo
+
+/**
+ * Initialize the afterimage overlay canvas.
+ * Call once, passing the WebGPU renderer's canvas.
+ */
+export function initAfterimage(sourceCanvas: HTMLCanvasElement) {
+  _sourceCanvas = sourceCanvas;
+
+  _afterCanvas = document.createElement('canvas');
+  _afterCanvas.id = 'afterimage-overlay';
+  _afterCanvas.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 0; opacity: 0;
+    transition: opacity 0.15s;
+  `;
+  // Half-res for performance
+  _afterCanvas.width = Math.floor(sourceCanvas.width / 2);
+  _afterCanvas.height = Math.floor(sourceCanvas.height / 2);
+  _afterCtx = _afterCanvas.getContext('2d', { willReadFrequently: false })!;
+
+  // Insert behind the game canvas
+  sourceCanvas.parentElement?.insertBefore(_afterCanvas, sourceCanvas);
+}
+
+/**
+ * Update afterimage each frame. Call from game loop after rendering.
+ * Only accumulates frames during slow-mo.
+ */
+export function updateAfterimage() {
+  if (!_afterCanvas || !_afterCtx || !_sourceCanvas) return;
+
+  const active = isSlowMotionActive();
+  const ts = getTimeScale();
+
+  if (active) {
+    // Show overlay
+    _afterCanvas.style.opacity = '0.7';
+
+    // Resize if needed
+    const tw = Math.floor(_sourceCanvas.width / 2);
+    const th = Math.floor(_sourceCanvas.height / 2);
+    if (_afterCanvas.width !== tw || _afterCanvas.height !== th) {
+      _afterCanvas.width = tw;
+      _afterCanvas.height = th;
+    }
+
+    _afterFrameCount++;
+    if (_afterFrameCount % AFTER_CAPTURE_INTERVAL === 0) {
+      // Fade previous content — lower alpha = longer trails
+      // timeScale 0.2 → fadeFactor ~0.85 (long trails)
+      // timeScale 0.6 → fadeFactor ~0.60 (short trails)
+      const fadeFactor = 0.5 + ts * 0.4;
+
+      _afterCtx.globalCompositeOperation = 'destination-out';
+      _afterCtx.fillStyle = `rgba(0,0,0,${1.0 - fadeFactor})`;
+      _afterCtx.fillRect(0, 0, _afterCanvas.width, _afterCanvas.height);
+
+      // Draw current frame with slight blue tint via compositing
+      _afterCtx.globalCompositeOperation = 'source-over';
+      _afterCtx.globalAlpha = 0.3;
+      _afterCtx.drawImage(
+        _sourceCanvas,
+        0, 0, _afterCanvas.width, _afterCanvas.height,
+      );
+      _afterCtx.globalAlpha = 1.0;
+    }
+  } else {
+    // Fade out overlay when slow-mo ends
+    if (_afterCanvas.style.opacity !== '0') {
+      _afterCanvas.style.opacity = '0';
+      // Clear after fade transition
+      setTimeout(() => {
+        if (_afterCtx && _afterCanvas) {
+          _afterCtx.clearRect(0, 0, _afterCanvas.width, _afterCanvas.height);
+        }
+      }, 200);
+    }
+    _afterFrameCount = 0;
+  }
+}
+
+function destroyAfterimage() {
+  if (_afterCanvas) {
+    _afterCanvas.remove();
+    _afterCanvas = null;
+    _afterCtx = null;
+  }
+  _sourceCanvas = null;
+  _afterFrameCount = 0;
 }

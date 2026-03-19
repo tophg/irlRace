@@ -50,7 +50,7 @@ import {
 import { updateTrackRadar } from './minimap';
 import { updateDestructionFragments, triggerVehicleDestruction, isDestructionActive } from './vehicle-destruction';
 import { updateWeather, getCurrentWeather, getPrecipMesh, getWeatherPhysics } from './weather';
-import { updatePostFX, setImpactIntensity, setBoostActive, setExplosionMode } from './post-fx';
+import { updatePostFX, setImpactIntensity, setBoostActive, setExplosionMode, updateAfterimage } from './post-fx';
 import { showExplosionFlash, showLetterbox, hideLetterbox, showEngineDestroyedText } from './screen-effects';
 import {
   updateEngineAudio, playDriftSFX,
@@ -1155,6 +1155,7 @@ function gameLoop(timestamp: number) {
     } else {
       renderer.render(scene, camera);
     }
+    updateAfterimage();
 
     updateRearMirror(renderer, scene, frameDt);
 
