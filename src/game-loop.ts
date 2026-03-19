@@ -655,7 +655,6 @@ function gameLoop(timestamp: number) {
       spawnGPUExplosion(_hoodExplosionPos, 40);
       flashDamage(0.9);
       setImpactIntensity(1.5);
-      triggerSlowMo('explosion');
 
       const pvx = G.playerVehicle.velX, pvz = G.playerVehicle.velZ;
       const isRacing = G.raceEngine && s === GameState.RACING;
