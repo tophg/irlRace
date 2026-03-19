@@ -109,6 +109,10 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       'cactus.glb': 1.5,
       'cactus_b.glb': 1.5,
       'cactus_c.glb': 1.5,
+      'palm_tree.glb': 3.0,
+      'palm_tree_b.glb': 2.8,
+      'palm_tree_c.glb': 2.6,
+      'palm_trees_cluster.glb': 2.5,
     };
 
     const uniqueTreeModels = [...new Set(trees.map(t => t.model))];
@@ -855,53 +859,40 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     console.warn('Failed to load building models:', err);
   });
 
-  // ── Grandstand at start/finish (scaled to vehicle proportions) ──
+  // ── Grandstand at start/finish (GLB model) ──
   {
     const startP = spline.getPointAt(0);
     const startTan = spline.getTangentAt(0).normalize();
     const right = new THREE.Vector3(startTan.z, 0, -startTan.x);
-    const grandstandOffset = ROAD_WIDTH / 2 + 5;
+    const grandstandOffset = ROAD_WIDTH / 2 + 6;
 
-    // Vehicle-proportional dimensions (~4 units long car)
-    const standWidth = 8;    // ~2 car lengths wide
-    const seatDepth = 0.8;   // shallow bench depth
-    const seatHeight = 0.2;
-    const rowStep = 0.45;    // vertical rise per row
-    const rowDepth = 0.9;    // depth step per row
-    const numRows = 4;
+    loadGLB('/buildings/spectator_stand.glb').then((standModel) => {
+      const bbox = new THREE.Box3().setFromObject(standModel);
+      const size = bbox.getSize(new THREE.Vector3());
+      // Scale to fit ~8 units wide (2 car lengths)
+      const targetWidth = 8;
+      const scaleFactor = targetWidth / Math.max(size.x, size.z, 1);
+      standModel.scale.setScalar(scaleFactor);
 
-    // Build stepped seating rows
-    const grandstandGroup = new THREE.Group();
-    const seatGeo = new THREE.BoxGeometry(standWidth, seatHeight, seatDepth);
+      // Recompute after scaling
+      const scaledBox = new THREE.Box3().setFromObject(standModel);
+      standModel.position.set(
+        startP.x + right.x * grandstandOffset,
+        -scaledBox.min.y, // sit on ground
+        startP.z + right.z * grandstandOffset,
+      );
+      standModel.lookAt(startP);
 
-    for (let row = 0; row < numRows; row++) {
-      const seatMat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color().setHSL(0.6 - row * 0.05, 0.5, 0.35 + row * 0.05),
-        roughness: 0.7,
+      standModel.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          (child as THREE.Mesh).castShadow = true;
+        }
       });
-      const seat = new THREE.Mesh(seatGeo, seatMat);
-      seat.position.set(0, row * rowStep, -row * rowDepth);
-      grandstandGroup.add(seat);
-    }
 
-    // Support structure
-    const supportW = standWidth;
-    const supportH = numRows * rowStep;
-    const supportD = numRows * rowDepth;
-    const supportGeo = new THREE.BoxGeometry(supportW, supportH, supportD);
-    const supportMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.8 });
-    const support = new THREE.Mesh(supportGeo, supportMat);
-    support.position.set(0, -supportH / 2, -supportD / 2);
-    grandstandGroup.add(support);
-
-    // Position and orient the grandstand
-    grandstandGroup.position.set(
-      startP.x + right.x * grandstandOffset,
-      startP.y,
-      startP.z + right.z * grandstandOffset,
-    );
-    grandstandGroup.lookAt(startP);
-    group.add(grandstandGroup);
+      group.add(standModel);
+    }).catch((err) => {
+      console.warn('Failed to load spectator stand model:', err);
+    });
   }
 
   // ── Road direction arrows (InstancedMesh decals on straight sections) ──
