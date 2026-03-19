@@ -236,8 +236,8 @@ function createTitleScene() {
   titleFogPlane.position.y = 0.15;
   titleScene.add(titleFogPlane);
 
-  // ── Load Lamborghini ──
-  const titleCar = CAR_ROSTER.find(c => c.file === 'Lamborghini.glb') ?? CAR_ROSTER[CAR_ROSTER.length - 1];
+  // ── Load Phantom (title screen car) ──
+  const titleCar = CAR_ROSTER.find(c => c.file === 'Street_Racer.glb') ?? CAR_ROSTER[CAR_ROSTER.length - 1];
   loadCarModel(titleCar.file).then((model: THREE.Group) => {
     if (!titleScene) return;
     model.position.y = -0.5; // start below, will float up
