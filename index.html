@@ -19,11 +19,17 @@
   <div id="ui-overlay"></div>
   <script type="module" src="/src/main.ts"></script>
 
-  <!-- Portrait orientation lock overlay (CSS-driven visibility) -->
+  <!-- Portrait orientation lock overlay (CSS + JS-guarded visibility) -->
   <div id="portrait-lock-overlay">
     <div class="rotate-icon"></div>
     <div class="rotate-title">Rotate Your Device</div>
     <div class="rotate-subtitle">IRL Race is best experienced in landscape mode</div>
   </div>
+  <script>
+    // Remove portrait-lock overlay entirely on desktop (maxTouchPoints=0 = no touch screen)
+    if (navigator.maxTouchPoints === 0) {
+      document.getElementById('portrait-lock-overlay')?.remove();
+    }
+  </script>
 </body>
 </html>

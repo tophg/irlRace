@@ -1011,8 +1011,9 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           for (let v = 0; v < 4; v++) {
             const rawU = uv[base + v * 2];
             const rawV = uv[base + v * 2 + 1];
-            uv[base + v * 2] = uMin + (rawU * hRepeat % 1) * tileW;
-            uv[base + v * 2 + 1] = vMin + (rawV * repeatV % 1) * tileH;
+            // Map [0,1] → tile sub-region directly (no modulo — that kills integer edges)
+            uv[base + v * 2] = uMin + rawU * tileW;
+            uv[base + v * 2 + 1] = vMin + rawV * tileH;
           }
         }
       }
