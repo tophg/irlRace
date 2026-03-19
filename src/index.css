@@ -1349,11 +1349,255 @@ canvas { display: block; }
 }
 
 /* ── Race Config ── */
+/* ── Race Config — Split Panel ── */
 .race-config-overlay {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
-  background: rgba(10,10,15,0.9);
+  background: rgba(5,5,10,0.92);
   z-index: 85;
+  animation: rc-fade-in 0.4s ease-out;
+}
+@keyframes rc-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.race-config-panel {
+  display: flex;
+  gap: 24px;
+  max-width: 900px;
+  width: 90vw;
+  max-height: 85vh;
+  padding: 28px;
+  border-radius: 16px;
+  background: rgba(12,12,20,0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+}
+
+/* Left controls panel */
+.race-config-left {
+  flex: 0 0 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  max-height: 75vh;
+  padding-right: 8px;
+}
+.race-config-left::-webkit-scrollbar { width: 4px; }
+.race-config-left::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+.race-config-title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  letter-spacing: 6px;
+  color: #ffffff;
+  text-shadow: 0 0 20px rgba(0,229,255,0.3);
+  margin-bottom: 12px;
+}
+
+.race-config-section-label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 4px;
+  color: var(--col-accent);
+  margin-top: 8px;
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255,77,0,0.15);
+}
+
+/* Config rows */
+.rc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 14px;
+  color: var(--col-text);
+}
+.rc-row span { color: var(--col-text-dim); }
+
+.rc-select, .rc-input {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  color: var(--col-text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 6px 10px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.rc-select:focus, .rc-input:focus {
+  border-color: var(--col-cyan);
+}
+.rc-select { min-width: 110px; cursor: pointer; }
+.rc-input { width: 90px; letter-spacing: 2px; }
+.rc-input::placeholder { color: var(--col-text-dim); }
+
+/* Environment radio list */
+.env-radio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.env-radio-list::-webkit-scrollbar { width: 4px; }
+.env-radio-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+.env-radio-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  border-left: 3px solid transparent;
+  background: rgba(255,255,255,0.02);
+}
+.env-radio-item:hover {
+  background: rgba(255,255,255,0.06);
+}
+.env-radio-item--selected {
+  background: rgba(0,229,255,0.08);
+  border-left-color: var(--col-cyan);
+}
+.env-radio-item input[type="radio"] {
+  display: none;
+}
+.env-radio-emoji {
+  font-size: 20px;
+  min-width: 28px;
+  text-align: center;
+}
+.env-radio-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.env-radio-name {
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--col-text);
+}
+.env-radio-item--selected .env-radio-name {
+  color: var(--col-cyan);
+}
+.env-radio-desc {
+  font-size: 11px;
+  color: var(--col-text-dim);
+  opacity: 0.7;
+}
+
+/* Right panel: preview + actions */
+.race-config-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.preview-container {
+  position: relative;
+  flex: 1;
+  min-height: 280px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+
+.env-preview-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.preview-overlay {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  padding: 16px 20px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.7));
+  backdrop-filter: blur(4px);
+}
+
+.preview-env-name {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 3px;
+  color: #ffffff;
+  text-shadow: 0 0 15px rgba(0,229,255,0.4);
+}
+.preview-env-desc {
+  font-size: 13px;
+  color: rgba(255,255,255,0.6);
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* Action buttons */
+.race-config-actions {
+  display: flex;
+  gap: 12px;
+}
+.rc-start-btn {
+  flex: 1;
+  padding: 14px 24px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  letter-spacing: 4px;
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--col-accent), #ff3300);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.3s;
+  box-shadow: 0 0 20px rgba(255,77,0,0.3);
+}
+.rc-start-btn:hover {
+  transform: scale(1.03);
+  box-shadow: 0 0 30px rgba(255,77,0,0.5);
+}
+.rc-back-btn {
+  padding: 14px 24px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: var(--col-text-dim);
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.rc-back-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--col-text);
+}
+
+/* Responsive: stack vertically on mobile */
+@media (max-width: 768px) {
+  .race-config-panel {
+    flex-direction: column;
+    max-height: 95vh;
+    padding: 16px;
+    gap: 12px;
+  }
+  .race-config-left {
+    flex: none;
+    max-height: 50vh;
+  }
+  .preview-container {
+    min-height: 180px;
+  }
 }
 
 /* ── Controls Reference ── */

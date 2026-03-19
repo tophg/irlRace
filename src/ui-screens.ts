@@ -9,6 +9,8 @@ import { G } from './game-context';
 import { GameState } from './types';
 import { showTouchControls } from './input';
 import { showSettings } from './settings';
+import * as THREE from 'three/webgpu';
+import { ENVIRONMENTS, EnvironmentPreset } from './scene';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // POSITION CALLOUT
@@ -256,8 +258,203 @@ export function hideLoading() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// RACE CONFIGURATION
+// RACE CONFIGURATION — Split-panel with 3D preview
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+
+// Environment flavor text
+const ENV_FLAVOR: Record<string, string> = {
+  'Random': 'Let fate decide your track',
+  'Urban Night': 'Neon-lit streets, city heartbeat',
+  'Desert Dawn': 'Sun-scorched roads, endless horizon',
+  'Coastal Sunset': 'Golden hour, ocean breeze',
+  'Neon City': 'Cyberpunk glow, electric streets',
+  'Thunder Storm': 'Rain-soaked asphalt, lightning flash',
+  'Alpine Snow': 'Crisp mountain air, icy curves',
+  'Blizzard': 'Zero visibility, survival mode',
+  'Black Ice': 'Treacherous grip, frozen darkness',
+  'Tropical Night': 'Warm jungle air, exotic vibes',
+  'Industrial Zone': 'Gritty factories, amber smoke',
+  'Highway Sunrise': 'Open road, golden dawn',
+  'Underground': 'Concrete tunnels, neon glow',
+};
+
+const ENV_EMOJI: Record<string, string> = {
+  'Random': '🎲',
+  'Urban Night': '🌃',
+  'Desert Dawn': '🏜️',
+  'Coastal Sunset': '🌅',
+  'Neon City': '🌆',
+  'Thunder Storm': '⛈️',
+  'Alpine Snow': '🏔️',
+  'Blizzard': '🌨️',
+  'Black Ice': '🧊',
+  'Tropical Night': '🌴',
+  'Industrial Zone': '🏭',
+  'Highway Sunrise': '🌄',
+  'Underground': '🚇',
+};
+
+// Preview state (Canvas 2D gradient)
+let _previewCanvas: HTMLCanvasElement | null = null;
+let _previewCtx: CanvasRenderingContext2D | null = null;
+let _previewRAF = 0;
+
+// Target colors (hex)
+let _tgtSkyTop = { r: 0, g: 0, b: 0 };
+let _tgtSkyMid = { r: 0, g: 0, b: 0 };
+let _tgtSkyBot = { r: 0, g: 0, b: 0 };
+let _tgtGround = { r: 0, g: 0, b: 0 };
+let _tgtFog = { r: 0, g: 0, b: 0 };
+let _tgtDir = { r: 0, g: 0, b: 0 };
+// Current interpolated colors
+let _curSkyTopC = { r: 0, g: 0, b: 0 };
+let _curSkyMidC = { r: 0, g: 0, b: 0 };
+let _curSkyBotC = { r: 0, g: 0, b: 0 };
+let _curGroundC = { r: 0, g: 0, b: 0 };
+let _curFogC = { r: 0, g: 0, b: 0 };
+let _curDirC = { r: 0, g: 0, b: 0 };
+
+function hexToRgb(hex: number) {
+  return { r: (hex >> 16) & 0xff, g: (hex >> 8) & 0xff, b: hex & 0xff };
+}
+function lerpC(cur: { r: number; g: number; b: number }, tgt: { r: number; g: number; b: number }, t: number) {
+  cur.r += (tgt.r - cur.r) * t;
+  cur.g += (tgt.g - cur.g) * t;
+  cur.b += (tgt.b - cur.b) * t;
+}
+function rgbStr(c: { r: number; g: number; b: number }, a = 1) {
+  return `rgba(${Math.round(c.r)},${Math.round(c.g)},${Math.round(c.b)},${a})`;
+}
+
+function createPreviewScene(canvas: HTMLCanvasElement) {
+  _previewCanvas = canvas;
+  _previewCtx = canvas.getContext('2d')!;
+  startPreviewLoop();
+}
+
+function setPreviewEnvironment(preset: EnvironmentPreset) {
+  _tgtSkyTop = hexToRgb(preset.skyTop);
+  _tgtSkyMid = preset.skyHorizon ? hexToRgb(preset.skyHorizon) : hexToRgb(preset.skyBottom);
+  _tgtSkyBot = hexToRgb(preset.skyBottom);
+  _tgtGround = hexToRgb(preset.groundColor);
+  _tgtFog = hexToRgb(preset.fogColor);
+  _tgtDir = hexToRgb(preset.dirColor);
+
+  // Update env name overlay
+  const nameEl = document.getElementById('preview-env-name');
+  const descEl = document.getElementById('preview-env-desc');
+  if (nameEl) nameEl.textContent = `${ENV_EMOJI[preset.name] || ''} ${preset.name}`;
+  if (descEl) descEl.textContent = ENV_FLAVOR[preset.name] || '';
+}
+
+let _previewLastTime = 0;
+function previewLoop(time: number) {
+  const dt = Math.min(0.1, (time - _previewLastTime) / 1000);
+  _previewLastTime = time;
+
+  if (!_previewCtx || !_previewCanvas) return;
+  const w = _previewCanvas.width;
+  const h = _previewCanvas.height;
+  const t = Math.min(1, dt * 4); // ~0.25s blend
+
+  // Interpolate colors
+  lerpC(_curSkyTopC, _tgtSkyTop, t);
+  lerpC(_curSkyMidC, _tgtSkyMid, t);
+  lerpC(_curSkyBotC, _tgtSkyBot, t);
+  lerpC(_curGroundC, _tgtGround, t);
+  lerpC(_curFogC, _tgtFog, t);
+  lerpC(_curDirC, _tgtDir, t);
+
+  const ctx = _previewCtx;
+  ctx.clearRect(0, 0, w, h);
+
+  // ── Sky gradient (top 60% of canvas) ──
+  const skyH = h * 0.6;
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, skyH);
+  skyGrad.addColorStop(0, rgbStr(_curSkyTopC));
+  skyGrad.addColorStop(0.6, rgbStr(_curSkyMidC));
+  skyGrad.addColorStop(1, rgbStr(_curSkyBotC));
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, w, skyH);
+
+  // ── Horizon glow ──
+  const glowGrad = ctx.createRadialGradient(w * 0.5, skyH, 0, w * 0.5, skyH, w * 0.5);
+  glowGrad.addColorStop(0, rgbStr(_curDirC, 0.2));
+  glowGrad.addColorStop(1, 'transparent');
+  ctx.fillStyle = glowGrad;
+  ctx.fillRect(0, skyH * 0.5, w, skyH * 0.6);
+
+  // ── Ground plane (bottom 40%) ──
+  const groundY = skyH;
+  const groundH = h - skyH;
+  // Perspective gradient for ground
+  const gGrad = ctx.createLinearGradient(0, groundY, 0, h);
+  gGrad.addColorStop(0, rgbStr(_curFogC, 0.8));
+  gGrad.addColorStop(0.3, rgbStr(_curGroundC));
+  gGrad.addColorStop(1, rgbStr(_curGroundC));
+  ctx.fillStyle = gGrad;
+  ctx.fillRect(0, groundY, w, groundH);
+
+  // ── Road strip (center, perspective convergence) ──
+  const roadTopW = w * 0.02;
+  const roadBotW = w * 0.25;
+  const roadCx = w * 0.5;
+  ctx.beginPath();
+  ctx.moveTo(roadCx - roadTopW / 2, groundY);
+  ctx.lineTo(roadCx - roadBotW / 2, h);
+  ctx.lineTo(roadCx + roadBotW / 2, h);
+  ctx.lineTo(roadCx + roadTopW / 2, groundY);
+  ctx.closePath();
+  // Darken road
+  ctx.fillStyle = `rgba(${Math.max(0, _curGroundC.r - 20)},${Math.max(0, _curGroundC.g - 20)},${Math.max(0, _curGroundC.b - 15)},0.8)`;
+  ctx.fill();
+
+  // ── Center lane line ──
+  ctx.beginPath();
+  ctx.moveTo(roadCx, groundY);
+  ctx.lineTo(roadCx, h);
+  ctx.strokeStyle = rgbStr(_curDirC, 0.25);
+  ctx.lineWidth = 1;
+  ctx.setLineDash([8, 12]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // ── Stars (only if sky is dark enough) ──
+  const brightness = (_curSkyTopC.r + _curSkyTopC.g + _curSkyTopC.b) / 3;
+  if (brightness < 80) {
+    const starTime = time * 0.00005;
+    for (let i = 0; i < 30; i++) {
+      const sx = ((Math.sin(i * 127.1 + starTime) * 0.5 + 0.5) * w) % w;
+      const sy = ((Math.cos(i * 311.7) * 0.5 + 0.5) * skyH * 0.7);
+      const sa = 0.3 + Math.sin(time * 0.001 + i * 1.7) * 0.2;
+      ctx.fillStyle = `rgba(255,255,255,${Math.max(0, sa)})`;
+      ctx.fillRect(sx, sy, 1.5, 1.5);
+    }
+  }
+
+  // ── Atmospheric fog wash ──
+  const fogWash = ctx.createLinearGradient(0, skyH - 20, 0, skyH + groundH * 0.3);
+  fogWash.addColorStop(0, rgbStr(_curFogC, 0.4));
+  fogWash.addColorStop(1, 'transparent');
+  ctx.fillStyle = fogWash;
+  ctx.fillRect(0, skyH - 20, w, groundH * 0.3 + 20);
+
+  _previewRAF = requestAnimationFrame(previewLoop);
+}
+
+function startPreviewLoop() {
+  _previewLastTime = performance.now();
+  _previewRAF = requestAnimationFrame(previewLoop);
+}
+
+function destroyPreview() {
+  cancelAnimationFrame(_previewRAF);
+  _previewRAF = 0;
+  _previewCanvas = null;
+  _previewCtx = null;
+}
 
 export function showRaceConfig(
   onStart: (laps: number, ai: number, difficulty: 'easy' | 'medium' | 'hard', seed: string, weather: string, environment: string) => void,
@@ -266,78 +463,153 @@ export function showRaceConfig(
   const uiOverlay = document.getElementById('ui-overlay')!;
   const el = document.createElement('div');
   el.className = 'race-config-overlay';
+
+  // Build environment radio list HTML
+  const envListHtml = [
+    `<label class="env-radio-item env-radio-item--selected" data-env="random">
+      <input type="radio" name="env-select" value="random" checked>
+      <span class="env-radio-emoji">${ENV_EMOJI['Random']}</span>
+      <span class="env-radio-info">
+        <span class="env-radio-name">Random</span>
+        <span class="env-radio-desc">${ENV_FLAVOR['Random']}</span>
+      </span>
+    </label>`,
+    ...ENVIRONMENTS.map(e =>
+      `<label class="env-radio-item" data-env="${e.name}">
+        <input type="radio" name="env-select" value="${e.name}">
+        <span class="env-radio-emoji">${ENV_EMOJI[e.name] || '🏁'}</span>
+        <span class="env-radio-info">
+          <span class="env-radio-name">${e.name}</span>
+          <span class="env-radio-desc">${ENV_FLAVOR[e.name] || ''}</span>
+        </span>
+      </label>`
+    ),
+  ].join('');
+
   el.innerHTML = `
-    <div class="settings-panel" style="max-width:360px;">
-      <div class="settings-title">RACE SETUP</div>
-      <label class="settings-row">
-        <span>Laps</span>
-        <select id="cfg-laps">
-          <option value="1">1</option>
-          <option value="3" selected>3</option>
-          <option value="5">5</option>
-          <option value="10">10</option>
-        </select>
-      </label>
-      <label class="settings-row">
-        <span>AI Opponents</span>
-        <select id="cfg-ai">
-          <option value="0">None</option>
-          <option value="2">2</option>
-          <option value="4" selected>4</option>
-        </select>
-      </label>
-      <label class="settings-row">
-        <span>AI Difficulty</span>
-        <select id="cfg-difficulty">
-          <option value="easy">Easy</option>
-          <option value="medium" selected>Medium</option>
-          <option value="hard">Hard</option>
-        </select>
-      </label>
-      <label class="settings-row">
-        <span>Weather</span>
-        <select id="cfg-weather">
-          <option value="random" selected>Random</option>
-          <option value="clear">☀️ Clear</option>
-          <option value="light_rain">🌦️ Light Rain</option>
-          <option value="heavy_rain">🌧️ Heavy Rain</option>
-          <option value="snow">❄️ Snow</option>
-          <option value="blizzard">🌨️ Blizzard</option>
-          <option value="ice">🧊 Ice</option>
-        </select>
-      </label>
-      <label class="settings-row">
-        <span>Track Seed</span>
-        <input type="text" id="cfg-seed" placeholder="Random" maxlength="5"
-               class="lobby-input" style="width:100px;font-size:14px;padding:4px 8px;letter-spacing:2px;">
-      </label>
-      <label class="settings-row">
-        <span>Environment</span>
-        <select id="cfg-env">
-          <option value="random" selected>Random</option>
-          <option value="Urban Night">🌃 Urban Night</option>
-          <option value="Desert Dawn">🏜️ Desert Dawn</option>
-          <option value="Coastal Sunset">🌅 Coastal Sunset</option>
-          <option value="Neon City">🌆 Neon City</option>
-          <option value="Thunder Storm">⛈️ Thunder Storm</option>
-          <option value="Alpine Snow">🏔️ Alpine Snow</option>
-          <option value="Blizzard">🌨️ Blizzard</option>
-          <option value="Black Ice">🧊 Black Ice</option>
-          <option value="Tropical Night">🌴 Tropical Night</option>
-          <option value="Industrial Zone">🏭 Industrial Zone</option>
-          <option value="Highway Sunrise">🌄 Highway Sunrise</option>
-          <option value="Underground">🚇 Underground</option>
-        </select>
-      </label>
-      <div style="display:flex;gap:12px;justify-content:center;margin-top:16px;">
-        <button class="select-btn" id="cfg-go">START RACE</button>
-        <button class="menu-btn" id="cfg-back" style="padding:10px 24px;">BACK</button>
+    <div class="race-config-panel">
+      <!-- Left: Controls -->
+      <div class="race-config-left">
+        <div class="race-config-title">RACE SETUP</div>
+
+        <div class="race-config-section-label">RACE</div>
+        <label class="rc-row">
+          <span>Laps</span>
+          <select id="cfg-laps" class="rc-select">
+            <option value="1">1</option>
+            <option value="3" selected>3</option>
+            <option value="5">5</option>
+            <option value="10">10</option>
+          </select>
+        </label>
+        <label class="rc-row">
+          <span>AI Opponents</span>
+          <select id="cfg-ai" class="rc-select">
+            <option value="0">None</option>
+            <option value="2">2</option>
+            <option value="4" selected>4</option>
+          </select>
+        </label>
+        <label class="rc-row">
+          <span>Difficulty</span>
+          <select id="cfg-difficulty" class="rc-select">
+            <option value="easy">Easy</option>
+            <option value="medium" selected>Medium</option>
+            <option value="hard">Hard</option>
+          </select>
+        </label>
+        <label class="rc-row">
+          <span>Weather</span>
+          <select id="cfg-weather" class="rc-select">
+            <option value="random" selected>Random</option>
+            <option value="clear">☀️ Clear</option>
+            <option value="light_rain">🌦️ Light Rain</option>
+            <option value="heavy_rain">🌧️ Heavy Rain</option>
+            <option value="snow">❄️ Snow</option>
+            <option value="blizzard">🌨️ Blizzard</option>
+            <option value="ice">🧊 Ice</option>
+          </select>
+        </label>
+        <label class="rc-row">
+          <span>Track Seed</span>
+          <input type="text" id="cfg-seed" placeholder="Random" maxlength="5" class="rc-input">
+        </label>
+
+        <div class="race-config-section-label" style="margin-top:16px;">ENVIRONMENT</div>
+        <div class="env-radio-list" id="env-radio-list">
+          ${envListHtml}
+        </div>
+      </div>
+
+      <!-- Right: Preview + actions -->
+      <div class="race-config-right">
+        <div class="preview-container">
+          <canvas id="env-preview-canvas" class="env-preview-canvas"></canvas>
+          <div class="preview-overlay">
+            <div class="preview-env-name" id="preview-env-name">🎲 Random</div>
+            <div class="preview-env-desc" id="preview-env-desc">Let fate decide your track</div>
+          </div>
+        </div>
+        <div class="race-config-actions">
+          <button class="rc-start-btn" id="cfg-go">START RACE</button>
+          <button class="rc-back-btn" id="cfg-back">BACK</button>
+        </div>
       </div>
     </div>
   `;
   uiOverlay.appendChild(el);
 
+  // Initialize preview
+  const canvas = document.getElementById('env-preview-canvas') as HTMLCanvasElement;
+  if (canvas) {
+    // Size the canvas to match its CSS container
+    const rect = canvas.parentElement!.getBoundingClientRect();
+    canvas.width = Math.floor(rect.width * Math.min(window.devicePixelRatio, 2));
+    canvas.height = Math.floor(rect.height * Math.min(window.devicePixelRatio, 2));
+    createPreviewScene(canvas);
+    // Set initial environment (random → first env as default look)
+    const initialEnv = ENVIRONMENTS[Math.floor(Math.random() * ENVIRONMENTS.length)];
+    // Initialize colors immediately (no transition)
+    const initRgb = hexToRgb(initialEnv.skyTop);
+    Object.assign(_curSkyTopC, initRgb);
+    Object.assign(_curSkyMidC, hexToRgb(initialEnv.skyHorizon ?? initialEnv.skyBottom));
+    Object.assign(_curSkyBotC, hexToRgb(initialEnv.skyBottom));
+    Object.assign(_curGroundC, hexToRgb(initialEnv.groundColor));
+    Object.assign(_curFogC, hexToRgb(initialEnv.fogColor));
+    Object.assign(_curDirC, hexToRgb(initialEnv.dirColor));
+    setPreviewEnvironment(initialEnv);
+  }
+
+  // Wire environment radio list
+  const envList = document.getElementById('env-radio-list')!;
+  envList.addEventListener('change', (e) => {
+    const target = e.target as HTMLInputElement;
+    if (!target || target.type !== 'radio') return;
+
+    // Update selected visual
+    envList.querySelectorAll('.env-radio-item').forEach(item =>
+      item.classList.remove('env-radio-item--selected')
+    );
+    (target.closest('.env-radio-item') as HTMLElement)?.classList.add('env-radio-item--selected');
+
+    const val = target.value;
+    if (val === 'random') {
+      const randEnv = ENVIRONMENTS[Math.floor(Math.random() * ENVIRONMENTS.length)];
+      setPreviewEnvironment(randEnv);
+      // Update overlay text for random
+      const nameEl = document.getElementById('preview-env-name');
+      const descEl = document.getElementById('preview-env-desc');
+      if (nameEl) nameEl.textContent = '🎲 Random';
+      if (descEl) descEl.textContent = 'Let fate decide your track';
+    } else {
+      const preset = ENVIRONMENTS.find(env => env.name === val);
+      if (preset) setPreviewEnvironment(preset);
+    }
+  });
+
+  // Wire buttons
   document.getElementById('cfg-back')!.addEventListener('click', () => {
+    destroyPreview();
     el.remove();
     onBack();
   });
@@ -348,7 +620,9 @@ export function showRaceConfig(
     const difficulty = (el.querySelector('#cfg-difficulty') as HTMLSelectElement).value as 'easy' | 'medium' | 'hard';
     const seed = (el.querySelector('#cfg-seed') as HTMLInputElement).value.trim();
     const weather = (el.querySelector('#cfg-weather') as HTMLSelectElement).value;
-    const environment = (el.querySelector('#cfg-env') as HTMLSelectElement).value;
+    const envRadio = el.querySelector('input[name="env-select"]:checked') as HTMLInputElement;
+    const environment = envRadio?.value || 'random';
+    destroyPreview();
     el.remove();
     onStart(laps, ai, difficulty, seed, weather, environment);
   });
