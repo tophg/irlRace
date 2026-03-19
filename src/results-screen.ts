@@ -39,11 +39,24 @@ function buildRewardHTML(rewards: import('./progression').RewardBreakdown): stri
   if (rewards.winBonus > 0) html += `<div class="lap-breakdown-row best"><span>🏆 Victory!</span><span>+${rewards.winBonus} XP / +${rewards.winCreditsBonus} CR</span></div>`;
   if (rewards.podiumBonus > 0) html += `<div class="lap-breakdown-row"><span>🥇 Podium</span><span>+${rewards.podiumBonus} XP / +${rewards.podiumCreditsBonus} CR</span></div>`;
   if (rewards.cleanBonus > 0) html += `<div class="lap-breakdown-row"><span>✨ Clean Race</span><span>+${rewards.cleanBonus} XP</span></div>`;
-  if (rewards.driftBonus > 0) html += `<div class="lap-breakdown-row"><span>🔥 Drift Bonus</span><span>+${rewards.driftBonus} XP</span></div>`;
-  if (rewards.lappingMultiplier > 1) html += `<div class="lap-breakdown-row best" style="color:#ffd700;"><span>🔄 Lapping ×${rewards.lappingMultiplier.toFixed(2)}</span><span>APPLIED TO ALL</span></div>`;
+  if (rewards.driftBonus > 0) html += `<div class="lap-breakdown-row"><span>🔥 Drift</span><span>+${rewards.driftBonus} XP</span></div>`;
+  if (rewards.overtakeBonus > 0) html += `<div class="lap-breakdown-row"><span>🏎️ Overtakes</span><span>+${rewards.overtakeBonus} XP</span></div>`;
+  if (rewards.nearMissBonus > 0) html += `<div class="lap-breakdown-row"><span>😤 Near Misses</span><span>+${rewards.nearMissBonus} XP</span></div>`;
+  if (rewards.speedDemonBonus > 0) html += `<div class="lap-breakdown-row"><span>⚡ Speed Demon</span><span>+${rewards.speedDemonBonus} XP</span></div>`;
+  if (rewards.perfectStartBonus > 0) html += `<div class="lap-breakdown-row"><span>🚀 Perfect Start</span><span>+${rewards.perfectStartBonus} XP</span></div>`;
+  // Multipliers
+  const mults: string[] = [];
+  if (rewards.streakMultiplier > 1) mults.push(`Streak ×${rewards.streakMultiplier.toFixed(1)}`);
+  if (rewards.lappingMultiplier > 1) mults.push(`Lapping ×${rewards.lappingMultiplier.toFixed(2)}`);
+  if (rewards.prestigeMultiplier > 1) mults.push(`Prestige ×${rewards.prestigeMultiplier.toFixed(2)}`);
+  if (mults.length > 0) html += `<div class="lap-breakdown-row best" style="color:#ffd700;"><span>🔄 ${mults.join(' · ')}</span><span>APPLIED</span></div>`;
   html += `<div class="lap-breakdown-row" style="border-top:1px solid rgba(255,255,255,0.15);padding-top:4px;font-weight:700;"><span>Total</span><span>+${rewards.totalXP} XP / +${rewards.totalCredits} CR</span></div>`;
   if (rewards.leveledUp) html += `<div class="lap-breakdown-row best" style="color:#ffcc00;font-weight:700;"><span>⬆ LEVEL UP!</span><span>Level ${rewards.newLevel}</span></div>`;
-  html += `<div class="lap-breakdown-row" style="margin-top:6px;"><span>Level ${prog.level}</span><span>${xpToNextLevel()} XP to next</span></div>`;
+  // Achievements
+  for (const ach of rewards.newAchievements) {
+    html += `<div class="lap-breakdown-row best" style="color:#ffd700;font-weight:700;"><span>${ach.icon} ${ach.name}</span><span>+${ach.creditReward} CR</span></div>`;
+  }
+  html += `<div class="lap-breakdown-row" style="margin-top:6px;"><span>Level ${prog.level}${prog.prestige > 0 ? ` ⭐${prog.prestige}` : ''}</span><span>${xpToNextLevel()} XP to next</span></div>`;
   html += `<div style="background:rgba(255,255,255,0.1);border-radius:4px;height:6px;margin:4px 0;"><div style="background:var(--col-orange);border-radius:4px;height:100%;width:${lvlPct}%;transition:width 0.5s;"></div></div>`;
   html += `<div class="lap-breakdown-row"><span>Credits</span><span style="color:#ffcc00;font-weight:700;">${prog.credits} CR</span></div>`;
   html += `</div>`;
@@ -124,6 +137,11 @@ export async function showResults(
     trackLength: G.trackData?.totalLength ?? 500,
     lapsCompleted: localProgress?.lapTimes?.length ?? 0,
     lappingMultiplier,
+    overtakeCount: G.raceStats.overtakeCount,
+    nearMissCount: G.raceStats.nearMissCount,
+    speedDemonTime: G.raceStats.speedDemonTime,
+    perfectStart: G.raceStats.perfectStart,
+    environment: G._selectedEnvironment ?? 'Random',
   };
   const earlyRewards = processRaceRewards(earlyResult);
   await playRewardsAnimation(earlyRewards, localRank || 1, prevLevelPct, uiOverlay);

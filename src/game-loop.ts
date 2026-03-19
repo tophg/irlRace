@@ -969,6 +969,7 @@ function gameLoop(timestamp: number) {
     if (s === GameState.RACING) {
       const speedMph = Math.abs(G.playerVehicle.speed) * 2.5;
       if (speedMph > G.raceStats.topSpeed) G.raceStats.topSpeed = speedMph;
+      if (speedMph > 180) G.raceStats.speedDemonTime += frameDt;
       if (driftAbs > 0.15) G.raceStats.totalDriftTime += frameDt;
     }
 
@@ -1043,6 +1044,7 @@ function gameLoop(timestamp: number) {
 
       if (G.prevMyRank > 0 && myRank !== G.prevMyRank && myRank > 0) {
         const gained = myRank < G.prevMyRank;
+        if (gained) G.raceStats.overtakeCount += (G.prevMyRank - myRank);
         bus.emit('position_change', {
           racerId: 'local', oldRank: G.prevMyRank, newRank: myRank, gained,
         });

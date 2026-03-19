@@ -149,8 +149,17 @@ function buildRewardRows(r: RewardBreakdown): RewardRow[] {
   if (r.winBonus > 0) rows.push({ icon: '🏆', label: 'Victory!', xp: r.winBonus, cr: r.winCreditsBonus, isBonus: true });
   if (r.podiumBonus > 0) rows.push({ icon: '🥇', label: 'Podium', xp: r.podiumBonus, cr: r.podiumCreditsBonus, isBonus: true });
   if (r.cleanBonus > 0) rows.push({ icon: '✨', label: 'Clean Race', xp: r.cleanBonus, cr: 0, isBonus: true });
-  if (r.driftBonus > 0) rows.push({ icon: '🔥', label: 'Drift Bonus', xp: r.driftBonus, cr: 0, isBonus: true });
-  if (r.lappingMultiplier > 1) rows.push({ icon: '🔄', label: `Lapping ×${r.lappingMultiplier.toFixed(2)}`, xp: 0, cr: 0, isBonus: true });
+  if (r.driftBonus > 0) rows.push({ icon: '🔥', label: 'Drift', xp: r.driftBonus, cr: 0, isBonus: true });
+  if (r.overtakeBonus > 0) rows.push({ icon: '🏎️', label: 'Overtakes', xp: r.overtakeBonus, cr: 0, isBonus: true });
+  if (r.nearMissBonus > 0) rows.push({ icon: '😤', label: 'Near Misses', xp: r.nearMissBonus, cr: 0, isBonus: true });
+  if (r.speedDemonBonus > 0) rows.push({ icon: '⚡', label: 'Speed Demon', xp: r.speedDemonBonus, cr: 0, isBonus: true });
+  if (r.perfectStartBonus > 0) rows.push({ icon: '🚀', label: 'Perfect Start', xp: r.perfectStartBonus, cr: 0, isBonus: true });
+  // Combined multiplier row
+  const mults: string[] = [];
+  if (r.streakMultiplier > 1) mults.push(`Streak ×${r.streakMultiplier.toFixed(1)}`);
+  if (r.lappingMultiplier > 1) mults.push(`Lapping ×${r.lappingMultiplier.toFixed(2)}`);
+  if (r.prestigeMultiplier > 1) mults.push(`Prestige ×${r.prestigeMultiplier.toFixed(2)}`);
+  if (mults.length > 0) rows.push({ icon: '🔄', label: mults.join(' · '), xp: 0, cr: 0, isBonus: true });
   return rows;
 }
 
@@ -350,8 +359,25 @@ export function playRewardsAnimation(
       }, phase5Start);
     }
 
+    // ── Phase 6: Achievements (staggered after level up / credits) ──
+    const phase6Start = (rewards.leveledUp ? phase5Start + 1200 : phase4Start + 800);
+    if (rewards.newAchievements.length > 0) {
+      rewards.newAchievements.forEach((ach, i) => {
+        schedule(() => {
+          const achEl = document.createElement('div');
+          achEl.className = 'rewards-row rewards-row-bonus';
+          achEl.style.color = '#ffd700';
+          achEl.style.fontWeight = '700';
+          achEl.innerHTML = `<span class="rewards-row-label">${ach.icon} ${ach.name}</span><span class="rewards-row-value">+${ach.creditReward} CR</span>`;
+          container.appendChild(achEl);
+          playBonusChime();
+        }, phase6Start + i * 400);
+      });
+    }
+
     // ── Auto-dismiss ──
-    const dismissTime = (rewards.leveledUp ? phase5Start + 2000 : phase4Start + 1500);
+    const achTime = rewards.newAchievements.length * 400;
+    const dismissTime = (rewards.leveledUp ? phase5Start + 2000 : phase4Start + 1500) + achTime;
     schedule(() => skip(), dismissTime);
   });
 }

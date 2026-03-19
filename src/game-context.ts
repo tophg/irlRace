@@ -36,10 +36,13 @@ export interface RaceStats {
   nearMissCount: number;
   avgPosition: number;
   positionSampleCount: number;
+  overtakeCount: number;
+  perfectStart: boolean;
+  speedDemonTime: number; // seconds at top speed (>180 MPH)
 }
 
 function freshRaceStats(): RaceStats {
-  return { topSpeed: 0, totalDriftTime: 0, collisionCount: 0, nearMissCount: 0, avgPosition: 0, positionSampleCount: 0 };
+  return { topSpeed: 0, totalDriftTime: 0, collisionCount: 0, nearMissCount: 0, avgPosition: 0, positionSampleCount: 0, overtakeCount: 0, perfectStart: false, speedDemonTime: 0 };
 }
 
 /** The single shared game context. Import `G` everywhere. */
