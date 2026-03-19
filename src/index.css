@@ -1581,8 +1581,8 @@ canvas { display: block; }
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
   background:
-    linear-gradient(180deg, rgba(10,10,15,0.1) 0%, rgba(10,10,15,0.3) 60%, rgba(10,10,15,0.7) 100%),
-    url('/title-bg.jpg') center/cover no-repeat;
+    linear-gradient(180deg, rgba(10,10,15,0.15) 0%, rgba(10,10,15,0.4) 50%, rgba(10,10,15,0.85) 100%),
+    url('/loading-bg.jpg') center/cover no-repeat;
   background-color: rgb(10,10,15);
   z-index: 95;
 }
