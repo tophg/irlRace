@@ -13,7 +13,7 @@ export interface GeoResult {
 export async function geocodeAddress(address: string): Promise<GeoResult> {
   const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
   const resp = await fetch(url, {
-    headers: { 'User-Agent': 'HoodRacer/1.0 (https://hoodracer.com)' },
+    headers: { 'User-Agent': 'IRLRace/1.0 (https://irlrace.com)' },
   });
   if (!resp.ok) throw new Error(`Geocode request failed: ${resp.status}`);
 
@@ -34,7 +34,7 @@ export async function geocodeAddress(address: string): Promise<GeoResult> {
 export async function reverseGeocode(lat: number, lon: number): Promise<string> {
   const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=16`;
   const resp = await fetch(url, {
-    headers: { 'User-Agent': 'HoodRacer/1.0 (https://hoodracer.com)' },
+    headers: { 'User-Agent': 'IRLRace/1.0 (https://irlrace.com)' },
   });
   if (!resp.ok) return 'Unknown Hood';
 

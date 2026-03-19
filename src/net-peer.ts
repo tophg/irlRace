@@ -69,7 +69,7 @@ export class NetPeer {
     let lastError: Error | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       this.roomId = generateRoomCode();
-      const peerId = `hoodracer-${this.roomId}`;
+      const peerId = `irlrace-${this.roomId}`;
       try {
         await this.initPeer(peerId);
         break;
@@ -119,11 +119,11 @@ export class NetPeer {
   async joinRoom(roomCode: string, name: string, carId: string): Promise<void> {
     this.isHost = false;
     this.roomId = roomCode;
-    const guestId = `hoodracer-guest-${Date.now().toString(36)}`;
+    const guestId = `irlrace-guest-${Date.now().toString(36)}`;
 
     await this.initPeer(guestId);
 
-    const hostPeerId = `hoodracer-${roomCode}`;
+    const hostPeerId = `irlrace-${roomCode}`;
     const conn = this.peer!.connect(hostPeerId, {
       reliable: true,
       serialization: 'raw',
