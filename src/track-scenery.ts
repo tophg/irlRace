@@ -786,10 +786,16 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   // ── 3D model buildings (road-aligned procedural city blocks) ──
   // Buildings are placed in depth rows along the spline, facing the road.
   // Row 1 (near): small buildings, Row 2 (mid): medium, Row 3 (far): tall skyline.
-  const modelList = T.buildingModels?.length ? T.buildingModels : ['skyscraper.glb'];
-  const density = T.buildingDensity ?? 1.0;
-  const rowCount = Math.min(3, Math.max(1, T.buildingRowCount ?? 2));
-  const gapChance = T.buildingGapChance ?? 0.15;
+  const isMobile = window.matchMedia('(pointer: coarse)').matches;
+  // Heavy models that must be skipped on mobile (15-25MB each, OOM risk)
+  const HEAVY_MODELS = new Set(['highrise_a.glb', 'highrise_b.glb', 'highrise_c.glb', 'highrise_d.glb', 'highrise_e.glb', 'highrise_f.glb']);
+  const filteredModelList = (T.buildingModels?.length ? T.buildingModels : ['skyscraper.glb'])
+    .filter(m => !isMobile || !HEAVY_MODELS.has(m));
+  const modelList = filteredModelList.length > 0 ? filteredModelList : ['skyscraper.glb'];
+  // On mobile: cap density and rows to prevent OOM crash
+  const density = isMobile ? Math.min(T.buildingDensity ?? 1.0, 0.4) : (T.buildingDensity ?? 1.0);
+  const rowCount = isMobile ? 1 : Math.min(3, Math.max(1, T.buildingRowCount ?? 2));
+  const gapChance = isMobile ? Math.max(T.buildingGapChance ?? 0.15, 0.35) : (T.buildingGapChance ?? 0.15);
 
   // Categorize models by size tier
   const SMALL_MODELS = new Set(['coastal_a.glb', 'coastal_b.glb', 'coastal_home.glb', 'nyc_apartment.glb', 'nyc_apartment_b.glb', 'nyc_apartment_c.glb', 'nyc_apartment_d.glb']);
@@ -814,6 +820,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   const sampleSpacing = Math.max(15, 30 / density);
   const totalLength = spline.getLength();
   const sampleCount = Math.floor(totalLength / sampleSpacing);
+  const MAX_PLACEMENTS = isMobile ? 60 : 600;
 
   // Pre-compute all spline sample points for proximity checking
   const CLEARANCE_SAMPLES = 80;
@@ -826,7 +833,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   interface BuildingPlacement { x: number; z: number; scaleW: number; scaleH: number; scaleD: number; rotY: number; model: string; }
   const placements: BuildingPlacement[] = [];
 
-  for (let i = 0; i < sampleCount; i++) {
+  for (let i = 0; i < sampleCount && placements.length < MAX_PLACEMENTS; i++) {
     const t = (i / sampleCount) % 1;
     const p = spline.getPointAt(t);
     const tangent = spline.getTangentAt(t).normalize();
@@ -836,7 +843,9 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const faceRoadRot = Math.atan2(tangent.x, tangent.z);
 
     for (const [offMin, offMax, pool, hMult] of ROW_DEFS) {
+      if (placements.length >= MAX_PLACEMENTS) break;
       for (const side of [-1, 1] as const) {
+        if (placements.length >= MAX_PLACEMENTS) break;
         // Gap probability — skip for variety (alleys, parking lots)
         if (rng() < gapChance) continue;
 
