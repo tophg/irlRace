@@ -127,8 +127,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       buildingDensity: 2.0, buildingRowCount: 3, buildingGapChance: 0.08,
       treeModels: ['red_maple.glb', 'red_maple_b.glb', 'dogwood.glb', 'walnut.glb', 'walnut_b.glb', 'oak.glb'],
       ambientLights: ['window_spill', 'hazard_flasher'],
-      landmarks: ['washington_monument.glb', 'lincoln_memorial.glb'],
-      grandstandModel: 'us_capitol.glb',
+      landmarks: ['us_capitol.glb', 'washington_monument.glb', 'lincoln_memorial.glb'],
     },
   },
 

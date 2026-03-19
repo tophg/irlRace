@@ -855,6 +855,25 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   }
   const MIN_CLEARANCE_SQ = 22 * 22;
 
+  // Pre-compute landmark positions for building exclusion zones
+  const landmarkExclusionZones: { x: number; z: number }[] = [];
+  const LANDMARK_EXCLUSION_SQ = 50 * 50; // 50m radius — clear space around each landmark
+  if (T.landmarks?.length) {
+    const lmCount = T.landmarks.length;
+    for (let li = 0; li < lmCount; li++) {
+      const lmT = (0.15 + (li / lmCount) * 0.7) % 1;
+      const lmP = spline.getPointAt(lmT);
+      const lmTan = spline.getTangentAt(lmT).normalize();
+      const lmRight = new THREE.Vector3(lmTan.z, 0, -lmTan.x);
+      const lmSide = li % 2 === 0 ? 1 : -1;
+      const lmOff = 25; // approximate center of 22-28 range
+      landmarkExclusionZones.push({
+        x: lmP.x + lmRight.x * lmOff * lmSide,
+        z: lmP.z + lmRight.z * lmOff * lmSide,
+      });
+    }
+  }
+
   // Collect placements
   interface BoxPlacement { x: number; z: number; w: number; h: number; d: number; rotY: number; tile: number; }
   const placements: BoxPlacement[] = [];
@@ -882,6 +901,14 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           if (dx * dx + dz * dz < MIN_CLEARANCE_SQ) { tooClose = true; break; }
         }
         if (tooClose) continue;
+
+        // Skip buildings near landmark exclusion zones (50m radius)
+        let nearLandmark = false;
+        for (const lz of landmarkExclusionZones) {
+          const ldx = x - lz.x, ldz = z - lz.z;
+          if (ldx * ldx + ldz * ldz < LANDMARK_EXCLUSION_SQ) { nearLandmark = true; break; }
+        }
+        if (nearLandmark) continue;
 
         const tile = tiles[Math.floor(rng() * tiles.length)];
         const [tileHMin, tileHMax] = TILE_HEIGHT[tile] ?? [12, 35];
@@ -1031,6 +1058,9 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   }
 
   // ── Environment-specific landmarks (e.g. DC monuments) ──
+  // Landmarks are placed prominently near the road with a clearance zone
+  // so buildings don't obscure them.
+  const _landmarkPositions: THREE.Vector3[] = []; // stored for building exclusion
   if (T.landmarks?.length) {
     const landmarkCount = T.landmarks.length;
     for (let li = 0; li < landmarkCount; li++) {
@@ -1041,24 +1071,28 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const lmTan = spline.getTangentAt(lmT).normalize();
       const lmRight = new THREE.Vector3(lmTan.z, 0, -lmTan.x);
       const lmSide = li % 2 === 0 ? 1 : -1; // alternate sides
-      const lmOffset = 40 + rng() * 20; // 40-60 units from center
+      const lmOffset = 22 + rng() * 6; // 22-28 units from center — close enough to see
 
       _asyncLoads.push(loadGLB(`/buildings/${landmarkFile}`).then((model) => {
         const bbox = new THREE.Box3().setFromObject(model);
         const size = bbox.getSize(new THREE.Vector3());
-        // Scale landmark to ~15 world units wide
-        const targetW = 15;
+        // Scale landmark to ~30 world units wide — prominent and imposing
+        const targetW = 30;
         const sf = targetW / Math.max(size.x, size.z, 1);
         model.scale.setScalar(sf);
 
         // Recompute bounding box after scaling
         const scaledBox = new THREE.Box3().setFromObject(model);
-        model.position.set(
+        const pos = new THREE.Vector3(
           lmP.x + lmRight.x * lmOffset * lmSide,
           -scaledBox.min.y, // sit on ground
           lmP.z + lmRight.z * lmOffset * lmSide,
         );
+        model.position.copy(pos);
         model.lookAt(lmP); // face the road
+
+        // Store for building exclusion zone
+        _landmarkPositions.push(pos);
 
         model.traverse((child) => {
           if ((child as THREE.Mesh).isMesh) {
