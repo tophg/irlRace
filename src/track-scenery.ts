@@ -793,52 +793,149 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     group.add(board);
   }
 
-  // ── 3D model buildings → Procedural Box Cityscape (InstancedMesh) ──
-  // Replaces GLB loading with BoxGeometry + facade texture atlas.
-  // 1 material, 1-2 draw calls, ~2MB total vs 500MB+ GLBs.
+  // ── Procedural Box Cityscape (InstancedMesh) ──
+  // BoxGeometry buildings with procedural canvas facade atlas.
+  // Per-face UVs: sides = tiled facade, roof = dark surface.
+  // Emissive window glow, height-proportional widths, per-tile sizing.
   const isMobile = window.matchMedia('(pointer: coarse)').matches;
   const density = isMobile ? Math.min(T.buildingDensity ?? 1.0, 0.5) : (T.buildingDensity ?? 1.0);
   const rowCount = isMobile ? 1 : Math.min(3, Math.max(1, T.buildingRowCount ?? 2));
   const gapChance = isMobile ? Math.max(T.buildingGapChance ?? 0.15, 0.3) : (T.buildingGapChance ?? 0.15);
 
-  // Atlas is 4×4 grid (16 tiles). Each environment uses a subset.
-  // Tile indices (row-major, 0-15):
-  //  0=glass office  1=brick apt    2=brutalist     3=dark glass
-  //  4=stone ornate  5=warehouse    6=neon commercial 7=stucco
-  //  8=steel modern  9=brownstone  10=art deco     11=japanese
-  // 12=parking       13=res tower  14=commercial   15=night concrete
+  // ── Procedural Facade Atlas (canvas-drawn, 512×512, 4×4 grid) ──
+  const ATLAS_COLS = 4, ATLAS_ROWS = 4;
+  const TILE_PX = 128;
+  const facadeCanvas = document.createElement('canvas');
+  facadeCanvas.width = ATLAS_COLS * TILE_PX;
+  facadeCanvas.height = ATLAS_ROWS * TILE_PX;
+  const fCtx = facadeCanvas.getContext('2d')!;
+
+  // Tile definitions
+  interface TileDef {
+    wall: string; win: string; ww: number; wh: number; cols: number; rows: number;
+    groundFloor?: boolean; accent?: string;
+  }
+  const TILE_DEFS: TileDef[] = [
+    /* 0  glass office    */ { wall: '#2a3040', win: '#6090bb', ww: 22, wh: 28, cols: 4, rows: 3, groundFloor: true },
+    /* 1  brick apartment */ { wall: '#7a4535', win: '#d4a855', ww: 16, wh: 20, cols: 5, rows: 4, groundFloor: true, accent: '#5a3025' },
+    /* 2  brutalist       */ { wall: '#555560', win: '#889098', ww: 24, wh: 14, cols: 4, rows: 5 },
+    /* 3  dark glass      */ { wall: '#1a2030', win: '#3a6080', ww: 26, wh: 30, cols: 3, rows: 3, groundFloor: true },
+    /* 4  stone ornate    */ { wall: '#a09070', win: '#e8d088', ww: 18, wh: 24, cols: 4, rows: 3, accent: '#887050' },
+    /* 5  warehouse       */ { wall: '#606058', win: '#889080', ww: 28, wh: 16, cols: 3, rows: 4 },
+    /* 6  neon commercial */ { wall: '#252535', win: '#cc44cc', ww: 24, wh: 20, cols: 4, rows: 3, groundFloor: true, accent: '#44ddee' },
+    /* 7  stucco          */ { wall: '#d0c0a0', win: '#a09060', ww: 14, wh: 18, cols: 5, rows: 4 },
+    /* 8  steel modern    */ { wall: '#353540', win: '#5580aa', ww: 20, wh: 26, cols: 4, rows: 3, groundFloor: true },
+    /* 9  brownstone      */ { wall: '#6a3a2a', win: '#cc9944', ww: 16, wh: 22, cols: 4, rows: 4, accent: '#4a2a1a' },
+    /* 10 art deco        */ { wall: '#3a3a30', win: '#ddbb55', ww: 16, wh: 28, cols: 5, rows: 3, accent: '#ccaa33' },
+    /* 11 japanese        */ { wall: '#4a4038', win: '#d0c890', ww: 20, wh: 16, cols: 4, rows: 5, accent: '#6a5040' },
+    /* 12 parking garage  */ { wall: '#707070', win: '#404040', ww: 30, wh: 10, cols: 3, rows: 6 },
+    /* 13 res tower       */ { wall: '#404850', win: '#7090a0', ww: 18, wh: 22, cols: 4, rows: 4, groundFloor: true },
+    /* 14 commercial      */ { wall: '#454550', win: '#80a0c0', ww: 22, wh: 18, cols: 4, rows: 4, groundFloor: true },
+    /* 15 night concrete  */ { wall: '#2a2a30', win: '#cc8833', ww: 14, wh: 18, cols: 5, rows: 5 },
+  ];
+
+  // Draw each tile onto canvas
+  for (let tileIdx = 0; tileIdx < 16; tileIdx++) {
+    const def = TILE_DEFS[tileIdx];
+    const tx = (tileIdx % ATLAS_COLS) * TILE_PX;
+    const ty = Math.floor(tileIdx / ATLAS_COLS) * TILE_PX;
+
+    // Wall background
+    fCtx.fillStyle = def.wall;
+    fCtx.fillRect(tx, ty, TILE_PX, TILE_PX);
+
+    // Accent band (if present)
+    if (def.accent) {
+      fCtx.fillStyle = def.accent;
+      fCtx.fillRect(tx, ty, TILE_PX, 4);
+      fCtx.fillRect(tx, ty + TILE_PX - 4, TILE_PX, 4);
+    }
+
+    // Windows grid
+    const padX = (TILE_PX - def.cols * def.ww) / (def.cols + 1);
+    const padY = (TILE_PX - def.rows * def.wh) / (def.rows + 1);
+    for (let row = 0; row < def.rows; row++) {
+      for (let col = 0; col < def.cols; col++) {
+        const wx = tx + padX + col * (def.ww + padX);
+        const wy = ty + padY + row * (def.wh + padY);
+        fCtx.fillStyle = def.win;
+        fCtx.globalAlpha = 0.6 + rng() * 0.4;
+        fCtx.fillRect(wx, wy, def.ww, def.wh);
+        fCtx.globalAlpha = 1.0;
+        fCtx.strokeStyle = def.wall;
+        fCtx.lineWidth = 1.5;
+        fCtx.strokeRect(wx, wy, def.ww, def.wh);
+        fCtx.beginPath();
+        fCtx.moveTo(wx + def.ww / 2, wy);
+        fCtx.lineTo(wx + def.ww / 2, wy + def.wh);
+        fCtx.stroke();
+      }
+    }
+
+    // Ground floor storefront
+    if (def.groundFloor) {
+      const gfY = ty + TILE_PX - 20;
+      fCtx.fillStyle = '#1a1a20';
+      fCtx.fillRect(tx, gfY, TILE_PX, 20);
+      fCtx.fillStyle = def.win;
+      fCtx.globalAlpha = 0.4;
+      for (let col = 0; col < def.cols; col++) {
+        const gx = tx + padX + col * (def.ww + padX);
+        fCtx.fillRect(gx, gfY + 3, def.ww, 14);
+      }
+      fCtx.globalAlpha = 1.0;
+    }
+  }
+
+  // Create Three.js texture from canvas
+  const atlasTexture = new THREE.CanvasTexture(facadeCanvas);
+  atlasTexture.wrapS = THREE.RepeatWrapping;
+  atlasTexture.wrapT = THREE.RepeatWrapping;
+  atlasTexture.magFilter = THREE.LinearFilter;
+  atlasTexture.minFilter = THREE.LinearMipmapLinearFilter;
+  atlasTexture.colorSpace = THREE.SRGBColorSpace;
+
+  // Style tiles per environment
   const STYLE_TILES: Record<string, number[]> = {
-    modern:     [0, 2, 3, 8, 13, 14],
-    adobe:      [1, 4, 7, 9, 15],
-    beach_house:[5, 7, 12, 14],
-    cyberpunk:  [0, 3, 6, 8, 10, 15],
-    weathered:  [1, 2, 5, 9, 12, 15],
-    chalet:     [4, 7, 9, 11],
-    warehouse:  [2, 5, 12, 14],
-    concrete:   [2, 5, 12, 15],
+    modern:      [0, 2, 3, 8, 13, 14],
+    adobe:       [1, 4, 7, 9, 15],
+    beach_house: [5, 7, 12, 14],
+    cyberpunk:   [0, 3, 6, 8, 10, 15],
+    weathered:   [1, 2, 5, 9, 12, 15],
+    chalet:      [4, 7, 9, 11],
+    warehouse:   [2, 5, 12, 14],
+    concrete:    [2, 5, 12, 15],
     bamboo_lodge:[7, 11, 4, 9],
   };
   const styleName = T.buildingStyle ?? 'modern';
   const tiles = STYLE_TILES[styleName] ?? STYLE_TILES['modern'];
 
-  // Row definitions: [offsetMin, offsetMax, heightMin, heightMax]
-  const ROW_DEFS: [number, number, number, number][] = [];
-  if (rowCount >= 1) ROW_DEFS.push([30, 55, 12, 35]);
-  if (rowCount >= 2) ROW_DEFS.push([65, 95, 25, 60]);
-  if (rowCount >= 3) ROW_DEFS.push([105, 140, 40, 90]);
+  // Per-tile height clamps for realistic proportions
+  const TILE_HEIGHT: Record<number, [number, number]> = {
+    0: [20, 55], 1: [10, 25], 2: [15, 40], 3: [25, 60], 4: [10, 30],
+    5: [6, 15], 6: [8, 20], 7: [6, 14], 8: [20, 50], 9: [10, 22],
+    10: [18, 45], 11: [8, 18], 12: [5, 12], 13: [20, 50], 14: [8, 22],
+    15: [12, 30],
+  };
+
+  // Row offset definitions (heights come from tile clamp)
+  const ROW_DEFS: [number, number][] = [];
+  if (rowCount >= 1) ROW_DEFS.push([25, 50]);
+  if (rowCount >= 2) ROW_DEFS.push([55, 85]);
+  if (rowCount >= 3) ROW_DEFS.push([90, 130]);
 
   const sampleSpacing = Math.max(15, 30 / density);
   const totalLength = spline.getLength();
   const sampleCount = Math.floor(totalLength / sampleSpacing);
   const MAX_PLACEMENTS = isMobile ? 60 : 400;
 
-  // Pre-compute spline samples for proximity checking
-  const CLEARANCE_SAMPLES = 80;
+  // Proximity checking (scaled to track length for better coverage)
+  const CLEARANCE_SAMPLES = Math.max(200, Math.floor(totalLength / 5));
   const splineSamples: THREE.Vector3[] = [];
   for (let s = 0; s < CLEARANCE_SAMPLES; s++) {
     splineSamples.push(spline.getPointAt(s / CLEARANCE_SAMPLES));
   }
-  const MIN_CLEARANCE_SQ = 28 * 28;
+  const MIN_CLEARANCE_SQ = 22 * 22;
 
   // Collect placements
   interface BoxPlacement { x: number; z: number; w: number; h: number; d: number; rotY: number; tile: number; }
@@ -851,7 +948,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const nx = tangent.z, nz = -tangent.x;
     const faceRoadRot = Math.atan2(tangent.x, tangent.z);
 
-    for (const [offMin, offMax, hMin, hMax] of ROW_DEFS) {
+    for (const [offMin, offMax] of ROW_DEFS) {
       if (placements.length >= MAX_PLACEMENTS) break;
       for (const side of [-1, 1] as const) {
         if (placements.length >= MAX_PLACEMENTS) break;
@@ -861,7 +958,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         const x = p.x + nx * offset * side;
         const z = p.z + nz * offset * side;
 
-        // Proximity check
         let tooClose = false;
         for (const sp of splineSamples) {
           const dx = x - sp.x, dz = z - sp.z;
@@ -869,11 +965,13 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         }
         if (tooClose) continue;
 
-        const w = 8 + rng() * 12;
-        const h = hMin + rng() * (hMax - hMin);
-        const d = 8 + rng() * 12;
-        const rotY = faceRoadRot + (side > 0 ? Math.PI : 0) + (rng() - 0.5) * 0.35;
         const tile = tiles[Math.floor(rng() * tiles.length)];
+        const [tileHMin, tileHMax] = TILE_HEIGHT[tile] ?? [12, 35];
+        const h = tileHMin + rng() * (tileHMax - tileHMin);
+        const minW = Math.max(8, h * 0.2);
+        const w = minW + rng() * Math.min(12, h * 0.3);
+        const d = minW + rng() * Math.min(12, h * 0.3);
+        const rotY = faceRoadRot + (side > 0 ? Math.PI : 0) + (rng() - 0.5) * 0.3;
         placements.push({ x, z, w, h, d, rotY, tile });
       }
     }
@@ -881,28 +979,48 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
   // Build InstancedMesh from placements
   if (placements.length > 0) {
-    const ATLAS_COLS = 4, ATLAS_ROWS = 4;
     const tileW = 1 / ATLAS_COLS, tileH = 1 / ATLAS_ROWS;
 
-    // Create box geometry with per-face UVs that we'll modify per-instance
-    // We'll use a unit box and scale via instance matrix
-    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+    // Custom box with per-face UVs: sides = facade tile, top/bottom = dark roof
+    const buildCustomBox = (tile: number, faceW: number, faceH: number, faceD: number) => {
+      const geo = new THREE.BoxGeometry(1, 1, 1);
+      const col = tile % ATLAS_COLS;
+      const row = Math.floor(tile / ATLAS_COLS);
+      const uMin = col * tileW;
+      const vMin = 1 - (row + 1) * tileH;
 
-    // Load the facade atlas
-    const atlasTexture = new THREE.TextureLoader().load('/buildings/facade_atlas.png');
-    atlasTexture.wrapS = THREE.RepeatWrapping;
-    atlasTexture.wrapT = THREE.RepeatWrapping;
-    atlasTexture.magFilter = THREE.LinearFilter;
-    atlasTexture.minFilter = THREE.LinearMipmapLinearFilter;
-    atlasTexture.colorSpace = THREE.SRGBColorSpace;
+      const uvAttr = geo.getAttribute('uv');
+      const uv = uvAttr.array as Float32Array;
 
-    const buildingMat = new THREE.MeshStandardMaterial({
-      map: atlasTexture,
-      roughness: 0.8,
-      metalness: 0.1,
-    });
+      const repeatFB = Math.max(1, Math.round(faceW / 10));
+      const repeatLR = Math.max(1, Math.round(faceD / 10));
+      const repeatV = Math.max(1, Math.round(faceH / 12));
 
-    // Group placements by tile index for UV batching
+      for (let face = 0; face < 6; face++) {
+        const base = face * 4 * 2;
+        if (face === 2 || face === 3) {
+          // Roof/bottom → dark corner of parking garage tile
+          const roofU = (12 % ATLAS_COLS) * tileW + tileW * 0.1;
+          const roofV = 1 - (Math.floor(12 / ATLAS_COLS) + 1) * tileH + tileH * 0.1;
+          for (let v = 0; v < 4; v++) {
+            uv[base + v * 2] = roofU;
+            uv[base + v * 2 + 1] = roofV;
+          }
+        } else {
+          const hRepeat = (face === 0 || face === 1) ? repeatLR : repeatFB;
+          for (let v = 0; v < 4; v++) {
+            const rawU = uv[base + v * 2];
+            const rawV = uv[base + v * 2 + 1];
+            uv[base + v * 2] = uMin + (rawU * hRepeat % 1) * tileW;
+            uv[base + v * 2 + 1] = vMin + (rawV * repeatV % 1) * tileH;
+          }
+        }
+      }
+      uvAttr.needsUpdate = true;
+      return geo;
+    };
+
+    // Group by tile for batching
     const tileGroups = new Map<number, BoxPlacement[]>();
     for (const pl of placements) {
       const arr = tileGroups.get(pl.tile) ?? [];
@@ -910,29 +1028,23 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       tileGroups.set(pl.tile, arr);
     }
 
+    // Material with emissive window glow
+    const windowGlow = T.windowLitChance ?? 0.5;
+    const buildingMat = new THREE.MeshStandardMaterial({
+      map: atlasTexture,
+      roughness: 0.75,
+      metalness: 0.15,
+      emissiveMap: atlasTexture,
+      emissive: new THREE.Color(T.windowColor ?? 0xffcc66),
+      emissiveIntensity: windowGlow * 0.4,
+    });
+
     const dummy = new THREE.Object3D();
-    const _instances: THREE.Vector3[] = []; // Track positions for culling
+    const _instances: THREE.Vector3[] = [];
 
     for (const [tile, tilePlacements] of tileGroups) {
-      // Create per-tile geometry with correct UVs
-      const tileGeo = boxGeo.clone();
-      const col = tile % ATLAS_COLS;
-      const row = Math.floor(tile / ATLAS_COLS);
-      // Atlas row 0 = top of image = UV.y top
-      const uMin = col * tileW;
-      const uMax = (col + 1) * tileW;
-      const vMin = 1 - (row + 1) * tileH;  // flip Y
-      const vMax = 1 - row * tileH;
-
-      // Override UV attribute to map to atlas tile
-      const uvAttr = tileGeo.getAttribute('uv');
-      const uvArray = uvAttr.array as Float32Array;
-      for (let u = 0; u < uvArray.length; u += 2) {
-        // Map [0,1] → tile sub-region  
-        uvArray[u] = uMin + uvArray[u] * tileW;
-        uvArray[u + 1] = vMin + uvArray[u + 1] * tileH;
-      }
-      uvAttr.needsUpdate = true;
+      const rep = tilePlacements[0];
+      const tileGeo = buildCustomBox(tile, rep.w, rep.h, rep.d);
 
       const instancedMesh = new THREE.InstancedMesh(tileGeo, buildingMat, tilePlacements.length);
       instancedMesh.castShadow = true;
@@ -940,7 +1052,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
       for (let j = 0; j < tilePlacements.length; j++) {
         const pl = tilePlacements[j];
-        dummy.position.set(pl.x, pl.h / 2 - 5, pl.z);
+        dummy.position.set(pl.x, pl.h / 2, pl.z);
         dummy.scale.set(pl.w, pl.h, pl.d);
         dummy.rotation.set(0, pl.rotY, 0);
         dummy.updateMatrix();
@@ -951,7 +1063,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       group.add(instancedMesh);
     }
 
-    // Store instance positions for distance culling
     _buildingInstances = _instances;
     _buildingInstancedMeshes = [];
     group.children.forEach((child: THREE.Object3D) => {
@@ -960,6 +1071,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       }
     });
   }
+
 
   // ── Grandstand at start/finish (GLB model) ──
   {
@@ -995,6 +1107,49 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     }).catch((err) => {
       console.warn('Failed to load spectator stand model:', err);
     }));
+  }
+
+  // ── Environment-specific landmarks (e.g. DC monuments) ──
+  if (T.landmarks?.length) {
+    const landmarkCount = T.landmarks.length;
+    for (let li = 0; li < landmarkCount; li++) {
+      const landmarkFile = T.landmarks[li];
+      // Space landmarks evenly around the track (skip start/finish area)
+      const lmT = (0.15 + (li / landmarkCount) * 0.7) % 1;
+      const lmP = spline.getPointAt(lmT);
+      const lmTan = spline.getTangentAt(lmT).normalize();
+      const lmRight = new THREE.Vector3(lmTan.z, 0, -lmTan.x);
+      const lmSide = li % 2 === 0 ? 1 : -1; // alternate sides
+      const lmOffset = 40 + rng() * 20; // 40-60 units from center
+
+      _asyncLoads.push(loadGLB(`/buildings/${landmarkFile}`).then((model) => {
+        const bbox = new THREE.Box3().setFromObject(model);
+        const size = bbox.getSize(new THREE.Vector3());
+        // Scale landmark to ~15 world units wide
+        const targetW = 15;
+        const sf = targetW / Math.max(size.x, size.z, 1);
+        model.scale.setScalar(sf);
+
+        // Recompute bounding box after scaling
+        const scaledBox = new THREE.Box3().setFromObject(model);
+        model.position.set(
+          lmP.x + lmRight.x * lmOffset * lmSide,
+          -scaledBox.min.y, // sit on ground
+          lmP.z + lmRight.z * lmOffset * lmSide,
+        );
+        model.lookAt(lmP); // face the road
+
+        model.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            (child as THREE.Mesh).castShadow = true;
+          }
+        });
+
+        group.add(model);
+      }).catch((err) => {
+        console.warn(`Failed to load landmark ${landmarkFile}:`, err);
+      }));
+    }
   }
 
   // ── Road direction chevrons (double-chevron decals along track) ──

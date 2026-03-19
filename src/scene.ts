@@ -73,6 +73,7 @@ export interface SceneryTheme {
   treeModels?: string[];           // GLB filenames under /trees/ (e.g. ['red_maple.glb', 'pine.glb'])
   treeVariant?: string;            // e.g. 'standard', 'joshua', 'layered_pine', 'palm_frond', 'snow_capped'
   ambientLights?: string[];        // e.g. ['neon_edge', 'hazard_flasher', 'neon_pool', 'window_spill', 'torch_glow']
+  landmarks?: string[];             // GLB filenames under /buildings/ placed at unique trackside positions
 }
 
 // ── Environment Presets ──
@@ -125,6 +126,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       buildingDensity: 2.0, buildingRowCount: 3, buildingGapChance: 0.08,
       treeModels: ['red_maple.glb', 'red_maple_b.glb', 'dogwood.glb', 'walnut.glb', 'walnut_b.glb', 'oak.glb'],
       ambientLights: ['window_spill', 'hazard_flasher'],
+      landmarks: ['us_capitol.glb', 'washington_monument.glb', 'lincoln_memorial.glb'],
     },
   },
 
