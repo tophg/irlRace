@@ -1604,10 +1604,13 @@ canvas { display: block; }
   position: absolute; inset: 0;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  background:
-    linear-gradient(180deg, rgba(10,10,15,0.15) 0%, rgba(10,10,15,0.4) 50%, rgba(10,10,15,0.85) 100%),
-    url('/loading-bg.jpg') center/cover no-repeat;
   background-color: rgb(10,10,15);
+  background-image:
+    linear-gradient(180deg, rgba(10,10,15,0.15) 0%, rgba(10,10,15,0.4) 50%, rgba(10,10,15,0.85) 100%),
+    url('/loading-bg.jpg');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
   z-index: 95;
 }
 .loading-env-name {
