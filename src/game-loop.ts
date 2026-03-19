@@ -785,7 +785,10 @@ function gameLoop(timestamp: number) {
     // Audio
     // Audio — pitch-shift during slow-mo for cinematic feel
     const ts = getTimeScale();
-    updateEngineAudio(G.playerVehicle.speed, G.selectedCar.maxSpeed, ts);
+    updateEngineAudio(
+      G.playerVehicle.speed, G.selectedCar.maxSpeed, ts,
+      G.playerVehicle.isNitroActive, G.playerVehicle.throttle,
+    );
     setMusicTimeScale(ts);
     G.driftSfxCooldown -= frameDt;
     if (s === GameState.RACING && driftAbs > 0.3 && G.driftSfxCooldown <= 0) {

@@ -75,13 +75,21 @@ export function updateMusicVolume() {
   if (gameMusicAudio) gameMusicAudio.volume = s.masterVolume * 0.4;
 }
 
-// Multi-oscillator engine (fundamental + 2 harmonics)
-let engineOscs: OscillatorNode[] = [];
-let engineGains: GainNode[] = [];
+// ── Sample-based engine audio (3-layer crossfade) ──
+let engineLayers: { source: AudioBufferSourceNode; gain: GainNode }[] = [];
 let engineMaster: GainNode | null = null;
 let engineFilter: BiquadFilterNode | null = null;
 let prevGear = 0;
 let crackleTimeout: number | null = null;
+
+// One-shot buffers
+let bovBuffer: AudioBuffer | null = null;
+let spoolBuffer: AudioBuffer | null = null;
+let decelBuffer: AudioBuffer | null = null;
+let spoolSource: AudioBufferSourceNode | null = null;
+let decelSource: AudioBufferSourceNode | null = null;
+let _prevNitro = false;
+let _prevThrottle = 0;
 
 // Wind noise layer
 let windSource: AudioBufferSourceNode | null = null;
@@ -90,8 +98,31 @@ let windFilter: BiquadFilterNode | null = null;
 
 const GEAR_RATIOS = [3.2, 2.1, 1.4, 1.0, 0.78];
 const GEAR_COUNT = GEAR_RATIOS.length;
-const IDLE_FREQ = 75;
-const REDLINE_FREQ = 320;
+
+// Layer sample files (loaded async)
+const ENGINE_SAMPLES = [
+  'audio/engine-idle.wav',
+  'audio/engine-mid.wav',
+  'audio/engine-high.wav',
+];
+const ONESHOT_SAMPLES = {
+  bov: 'audio/turbo-bov.wav',
+  spool: 'audio/turbo-spool.wav',
+  decel: 'audio/engine-decel.wav',
+};
+
+/** Fetch + decode an audio file into an AudioBuffer. */
+async function loadSample(url: string): Promise<AudioBuffer | null> {
+  if (!audioCtx) return null;
+  try {
+    const resp = await fetch(url);
+    const ab = await resp.arrayBuffer();
+    return await audioCtx.decodeAudioData(ab);
+  } catch {
+    console.warn(`[audio] Failed to load sample: ${url}`);
+    return null;
+  }
+}
 
 export function initAudio() {
   stopAudio();
@@ -114,44 +145,22 @@ export function initAudio() {
 
   engineFilter = audioCtx.createBiquadFilter();
   engineFilter.type = 'lowpass';
-  engineFilter.frequency.value = 800;
-  engineFilter.Q.value = 1.5;
+  engineFilter.frequency.value = 1200;
+  engineFilter.Q.value = 1.0;
   engineFilter.connect(engineMaster);
   engineMaster.connect(masterGain);
 
-  // Layer 1: fundamental (sawtooth — raw engine rumble)
-  const osc1 = audioCtx.createOscillator();
-  osc1.type = 'sawtooth';
-  osc1.frequency.value = IDLE_FREQ;
-  const g1 = audioCtx.createGain();
-  g1.gain.value = 0.6;
-  osc1.connect(g1);
-  g1.connect(engineFilter);
-  osc1.start();
+  // Load engine layer samples asynchronously
+  loadEngineLayers();
 
-  // Layer 2: 2nd harmonic (square — adds punch)
-  const osc2 = audioCtx.createOscillator();
-  osc2.type = 'square';
-  osc2.frequency.value = IDLE_FREQ * 2;
-  const g2 = audioCtx.createGain();
-  g2.gain.value = 0.15;
-  osc2.connect(g2);
-  g2.connect(engineFilter);
-  osc2.start();
+  // Load one-shot samples
+  loadSample(ONESHOT_SAMPLES.bov).then(buf => { bovBuffer = buf; });
+  loadSample(ONESHOT_SAMPLES.spool).then(buf => { spoolBuffer = buf; });
+  loadSample(ONESHOT_SAMPLES.decel).then(buf => { decelBuffer = buf; });
 
-  // Layer 3: 3rd harmonic (triangle — high-end buzz)
-  const osc3 = audioCtx.createOscillator();
-  osc3.type = 'triangle';
-  osc3.frequency.value = IDLE_FREQ * 3;
-  const g3 = audioCtx.createGain();
-  g3.gain.value = 0.08;
-  osc3.connect(g3);
-  g3.connect(engineFilter);
-  osc3.start();
-
-  engineOscs = [osc1, osc2, osc3];
-  engineGains = [g1, g2, g3];
   prevGear = 0;
+  _prevNitro = false;
+  _prevThrottle = 0;
 
   // Wind noise layer (persistent white noise through bandpass)
   const windBufLen = audioCtx.sampleRate * 2;
@@ -173,43 +182,88 @@ export function initAudio() {
   windSource.start();
 }
 
-export function updateEngineAudio(speed: number, maxSpeed: number, timeScale = 1.0) {
-  if (!audioCtx || !engineMaster || engineOscs.length === 0) return;
+/** Load the 3 engine layer samples and create looping sources. */
+async function loadEngineLayers() {
+  if (!audioCtx || !engineFilter) return;
+  const buffers = await Promise.all(ENGINE_SAMPLES.map(url => loadSample(url)));
+  // Guard against race — audio may have been stopped while loading
+  if (!audioCtx || !engineFilter) return;
+
+  for (const buf of buffers) {
+    if (!buf) continue;
+    const source = audioCtx.createBufferSource();
+    source.buffer = buf;
+    source.loop = true;
+    source.playbackRate.value = 1.0;
+    const gain = audioCtx.createGain();
+    gain.gain.value = 0;
+    source.connect(gain);
+    gain.connect(engineFilter);
+    source.start();
+    engineLayers.push({ source, gain });
+  }
+}
+
+export function updateEngineAudio(speed: number, maxSpeed: number, timeScale = 1.0, isNitro = false, throttle = 0) {
+  if (!audioCtx || !engineMaster || engineLayers.length === 0) return;
 
   const ratio = Math.min(Math.abs(speed) / maxSpeed, 1);
+  const t = audioCtx.currentTime;
+  const ramp = 0.06;
 
   // Gear selection based on speed ratio
   const gearFloat = ratio * (GEAR_COUNT - 1);
   const gear = Math.min(Math.floor(gearFloat), GEAR_COUNT - 1);
-  const rpmInGear = gearFloat - gear;
 
-  // Gear shift event
+  // Gear shift event → play turbo BOV
   if (gear !== prevGear && ratio > 0.05) {
-    if (gear > prevGear) playGearShiftPop();
+    if (gear > prevGear) playTurboBOV();
     prevGear = gear;
   }
 
-  // Map RPM within current gear to frequency
-  const freq = IDLE_FREQ + rpmInGear * (REDLINE_FREQ - IDLE_FREQ);
-  const t = audioCtx.currentTime;
-  const ramp = 0.06;
-  engineOscs[0].frequency.setTargetAtTime(freq * timeScale, t, ramp);
-  engineOscs[1].frequency.setTargetAtTime(freq * 2 * timeScale, t, ramp);
-  engineOscs[2].frequency.setTargetAtTime(freq * 3 * timeScale, t, ramp);
+  // ── 3-layer equal-power crossfade ──
+  // Layer 0 (idle):  peak at ratio=0, fade out by ratio=0.35
+  // Layer 1 (mid):   peak at ratio=0.4, fade in from 0.15, fade out by 0.75
+  // Layer 2 (high):  peak at ratio=1.0, fade in from 0.5
+  const gains = [0, 0, 0];
+  if (ratio < 0.35) {
+    // Idle → Mid crossfade
+    const blend = ratio / 0.35;  // 0→1
+    gains[0] = Math.cos(blend * Math.PI / 2); // 1→0
+    gains[1] = Math.sin(blend * Math.PI / 2); // 0→1
+  } else if (ratio < 0.6) {
+    // Mid dominant
+    gains[1] = 1;
+  } else {
+    // Mid → High crossfade
+    const blend = (ratio - 0.6) / 0.4; // 0→1
+    gains[1] = Math.cos(blend * Math.PI / 2); // 1→0
+    gains[2] = Math.sin(blend * Math.PI / 2); // 0→1
+  }
 
-  // Harmonic mix shifts with RPM — more 2nd harmonic at high RPM
-  engineGains[0].gain.setTargetAtTime(0.5 + rpmInGear * 0.15, t, ramp);
-  engineGains[1].gain.setTargetAtTime(0.10 + rpmInGear * 0.18, t, ramp);
-  engineGains[2].gain.setTargetAtTime(0.05 + rpmInGear * 0.10, t, ramp);
+  // Pitch scaling: each layer pitches up with speed within its band
+  // Idle: 0.85→1.3, Mid: 0.75→1.4, High: 0.7→1.5 (× timeScale for slow-mo)
+  const pitches = [
+    (0.85 + ratio * 0.45) * timeScale,
+    (0.75 + ratio * 0.65) * timeScale,
+    (0.7 + ratio * 0.8) * timeScale,
+  ];
 
-  // Engine volume (scaled by settings)
+  for (let i = 0; i < engineLayers.length; i++) {
+    const layer = engineLayers[i];
+    const vol = gains[i] * getSettings().engineVolume * 0.12;
+    layer.gain.gain.setTargetAtTime(vol, t, ramp);
+    layer.source.playbackRate.setTargetAtTime(pitches[i], t, ramp);
+  }
+
+  // Engine master volume
   const vol = (0.02 + ratio * 0.09) * getSettings().engineVolume;
   engineMaster.gain.setTargetAtTime(vol, t, 0.05);
 
   if (masterGain) masterGain.gain.setTargetAtTime(getSettings().masterVolume, t, 0.1);
 
   // Filter opens with RPM
-  engineFilter!.frequency.setTargetAtTime(600 + rpmInGear * 600, t, ramp);
+  engineFilter!.frequency.setTargetAtTime(800 + ratio * 1200, t, ramp);
 
   // Wind noise — volume scales with speed², frequency shifts for whoosh
   if (windGain && windFilter) {
@@ -218,7 +272,43 @@ export function updateEngineAudio(speed: number, maxSpeed: number, timeScale = 1
     windFilter.frequency.setTargetAtTime(400 + ratio * 1200, t, 0.1);
   }
 
-  // Exhaust crackle on deceleration (RPM dropping while speed is high)
+  // ── Turbo spool layer — play during nitro ──
+  if (isNitro && !_prevNitro && spoolBuffer && masterGain) {
+    try {
+      spoolSource = audioCtx.createBufferSource();
+      spoolSource.buffer = spoolBuffer;
+      spoolSource.loop = true;
+      spoolSource.playbackRate.value = 0.8 + ratio * 0.4;
+      const spoolGain = audioCtx.createGain();
+      spoolGain.gain.value = 0.06 * getSettings().sfxVolume;
+      spoolSource.connect(spoolGain);
+      spoolGain.connect(masterGain);
+      spoolSource.start();
+    } catch {}
+  } else if (!isNitro && _prevNitro && spoolSource) {
+    try { spoolSource.stop(); } catch {}
+    spoolSource = null;
+  }
+  _prevNitro = isNitro;
+
+  // ── Decel one-shot — throttle released at high speed ──
+  if (throttle < 0.1 && _prevThrottle > 0.5 && ratio > 0.4 && decelBuffer && masterGain) {
+    try {
+      if (decelSource) { try { decelSource.stop(); } catch {} }
+      decelSource = audioCtx.createBufferSource();
+      decelSource.buffer = decelBuffer;
+      decelSource.playbackRate.value = 0.8 + ratio * 0.4;
+      const decelGain = audioCtx.createGain();
+      decelGain.gain.value = 0.05 * getSettings().sfxVolume;
+      decelSource.connect(decelGain);
+      decelGain.connect(masterGain);
+      decelSource.start();
+    } catch {}
+  }
+  _prevThrottle = throttle;
+
+  // Exhaust crackle on deceleration
+  const rpmInGear = gearFloat - gear;
   if (ratio > 0.3 && rpmInGear < 0.15 && speed > 0) {
     if (!crackleTimeout) {
       crackleTimeout = window.setTimeout(() => { crackleTimeout = null; }, 150);
@@ -227,20 +317,18 @@ export function updateEngineAudio(speed: number, maxSpeed: number, timeScale = 1
   }
 }
 
-function playGearShiftPop() {
-  if (!audioCtx || !masterGain) return;
+/** Play turbo blow-off valve sound on gear upshift. */
+function playTurboBOV() {
+  if (!audioCtx || !masterGain || !bovBuffer) return;
   const sfxVol = getSettings().sfxVolume;
-  const osc = audioCtx.createOscillator();
+  const source = audioCtx.createBufferSource();
+  source.buffer = bovBuffer;
+  source.playbackRate.value = 0.9 + Math.random() * 0.2; // slight pitch variation
   const gain = audioCtx.createGain();
-  osc.type = 'sawtooth';
-  osc.frequency.setValueAtTime(200, audioCtx.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 0.06);
-  gain.gain.setValueAtTime(0.08 * sfxVol, audioCtx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
-  osc.connect(gain);
+  gain.gain.value = 0.08 * sfxVol;
+  source.connect(gain);
   gain.connect(masterGain);
-  osc.start();
-  osc.stop(audioCtx.currentTime + 0.08);
+  source.start();
 }
 
 function playExhaustCrackle() {
@@ -516,17 +604,21 @@ export function playRumbleStrip() {
 
 export function stopAudio() {
   stopAllMusic();
-  for (const osc of engineOscs) { try { osc.stop(); } catch {} }
-  engineOscs = [];
-  engineGains = [];
+  // Stop sample-based engine layers
+  for (const layer of engineLayers) { try { layer.source.stop(); } catch {} }
+  engineLayers = [];
   engineMaster = null;
   engineFilter = null;
   masterGain = null;
   prevGear = 0;
+  _prevNitro = false;
+  _prevThrottle = 0;
   collisionSfxCooldown = 0;
   if (crackleTimeout) { clearTimeout(crackleTimeout); crackleTimeout = null; }
   if (windSource) { try { windSource.stop(); } catch {} windSource = null; }
   windGain = null; windFilter = null;
+  if (spoolSource) { try { spoolSource.stop(); } catch {} spoolSource = null; }
+  if (decelSource) { try { decelSource.stop(); } catch {} decelSource = null; }
   // Clean up NOS audio
   cleanupNitroAudio();
   // Note: audioCtx is kept alive as a singleton to avoid hitting browser limits
