@@ -19,19 +19,28 @@ const _sceneryGroupData = new WeakMap<THREE.Object3D, SceneryGroupData>();
 
 // ── Distance culling for procedural city buildings ──
 let _buildingClones: THREE.Object3D[] = [];
+let _buildingInstances: THREE.Vector3[] = [];
+let _buildingInstancedMeshes: THREE.InstancedMesh[] = [];
 const _CULL_DIST_SQ = 250 * 250;
 
 /** Call once per frame to cull buildings beyond camera range. */
 export function updateBuildingCulling(camPos: THREE.Vector3) {
+  // Legacy clone-based culling
   for (const b of _buildingClones) {
     const dx = b.position.x - camPos.x, dz = b.position.z - camPos.z;
     b.visible = (dx * dx + dz * dz) < _CULL_DIST_SQ;
+  }
+  // InstancedMesh culling: toggle visibility of entire mesh groups
+  for (const im of _buildingInstancedMeshes) {
+    im.visible = true; // InstancedMesh frustum culling handled by Three.js
   }
 }
 
 /** Clean up culling references on race exit. */
 export function destroyBuildingCulling() {
   _buildingClones = [];
+  _buildingInstances = [];
+  _buildingInstancedMeshes = [];
 }
 
 function getGroupData(group: THREE.Object3D): SceneryGroupData {
@@ -783,46 +792,46 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     group.add(board);
   }
 
-  // ── 3D model buildings (road-aligned procedural city blocks) ──
-  // Buildings are placed in depth rows along the spline, facing the road.
-  // Row 1 (near): small buildings, Row 2 (mid): medium, Row 3 (far): tall skyline.
+  // ── 3D model buildings → Procedural Box Cityscape (InstancedMesh) ──
+  // Replaces GLB loading with BoxGeometry + facade texture atlas.
+  // 1 material, 1-2 draw calls, ~2MB total vs 500MB+ GLBs.
   const isMobile = window.matchMedia('(pointer: coarse)').matches;
-  // Heavy models that must be skipped on mobile (15-25MB each, OOM risk)
-  const HEAVY_MODELS = new Set(['highrise_a.glb', 'highrise_b.glb', 'highrise_c.glb', 'highrise_d.glb', 'highrise_e.glb', 'highrise_f.glb']);
-  const filteredModelList = (T.buildingModels?.length ? T.buildingModels : ['skyscraper.glb'])
-    .filter(m => !isMobile || !HEAVY_MODELS.has(m));
-  const modelList = filteredModelList.length > 0 ? filteredModelList : ['skyscraper.glb'];
-  // On mobile: cap density and rows to prevent OOM crash
-  const density = isMobile ? Math.min(T.buildingDensity ?? 1.0, 0.4) : (T.buildingDensity ?? 1.0);
+  const density = isMobile ? Math.min(T.buildingDensity ?? 1.0, 0.5) : (T.buildingDensity ?? 1.0);
   const rowCount = isMobile ? 1 : Math.min(3, Math.max(1, T.buildingRowCount ?? 2));
-  const gapChance = isMobile ? Math.max(T.buildingGapChance ?? 0.15, 0.35) : (T.buildingGapChance ?? 0.15);
+  const gapChance = isMobile ? Math.max(T.buildingGapChance ?? 0.15, 0.3) : (T.buildingGapChance ?? 0.15);
 
-  // Categorize models by size tier
-  const SMALL_MODELS = new Set(['coastal_a.glb', 'coastal_b.glb', 'coastal_home.glb', 'nyc_apartment.glb', 'nyc_apartment_b.glb', 'nyc_apartment_c.glb', 'nyc_apartment_d.glb']);
-  const TALL_MODELS = new Set(['skyscraper.glb', 'nyc_skyscraper.glb', 'nyc_skyscraper_b.glb', 'highrise_a.glb', 'highrise_b.glb', 'highrise_c.glb', 'highrise_f.glb']);
-  // Everything else is MEDIUM (office, highrise_d, highrise_e, etc.)
+  // Atlas is 4×4 grid (16 tiles). Each environment uses a subset.
+  // Tile indices (row-major, 0-15):
+  //  0=glass office  1=brick apt    2=brutalist     3=dark glass
+  //  4=stone ornate  5=warehouse    6=neon commercial 7=stucco
+  //  8=steel modern  9=brownstone  10=art deco     11=japanese
+  // 12=parking       13=res tower  14=commercial   15=night concrete
+  const STYLE_TILES: Record<string, number[]> = {
+    modern:     [0, 2, 3, 8, 13, 14],
+    adobe:      [1, 4, 7, 9, 15],
+    beach_house:[5, 7, 12, 14],
+    cyberpunk:  [0, 3, 6, 8, 10, 15],
+    weathered:  [1, 2, 5, 9, 12, 15],
+    chalet:     [4, 7, 9, 11],
+    warehouse:  [2, 5, 12, 14],
+    concrete:   [2, 5, 12, 15],
+    bamboo_lodge:[7, 11, 4, 9],
+  };
+  const styleName = T.buildingStyle ?? 'modern';
+  const tiles = STYLE_TILES[styleName] ?? STYLE_TILES['modern'];
 
-  const smallPool = modelList.filter(m => SMALL_MODELS.has(m));
-  const tallPool = modelList.filter(m => TALL_MODELS.has(m));
-  const medPool = modelList.filter(m => !SMALL_MODELS.has(m) && !TALL_MODELS.has(m));
-  // Fallback: if a tier is empty, use the full list
-  const pickSmall = smallPool.length ? smallPool : modelList;
-  const pickMed = medPool.length ? medPool : modelList;
-  const pickTall = tallPool.length ? tallPool : modelList;
+  // Row definitions: [offsetMin, offsetMax, heightMin, heightMax]
+  const ROW_DEFS: [number, number, number, number][] = [];
+  if (rowCount >= 1) ROW_DEFS.push([30, 55, 12, 35]);
+  if (rowCount >= 2) ROW_DEFS.push([65, 95, 25, 60]);
+  if (rowCount >= 3) ROW_DEFS.push([105, 140, 40, 90]);
 
-  // Row definitions: [offsetMin, offsetMax, tierPool, scaleHMult]
-  const ROW_DEFS: [number, number, string[], number][] = [];
-  if (rowCount >= 1) ROW_DEFS.push([30, 55, pickSmall, 0.7]);
-  if (rowCount >= 2) ROW_DEFS.push([65, 95, pickMed, 1.0]);
-  if (rowCount >= 3) ROW_DEFS.push([105, 140, pickTall, 1.3]);
-
-  // Sample spacing along arc length (denser = closer spacing)
   const sampleSpacing = Math.max(15, 30 / density);
   const totalLength = spline.getLength();
   const sampleCount = Math.floor(totalLength / sampleSpacing);
-  const MAX_PLACEMENTS = isMobile ? 60 : 600;
+  const MAX_PLACEMENTS = isMobile ? 60 : 400;
 
-  // Pre-compute all spline sample points for proximity checking
+  // Pre-compute spline samples for proximity checking
   const CLEARANCE_SAMPLES = 80;
   const splineSamples: THREE.Vector3[] = [];
   for (let s = 0; s < CLEARANCE_SAMPLES; s++) {
@@ -830,30 +839,28 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   }
   const MIN_CLEARANCE_SQ = 28 * 28;
 
-  interface BuildingPlacement { x: number; z: number; scaleW: number; scaleH: number; scaleD: number; rotY: number; model: string; }
-  const placements: BuildingPlacement[] = [];
+  // Collect placements
+  interface BoxPlacement { x: number; z: number; w: number; h: number; d: number; rotY: number; tile: number; }
+  const placements: BoxPlacement[] = [];
 
   for (let i = 0; i < sampleCount && placements.length < MAX_PLACEMENTS; i++) {
     const t = (i / sampleCount) % 1;
     const p = spline.getPointAt(t);
     const tangent = spline.getTangentAt(t).normalize();
-    // Perpendicular direction (road-normal)
     const nx = tangent.z, nz = -tangent.x;
-    // Building faces the road: rotation from tangent
     const faceRoadRot = Math.atan2(tangent.x, tangent.z);
 
-    for (const [offMin, offMax, pool, hMult] of ROW_DEFS) {
+    for (const [offMin, offMax, hMin, hMax] of ROW_DEFS) {
       if (placements.length >= MAX_PLACEMENTS) break;
       for (const side of [-1, 1] as const) {
         if (placements.length >= MAX_PLACEMENTS) break;
-        // Gap probability — skip for variety (alleys, parking lots)
         if (rng() < gapChance) continue;
 
         const offset = offMin + rng() * (offMax - offMin);
         const x = p.x + nx * offset * side;
         const z = p.z + nz * offset * side;
 
-        // Proximity check against spline
+        // Proximity check
         let tooClose = false;
         for (const sp of splineSamples) {
           const dx = x - sp.x, dz = z - sp.z;
@@ -861,71 +868,97 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         }
         if (tooClose) continue;
 
-        const scaleW = 0.7 + rng() * 0.4;
-        const scaleH = (0.6 + rng() * 0.6) * hMult;
-        const scaleD = 0.7 + rng() * 0.4;
-        // Face the road with slight random jitter (±10°)
+        const w = 8 + rng() * 12;
+        const h = hMin + rng() * (hMax - hMin);
+        const d = 8 + rng() * 12;
         const rotY = faceRoadRot + (side > 0 ? Math.PI : 0) + (rng() - 0.5) * 0.35;
-        const model = pool[Math.floor(rng() * pool.length)];
-
-        placements.push({ x, z, scaleW, scaleH, scaleD, rotY, model });
+        const tile = tiles[Math.floor(rng() * tiles.length)];
+        placements.push({ x, z, w, h, d, rotY, tile });
       }
     }
   }
 
-  // Determine unique models needed
-  const uniqueModels = [...new Set(placements.map(p => p.model))];
+  // Build InstancedMesh from placements
+  if (placements.length > 0) {
+    const ATLAS_COLS = 4, ATLAS_ROWS = 4;
+    const tileW = 1 / ATLAS_COLS, tileH = 1 / ATLAS_ROWS;
 
-  // Track placed building clones for distance culling
-  const buildingClones: THREE.Object3D[] = [];
+    // Create box geometry with per-face UVs that we'll modify per-instance
+    // We'll use a unit box and scale via instance matrix
+    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
 
-  // Async: load all unique building models, then place clones
-  Promise.all(
-    uniqueModels.map(name => loadGLB(`/buildings/${name}`).then(scene => ({ name, scene })))
-  ).then((loaded) => {
-    const modelMap = new Map<string, { scene: THREE.Group; bottom: number }>();
-    for (const { name, scene } of loaded) {
-      const bbox = new THREE.Box3().setFromObject(scene);
-      modelMap.set(name, { scene, bottom: bbox.min.y });
-    }
+    // Load the facade atlas
+    const atlasTexture = new THREE.TextureLoader().load('/buildings/facade_atlas.png');
+    atlasTexture.wrapS = THREE.RepeatWrapping;
+    atlasTexture.wrapT = THREE.RepeatWrapping;
+    atlasTexture.magFilter = THREE.LinearFilter;
+    atlasTexture.minFilter = THREE.LinearMipmapLinearFilter;
+    atlasTexture.colorSpace = THREE.SRGBColorSpace;
 
-    // Per-model scale multipliers
-    const MODEL_SCALE: Record<string, number> = {
-      'skyscraper.glb': 1.0, 'nyc_skyscraper.glb': 1.0, 'nyc_skyscraper_b.glb': 0.95,
-      'office.glb': 0.85, 'nyc_apartment.glb': 0.7, 'nyc_apartment_b.glb': 0.65,
-      'nyc_apartment_c.glb': 0.7, 'coastal_a.glb': 0.5, 'coastal_b.glb': 0.5,
-      'coastal_home.glb': 0.45, 'office_b.glb': 0.8, 'nyc_apartment_d.glb': 0.65,
-      'highrise_a.glb': 0.9, 'highrise_b.glb': 0.9, 'highrise_c.glb': 0.85,
-      'highrise_d.glb': 0.85, 'highrise_e.glb': 0.9, 'highrise_f.glb': 0.9,
-    };
+    const buildingMat = new THREE.MeshStandardMaterial({
+      map: atlasTexture,
+      roughness: 0.8,
+      metalness: 0.1,
+    });
 
+    // Group placements by tile index for UV batching
+    const tileGroups = new Map<number, BoxPlacement[]>();
     for (const pl of placements) {
-      const entry = modelMap.get(pl.model);
-      if (!entry) continue;
-
-      const clone = entry.scene.clone(true);
-      const modelMult = MODEL_SCALE[pl.model] ?? 0.7;
-      const baseScale = 12 * modelMult;
-      clone.scale.set(baseScale * pl.scaleW, baseScale * pl.scaleH, baseScale * pl.scaleD);
-      clone.position.set(pl.x, -5 - entry.bottom * baseScale * pl.scaleH, pl.z);
-      clone.rotation.y = pl.rotY;
-
-      clone.traverse((child) => {
-        if ((child as THREE.Mesh).isMesh) {
-          (child as THREE.Mesh).castShadow = true;
-          (child as THREE.Mesh).receiveShadow = true;
-        }
-      });
-
-      group.add(clone);
-      buildingClones.push(clone);
+      const arr = tileGroups.get(pl.tile) ?? [];
+      arr.push(pl);
+      tileGroups.set(pl.tile, arr);
     }
 
-    // Register for distance culling
-    _buildingClones = buildingClones;
-  }).catch((err) => {
-    console.warn('Failed to load building models:', err);
-  });
+    const dummy = new THREE.Object3D();
+    const _instances: THREE.Vector3[] = []; // Track positions for culling
+
+    for (const [tile, tilePlacements] of tileGroups) {
+      // Create per-tile geometry with correct UVs
+      const tileGeo = boxGeo.clone();
+      const col = tile % ATLAS_COLS;
+      const row = Math.floor(tile / ATLAS_COLS);
+      // Atlas row 0 = top of image = UV.y top
+      const uMin = col * tileW;
+      const uMax = (col + 1) * tileW;
+      const vMin = 1 - (row + 1) * tileH;  // flip Y
+      const vMax = 1 - row * tileH;
+
+      // Override UV attribute to map to atlas tile
+      const uvAttr = tileGeo.getAttribute('uv');
+      const uvArray = uvAttr.array as Float32Array;
+      for (let u = 0; u < uvArray.length; u += 2) {
+        // Map [0,1] → tile sub-region  
+        uvArray[u] = uMin + uvArray[u] * tileW;
+        uvArray[u + 1] = vMin + uvArray[u + 1] * tileH;
+      }
+      uvAttr.needsUpdate = true;
+
+      const instancedMesh = new THREE.InstancedMesh(tileGeo, buildingMat, tilePlacements.length);
+      instancedMesh.castShadow = true;
+      instancedMesh.receiveShadow = true;
+
+      for (let j = 0; j < tilePlacements.length; j++) {
+        const pl = tilePlacements[j];
+        dummy.position.set(pl.x, pl.h / 2 - 5, pl.z);
+        dummy.scale.set(pl.w, pl.h, pl.d);
+        dummy.rotation.set(0, pl.rotY, 0);
+        dummy.updateMatrix();
+        instancedMesh.setMatrixAt(j, dummy.matrix);
+        _instances.push(new THREE.Vector3(pl.x, 0, pl.z));
+      }
+      instancedMesh.instanceMatrix.needsUpdate = true;
+      group.add(instancedMesh);
+    }
+
+    // Store instance positions for distance culling
+    _buildingInstances = _instances;
+    _buildingInstancedMeshes = [];
+    group.children.forEach((child: THREE.Object3D) => {
+      if ((child as THREE.InstancedMesh).isInstancedMesh) {
+        _buildingInstancedMeshes.push(child as THREE.InstancedMesh);
+      }
+    });
+  }
 
   // ── Grandstand at start/finish (GLB model) ──
   {
