@@ -476,7 +476,7 @@ export class Vehicle {
     let hlLPos: [number, number, number], hlRPos: [number, number, number];
     let tlLPos: [number, number, number], tlRPos: [number, number, number];
     let hlSize: [number, number], tlSize: [number, number];
-    let spotI: number, spotD: number, beamLen: number, beamRad: number;
+    let spotI: number, spotD: number;
 
     // Headlight position logic
     if (auto?.headlightL && auto?.headlightR) {
@@ -521,11 +521,8 @@ export class Vehicle {
       tlSize = [0.28, 0.10];
     }
 
-    // Beam parameters (use manual overrides if present, else defaults)
     spotI = ld?.spotIntensity || 2.0;
     spotD = ld?.spotDistance || 20;
-    beamLen = ld?.beamLength || 15;
-    beamRad = ld?.beamRadius || 3.5;
 
     // ── Headlight decals (flat planes flush on front face, facing +Z) ──
     const hlGeo = new THREE.PlaneGeometry(hlSize[0], hlSize[1]);
@@ -562,25 +559,8 @@ export class Vehicle {
     hlSpotR.target = targetR;
     this._bodyGroup.add(hlSpotR);
 
-    // Volumetric beam cones
-    const beamGeo = new THREE.ConeGeometry(beamRad, beamLen, 12, 1, true);
-    const beamMat = new THREE.MeshBasicMaterial({
-      color: 0xffeedd,
-      transparent: true,
-      opacity: 0.025,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-
-    const beamL = new THREE.Mesh(beamGeo, beamMat);
-    beamL.rotation.x = -Math.PI / 2 - 0.15;
-    beamL.position.set(hlLPos[0], hlLPos[1] - 0.5, hlLPos[2] + beamLen / 2);
-    this._bodyGroup.add(beamL);
-
-    const beamR = new THREE.Mesh(beamGeo, beamMat.clone());
-    beamR.rotation.x = -Math.PI / 2 - 0.15;
-    beamR.position.set(hlRPos[0], hlRPos[1] - 0.5, hlRPos[2] + beamLen / 2);
-    this._bodyGroup.add(beamR);
+    // (Volumetric beam cones removed — subtle at 2.5% opacity and caused
+    //  disembodied cone fragments during explosion VFX via the fracture system)
 
     // ── Taillight decals — DISABLED ──
     // const tlGeo = new THREE.PlaneGeometry(tlSize[0], tlSize[1]);
