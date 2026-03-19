@@ -91,6 +91,8 @@ const _hoodExplosionPos = new THREE.Vector3();
 const _nitroTrailOffset = new THREE.Vector3();
 const _swayQuat = new THREE.Quaternion();
 const _swayAxis = new THREE.Vector3(0, 0, 1); // roll axis (camera forward)
+let _racingElapsed = 0;
+let _perfectStartChecked = false;
 
 // First-boost-per-race tracker
 let _firstBoostFired = false;
@@ -224,6 +226,8 @@ export function initGameLoop(deps: GameLoopDeps) {
 export function resetGameLoopState() {
   _firstBoostFired = false;
   _wrongWayBeepTimer = 0; // Bug #7 fix
+  _racingElapsed = 0;
+  _perfectStartChecked = false;
   G._nearMissCooldowns.clear(); // Bug #5 fix
   if (_speedLinesEl) { _speedLinesEl.remove(); _speedLinesEl = null; }
 }
@@ -577,6 +581,13 @@ function gameLoop(timestamp: number) {
       for (const ai of G.aiRacers) ai.vehicle.saveSnapshot();
 
       const currentInput = s === GameState.RACING ? getInput() : { up: false, down: false, left: false, right: false, boost: false, steerAnalog: 0 };
+
+      // Perfect start detection: gas pressed in first physics frame of racing
+      if (s === GameState.RACING && !_perfectStartChecked) {
+        _perfectStartChecked = true;
+        if (currentInput.up) G.raceStats.perfectStart = true;
+      }
+
       if (G.playerVehicle) {
         rollbackManager.recordLocalFrame(currentInput, G.playerVehicle.serializeState());
       }

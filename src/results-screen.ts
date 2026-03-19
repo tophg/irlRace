@@ -4,7 +4,7 @@ import { GameState, EventType } from './types';
 import { G } from './game-context';
 type GameContext = typeof G;
 import { RaceEngine } from './race-engine';
-import { processRaceRewards, getProgress, levelProgress, xpToNextLevel, type RaceResult } from './progression';
+import { processRaceRewards, getProgress, levelProgress, xpToNextLevel, canPrestige, prestige, type RaceResult } from './progression';
 import { playRewardsAnimation } from './rewards-animation';
 import { spawnVictoryConfetti, setConfettiContinuous } from './vfx';
 import { showTouchControls } from './input';
@@ -203,15 +203,20 @@ export async function showResults(
         <div class="lap-breakdown-title">RACE STATS</div>
         <div class="lap-breakdown-row"><span>Top Speed</span><span>${Math.floor(G.raceStats.topSpeed)} MPH</span></div>
         <div class="lap-breakdown-row"><span>Drift Time</span><span>${G.raceStats.totalDriftTime.toFixed(1)}s</span></div>
+        <div class="lap-breakdown-row"><span>Overtakes</span><span>${G.raceStats.overtakeCount}</span></div>
+        <div class="lap-breakdown-row"><span>Near Misses</span><span>${G.raceStats.nearMissCount}</span></div>
         <div class="lap-breakdown-row"><span>Avg Position</span><span>${G.raceStats.positionSampleCount > 0 ? (G.raceStats.avgPosition / G.raceStats.positionSampleCount).toFixed(1) : '—'}</span></div>
         <div class="lap-breakdown-row"><span>Collisions</span><span>${G.raceStats.collisionCount}</span></div>
-        <div class="lap-breakdown-row"><span>Near Misses</span><span>${G.raceStats.nearMissCount}</span></div>
+        ${G.raceStats.speedDemonTime >= 5 ? `<div class="lap-breakdown-row best"><span>⚡ Speed Demon</span><span>${G.raceStats.speedDemonTime.toFixed(1)}s</span></div>` : ''}
+        ${G.raceStats.perfectStart ? '<div class="lap-breakdown-row best"><span>🚀 Perfect Start</span><span>YES</span></div>' : ''}
       </div>
       ${buildRewardHTML(earlyRewards)}
+      ${earlyRewards.streakMultiplier > 1 ? `<div style="text-align:center;margin:6px 0;color:#ffd700;font-weight:700;">🔥 Win Streak: ${getProgress().winStreak} — ×${earlyRewards.streakMultiplier.toFixed(1)} bonus</div>` : ''}
     </div>
     <div class="results-actions">
       <div class="menu-buttons" style="width:240px;">
         ${hasReplay ? '<button class="menu-btn" id="btn-replay" style="border-color:var(--col-cyan);color:var(--col-cyan);">WATCH REPLAY</button>' : ''}
+        ${canPrestige() ? '<button class="menu-btn" id="btn-prestige" style="background:linear-gradient(135deg,#ffd700,#ff8c00);color:#000;font-weight:700;">⭐ PRESTIGE</button>' : ''}
         ${isMultiplayer ? '<button class="menu-btn" id="btn-rematch" style="background:var(--col-green);">REMATCH</button>' : ''}
         ${!isMultiplayer ? '<button class="menu-btn" id="btn-play-again">PLAY AGAIN</button>' : ''}
         <button class="menu-btn" id="btn-main-menu">MAIN MENU</button>
@@ -220,6 +225,14 @@ export async function showResults(
   `;
   uiOverlay.appendChild(el);
 
+  document.getElementById('btn-prestige')?.addEventListener('click', () => {
+    if (prestige()) {
+      // Re-render the reward HTML section
+      const rewardSection = el.querySelector('.results-scroll .lap-breakdown:last-of-type');
+      if (rewardSection) rewardSection.outerHTML = buildRewardHTML(earlyRewards);
+      document.getElementById('btn-prestige')?.remove();
+    }
+  });
   document.getElementById('btn-replay')?.addEventListener('click', () => {
     el.remove();
     callbacks.destroyLeaderboard();
