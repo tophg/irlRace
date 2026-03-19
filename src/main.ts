@@ -1,15 +1,16 @@
-/* ── Hood Racer — Main Entry Point & Game Orchestrator ── */
+/* ── Race IRL — Main Entry Point & Game Orchestrator ── */
 
 import * as THREE from 'three/webgpu';
 import './index.css';
 
-import { GameState, CarDef, EventType } from './types';
+import { GameState, CarDef, EventType, CAR_ROSTER } from './types';
 import { initScene, getScene } from './scene';
 import { showLapOverlay } from './hud';
 import { playCheckpointSFX, playLapFanfare, playFinishFanfare, playPositionSFX, playTitleMusic, pauseMusic, resumeMusic, stopAllMusic } from './audio';
 import { showResults, resolvePlayerName } from './results-screen';
 import { enterSpectatorMode, cycleSpectateTarget, destroySpectateHUD } from './spectator';
 import { initGarage, destroyGarage } from './garage';
+import { loadCarModel } from './loaders';
 import { showTrackEditor, destroyTrackEditor } from './track-editor';
 import { loadProgress } from './progression';
 import { initInput, showTouchControls } from './input';
@@ -91,47 +92,233 @@ window.addEventListener('keydown', (e) => {
 
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// TITLE SCREEN
+// TITLE SCREEN — 3D Car Showcase
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// Title scene state
+let titleScene: THREE.Scene | null = null;
+let titleCamera: THREE.PerspectiveCamera | null = null;
+let titleCarModel: THREE.Group | null = null;
+let titleOrbitAngle = 0;
+let titleAnimFrame = 0;
+let titleEmberCanvas: HTMLCanvasElement | null = null;
+let titleEmberCtx: CanvasRenderingContext2D | null = null;
+let titleEmberParticles: { x: number; y: number; vx: number; vy: number; size: number; alpha: number; hue: number }[] = [];
+
+function createTitleScene() {
+  titleScene = new THREE.Scene();
+  titleScene.background = new THREE.Color(0x060610);
+
+  titleCamera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
+  titleCamera.position.set(0, 2.0, 7);
+  titleCamera.lookAt(0, 0.4, 0);
+
+  // ── Lighting — Dramatic dual rim ──
+  const ambient = new THREE.AmbientLight(0x222233, 0.5);
+  titleScene.add(ambient);
+
+  // Cyan rim light (right/front) — matches IRL glow
+  const cyanRim = new THREE.SpotLight(0x00e5ff, 200, 20, Math.PI / 5, 0.5, 1.2);
+  cyanRim.position.set(5, 4, 3);
+  cyanRim.target.position.set(0, 0.5, 0);
+  titleScene.add(cyanRim);
+  titleScene.add(cyanRim.target);
+
+  // Orange rim light (left/back) — matches RACE accent
+  const orangeRim = new THREE.SpotLight(0xff4d00, 180, 20, Math.PI / 5, 0.5, 1.2);
+  orangeRim.position.set(-5, 3, -3);
+  orangeRim.target.position.set(0, 0.5, 0);
+  titleScene.add(orangeRim);
+  titleScene.add(orangeRim.target);
+
+  // Soft overhead fill
+  const overhead = new THREE.PointLight(0x888899, 20, 12, 1.5);
+  overhead.position.set(0, 6, 0);
+  titleScene.add(overhead);
+
+  // ── Reflective ground plane ──
+  const groundGeo = new THREE.PlaneGeometry(30, 30);
+  const groundMat = new THREE.MeshStandardMaterial({
+    color: 0x080812,
+    roughness: 0.15,
+    metalness: 0.85,
+    transparent: true,
+    opacity: 0.8,
+  });
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = 0;
+  titleScene.add(ground);
+
+  // Load random car (async, non-blocking)
+  const randomCar = CAR_ROSTER[Math.floor(Math.random() * Math.min(5, CAR_ROSTER.length))]; // pick from first 5 unlocked-by-default
+  loadCarModel(randomCar.file).then((model: THREE.Group) => {
+    if (!titleScene) return; // cleaned up before load finished
+    model.position.y = 0.3;
+    // Add clearcoat for premium look
+    model.traverse((child: any) => {
+      if (child.isMesh && child.material?.isMeshStandardMaterial) {
+        child.material.clearcoat = 0.8;
+        child.material.clearcoatRoughness = 0.05;
+        child.material.envMapIntensity = 1.0;
+        child.material.needsUpdate = true;
+      }
+    });
+    titleScene!.add(model);
+    titleCarModel = model;
+  }).catch(() => { /* silent — title works without car */ });
+}
+
+function updateTitleScene() {
+  if (!titleScene || !titleCamera) return;
+
+  // Slow orbit
+  titleOrbitAngle += 0.003;
+  const radius = 7;
+  titleCamera.position.x = Math.sin(titleOrbitAngle) * radius;
+  titleCamera.position.z = Math.cos(titleOrbitAngle) * radius;
+  titleCamera.position.y = 2.0 + Math.sin(titleOrbitAngle * 0.5) * 0.3; // gentle bob
+  titleCamera.lookAt(0, 0.4, 0);
+
+  renderer.render(titleScene, titleCamera);
+}
+
+function destroyTitleScene() {
+  if (titleCarModel && titleScene) {
+    titleScene.remove(titleCarModel);
+    titleCarModel = null;
+  }
+  titleScene = null;
+  titleCamera = null;
+  cancelAnimationFrame(titleAnimFrame);
+
+  // Clean up ember canvas
+  if (titleEmberCanvas) {
+    titleEmberCanvas.remove();
+    titleEmberCanvas = null;
+    titleEmberCtx = null;
+    titleEmberParticles = [];
+  }
+}
+
+// ── Ember Particle Overlay ──
+
+function createEmberOverlay() {
+  titleEmberCanvas = document.createElement('canvas');
+  titleEmberCanvas.className = 'title-ember-canvas';
+  titleEmberCanvas.width = window.innerWidth;
+  titleEmberCanvas.height = window.innerHeight;
+  titleEmberCtx = titleEmberCanvas.getContext('2d')!;
+
+  // Create particles
+  titleEmberParticles = [];
+  for (let i = 0; i < 35; i++) {
+    titleEmberParticles.push({
+      x: Math.random() * titleEmberCanvas.width,
+      y: Math.random() * titleEmberCanvas.height,
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: -(0.2 + Math.random() * 0.6), // upward drift
+      size: 1 + Math.random() * 2.5,
+      alpha: 0.1 + Math.random() * 0.25,
+      hue: Math.random() > 0.5 ? 20 : 190, // warm orange or cool cyan
+    });
+  }
+
+  const titleEl = document.getElementById('title-screen');
+  if (titleEl) titleEl.appendChild(titleEmberCanvas);
+}
+
+function updateEmbers() {
+  if (!titleEmberCtx || !titleEmberCanvas) return;
+  const w = titleEmberCanvas.width;
+  const h = titleEmberCanvas.height;
+
+  titleEmberCtx.clearRect(0, 0, w, h);
+
+  for (const p of titleEmberParticles) {
+    p.x += p.vx;
+    p.y += p.vy;
+
+    // Wrap around
+    if (p.y < -10) { p.y = h + 10; p.x = Math.random() * w; }
+    if (p.x < -10) p.x = w + 10;
+    if (p.x > w + 10) p.x = -10;
+
+    titleEmberCtx.beginPath();
+    titleEmberCtx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    const sat = p.hue < 100 ? '80%' : '70%';
+    const light = p.hue < 100 ? '55%' : '60%';
+    titleEmberCtx.fillStyle = `hsla(${p.hue}, ${sat}, ${light}, ${p.alpha})`;
+    titleEmberCtx.fill();
+  }
+}
+
+// ── Title Screen Loop ──
+
+function titleLoop() {
+  if (G.gameState !== GameState.TITLE) return;
+  updateTitleScene();
+  updateEmbers();
+  titleAnimFrame = requestAnimationFrame(titleLoop);
+}
 
 function showTitleScreen() {
   G.gameState = GameState.TITLE;
   showTouchControls(false);
   playTitleMusic();
 
+  // Create 3D scene
+  createTitleScene();
+
   const titleEl = document.createElement('div');
   titleEl.className = 'title-screen';
   titleEl.id = 'title-screen';
   titleEl.innerHTML = `
-    <div class="title-logo">HOOD RACER</div>
-    <div class="title-subtitle">Street Legends Never Stop</div>
-    <div class="menu-buttons">
-      <button class="menu-btn" id="btn-singleplayer">SINGLEPLAYER</button>
-      <button class="menu-btn" id="btn-multiplayer">MULTIPLAYER</button>
-      <button class="menu-btn" id="btn-track-editor" style="border-color:#ff6600;color:#ff8833;">🏁 TRACK EDITOR</button>
-      <button class="menu-btn" id="btn-calibrate" style="border-color:#00ffff;color:#00ffff;">✨ CALIBRATION STUDIO</button>
-      <button class="menu-btn" id="btn-controls" style="border-color:var(--col-text-dim);font-size:16px;">CONTROLS</button>
-      <button class="menu-btn" id="btn-settings" style="border-color:var(--col-text-dim);font-size:16px;">SETTINGS</button>
+    <div class="title-speed-lines"></div>
+    <div class="title-content">
+      <div class="title-logo"><span class="title-race">RACE</span> <span class="title-irl">IRL</span></div>
+      <div class="title-subtitle">INDOOR RACING LEAGUE</div>
+      <div class="menu-buttons">
+        <button class="menu-btn" id="btn-singleplayer">SINGLEPLAYER</button>
+        <button class="menu-btn" id="btn-multiplayer">MULTIPLAYER</button>
+        <button class="menu-btn menu-btn--accent" id="btn-track-editor">🏁 TRACK EDITOR</button>
+        <button class="menu-btn menu-btn--cyan" id="btn-calibrate">✨ CALIBRATION STUDIO</button>
+        <div class="menu-row-secondary">
+          <button class="menu-btn menu-btn--small" id="btn-controls">CONTROLS</button>
+          <button class="menu-btn menu-btn--small" id="btn-settings">SETTINGS</button>
+        </div>
+      </div>
+      <div class="title-version">v0.9 — raceirl.com</div>
+      <div class="title-teaser">🏠 Race your actual neighborhood — Coming Soon</div>
     </div>
   `;
   uiOverlay.appendChild(titleEl);
 
+  // Create ember overlay
+  createEmberOverlay();
+
+  // Start title render loop
+  titleLoop();
+
   // Browser autoplay policy blocks music at page load; retry on first user click
   titleEl.addEventListener('click', () => playTitleMusic(), { once: true });
 
-  document.getElementById('btn-singleplayer')!.addEventListener('click', () => {
+  const cleanupAndDo = (fn: () => void) => {
+    destroyTitleScene();
     titleEl.remove();
-    enterGarage('singleplayer');
+    fn();
+  };
+
+  document.getElementById('btn-singleplayer')!.addEventListener('click', () => {
+    cleanupAndDo(() => enterGarage('singleplayer'));
   });
 
   document.getElementById('btn-multiplayer')!.addEventListener('click', () => {
-    titleEl.remove();
-    enterGarage('multiplayer');
+    cleanupAndDo(() => enterGarage('multiplayer'));
   });
 
   document.getElementById('btn-track-editor')!.addEventListener('click', () => {
-    titleEl.remove();
-    enterTrackEditor();
+    cleanupAndDo(() => enterTrackEditor());
   });
 
   document.getElementById('btn-controls')!.addEventListener('click', showControlsRef);
@@ -144,6 +331,7 @@ function showTitleScreen() {
   });
 
   document.getElementById('btn-calibrate')!.addEventListener('click', () => {
+    destroyTitleScene();
     window.location.href = '?calibrate=1';
   });
 }

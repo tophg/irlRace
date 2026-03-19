@@ -1,4 +1,4 @@
-/* ── Hood Racer — Global Styles ── */
+/* ── Race IRL — Global Styles ── */
 
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Racing+Sans+One&display=swap');
 
@@ -118,62 +118,264 @@ canvas { display: block; }
   position: absolute; inset: 0;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  gap: 32px;
-  background:
-    linear-gradient(180deg, rgba(10,10,15,0.1) 0%, rgba(10,10,15,0.3) 60%, rgba(10,10,15,0.7) 100%),
-    url('/title-bg.jpg') center/cover no-repeat;
+  background: radial-gradient(ellipse at 50% 40%, rgba(10,20,30,0.9) 0%, rgba(6,6,12,0.98) 70%);
   z-index: 100;
+  overflow: hidden;
+}
+
+/* Animated speed-line streaks */
+.title-speed-lines {
+  position: absolute; inset: 0;
+  overflow: hidden;
+  opacity: 0.35;
+}
+.title-speed-lines::before,
+.title-speed-lines::after {
+  content: '';
+  position: absolute;
+  width: 200%; height: 2px;
+  top: 35%;
+  left: -50%;
+  background: linear-gradient(90deg, transparent, var(--col-cyan), transparent);
+  transform: rotate(-8deg);
+  animation: speed-streak 3s ease-in-out infinite;
+}
+.title-speed-lines::after {
+  top: 55%;
+  background: linear-gradient(90deg, transparent, var(--col-accent), transparent);
+  animation-delay: 1.5s;
+  transform: rotate(-5deg);
+}
+@keyframes speed-streak {
+  0%   { transform: rotate(-8deg) translateX(-60%); opacity: 0; }
+  40%  { opacity: 1; }
+  100% { transform: rotate(-8deg) translateX(60%); opacity: 0; }
+}
+
+.title-content {
+  position: relative;
+  z-index: 2;
+  display: flex; flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  animation: title-content-in 1s ease-out;
+}
+@keyframes title-content-in {
+  from { opacity: 0; transform: translateY(20px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .title-logo {
   font-family: var(--font-display);
-  font-size: clamp(48px, 10vw, 96px);
-  color: var(--col-accent);
-  text-shadow:
-    0 0 20px var(--col-accent-glow),
-    0 0 60px rgba(255,77,0,0.4),
-    0 4px 0 #aa2200;
-  letter-spacing: 4px;
+  font-size: clamp(52px, 12vw, 110px);
+  letter-spacing: 6px;
   text-transform: uppercase;
-  animation: title-pulse 2s ease-in-out infinite alternate;
+  line-height: 1;
+  animation: title-entrance 0.8s cubic-bezier(0.16, 1, 0.3, 1);
 }
-@keyframes title-pulse {
-  0% { text-shadow: 0 0 20px var(--col-accent-glow), 0 0 60px rgba(255,77,0,0.4), 0 4px 0 #aa2200; }
-  100% { text-shadow: 0 0 40px var(--col-accent-glow), 0 0 100px rgba(255,77,0,0.6), 0 4px 0 #aa2200; }
+@keyframes title-entrance {
+  0%   { transform: scale(1.5); opacity: 0; filter: blur(8px); }
+  60%  { transform: scale(0.98); opacity: 1; filter: blur(0); }
+  100% { transform: scale(1); }
+}
+
+.title-race {
+  color: #ffffff;
+  text-shadow:
+    0 0 20px rgba(255,255,255,0.3),
+    0 0 60px rgba(255,77,0,0.2),
+    0 4px 0 rgba(0,0,0,0.4);
+}
+.title-irl {
+  color: var(--col-cyan);
+  text-shadow:
+    0 0 20px rgba(0,229,255,0.6),
+    0 0 60px rgba(0,229,255,0.3),
+    0 0 120px rgba(0,229,255,0.15),
+    0 4px 0 rgba(0,80,100,0.5);
+  animation: irl-glow 2s ease-in-out infinite alternate;
+}
+@keyframes irl-glow {
+  0%   { text-shadow: 0 0 20px rgba(0,229,255,0.6), 0 0 60px rgba(0,229,255,0.3), 0 0 120px rgba(0,229,255,0.15), 0 4px 0 rgba(0,80,100,0.5); }
+  100% { text-shadow: 0 0 30px rgba(0,229,255,0.8), 0 0 80px rgba(0,229,255,0.4), 0 0 160px rgba(0,229,255,0.2), 0 4px 0 rgba(0,80,100,0.5); }
 }
 
 .title-subtitle {
   font-family: var(--font-body);
-  font-size: 16px;
-  color: var(--col-text-dim);
-  letter-spacing: 6px;
+  font-size: clamp(11px, 2vw, 15px);
+  color: rgba(255,255,255,0.35);
+  letter-spacing: clamp(4px, 1.5vw, 10px);
   text-transform: uppercase;
+  font-weight: 400;
+  margin-bottom: 32px;
 }
 
 .menu-buttons {
-  display: flex; flex-direction: column; gap: 12px;
+  display: flex; flex-direction: column; gap: 10px;
   width: min(320px, 80vw);
+  animation: menu-fade-in 0.8s ease-out 0.3s both;
+}
+@keyframes menu-fade-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .menu-btn {
-  padding: 16px 32px;
-  border: 2px solid var(--col-accent);
+  padding: 14px 32px;
+  border: 1px solid rgba(255,255,255,0.12);
   border-radius: var(--radius);
-  background: rgba(255,77,0,0.08);
+  background: rgba(255,255,255,0.04);
   color: var(--col-text);
   font-family: var(--font-display);
-  font-size: 20px;
+  font-size: 18px;
   letter-spacing: 2px;
   text-transform: uppercase;
   cursor: pointer;
   transition: all 0.2s ease;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 .menu-btn:hover, .menu-btn:active {
-  background: var(--col-accent);
-  color: #fff;
-  box-shadow: 0 0 24px rgba(255,77,0,0.5);
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.25);
   transform: scale(1.03);
+  box-shadow: 0 0 20px rgba(255,255,255,0.08);
+}
+.menu-btn--accent {
+  border-color: rgba(255,77,0,0.3);
+  color: var(--col-accent);
+}
+.menu-btn--accent:hover {
+  background: rgba(255,77,0,0.15);
+  border-color: var(--col-accent);
+  box-shadow: 0 0 24px rgba(255,77,0,0.3);
+}
+.menu-btn--cyan {
+  border-color: rgba(0,229,255,0.3);
+  color: var(--col-cyan);
+}
+.menu-btn--cyan:hover {
+  background: rgba(0,229,255,0.12);
+  border-color: var(--col-cyan);
+  box-shadow: 0 0 24px rgba(0,229,255,0.3);
+}
+.menu-btn--small {
+  padding: 10px 20px;
+  font-size: 14px;
+  border-color: rgba(255,255,255,0.08);
+  color: var(--col-text-dim);
+}
+.menu-row-secondary {
+  display: flex; gap: 10px;
+  margin-top: 4px;
+}
+.menu-row-secondary .menu-btn--small {
+  flex: 1;
+}
+
+.title-version {
+  margin-top: 24px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.15);
+  letter-spacing: 2px;
+  font-family: var(--font-body);
+  animation: menu-fade-in 0.8s ease-out 0.6s both;
+}
+
+/* Floating bob on logo */
+.title-logo {
+  animation: title-entrance 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+             title-float 4s ease-in-out 1s infinite;
+}
+@keyframes title-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+
+/* Subtitle accent line */
+.title-subtitle::after {
+  content: '';
+  display: block;
+  width: 60px;
+  height: 1px;
+  margin: 12px auto 0;
+  background: linear-gradient(90deg, transparent, rgba(0,229,255,0.3), rgba(255,77,0,0.3), transparent);
+  animation: accent-line-in 1s ease-out 0.5s both;
+}
+@keyframes accent-line-in {
+  from { width: 0; opacity: 0; }
+  to   { width: 60px; opacity: 1; }
+}
+
+/* Staggered button entrance */
+.menu-buttons .menu-btn:nth-child(1) { animation: menu-fade-in 0.5s ease-out 0.4s both; }
+.menu-buttons .menu-btn:nth-child(2) { animation: menu-fade-in 0.5s ease-out 0.5s both; }
+.menu-buttons .menu-btn:nth-child(3) { animation: menu-fade-in 0.5s ease-out 0.6s both; }
+.menu-buttons .menu-btn:nth-child(4) { animation: menu-fade-in 0.5s ease-out 0.7s both; }
+.menu-row-secondary { animation: menu-fade-in 0.5s ease-out 0.8s both; }
+
+/* Hover accent bar */
+.menu-btn {
+  position: relative;
+  overflow: hidden;
+}
+.menu-btn::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--col-accent);
+  transform: scaleY(0);
+  transition: transform 0.2s ease;
+}
+.menu-btn:hover::before { transform: scaleY(1); }
+.menu-btn--accent::before { background: var(--col-accent); }
+.menu-btn--cyan::before { background: var(--col-cyan); }
+.menu-btn--small::before { background: var(--col-text-dim); }
+
+/* Active press state */
+.menu-btn:active {
+  transform: scale(0.97) !important;
+  filter: brightness(1.2);
+}
+
+/* Keyboard focus ring */
+.menu-btn:focus-visible {
+  outline: 2px solid var(--col-cyan);
+  outline-offset: 2px;
+}
+
+/* Ember particle canvas */
+.title-ember-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* Dark vignette framing */
+.title-screen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.6) 100%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Race Your Hood teaser badge */
+.title-teaser {
+  margin-top: 12px;
+  font-size: 12px;
+  color: rgba(0,229,255,0.5);
+  letter-spacing: 1px;
+  font-family: var(--font-body);
+  animation: teaser-pulse 2s ease-in-out infinite alternate, menu-fade-in 0.8s ease-out 0.8s both;
+}
+@keyframes teaser-pulse {
+  0%   { color: rgba(0,229,255,0.4); }
+  100% { color: rgba(0,229,255,0.7); }
 }
 
 /* ── Garage / Car Select ── */
