@@ -57,7 +57,7 @@ import {
   updateEngineAudio, playDriftSFX,
   playNitroActivate, startNitroBurn, stopNitroBurn,
   updateNitroBurnIntensity, updateDepletionWarning, stopDepletionWarning,
-  playNitroRelease, playRumbleStrip, playFinishFanfare, setMusicTimeScale,
+  playNitroRelease, playRumbleStrip, playFinishFanfare, setMusicTimeScale, setSfxTimeScale,
   playWrongWayBeep,
 } from './audio';
 import {
@@ -981,6 +981,7 @@ function gameLoop(timestamp: number) {
       G.playerVehicle.isNitroActive, G.playerVehicle.throttle,
     );
     setMusicTimeScale(ts);
+    setSfxTimeScale(ts);
     G.driftSfxCooldown -= frameDt;
     if (s === GameState.RACING && driftAbs > 0.3 && G.driftSfxCooldown <= 0) {
       playDriftSFX(driftAbs);

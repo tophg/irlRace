@@ -7,6 +7,11 @@ export { playNitroActivate, startNitroBurn, stopNitroBurn, updateNitroBurnIntens
 let audioCtx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
 
+// ── Global SFX time scale for slow-mo pitch-shift ──
+let _sfxTimeScale = 1.0;
+export function setSfxTimeScale(ts: number) { _sfxTimeScale = ts; }
+function sfxRate(): number { return Math.max(0.2, _sfxTimeScale); }
+
 // ── Predefined Music Tracks ──
 let titleMusicAudio: HTMLAudioElement | null = null;
 let gameMusicAudio: HTMLAudioElement | null = null;
@@ -323,7 +328,7 @@ function playTurboBOV() {
   const sfxVol = getSettings().sfxVolume;
   const source = audioCtx.createBufferSource();
   source.buffer = bovBuffer;
-  source.playbackRate.value = 0.9 + Math.random() * 0.2; // slight pitch variation
+  source.playbackRate.value = (0.9 + Math.random() * 0.2) * sfxRate(); // pitch variation + slow-mo
   const gain = audioCtx.createGain();
   gain.gain.value = 0.08 * sfxVol;
   source.connect(gain);
@@ -362,8 +367,8 @@ export function playCheckpointSFX() {
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(1200, now);
-  osc.frequency.exponentialRampToValueAtTime(1800, now + 0.1);
+  osc.frequency.setValueAtTime(1200 * sfxRate(), now);
+  osc.frequency.exponentialRampToValueAtTime(1800 * sfxRate(), now + 0.1 / sfxRate());
   gain.gain.setValueAtTime(0.15 * sv, now);
   gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
   osc.connect(gain);
@@ -375,7 +380,7 @@ export function playCheckpointSFX() {
   const bass = audioCtx.createOscillator();
   const bassGain = audioCtx.createGain();
   bass.type = 'sine';
-  bass.frequency.value = 80;
+  bass.frequency.value = 80 * sfxRate();
   bassGain.gain.setValueAtTime(0.2 * sv, now);
   bassGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
   bass.connect(bassGain);
@@ -461,6 +466,7 @@ export function playDriftSFX(intensity: number) {
 
   const source = audioCtx.createBufferSource();
   source.buffer = buffer;
+  source.playbackRate.value = sfxRate();
 
   const filter = audioCtx.createBiquadFilter();
   filter.type = 'bandpass';
@@ -500,7 +506,8 @@ export function playCollisionSFX(intensity: number) {
 
   const filter = audioCtx.createBiquadFilter();
   filter.type = 'bandpass';
-  filter.frequency.value = 800 + intensity * 600;
+  const ts = sfxRate();
+  filter.frequency.value = (800 + intensity * 600) * ts;
   filter.Q.value = 3;
 
   const hiFilter = audioCtx.createBiquadFilter();
@@ -593,7 +600,7 @@ export function playRumbleStrip() {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.type = 'square';
-  osc.frequency.value = 60;
+  osc.frequency.value = 60 * sfxRate();
   gain.gain.setValueAtTime(vol, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
   osc.connect(gain);

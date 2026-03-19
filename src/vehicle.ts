@@ -5,6 +5,7 @@ import { CarDef, InputState, VehicleState, DamageState, createDamageState } from
 import { CAR_LIGHT_MAP, CarLightDef } from './car-lights';
 import { getSettings } from './settings';
 import { getClosestSplinePoint } from './track';
+import { getTimeScale } from './time-scale';
 import { fractureMesh, MeshFragment } from './mesh-fracture';
 import type { SplineBVH } from './bvh';
 import type { WeatherPhysics } from './weather';
@@ -707,7 +708,9 @@ export class Vehicle {
     // ── Nitro drain/recharge (must run before boostedMax) ──
     if (!this._engineDead && input.boost && this.nitro > 0) {
       this._nitroActive = true;
-      this.nitro = Math.max(0, this.nitro - 12 * dt);  // slower drain = much longer burn window
+      // Extra slow-mo factor: sqrt(timeScale) so nitro drains slower during bullet-time
+      const slowFactor = Math.sqrt(getTimeScale());
+      this.nitro = Math.max(0, this.nitro - 12 * dt * slowFactor);  // slower drain = much longer burn window
     } else {
       this._nitroActive = false;
     }
@@ -715,14 +718,16 @@ export class Vehicle {
 
     // ── Engine Heat accumulation ──
     if (!this._engineDead) {
+      // Extra slow-mo factor: sqrt(timeScale) so heat gauge moves slower during bullet-time
+      const heatSlowFactor = Math.sqrt(getTimeScale());
       // Heat sources
-      if (this._nitroActive) this._engineHeat += 40 * dt;       // nitro heat (aggressive)
-      this._engineHeat += absSpeed * 0.15 * dt;                  // high-RPM heat (reduced so passive driving doesn't overheat)
+      if (this._nitroActive) this._engineHeat += 40 * dt * heatSlowFactor;       // nitro heat (aggressive)
+      this._engineHeat += absSpeed * 0.15 * dt * heatSlowFactor;                  // high-RPM heat
       
-      // Cooling
-      const radiatorEff = fHP;                                   // 1.0 pristine → 0.0 destroyed
-      this._engineHeat -= 15 * radiatorEff * dt;                 // passive radiator cooling (increased)
-      this._engineHeat -= absSpeed * 0.20 * dt;                  // air cooling at speed (increased)
+      // Cooling (also slowed — fair: both heating AND cooling slow down equally)
+      const radiatorEff = fHP;
+      this._engineHeat -= 15 * radiatorEff * dt * heatSlowFactor;                 // passive radiator cooling
+      this._engineHeat -= absSpeed * 0.20 * dt * heatSlowFactor;                  // air cooling at speed
       this._engineHeat = Math.max(0, Math.min(100, this._engineHeat));
 
       // Overheat explosion!
