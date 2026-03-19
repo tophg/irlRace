@@ -929,13 +929,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const tileW = 1 / ATLAS_COLS, tileH = 1 / ATLAS_ROWS;
 
     // Custom box with per-face UVs: sides = facade tile, top/bottom = dark roof
-    // uOffset/vOffset: random sub-region shift (0–0.3) for variety
     // flipU: horizontally mirror the facade for asymmetry
-    // faceW/faceH/faceD: actual dimensions for tiling computation
-    const buildCustomBox = (
-      tile: number, faceW: number, faceH: number, faceD: number,
-      uOffset = 0, vOffset = 0, flipU = false,
-    ) => {
+    const buildCustomBox = (tile: number, flipU = false) => {
       const geo = new THREE.BoxGeometry(1, 1, 1);
       const col = tile % ATLAS_COLS;
       const row = Math.floor(tile / ATLAS_COLS);
@@ -944,17 +939,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
       const uvAttr = geo.getAttribute('uv');
       const uv = uvAttr.array as Float32Array;
-
-      // Tiling: repeat facade pattern for wide/tall buildings
-      const repeatFB = Math.max(1, Math.round(faceW / 10));
-      const repeatLR = Math.max(1, Math.round(faceD / 10));
-      const repeatV = Math.max(1, Math.round(faceH / 12));
-
-      // UV sub-region shift (shrink visible area slightly to allow offset)
-      const uScale = 1 - uOffset * 0.5;
-      const vScale = 1 - vOffset * 0.5;
-      const uShift = uOffset * 0.5 * tileW;
-      const vShift = vOffset * 0.5 * tileH;
 
       for (let face = 0; face < 6; face++) {
         const base = face * 4 * 2;
@@ -969,12 +953,10 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         } else {
           for (let v = 0; v < 4; v++) {
             let rawU = uv[base + v * 2];
-            let rawV = uv[base + v * 2 + 1];
-            // Horizontal flip for asymmetry
+            const rawV = uv[base + v * 2 + 1];
             if (flipU) rawU = 1 - rawU;
-            // Map [0,1] → tile sub-region with offset for variety
-            uv[base + v * 2]     = uMin + uShift + rawU * tileW * uScale;
-            uv[base + v * 2 + 1] = vMin + vShift + rawV * tileH * vScale;
+            uv[base + v * 2]     = uMin + rawU * tileW;
+            uv[base + v * 2 + 1] = vMin + rawV * tileH;
           }
         }
       }
@@ -1005,21 +987,14 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const _instances: THREE.Vector3[] = [];
 
     // Create multiple UV-variant geometries per tile to avoid cookie-cutter look
-    const VARIANTS_PER_TILE = 3;
+    const VARIANTS_PER_TILE = 2;
 
     for (const [tile, tilePlacements] of tileGroups) {
-      // Build variant geometries with different UV offsets/flips
-      const variantGeos: THREE.BoxGeometry[] = [];
-      for (let vi = 0; vi < VARIANTS_PER_TILE; vi++) {
-        const uOff = vi * 0.15;          // 0, 0.15, 0.3
-        const vOff = (vi % 2) * 0.2;     // 0, 0.2, 0
-        const flip = vi === 1;            // flip variant 1
-        // Use median dimensions for tiling computation
-        const medW = tilePlacements.reduce((s, p) => s + p.w, 0) / tilePlacements.length;
-        const medH = tilePlacements.reduce((s, p) => s + p.h, 0) / tilePlacements.length;
-        const medD = tilePlacements.reduce((s, p) => s + p.d, 0) / tilePlacements.length;
-        variantGeos.push(buildCustomBox(tile, medW, medH, medD, uOff, vOff, flip));
-      }
+      // Build 2 variant geometries: normal and horizontally flipped
+      const variantGeos: THREE.BoxGeometry[] = [
+        buildCustomBox(tile, false),
+        buildCustomBox(tile, true),
+      ];
 
       // Split placements across variants
       const variantBuckets: BoxPlacement[][] = Array.from({ length: VARIANTS_PER_TILE }, () => []);
