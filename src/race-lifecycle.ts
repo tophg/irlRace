@@ -492,6 +492,14 @@ export async function startRace() {
     await new Promise(resolve => requestAnimationFrame(resolve));
     await new Promise(resolve => requestAnimationFrame(resolve));
 
+    // Wait for all async scenery loads (tree GLBs, grandstand) to complete
+    // before showing the scene — prevents props popping in during flyover
+    const sceneryLoads = trackData.sceneryGroup.userData._asyncLoads as Promise<void>[] | undefined;
+    if (sceneryLoads?.length) {
+      updateLoadingProgress(98, 'FINISHING SCENERY');
+      await Promise.all(sceneryLoads);
+    }
+
     hideLoading();
 
     G.gameState = GameState.FLYOVER;

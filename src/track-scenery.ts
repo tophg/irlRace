@@ -67,6 +67,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     spectatorDensity: 1.0, accentProps: [],
   };
   const group = new THREE.Group();
+  const _asyncLoads: Promise<void>[] = []; // collect async loads so caller can await them
 
   // ── Ground plane (large flat grass surface) ──
   {
@@ -162,7 +163,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     };
 
     const uniqueTreeModels = [...new Set(trees.map(t => t.model))];
-    Promise.all(
+    _asyncLoads.push(Promise.all(
       uniqueTreeModels.map(name => loadGLB(`/trees/${name}`).then(scene => ({ name, scene })))
     ).then((loaded) => {
       const treeMap = new Map<string, { scene: THREE.Group; bottom: number }>();
@@ -191,7 +192,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       }
     }).catch((err) => {
       console.warn('Failed to load tree models:', err);
-    });
+    }));
   } else if (trees.length > 0) {
     // ── Fallback: Procedural trees (InstancedMesh) ──
     const trunkGeo = new THREE.CylinderGeometry(0.25, 0.3, 3.5, 6);
@@ -967,7 +968,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const right = new THREE.Vector3(startTan.z, 0, -startTan.x);
     const grandstandOffset = ROAD_WIDTH / 2 + 6;
 
-    loadGLB('/buildings/spectator_stand.glb').then((standModel) => {
+    _asyncLoads.push(loadGLB('/buildings/spectator_stand.glb').then((standModel) => {
       const bbox = new THREE.Box3().setFromObject(standModel);
       const size = bbox.getSize(new THREE.Vector3());
       // Scale to fit ~8 units wide (2 car lengths)
@@ -993,7 +994,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       group.add(standModel);
     }).catch((err) => {
       console.warn('Failed to load spectator stand model:', err);
-    });
+    }));
   }
 
   // ── Road direction chevrons (double-chevron decals along track) ──
@@ -1931,6 +1932,10 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       }
     }
   }
+
+  // Expose async load promises so race-lifecycle can await them
+  // before showing the scene (prevents scenery popping in during flyover)
+  group.userData._asyncLoads = _asyncLoads;
 
   return group;
 }
