@@ -131,6 +131,9 @@ export interface PlayerProgress {
   dailyChallengeDay: number;  // day-of-year last generated
   weeklyChallengeProgress: Record<string, number>;
   weeklyChallengeWeek: number; // week-of-year last generated
+  // Driver Perks
+  perkLevels: Record<string, number>; // perkId → tier (0 = unspent)
+  skillPointsSpent: number;    // total SP spent (available = level-1 - spent)
 }
 
 function defaultProgress(): PlayerProgress {
@@ -157,6 +160,8 @@ function defaultProgress(): PlayerProgress {
     dailyChallengeDay: 0,
     weeklyChallengeProgress: {},
     weeklyChallengeWeek: 0,
+    perkLevels: {},
+    skillPointsSpent: 0,
   };
 }
 
@@ -230,12 +235,14 @@ export interface RewardBreakdown {
 
 /** Process end-of-race rewards. Updates and saves progress. Returns breakdown. */
 export function processRaceRewards(result: RaceResult): RewardBreakdown {
-  // Compute individual bonuses
-  const driftBonus = Math.min(Math.floor(result.driftTime * XP_DRIFT_PER_SEC), 200); // cap at 200 XP
+  // Compute individual bonuses (with perk modifiers)
+  const driftPerkMult = 1 + getPerkBonus('drift_mastery') / 100;
+  const driftBonus = Math.min(Math.floor(result.driftTime * XP_DRIFT_PER_SEC * driftPerkMult), 200);
   const overtakeBonus = result.overtakeCount * XP_PER_OVERTAKE;
   const nearMissBonus = result.nearMissCount * XP_PER_NEAR_MISS;
   const speedDemonBonus = result.speedDemonTime >= 5 ? XP_SPEED_DEMON : 0;
   const perfectStartBonus = result.perfectStart ? XP_PERFECT_START : 0;
+  const cleanPerkExtra = result.collisionCount === 0 ? getPerkBonus('clean_bonus') : 0;
 
   // Multipliers
   const sMultiplier = streakMultiplier(current.winStreak);
@@ -245,7 +252,7 @@ export function processRaceRewards(result: RaceResult): RewardBreakdown {
     baseXP: XP_PER_RACE,
     winBonus: result.placement === 1 ? XP_WIN_BONUS : 0,
     podiumBonus: (result.placement === 2 || result.placement === 3) ? XP_PODIUM_BONUS : 0,
-    cleanBonus: result.collisionCount === 0 ? XP_CLEAN_RACE_BONUS : 0,
+    cleanBonus: (result.collisionCount === 0 ? XP_CLEAN_RACE_BONUS : 0) + cleanPerkExtra,
     driftBonus,
     overtakeBonus,
     nearMissBonus,
@@ -270,15 +277,18 @@ export function processRaceRewards(result: RaceResult): RewardBreakdown {
     + breakdown.cleanBonus + breakdown.driftBonus + breakdown.overtakeBonus
     + breakdown.nearMissBonus + breakdown.speedDemonBonus + breakdown.perfectStartBonus;
 
-  // Apply all multipliers
+  // Apply all multipliers (including XP/credit boost perks)
   let combinedMultiplier = 1.0;
   if (breakdown.lappingMultiplier > 1) combinedMultiplier *= breakdown.lappingMultiplier;
   if (breakdown.streakMultiplier > 1) combinedMultiplier *= breakdown.streakMultiplier;
   if (breakdown.prestigeMultiplier > 1) combinedMultiplier *= breakdown.prestigeMultiplier;
 
-  breakdown.totalXP = Math.round(breakdown.subtotalXP * combinedMultiplier);
+  const xpBoostPerk = 1 + getPerkBonus('xp_boost') / 100;
+  const crBoostPerk = 1 + getPerkBonus('credit_boost') / 100;
+
+  breakdown.totalXP = Math.round(breakdown.subtotalXP * combinedMultiplier * xpBoostPerk);
   breakdown.totalCredits = Math.round(
-    (breakdown.baseCredits + breakdown.winCreditsBonus + breakdown.podiumCreditsBonus) * combinedMultiplier,
+    (breakdown.baseCredits + breakdown.winCreditsBonus + breakdown.podiumCreditsBonus) * combinedMultiplier * crBoostPerk,
   );
 
   // Update progress
@@ -546,3 +556,69 @@ function updateChallengeProgress(result: RaceResult, _breakdown: RewardBreakdown
   }
   return { xp, cr };
 }
+
+// ── Driver Perks System ──
+
+export interface PerkDefinition {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  maxTier: number;
+  /** Bonus value per tier (cumulative). */
+  bonusPerTier: number;
+  /** Unit label for display. */
+  unit: string;
+}
+
+export const DRIVER_PERKS: PerkDefinition[] = [
+  { id: 'top_speed',     name: 'Top Speed',       icon: '🏎️', description: 'Increase max speed',           maxTier: 5, bonusPerTier: 1, unit: '%' },
+  { id: 'acceleration',  name: 'Acceleration',    icon: '🚀', description: 'Faster acceleration',           maxTier: 5, bonusPerTier: 1, unit: '%' },
+  { id: 'nitro_cap',     name: 'Nitro Capacity',  icon: '⛽', description: 'Larger nitro tank',             maxTier: 5, bonusPerTier: 5, unit: '%' },
+  { id: 'xp_boost',      name: 'XP Boost',        icon: '📈', description: 'Earn more XP per race',         maxTier: 5, bonusPerTier: 3, unit: '%' },
+  { id: 'credit_boost',  name: 'Credit Boost',    icon: '💰', description: 'Earn more credits per race',    maxTier: 5, bonusPerTier: 3, unit: '%' },
+  { id: 'drift_mastery', name: 'Drift Mastery',   icon: '🔥', description: 'Bonus XP from drifting',        maxTier: 5, bonusPerTier: 20, unit: '%' },
+  { id: 'handling',      name: 'Handling',        icon: '🎯', description: 'Better steering response',      maxTier: 5, bonusPerTier: 1, unit: '%' },
+  { id: 'clean_bonus',   name: 'Clean Driving',   icon: '✨', description: 'Extra XP for clean races',      maxTier: 5, bonusPerTier: 10, unit: ' XP' },
+];
+
+/** How many skill points the player has available to spend. */
+export function getAvailableSkillPoints(): number {
+  // 1 SP per level (level 1 = 0 SP, level 2 = 1 SP, etc.)
+  const totalEarned = Math.max(0, current.level - 1) + (current.prestige * PRESTIGE_LEVEL);
+  return totalEarned - current.skillPointsSpent;
+}
+
+/** Get the current tier of a perk (0 = not invested). */
+export function getPerkTier(perkId: string): number {
+  return current.perkLevels[perkId] ?? 0;
+}
+
+/** Get the total bonus value for a perk at its current tier. */
+export function getPerkBonus(perkId: string): number {
+  const perk = DRIVER_PERKS.find(p => p.id === perkId);
+  if (!perk) return 0;
+  const tier = getPerkTier(perkId);
+  return tier * perk.bonusPerTier;
+}
+
+/** Spend 1 skill point to upgrade a perk by 1 tier. Returns true if successful. */
+export function spendSkillPoint(perkId: string): boolean {
+  const perk = DRIVER_PERKS.find(p => p.id === perkId);
+  if (!perk) return false;
+
+  const currentTier = getPerkTier(perkId);
+  if (currentTier >= perk.maxTier) return false;
+  if (getAvailableSkillPoints() <= 0) return false;
+
+  current.perkLevels[perkId] = currentTier + 1;
+  current.skillPointsSpent++;
+  saveProgress();
+  return true;
+}
+
+/** Get total perk levels invested (for display). */
+export function getTotalPerkLevel(): number {
+  return Object.values(current.perkLevels).reduce((a, b) => a + b, 0);
+}
+

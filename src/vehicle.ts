@@ -9,6 +9,7 @@ import { getTimeScale } from './time-scale';
 import { fractureMesh, MeshFragment } from './mesh-fracture';
 import type { SplineBVH } from './bvh';
 import type { WeatherPhysics } from './weather';
+import { getPerkBonus } from './progression';
 
 // Reusable temps to avoid GC
 const _carForward = new THREE.Vector3();
@@ -633,7 +634,7 @@ export class Vehicle {
     // ── Longitudinal forces ──
     // Tyre forces (throttle/brake) — used for friction circle
     let tyreForce = 0;
-    if (this.throttle > 0) tyreForce += def.acceleration * this.throttle * accelMult * globalMult;
+    if (this.throttle > 0) tyreForce += def.acceleration * (1 + getPerkBonus('acceleration') / 100) * this.throttle * accelMult * globalMult;
     if (this.brake > 0)    tyreForce -= def.braking * this.brake * brakeMult * (weather?.brakingScale ?? 1);
     // Aero/rolling resistance added separately (not part of tyre budget)
     const weatherDrag = vForward * (weather?.rollingResistance ?? 0);
@@ -745,7 +746,8 @@ export class Vehicle {
       this._engineHeat = Math.max(0, this._engineHeat - 8 * dt);
     }
 
-    const weatherMaxSpeed = def.maxSpeed * (weather?.topSpeedScale ?? 1);
+    const perkTopSpeed = 1 + getPerkBonus('top_speed') / 100;
+    const weatherMaxSpeed = def.maxSpeed * (weather?.topSpeedScale ?? 1) * perkTopSpeed;
     const boostedMax = this._nitroActive ? weatherMaxSpeed * 1.4 * maxSpdMult : weatherMaxSpeed * maxSpdMult;
     const clampedFwd = Math.max(-def.maxSpeed * 0.3, Math.min(newVForward, boostedMax));
 
@@ -769,7 +771,8 @@ export class Vehicle {
     // ── Steering: blend kinematic (snappy arcade) + physics (natural limits) ──
     const kinBlend = 1 / (1 + absSpeed * 0.05);
     this.telemetry.kinBlend = kinBlend;
-    const kinSteer = this.steer * def.handling * dt / (1 + absSpeed * 0.035);
+    const perkHandling = 1 + getPerkBonus('handling') / 100;
+    const kinSteer = this.steer * def.handling * perkHandling * dt / (1 + absSpeed * 0.035);
     if (absSpeed > 0.5) {
       this.angularVel += kinSteer * signFwd * kinBlend;
       this.angularVel += (yawTorque / yawInertia) * dt * (1 - kinBlend * 0.5);
@@ -1142,7 +1145,8 @@ export class Vehicle {
 
   /** Add nitro from external source (slipstream, near-miss). */
   addNitro(amount: number) {
-    this.nitro = Math.min(100, this.nitro + amount);
+    const nitroCap = 100 * (1 + getPerkBonus('nitro_cap') / 100);
+    this.nitro = Math.min(nitroCap, this.nitro + amount);
   }
 
   // isNitroActive getter moved to line 56 consolidated accessor block
@@ -1258,7 +1262,7 @@ export class Vehicle {
     this.driftAngle = 0;
     this._roadPitch = 0;
     this._roadRoll = 0;
-    this.nitro = 100;
+    this.nitro = 100 * (1 + getPerkBonus('nitro_cap') / 100);
     this._nitroActive = false;
     this._engineHeat = 0;
     this._engineDead = false;

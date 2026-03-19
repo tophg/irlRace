@@ -11,6 +11,7 @@ import { showTouchControls } from './input';
 import { showSettings } from './settings';
 import * as THREE from 'three/webgpu';
 import { ENVIRONMENTS, EnvironmentPreset } from './scene';
+import { getDailyChallenges, getWeeklyChallenges, getChallengeProgress } from './progression';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // POSITION CALLOUT
@@ -609,6 +610,28 @@ function destroyPreview() {
   _previewWeather = 'clear';
 }
 
+/** Build compact challenge summary for race setup screen. */
+function buildSetupChallengesHTML(): string {
+  const daily = getDailyChallenges();
+  const weekly = getWeeklyChallenges();
+  const all = [...daily, ...weekly];
+  let html = '';
+  for (const ch of all) {
+    const [cur, tgt, done] = getChallengeProgress(ch);
+    const pct = Math.min(100, Math.round((cur / tgt) * 100));
+    const typeLabel = ch.type === 'daily' ? '' : '<span style="color:var(--col-cyan);font-size:10px;margin-left:4px;">WEEKLY</span>';
+    html += `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;color:${done ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.8)'};">`;
+    html += `<span style="flex:1;">${ch.icon} ${ch.name}${typeLabel}</span>`;
+    html += `<span style="min-width:40px;text-align:right;">${done ? '✅' : `${cur}/${tgt}`}</span>`;
+    html += `</div>`;
+    if (!done) {
+      html += `<div style="background:rgba(255,255,255,0.08);border-radius:2px;height:2px;margin-bottom:2px;">`;
+      html += `<div style="background:${ch.type === 'daily' ? 'var(--col-orange)' : 'var(--col-cyan)'};border-radius:2px;height:100%;width:${pct}%;"></div></div>`;
+    }
+  }
+  return html;
+}
+
 export function showRaceConfig(
   onStart: (laps: number, ai: number, difficulty: 'easy' | 'medium' | 'hard', seed: string, weather: string, environment: string) => void,
   onBack: () => void,
@@ -705,6 +728,12 @@ export function showRaceConfig(
         <div class="race-config-section-label" style="margin-top:12px;">🌍 ENVIRONMENT</div>
         <div class="env-card-grid" id="env-card-grid">
           ${envGridHtml}
+        </div>
+
+        <!-- Challenges summary -->
+        <div class="race-config-section-label" style="margin-top:8px;">🎯 TODAY'S CHALLENGES</div>
+        <div class="rc-challenges-summary" id="rc-challenges">
+          ${buildSetupChallengesHTML()}
         </div>
 
         <!-- Actions at bottom of controls -->

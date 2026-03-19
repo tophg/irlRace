@@ -4,7 +4,7 @@ import { GameState, EventType } from './types';
 import { G } from './game-context';
 type GameContext = typeof G;
 import { RaceEngine } from './race-engine';
-import { processRaceRewards, getProgress, levelProgress, xpToNextLevel, canPrestige, prestige, ratingGrade, getDailyChallenges, getWeeklyChallenges, getChallengeProgress, type RaceResult } from './progression';
+import { processRaceRewards, getProgress, levelProgress, xpToNextLevel, canPrestige, prestige, ratingGrade, getDailyChallenges, getWeeklyChallenges, getChallengeProgress, DRIVER_PERKS, getAvailableSkillPoints, getPerkTier, getPerkBonus, spendSkillPoint, type RaceResult } from './progression';
 import { playRewardsAnimation } from './rewards-animation';
 import { spawnVictoryConfetti, setConfettiContinuous } from './vfx';
 import { showTouchControls } from './input';
@@ -74,6 +74,30 @@ function buildChallengesHTML(): string {
     const pct = Math.min(100, Math.round((cur / tgt) * 100));
     html += `<div class="lap-breakdown-row${done ? ' best' : ''}"><span>${ch.icon} ${ch.name}</span><span>${done ? '✅' : `${cur}/${tgt}`}</span></div>`;
     if (!done) html += `<div style="background:rgba(255,255,255,0.1);border-radius:3px;height:3px;margin:1px 0;"><div style="background:var(--col-cyan);border-radius:3px;height:100%;width:${pct}%;"></div></div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+function buildPerksHTML(): string {
+  const sp = getAvailableSkillPoints();
+  let html = `<div class="lap-breakdown" style="margin-top:8px;" id="perks-section">
+    <div class="lap-breakdown-title">DRIVER PERKS <span style="color:#ffd700;float:right;">${sp} SP available</span></div>`;
+  for (const perk of DRIVER_PERKS) {
+    const tier = getPerkTier(perk.id);
+    const bonus = getPerkBonus(perk.id);
+    const maxed = tier >= perk.maxTier;
+    const dots = Array.from({ length: perk.maxTier }, (_, i) => i < tier ? '●' : '○').join('');
+    html += `<div class="lap-breakdown-row" style="align-items:center;">`;
+    html += `<span>${perk.icon} ${perk.name} <span style="color:rgba(255,255,255,0.4);font-size:11px;">${dots}</span></span>`;
+    html += `<span style="display:flex;align-items:center;gap:6px;">`;
+    if (bonus > 0) html += `<span style="color:#4fc3f7;">+${bonus}${perk.unit}</span>`;
+    if (!maxed && sp > 0) {
+      html += `<button class="perk-upgrade-btn" data-perk="${perk.id}" style="padding:2px 8px;font-size:11px;background:linear-gradient(135deg,#ffd700,#ff8c00);color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:700;">▲ UP</button>`;
+    } else if (maxed) {
+      html += `<span style="color:#ffd700;font-size:11px;">MAX</span>`;
+    }
+    html += `</span></div>`;
   }
   html += `</div>`;
   return html;
@@ -264,6 +288,7 @@ export async function showResults(
       ${earlyRewards.streakMultiplier > 1 ? `<div style="text-align:center;margin:6px 0;color:#ffd700;font-weight:700;">🔥 Win Streak: ${getProgress().winStreak} — ×${earlyRewards.streakMultiplier.toFixed(1)} bonus</div>` : ''}
       ${buildDriverDNAHTML()}
       ${buildChallengesHTML()}
+      ${buildPerksHTML()}
     </div>
     <div class="results-actions">
       <div class="menu-buttons" style="width:240px;">
@@ -276,6 +301,19 @@ export async function showResults(
     </div>
   `;
   uiOverlay.appendChild(el);
+
+  // ── Perk upgrade button handler (delegated) ──
+  el.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('.perk-upgrade-btn') as HTMLElement;
+    if (!btn) return;
+    const perkId = btn.dataset.perk;
+    if (!perkId) return;
+    if (spendSkillPoint(perkId)) {
+      // Re-render entire perks section
+      const section = document.getElementById('perks-section');
+      if (section) section.outerHTML = buildPerksHTML();
+    }
+  });
 
   document.getElementById('btn-prestige')?.addEventListener('click', () => {
     if (prestige()) {
