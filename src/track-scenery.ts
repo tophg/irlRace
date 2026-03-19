@@ -100,8 +100,12 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       'pine.glb': 3.5,
       'pine_b.glb': 3.2,
       'dogwood.glb': 2.5,
+      'walnut.glb': 3.2,
+      'black_walnut.glb': 3.0,
+      'oak.glb': 3.0,
       'cactus_tall.glb': 2.0,
       'cactus.glb': 1.5,
+      'cactus_b.glb': 1.5,
     };
 
     const uniqueTreeModels = [...new Set(trees.map(t => t.model))];
