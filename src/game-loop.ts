@@ -95,6 +95,9 @@ let _firstBoostFired = false;
 // Wrong-way audio cooldown
 let _wrongWayBeepTimer = 0;
 
+// Explosion cinematic timer IDs (cleared on race restart to prevent stale callbacks)
+let _explosionTimers: number[] = [];
+
 // ── Damage flash overlay ──
 let _damageFlashEl: HTMLDivElement | null = null;
 let _damageFlashTimer = 0;
@@ -138,6 +141,9 @@ function showDraftingIndicator() {
 
 /** Remove damage flash + drafting indicator DOM nodes between races. */
 export function cleanupGameLoopDOM() {
+  // Cancel any in-flight explosion timers (Bug #3 fix)
+  for (const id of _explosionTimers) clearTimeout(id);
+  _explosionTimers = [];
   clearTimeout(_damageFlashTimer);
   if (_damageFlashEl) { _damageFlashEl.remove(); _damageFlashEl = null; }
   clearTimeout(_draftingTimer);
@@ -203,6 +209,8 @@ export function initGameLoop(deps: GameLoopDeps) {
 /** Reset per-race state in the game loop. */
 export function resetGameLoopState() {
   _firstBoostFired = false;
+  _wrongWayBeepTimer = 0; // Bug #7 fix
+  G._nearMissCooldowns.clear(); // Bug #5 fix
 }
 
 /** Start the rAF loop. Should be called once after initGameLoop(). */
@@ -417,9 +425,9 @@ function gameLoop(timestamp: number) {
             if (G.vehicleCamera) {
               G.vehicleCamera.startExplosionOrbit(expPos);
             }
-            setTimeout(() => showEngineDestroyedText(), 800);
-            setTimeout(() => { hideLetterbox(); setExplosionMode(false); }, 3500);
-            setTimeout(() => _deps.callShowResults(), 4000);
+            _explosionTimers.push(window.setTimeout(() => showEngineDestroyedText(), 800));
+            _explosionTimers.push(window.setTimeout(() => { hideLetterbox(); setExplosionMode(false); }, 3500));
+            _explosionTimers.push(window.setTimeout(() => _deps.callShowResults(), 4000));
           }
 
           // ── Phase 4 (frame +3): Ground debris ──
@@ -430,8 +438,8 @@ function gameLoop(timestamp: number) {
       });
 
       // ── Delayed secondary explosions (fuel line / electrical fires) ──
-      setTimeout(() => spawnGPUSecondaryExplosion(expPos), 300);
-      setTimeout(() => spawnGPUSecondaryExplosion(expPos), 800);
+      _explosionTimers.push(window.setTimeout(() => spawnGPUSecondaryExplosion(expPos), 300));
+      _explosionTimers.push(window.setTimeout(() => spawnGPUSecondaryExplosion(expPos), 800));
 
       if (isRacing) {
         G.raceEngine!.markDnf('local');

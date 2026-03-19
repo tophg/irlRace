@@ -17,6 +17,7 @@ import { resolveCarCollisions, type CarCollider } from './bvh';
 import { triggerImpactFlash } from './vfx';
 import { setImpactIntensity } from './post-fx';
 import { playCollisionSFX } from './audio';
+import { haptic } from './input';
 import {
   spawnGPUSparks, spawnGPUExplosion, spawnGPUGlassShards, spawnGPUDamageSmoke,
 } from './gpu-particles';
@@ -50,11 +51,13 @@ export function stepPhysics(dt: number, s: GameState) {
 
   if (s !== GameState.RACING) return;
 
+  // Cache weather physics once per frame (Bug #2 fix — was called 1+aiCount times)
+  const wp = getWeatherPhysics();
+
   // ── Player vehicle physics ──
   // Always run physics regardless of camera mode so the car coasts naturally
   // during spectate/explosion cinematics instead of freezing in place.
   {
-    const wp = getWeatherPhysics();
     const input = G.vehicleCamera?.mode === 'chase'
       ? getInput()
       : { up: false, down: false, left: false, right: false, boost: false, steerAnalog: 0 };
@@ -72,7 +75,6 @@ export function stepPhysics(dt: number, s: GameState) {
 
   for (const ai of G.aiRacers) {
     const opponents = allOpponents.filter(o => o.id !== ai.id);
-    const wp = getWeatherPhysics();
     ai.update(dt, opponents, wp);
   }
 
@@ -148,7 +150,7 @@ export function stepPhysics(dt: number, s: GameState) {
       spawnGPUSparks(G._sparkPos, evt.impactForce);
       if (evt.impactForce > 20) spawnGPUExplosion(G._sparkPos, evt.impactForce);
       playCollisionSFX(Math.min(evt.impactForce / 30, 1));
-      if (navigator.vibrate) navigator.vibrate(Math.min(Math.floor(evt.impactForce * 3), 150));
+      haptic(Math.min(Math.floor(evt.impactForce * 3), 150));
     }
   }
 
@@ -166,7 +168,7 @@ export function stepPhysics(dt: number, s: GameState) {
     G.playerVehicle.applyDamage(G._impactDir, b.force * 0.7);
     G.raceStats.collisionCount++;
     playCollisionSFX(Math.min(b.force / 25, 1));
-    if (navigator.vibrate) navigator.vibrate(Math.min(Math.floor(b.force * 4), 200));
+    haptic(Math.min(Math.floor(b.force * 4), 200));
     _deps.uiOverlay.classList.add('impact-vignette');
     setTimeout(() => _deps.uiOverlay.classList.remove('impact-vignette'), 250);
 

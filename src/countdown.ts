@@ -6,6 +6,9 @@ let overlayEl: HTMLElement | null = null;
 let countdownTimers: number[] = [];
 let countdownAudioCtx: AudioContext | null = null;
 
+import { getSettings } from './settings';
+import { haptic } from './input';
+
 /**
  * Run the 3-2-1-GO countdown sequence. Returns a promise that resolves on GO.
  * @param durationMs Total countdown duration (default 3400ms). Used for network sync —
@@ -81,12 +84,10 @@ export function runCountdown(uiOverlay: HTMLElement, durationMs = 3400): Promise
         overlayEl.innerHTML = `<div class="${css}">${text}</div>`;
 
         // Haptic feedback — escalating intensity
-        if (navigator.vibrate) {
-          if (text === 'GO!') navigator.vibrate([40, 30, 40]);
-          else if (text === '1') navigator.vibrate(60);
-          else if (text === '2') navigator.vibrate(50);
-          else navigator.vibrate(40);
-        }
+        if (text === 'GO!') haptic([40, 30, 40]);
+        else if (text === '1') haptic(60);
+        else if (text === '2') haptic(50);
+        else haptic(40);
 
         if (text === 'GO!') {
           playGoChord();

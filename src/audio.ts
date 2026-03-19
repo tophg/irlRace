@@ -386,6 +386,7 @@ export function playDriftSFX(intensity: number) {
   filter.connect(gain);
   gain.connect(masterGain!);
   source.start();
+  source.stop(audioCtx.currentTime + 0.15); // Bug #4 fix: schedule stop to allow GC
 }
 
 let collisionSfxCooldown = 0;

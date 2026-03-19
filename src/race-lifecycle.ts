@@ -133,12 +133,14 @@ export function clearRaceObjects() {
   G.mirrorCamera = null;
 
   if (G.playerVehicle) {
+    G.playerVehicle.dispose(); // Bug #9: dispose wheel/fragment GPU resources
     scene.remove(G.playerVehicle.group);
     disposeMesh(G.playerVehicle.group);
     G.playerVehicle = null;
   }
 
   for (const ai of G.aiRacers) {
+    ai.vehicle.dispose(); // Bug #9: dispose wheel/fragment GPU resources
     scene.remove(ai.vehicle.group);
     disposeMesh(ai.vehicle.group);
   }

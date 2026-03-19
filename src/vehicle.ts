@@ -492,15 +492,23 @@ export class Vehicle {
       const box = new THREE.Box3();
       if (this.model) box.setFromObject(this.model);
       else box.min.set(-0.9, 0, -2.2), box.max.set(0.9, 1.4, 2.2);
+
+      // Headlight positions from bounding box
       const frontZ = box.max.z;
       const lightY = box.min.y + (box.max.y - box.min.y) * 0.35;
       const halfW = (box.max.x - box.min.x) * 0.35;
       hlLPos = [-halfW, lightY, frontZ];
       hlRPos = [ halfW, lightY, frontZ];
       hlSize = [0.22, 0.14];
+
+      // Taillight positions from same bounding box (Bug #8 fix — was computed twice)
+      const rearZ = box.min.z;
+      tlLPos = [-halfW, lightY, rearZ];
+      tlRPos = [ halfW, lightY, rearZ];
+      tlSize = [0.28, 0.10];
     }
 
-    // Taillight position logic
+    // Taillight position logic (only if not already computed from bbox fallback above)
     if (auto?.taillightL && auto?.taillightR) {
       tlLPos = auto.taillightL;
       tlRPos = auto.taillightR;
@@ -509,7 +517,8 @@ export class Vehicle {
       tlLPos = ld.taillightL;
       tlRPos = ld.taillightR;
       tlSize = ld.taillightSize || [0.28, 0.10];
-    } else {
+    } else if (!tlLPos!) {
+      // Need bbox fallback for taillights — headlights had auto/manual so compute box now
       const box = new THREE.Box3();
       if (this.model) box.setFromObject(this.model);
       else box.min.set(-0.9, 0, -2.2), box.max.set(0.9, 1.4, 2.2);
@@ -1453,6 +1462,37 @@ export class Vehicle {
         mesh.geometry.computeVertexNormals();
       }
     });
+  }
+
+  /** Dispose all GPU resources (geometries, materials) to prevent memory leaks. (Bug #9 fix) */
+  dispose() {
+    // Dispose wheel geometries/materials
+    for (const w of [this.wheelFL, this.wheelFR, this.wheelRL, this.wheelRR]) {
+      if (!w) continue;
+      w.traverse((child: THREE.Object3D) => {
+        if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
+        const mat = (child as THREE.Mesh).material;
+        if (mat) {
+          if (Array.isArray(mat)) mat.forEach(m => m.dispose());
+          else (mat as THREE.Material).dispose();
+        }
+      });
+    }
+    // Dispose body group (model, headlights, lights)
+    this._bodyGroup.traverse((child: THREE.Object3D) => {
+      if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
+      const mat = (child as THREE.Mesh).material;
+      if (mat) {
+        if (Array.isArray(mat)) mat.forEach(m => m.dispose());
+        else (mat as THREE.Material).dispose();
+      }
+    });
+    // Dispose cached fracture fragments
+    for (const frag of this._cachedFragments) {
+      frag.mesh.geometry?.dispose();
+      (frag.mesh.material as THREE.Material)?.dispose();
+    }
+    this._cachedFragments.length = 0;
   }
 }
 
