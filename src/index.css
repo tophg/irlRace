@@ -555,14 +555,14 @@ canvas { display: block; }
   display: flex; flex-direction: column; align-items: center; gap: 4px;
 }
 .stat-bar label {
-  font-size: 9px; font-weight: 600;
-  color: var(--col-text-dim);
+  font-size: 11px; font-weight: 700;
+  color: rgba(255,255,255,0.75);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 1.5px;
 }
 .stat-bar .bar-track {
-  width: 60px; height: 5px;
-  background: rgba(255,255,255,0.1);
+  width: 70px; height: 6px;
+  background: rgba(255,255,255,0.15);
   border-radius: 3px; overflow: hidden;
 }
 .stat-bar .bar-fill {
