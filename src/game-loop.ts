@@ -51,7 +51,7 @@ import { updateTrackRadar } from './minimap';
 import { updateDestructionFragments, triggerVehicleDestruction, isDestructionActive } from './vehicle-destruction';
 import { updateWeather, getCurrentWeather, getPrecipMesh, getWeatherPhysics } from './weather';
 import { updatePostFX, setImpactIntensity, setBoostActive, setExplosionMode, updateAfterimage } from './post-fx';
-import { showExplosionFlash, showLetterbox, hideLetterbox, showEngineDestroyedText } from './screen-effects';
+import { showExplosionFlash, showDamageFlash, showLetterbox, hideLetterbox, showEngineDestroyedText } from './screen-effects';
 import {
   updateEngineAudio, playDriftSFX,
   playNitroActivate, startNitroBurn, stopNitroBurn,
@@ -91,6 +91,17 @@ const _nitroTrailOffset = new THREE.Vector3();
 
 // First-boost-per-race tracker
 let _firstBoostFired = false;
+
+// Speed lines overlay (nitro)
+let _speedLinesEl: HTMLDivElement | null = null;
+function _ensureSpeedLines(): HTMLDivElement {
+  if (!_speedLinesEl) {
+    _speedLinesEl = document.createElement('div');
+    _speedLinesEl.className = 'speed-lines-overlay';
+    document.body.appendChild(_speedLinesEl);
+  }
+  return _speedLinesEl;
+}
 
 // Wrong-way audio cooldown
 let _wrongWayBeepTimer = 0;
@@ -211,6 +222,7 @@ export function resetGameLoopState() {
   _firstBoostFired = false;
   _wrongWayBeepTimer = 0; // Bug #7 fix
   G._nearMissCooldowns.clear(); // Bug #5 fix
+  if (_speedLinesEl) { _speedLinesEl.remove(); _speedLinesEl = null; }
 }
 
 /** Start the rAF loop. Should be called once after initGameLoop(). */
@@ -706,6 +718,7 @@ function gameLoop(timestamp: number) {
       }
       if (impact > 0.3) {
         setImpactIntensity(impact * 0.6);
+        if (impact > 0.5) showDamageFlash();
         if (impact > 0.6) triggerSlowMo('collision');
       }
       G.playerVehicle.clearLandingFlag();
@@ -845,6 +858,7 @@ function gameLoop(timestamp: number) {
       triggerBoostBurst();
       playNitroActivate();
       startNitroBurn();
+      _ensureSpeedLines()?.classList.add('active');
       if (!_firstBoostFired) {
         _firstBoostFired = true;
         triggerSlowMo('boost');
@@ -859,6 +873,7 @@ function gameLoop(timestamp: number) {
       stopNitroBurn();
       stopDepletionWarning();
       playNitroRelease();
+      _ensureSpeedLines()?.classList.remove('active');
     }
     G._wasNitroActive = isNitroNow;
     updateBoostShockwave(frameDt);

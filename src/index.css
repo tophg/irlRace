@@ -1596,6 +1596,56 @@ canvas { display: block; }
 @keyframes lap-fade {
   to { opacity: 0; transform: translate(-50%, -60%); }
 }
+/* Best lap golden celebration */
+.lap-overlay.best-lap {
+  animation: lap-pop 0.5s ease-out, best-lap-glow 1.5s ease-in-out 0.3s;
+}
+.lap-overlay.best-lap::before {
+  content: '';
+  position: absolute; inset: -40px; z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,215,0,0.25) 0%, transparent 70%);
+  animation: best-lap-burst 0.6s ease-out;
+}
+@keyframes best-lap-glow {
+  0%, 100% { filter: drop-shadow(0 0 8px rgba(255,215,0,0.3)); }
+  50% { filter: drop-shadow(0 0 24px rgba(255,215,0,0.7)); }
+}
+@keyframes best-lap-burst {
+  0% { transform: scale(0); opacity: 1; }
+  100% { transform: scale(3); opacity: 0; }
+}
+
+/* ── Speed Lines Overlay (nitro/high speed) ── */
+.speed-lines-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  pointer-events: none; opacity: 0;
+  transition: opacity 0.2s;
+  overflow: hidden;
+}
+.speed-lines-overlay.active { opacity: 1; }
+.speed-lines-overlay::before,
+.speed-lines-overlay::after {
+  content: '';
+  position: absolute; top: -100%; bottom: 0;
+  width: 15%;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent 0px,
+    transparent 30px,
+    rgba(255,255,255,0.06) 30px,
+    rgba(255,255,255,0.06) 32px,
+    transparent 32px,
+    transparent 80px
+  );
+  animation: speed-lines-scroll 0.3s linear infinite;
+}
+.speed-lines-overlay::before { left: 0; animation-duration: 0.25s; }
+.speed-lines-overlay::after { right: 0; animation-duration: 0.35s; }
+@keyframes speed-lines-scroll {
+  from { transform: translateY(0); }
+  to { transform: translateY(80px); }
+}
 
 /* ── Pause Menu ── */
 .pause-overlay {

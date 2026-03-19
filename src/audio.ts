@@ -646,3 +646,57 @@ export function playWrongWayBeep() {
   osc.start();
   osc.stop(now + 0.12);
 }
+
+// ── Slow-Mo Entry/Exit SFX ──
+
+/** Descending pitch sweep — "time slowing down" signature sound. */
+export function playSlowMoEnter() {
+  if (!audioCtx || !masterGain) return;
+  const sv = getSettings().sfxVolume;
+  const now = audioCtx.currentTime;
+
+  // Primary: descending sine sweep 800→200Hz
+  const osc1 = audioCtx.createOscillator();
+  const gain1 = audioCtx.createGain();
+  osc1.type = 'sine';
+  osc1.frequency.setValueAtTime(800, now);
+  osc1.frequency.exponentialRampToValueAtTime(200, now + 0.18);
+  gain1.gain.setValueAtTime(0.18 * sv, now);
+  gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+  osc1.connect(gain1);
+  gain1.connect(masterGain);
+  osc1.start();
+  osc1.stop(now + 0.25);
+
+  // Sub-harmonic for weight: 400→100Hz
+  const osc2 = audioCtx.createOscillator();
+  const gain2 = audioCtx.createGain();
+  osc2.type = 'triangle';
+  osc2.frequency.setValueAtTime(400, now);
+  osc2.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+  gain2.gain.setValueAtTime(0.1 * sv, now);
+  gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+  osc2.connect(gain2);
+  gain2.connect(masterGain);
+  osc2.start();
+  osc2.stop(now + 0.3);
+}
+
+/** Ascending pitch snap — "time resuming" signature sound. */
+export function playSlowMoExit() {
+  if (!audioCtx || !masterGain) return;
+  const sv = getSettings().sfxVolume;
+  const now = audioCtx.currentTime;
+
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(200, now);
+  osc.frequency.exponentialRampToValueAtTime(1000, now + 0.1);
+  gain.gain.setValueAtTime(0.15 * sv, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+  osc.connect(gain);
+  gain.connect(masterGain);
+  osc.start();
+  osc.stop(now + 0.12);
+}

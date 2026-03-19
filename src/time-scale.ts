@@ -10,6 +10,8 @@
  *   getTimeScale();                   // 0..1 for audio pitch etc.
  */
 
+import { playSlowMoEnter, playSlowMoExit } from './audio';
+
 // ── Preset definitions ──
 export interface SlowMoPreset {
   scale: number;     // target time-scale (0.2=very slow, 0.6=moderate)
@@ -62,6 +64,7 @@ export function triggerSlowMo(presetName: string) {
 
   _active = true;
   _phase = 'ramp-down';
+  playSlowMoEnter();
   _targetScale = preset.scale;
   _rampSpeed = (1.0 - preset.scale) / Math.max(preset.rampDown, 0.01);
   _holdTimer = preset.hold;
@@ -105,6 +108,7 @@ export function updateTimeScale(wallDt: number) {
         _active = false;
         _currentPriority = 0;
         _cooldownTimer = COOLDOWN_DURATION;
+        playSlowMoExit();
       }
       break;
   }

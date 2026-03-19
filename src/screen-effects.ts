@@ -46,9 +46,23 @@ function ensureElements() {
 /** Show the white flash overlay (fades via CSS transition). */
 export function showExplosionFlash() {
   ensureElements();
+  flashEl!.style.background = 'white';
   flashEl!.style.opacity = '0.9';
 
   // Fade out on next frame
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (flashEl) flashEl.style.opacity = '0';
+    });
+  });
+}
+
+/** Show a red damage flash on heavy collision. */
+export function showDamageFlash() {
+  ensureElements();
+  flashEl!.style.background = 'rgba(255, 40, 20, 1)';
+  flashEl!.style.opacity = '0.2';
+
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
       if (flashEl) flashEl.style.opacity = '0';
