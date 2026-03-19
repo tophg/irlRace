@@ -1163,16 +1163,17 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       _asyncLoads.push(loadGLB(`/buildings/${landmarkFile}`).then((model) => {
         const bbox = new THREE.Box3().setFromObject(model);
         const size = bbox.getSize(new THREE.Vector3());
-        // Scale landmark to ~15 world units wide (normal building scale)
-        const targetW = 15;
+        // Scale landmark to ~25 world units wide (prominent, not oversized)
+        const targetW = 25;
         const sf = targetW / Math.max(size.x, size.z, 1);
         model.scale.setScalar(sf);
 
-        // Recompute bounding box after scaling
+        // Recompute bounding box after scaling to find ground offset
         const scaledBox = new THREE.Box3().setFromObject(model);
+        const groundY = lmP.y; // use spline Y as ground reference
         const pos = new THREE.Vector3(
           lmP.x + lmRight.x * lmOffset * lmSide,
-          -scaledBox.min.y, // sit on ground
+          groundY - scaledBox.min.y, // offset so model bottom sits on ground
           lmP.z + lmRight.z * lmOffset * lmSide,
         );
         model.position.copy(pos);

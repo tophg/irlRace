@@ -378,4 +378,10 @@ export function destroyWeather() {
   precipConfig = PRECIP_CONFIGS.clear;
   _intensityRamp = 0;
   _thunderTimer = 0;
+
+  // Close thunder AudioContext to prevent mobile Safari context limit (Bug #6 fix)
+  if (_thunderCtx) {
+    _thunderCtx.close().catch(() => {});
+    _thunderCtx = null;
+  }
 }

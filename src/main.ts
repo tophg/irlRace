@@ -110,6 +110,7 @@ window.addEventListener('keydown', (e) => {
 
 // Title scene state
 let titleScene: THREE.Scene | null = null;
+let _titleResizeHandler: (() => void) | null = null;
 let titleCamera: THREE.PerspectiveCamera | null = null;
 let titleCarModel: THREE.Group | null = null;
 let titleAnimFrame = 0;
@@ -155,12 +156,13 @@ function createTitleScene() {
   titleCamera.lookAt(0, 0.6, 0);
 
   // Resize handler for orientation changes on title screen
-  window.addEventListener('resize', () => {
+  _titleResizeHandler = () => {
     if (titleCamera) {
       titleCamera.aspect = window.innerWidth / window.innerHeight;
       titleCamera.updateProjectionMatrix();
     }
-  });
+  };
+  window.addEventListener('resize', _titleResizeHandler);
 
   // ── Lighting — starts dark, activates during reveal ──
   titleAmbient = new THREE.AmbientLight(0x334455, 0.15);
@@ -420,6 +422,35 @@ function revealTitleMenu() {
 }
 
 function destroyTitleScene() {
+  // Remove resize listener (Bug #2 fix: prevent listener leak)
+  if (_titleResizeHandler) {
+    window.removeEventListener('resize', _titleResizeHandler);
+    _titleResizeHandler = null;
+  }
+
+  // Dispose all GPU resources (Bug #3 fix: prevent GPU memory leak)
+  if (titleScene) {
+    // Dispose environment map
+    if (titleScene.environment) {
+      titleScene.environment.dispose();
+      titleScene.environment = null;
+    }
+    // Traverse and dispose all geometry + materials
+    titleScene.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh) {
+        mesh.geometry?.dispose();
+        const mat = mesh.material;
+        if (Array.isArray(mat)) {
+          mat.forEach(m => { (m as THREE.MeshStandardMaterial).map?.dispose(); m.dispose(); });
+        } else if (mat) {
+          (mat as THREE.MeshStandardMaterial).map?.dispose();
+          (mat as THREE.Material).dispose();
+        }
+      }
+    });
+  }
+
   if (titleCarModel && titleScene) {
     titleScene.remove(titleCarModel);
     titleCarModel = null;

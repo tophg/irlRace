@@ -430,7 +430,7 @@ function updateWeatherEffects(
     const swayAmp = weatherType === 'blizzard' ? 0.005 : 0.003;
     const swayFreq = weatherType === 'blizzard' ? 1.5 : 2.0;
     const t = performance.now() * 0.001;
-    camera.rotation.z += Math.sin(t * swayFreq * Math.PI * 2) * swayAmp;
+    camera.rotation.z = Math.sin(t * swayFreq * Math.PI * 2) * swayAmp;
   }
 
   // AI tire spray in rain
@@ -470,7 +470,7 @@ function updateNearMissDetection(
           triggerNearMiss(cross > 0 ? 'right' : 'left');
           triggerNearMissWhoosh(cross > 0 ? 'right' : 'left', camera.position, G.playerVehicle.heading);
           G.playerVehicle.addNitro(5);
-          G.raceStats.nearMissCount = (G.raceStats.nearMissCount ?? 0) + 1;
+          G.raceStats.nearMissCount++;
         }
       }
     }
