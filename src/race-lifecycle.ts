@@ -333,11 +333,9 @@ export async function startRace() {
       : getWeatherForSeed(seed);
     initWeather(scene, weatherType);
 
-    // Weather can override the environment (snow → Alpine Snow, etc.)
+    // Weather can override the environment (snow/ice → Zermatt)
     const w = getCurrentWeather();
-    if (w === 'snow') applyEnvironment(getEnvironmentByName('Alpine Snow'));
-    else if (w === 'blizzard') applyEnvironment(getEnvironmentByName('Blizzard'));
-    else if (w === 'ice') applyEnvironment(getEnvironmentByName('Black Ice'));
+    if (w === 'snow' || w === 'blizzard' || w === 'ice') applyEnvironment(getEnvironmentByName('Zermatt'));
 
     // ── Now generate the track (scenery will use the correct theme) ──
     if (G._customTrack) {

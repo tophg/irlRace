@@ -285,34 +285,20 @@ export function hideLoading() {
 // Environment flavor text
 const ENV_FLAVOR: Record<string, string> = {
   'Random': 'Let fate decide your track',
-  'Urban Night': 'Neon-lit streets, city heartbeat',
-  'Desert Dawn': 'Sun-scorched roads, endless horizon',
-  'Coastal Sunset': 'Golden hour, ocean breeze',
-  'Neon City': 'Cyberpunk glow, electric streets',
-  'Thunder Storm': 'Rain-soaked asphalt, lightning flash',
-  'Alpine Snow': 'Crisp mountain air, icy curves',
-  'Blizzard': 'Zero visibility, survival mode',
-  'Black Ice': 'Treacherous grip, frozen darkness',
-  'Tropical Night': 'Warm jungle air, exotic vibes',
-  'Industrial Zone': 'Gritty factories, amber smoke',
-  'Highway Sunrise': 'Open road, golden dawn',
-  'Underground': 'Concrete tunnels, neon glow',
+  'Brooklyn': 'Dark streets, warm lights, city heartbeat',
+  'Mojave': 'Sun-scorched highway, endless horizon',
+  'Havana': 'Tropical heat, golden hour, palm shadows',
+  'Shibuya': 'Neon-drenched megacity, wet reflections',
+  'Zermatt': 'Frozen mountain pass, icy curves',
 };
 
 const ENV_EMOJI: Record<string, string> = {
   'Random': '🎲',
-  'Urban Night': '🌃',
-  'Desert Dawn': '🏜️',
-  'Coastal Sunset': '🌅',
-  'Neon City': '🌆',
-  'Thunder Storm': '⛈️',
-  'Alpine Snow': '🏔️',
-  'Blizzard': '🌨️',
-  'Black Ice': '🧊',
-  'Tropical Night': '🌴',
-  'Industrial Zone': '🏭',
-  'Highway Sunrise': '🌄',
-  'Underground': '🚇',
+  'Brooklyn': '🌃',
+  'Mojave': '🏜️',
+  'Havana': '🌴',
+  'Shibuya': '🌆',
+  'Zermatt': '🏔️',
 };
 
 // Preview state (Canvas 2D gradient)
