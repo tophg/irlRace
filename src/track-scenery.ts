@@ -1013,9 +1013,9 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       // Left (-X)
       addFace([-0.5, -0.5, -0.5], [0, 0, 1], [0, 1, 0], repLR, repV, false);
       // Top (+Y)
-      addFace([-0.5, 0.5, -0.5], [1, 0, 0], [0, 0, 1], 1, 1, true);
+      addFace([-0.5, 0.5, 0.5], [1, 0, 0], [0, 0, -1], 1, 1, true);
       // Bottom (-Y)
-      addFace([-0.5, -0.5, 0.5], [1, 0, 0], [0, 0, -1], 1, 1, true);
+      addFace([-0.5, -0.5, -0.5], [1, 0, 0], [0, 0, 1], 1, 1, true);
 
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
