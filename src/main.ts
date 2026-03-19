@@ -258,7 +258,7 @@ function updateTitleScene() {
       lerp(0.4, 0.8, ep),
       lerp(5, 5.5, ep)
     );
-    titleCamera.lookAt(0, lerp(0.6, 0.5, ep), 0);
+    titleCamera.lookAt(0, lerp(0.8, 0.7, ep), 0);
 
     // Ambient slowly brightens
     if (titleAmbient) titleAmbient.intensity = lerp(0.15, 0.4, ep);
@@ -304,7 +304,7 @@ function updateTitleScene() {
       height,
       Math.cos(angle) * radius
     );
-    titleCamera.lookAt(0, 0.4, 0);
+    titleCamera.lookAt(0, 0.6, 0);
 
     // Sequential light activation
     // t=3.0: Cyan rim fades in
@@ -373,7 +373,7 @@ function updateTitleScene() {
       height,
       Math.cos(orbitAngle) * radius
     );
-    titleCamera.lookAt(0, 0.4, 0);
+    titleCamera.lookAt(0, 0.6, 0);
 
     // Underglow breathing pulse
     if (titleUnderglow) {
