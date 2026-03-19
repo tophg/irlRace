@@ -853,6 +853,12 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       'coastal_home.glb': 0.45,
       'office_b.glb': 0.8,
       'nyc_apartment_d.glb': 0.65,
+      'highrise_a.glb': 0.9,
+      'highrise_b.glb': 0.9,
+      'highrise_c.glb': 0.85,
+      'highrise_d.glb': 0.85,
+      'highrise_e.glb': 0.9,
+      'highrise_f.glb': 0.9,
     };
 
     for (const pl of placementsWithModel) {
