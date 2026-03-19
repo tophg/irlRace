@@ -27,6 +27,15 @@ function getGameMusic() {
   return gameMusicAudio;
 }
 
+export function preloadTitleMusic(): Promise<void> {
+  const m = getTitleMusic();
+  if (m.readyState >= 3) return Promise.resolve(); // HAVE_FUTURE_DATA+
+  return new Promise<void>((resolve) => {
+    m.addEventListener('canplaythrough', () => resolve(), { once: true });
+    m.load();
+  });
+}
+
 export function playTitleMusic() {
   const s = getSettings();
   const m = getTitleMusic();

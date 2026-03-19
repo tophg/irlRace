@@ -6,7 +6,7 @@ import './index.css';
 import { GameState, CarDef, EventType, CAR_ROSTER } from './types';
 import { initScene, getScene } from './scene';
 import { showLapOverlay } from './hud';
-import { playCheckpointSFX, playLapFanfare, playFinishFanfare, playPositionSFX, playTitleMusic, pauseMusic, resumeMusic, stopAllMusic } from './audio';
+import { playCheckpointSFX, playLapFanfare, playFinishFanfare, playPositionSFX, playTitleMusic, preloadTitleMusic, pauseMusic, resumeMusic, stopAllMusic } from './audio';
 import { showResults, resolvePlayerName } from './results-screen';
 import { enterSpectatorMode, cycleSpectateTarget, destroySpectateHUD } from './spectator';
 import { initGarage, destroyGarage } from './garage';
@@ -489,11 +489,42 @@ function titleLoop() {
 function showTitleScreen() {
   G.gameState = GameState.TITLE;
   showTouchControls(false);
-  playTitleMusic();
 
-  // Create 3D scene
+  // Start preloading audio immediately
+  const audioReady = preloadTitleMusic();
+
+  // ── Splash screen: gate on user tap + audio ready ──
+  const splashEl = document.createElement('div');
+  splashEl.className = 'title-screen title-splash';
+  splashEl.id = 'title-splash';
+  splashEl.innerHTML = `
+    <div class="title-content">
+      <div class="title-logo"><span class="title-race">IRL</span> <span class="title-irl">RACE</span></div>
+      <div class="title-subtitle">INDOOR RACING LEAGUE</div>
+      <div class="splash-tap" id="splash-tap">TAP TO START</div>
+    </div>
+  `;
+  uiOverlay.appendChild(splashEl);
+
+  // Create 3D title scene behind the splash
   createTitleScene();
+  titleLoop();
 
+  const launchTitle = async () => {
+    // Wait for audio to finish downloading
+    await audioReady;
+    // Start music immediately — we're inside a user gesture so autoplay is allowed
+    playTitleMusic();
+    // Remove splash and show full title
+    splashEl.remove();
+    renderFullTitleScreen();
+  };
+
+  splashEl.addEventListener('click', () => launchTitle(), { once: true });
+  splashEl.addEventListener('touchstart', () => launchTitle(), { once: true });
+}
+
+function renderFullTitleScreen() {
   const titleEl = document.createElement('div');
   titleEl.className = 'title-screen';
   titleEl.id = 'title-screen';
@@ -520,12 +551,6 @@ function showTitleScreen() {
 
   // Create ember overlay
   createEmberOverlay();
-
-  // Start title render loop
-  titleLoop();
-
-  // Browser autoplay policy blocks music at page load; retry on first user click
-  titleEl.addEventListener('click', () => playTitleMusic(), { once: true });
 
   const cleanupAndDo = (fn: () => void) => {
     destroyTitleScene();
