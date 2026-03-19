@@ -223,6 +223,251 @@ function stopReplay() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// EXTRACTED SUBSYSTEMS
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** Render the rear-view mirror inset (scissored render pass). */
+function updateRearMirror(renderer: THREE.WebGPURenderer, scene: THREE.Scene, frameDt: number) {
+  if (!G.mirrorCamera || !G.playerVehicle || G.gameState !== GameState.RACING) return;
+  if (G.mirrorBorder) G.mirrorBorder.style.display = 'block';
+  const sinH = Math.sin(G.playerVehicle.heading);
+  const cosH = Math.cos(G.playerVehicle.heading);
+  const pp = G.playerVehicle.group.position;
+  G.mirrorCamera.position.set(pp.x, pp.y + 2.5, pp.z);
+  G.mirrorCamera.lookAt(pp.x - sinH * 20, pp.y + 1.5, pp.z - cosH * 20);
+
+  G.mirrorCamera.updateMatrixWorld();
+  G.mirrorCamera.updateProjectionMatrix();
+  G.mirrorCamera.projectionMatrix.elements[0] *= -1;
+
+  const precip = getPrecipMesh();
+  if (precip) precip.visible = false;
+  const godrays = scene.getObjectByName('godrays');
+  if (godrays) godrays.visible = false;
+
+  const gl = renderer.getContext?.() as WebGLRenderingContext | undefined;
+  if (gl?.frontFace) gl.frontFace(gl.CW);
+
+  const w = 320, h = 120;
+  const x = Math.floor(window.innerWidth / 2 - w / 2);
+  const y = 14;
+
+  renderer.setScissorTest(true);
+  renderer.setScissor(x, y, w, h);
+  renderer.setViewport(x, y, w, h);
+
+  const oldAutoClear = renderer.autoClear;
+  renderer.autoClear = false;
+  renderer.clearColor();
+  renderer.clearDepth();
+  renderer.render(scene, G.mirrorCamera);
+
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+  renderer.autoClear = oldAutoClear;
+
+  if (gl?.frontFace) gl.frontFace(gl.CCW);
+  if (precip) precip.visible = true;
+  if (godrays) godrays.visible = true;
+}
+
+/** Dynamic Resolution Scaling — evaluate every 30 frames, schedule resize for next frame. */
+function updateDRS(renderer: THREE.WebGPURenderer, frameDt: number) {
+  G._drsFrameTimes[G._drsWriteIdx % 30] = frameDt;
+  G._drsWriteIdx++;
+  if (G._drsWriteIdx >= 30) {
+    G._drsWriteIdx = 0;
+    let sum = 0;
+    for (let i = 0; i < 30; i++) sum += G._drsFrameTimes[i];
+    const avgDt = sum / 30;
+    if (!isFinite(avgDt) || avgDt <= 0) return;
+    const avgFps = 1 / avgDt;
+    const currentPR = renderer.getPixelRatio();
+    const basePR = Math.min(window.devicePixelRatio, 2);
+    let newPR = currentPR;
+    if (avgFps < 45 && currentPR > 0.5) {
+      newPR = Math.max(currentPR - 0.15, 0.5);
+    } else if (avgFps > 56 && currentPR < basePR) {
+      newPR = Math.min(currentPR + 0.05, basePR);
+    }
+    if (newPR !== currentPR) _drsPendingPR = newPR;
+  }
+}
+
+/** Update damage smoke, flames, detached parts physics. */
+function updateDamageAndParts(scene: THREE.Scene, frameDt: number) {
+  if (G.gameState !== GameState.RACING || !G.playerVehicle) return;
+
+  const dmg = G.playerVehicle.damage;
+  const worstHp = Math.min(dmg.front.hp, dmg.rear.hp, dmg.left.hp, dmg.right.hp);
+  if (worstHp < 50) spawnDamageSmoke(G.playerVehicle.group.position, 1 - worstHp / 50, frameDt);
+
+  const sinH = Math.sin(G.playerVehicle.heading);
+  const cosH = Math.cos(G.playerVehicle.heading);
+  const pp = G.playerVehicle.group.position;
+  const zoneOffsets: [string, number, number, number][] = [
+    ['front', 0, 1.0, -2.0],
+    ['rear', 0, 0.8, 1.8],
+    ['left', -1.0, 0.7, 0],
+    ['right', 1.0, 0.7, 0],
+  ];
+  for (const [zone, lx, ly, lz] of zoneOffsets) {
+    const hp = dmg[zone as keyof typeof dmg].hp;
+    if (hp < 20) {
+      G._flamePos.set(
+        pp.x + cosH * lx + sinH * lz,
+        pp.y + ly,
+        pp.z - sinH * lx + cosH * lz,
+      );
+      spawnFlameParticle(G._flamePos, 1 - hp / 20, frameDt);
+    }
+  }
+
+  // Detached parts
+  for (const zone of ['front', 'rear', 'left', 'right'] as const) {
+    if (G.playerVehicle.detachedZones.has(zone) && !G.detachedParts.some(dp => dp.zone === zone && dp.owner === 'local')) {
+      const partMesh = G.playerVehicle.createDetachedPart(zone);
+      if (partMesh) {
+        scene.add(partMesh);
+        G.detachedParts.push({
+          mesh: partMesh,
+          vx: G.playerVehicle.velX + (Math.random() - 0.5) * 8,
+          vy: 3 + Math.random() * 5,
+          vz: G.playerVehicle.velZ + (Math.random() - 0.5) * 8,
+          ax: (Math.random() - 0.5) * 10,
+          ay: (Math.random() - 0.5) * 10,
+          az: (Math.random() - 0.5) * 10,
+          life: 4.0,
+          zone,
+          owner: 'local',
+        });
+        spawnGPUExplosion(partMesh.position, 30);
+      }
+    }
+  }
+}
+
+/** Physics for flying detached body panels. */
+function updateDetachedPartsPhysics(scene: THREE.Scene, frameDt: number) {
+  for (let i = G.detachedParts.length - 1; i >= 0; i--) {
+    const dp = G.detachedParts[i];
+    dp.life -= frameDt;
+    if (dp.life <= 0 || dp.mesh.position.y < -10) {
+      scene.remove(dp.mesh);
+      dp.mesh.geometry?.dispose();
+      (dp.mesh.material as THREE.Material)?.dispose();
+      G.detachedParts[i] = G.detachedParts[G.detachedParts.length - 1];
+      G.detachedParts.pop();
+      continue;
+    }
+    dp.mesh.position.x += dp.vx * frameDt;
+    dp.mesh.position.y += dp.vy * frameDt;
+    dp.mesh.position.z += dp.vz * frameDt;
+    dp.vy -= 15 * frameDt;
+    dp.mesh.rotation.x += dp.ax * frameDt;
+    dp.mesh.rotation.y += dp.ay * frameDt;
+    dp.mesh.rotation.z += dp.az * frameDt;
+
+    if (dp.mesh.position.y < 0.1) {
+      dp.mesh.position.y = 0.1;
+      dp.vy = Math.abs(dp.vy) * 0.3;
+      dp.vx *= 0.6; dp.vz *= 0.6;
+      dp.ax *= 0.4; dp.ay *= 0.4; dp.az *= 0.4;
+    }
+
+    if (dp.life < 1.5) {
+      const mat = dp.mesh.material as THREE.MeshStandardMaterial;
+      if (mat.transparent !== undefined) {
+        mat.transparent = true;
+        mat.opacity = dp.life / 1.5;
+      }
+    }
+  }
+}
+
+/** Weather VFX: rain droplets, wet tire spray (player + AI), wind camera sway. */
+function updateWeatherEffects(
+  renderer: THREE.WebGPURenderer, camera: THREE.PerspectiveCamera,
+  gameDt: number, frameDt: number, s: GameState,
+) {
+  if (!G.playerVehicle) return;
+  updateWeather(gameDt, G.playerVehicle.group.position);
+
+  const weatherType = getCurrentWeather();
+  const rainIntensity = weatherType === 'heavy_rain' ? 0.5 : weatherType === 'light_rain' ? 0.25 : 0;
+  updateRainDroplets(rainIntensity, frameDt);
+
+  // Wet tire spray (NFS-style rooster tail)
+  const wp = getWeatherPhysics();
+  if (wp.sprayDensity > 0 && G.playerVehicle.speed > 30) {
+    const sprayChance = wp.sprayDensity * Math.min(G.playerVehicle.speed / 120, 1) * 0.5;
+    if (Math.random() < sprayChance) {
+      const cosH = Math.cos(G.playerVehicle.heading);
+      const sinH = Math.sin(G.playerVehicle.heading);
+      const pp = G.playerVehicle.group.position;
+      _rPos.set(pp.x - sinH * 2 - cosH * 0.6, pp.y + 0.1, pp.z - cosH * 2 + sinH * 0.6);
+      spawnGPUShoulderDust(_rPos, G.playerVehicle.speed * 0.3, G.playerVehicle.heading);
+      _rPos.set(pp.x - sinH * 2 + cosH * 0.6, pp.y + 0.1, pp.z - cosH * 2 - sinH * 0.6);
+      spawnGPUShoulderDust(_rPos, G.playerVehicle.speed * 0.3, G.playerVehicle.heading);
+    }
+  }
+
+  // Wind camera sway (heavy rain / blizzard)
+  if ((weatherType === 'heavy_rain' || weatherType === 'blizzard') && s === GameState.RACING) {
+    const swayAmp = weatherType === 'blizzard' ? 0.005 : 0.003;
+    const swayFreq = weatherType === 'blizzard' ? 1.5 : 2.0;
+    const t = performance.now() * 0.001;
+    camera.rotation.z += Math.sin(t * swayFreq * Math.PI * 2) * swayAmp;
+  }
+
+  // AI tire spray in rain
+  if (wp.sprayDensity > 0) {
+    for (const ai of G.aiRacers) {
+      if (ai.vehicle.speed > 25 && Math.random() < wp.sprayDensity * 0.3) {
+        const aP = ai.vehicle.group.position;
+        const cosA = Math.cos(ai.vehicle.heading);
+        const sinA = Math.sin(ai.vehicle.heading);
+        _rPos.set(aP.x - sinA * 2, aP.y + 0.1, aP.z - cosA * 2);
+        spawnGPUShoulderDust(_rPos, ai.vehicle.speed * 0.2, ai.vehicle.heading);
+      }
+    }
+  }
+}
+
+/** Near-miss detection against AI vehicles. Triggers VFX, slow-mo, nitro reward. */
+function updateNearMissDetection(
+  camera: THREE.PerspectiveCamera, timestamp: number, frameDt: number, s: GameState,
+) {
+  if (!G.playerVehicle) return;
+  if (s === GameState.RACING && Math.abs(G.playerVehicle.speed) > 15) {
+    const pPos = G.playerVehicle.group.position;
+    const now = timestamp / 1000;
+    for (const ai of G.aiRacers) {
+      const aPos = ai.vehicle.group.position;
+      const dx = pPos.x - aPos.x;
+      const dz = pPos.z - aPos.z;
+      const dist2 = dx * dx + dz * dz;
+      if (dist2 < 3.5 * 3.5 && dist2 > 1.5 * 1.5) {
+        const lastMiss = G._nearMissCooldowns.get(ai.id) ?? 0;
+        if (now - lastMiss > 1.0) {
+          G._nearMissCooldowns.set(ai.id, now);
+          const cosH = Math.cos(G.playerVehicle.heading);
+          const sinH = Math.sin(G.playerVehicle.heading);
+          const cross = dx * cosH - dz * sinH;
+          triggerNearMiss(cross > 0 ? 'right' : 'left');
+          triggerSlowMo('nearMiss');
+          triggerNearMissWhoosh(cross > 0 ? 'right' : 'left', camera.position, G.playerVehicle.heading);
+          G.playerVehicle.addNitro(5);
+          G.raceStats.nearMissCount = (G.raceStats.nearMissCount ?? 0) + 1;
+        }
+      }
+    }
+  }
+  updateNearMissStreaks(frameDt);
+  updateNearMissWhoosh(frameDt, camera.position, G.playerVehicle.heading);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MAIN GAME LOOP
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -583,38 +828,7 @@ function gameLoop(timestamp: number) {
     }
     flushToGPU();
     updateGPUParticles(renderer, gameDt);
-    updateWeather(gameDt, G.playerVehicle.group.position);
-
-    // Rain droplets
-    const weatherType = getCurrentWeather();
-    const rainIntensity = weatherType === 'heavy_rain' ? 0.5 : weatherType === 'light_rain' ? 0.25 : 0;
-    updateRainDroplets(rainIntensity, frameDt);
-
-    // ── Wet tire spray (NFS-style rooster tail) ──
-    const wp = getWeatherPhysics();
-    if (wp.sprayDensity > 0 && G.playerVehicle.speed > 30) {
-      const sprayChance = wp.sprayDensity * Math.min(G.playerVehicle.speed / 120, 1) * 0.5;
-      if (Math.random() < sprayChance) {
-        // Spawn dust/spray behind player (reuse shoulder dust as lightweight spray)
-        const cosH = Math.cos(G.playerVehicle.heading);
-        const sinH = Math.sin(G.playerVehicle.heading);
-        const pp = G.playerVehicle.group.position;
-        // Rear left
-        _rPos.set(pp.x - sinH * 2 - cosH * 0.6, pp.y + 0.1, pp.z - cosH * 2 + sinH * 0.6);
-        spawnGPUShoulderDust(_rPos, G.playerVehicle.speed * 0.3, G.playerVehicle.heading);
-        // Rear right
-        _rPos.set(pp.x - sinH * 2 + cosH * 0.6, pp.y + 0.1, pp.z - cosH * 2 - sinH * 0.6);
-        spawnGPUShoulderDust(_rPos, G.playerVehicle.speed * 0.3, G.playerVehicle.heading);
-      }
-    }
-
-    // ── Wind camera sway (heavy rain / blizzard) ──
-    if ((weatherType === 'heavy_rain' || weatherType === 'blizzard') && s === GameState.RACING) {
-      const swayAmp = weatherType === 'blizzard' ? 0.005 : 0.003; // radians (~0.3° / ~0.17°)
-      const swayFreq = weatherType === 'blizzard' ? 1.5 : 2.0;
-      const t = performance.now() * 0.001;
-      camera.rotation.z += Math.sin(t * swayFreq * Math.PI * 2) * swayAmp;
-    }
+    updateWeatherEffects(renderer, camera, gameDt, frameDt, s);
 
     updateImpactFlash(frameDt);
 
@@ -728,46 +942,7 @@ function gameLoop(timestamp: number) {
     updateLensFlares(camera.position, timestamp / 1000);
     updateLightning(frameDt);
 
-    // Near-miss detection
-    if (s === GameState.RACING && Math.abs(G.playerVehicle.speed) > 15) {
-      const pPos = G.playerVehicle.group.position;
-      const now = timestamp / 1000;
-      for (const ai of G.aiRacers) {
-        const aPos = ai.vehicle.group.position;
-        const dx = pPos.x - aPos.x;
-        const dz = pPos.z - aPos.z;
-        const dist2 = dx * dx + dz * dz;
-        if (dist2 < 3.5 * 3.5 && dist2 > 1.5 * 1.5) {
-          const lastMiss = G._nearMissCooldowns.get(ai.id) ?? 0;
-          if (now - lastMiss > 1.0) {
-            G._nearMissCooldowns.set(ai.id, now);
-            const cosH = Math.cos(G.playerVehicle.heading);
-            const sinH = Math.sin(G.playerVehicle.heading);
-            const cross = dx * cosH - dz * sinH;
-            triggerNearMiss(cross > 0 ? 'right' : 'left');
-            triggerSlowMo('nearMiss');
-            triggerNearMissWhoosh(cross > 0 ? 'right' : 'left', camera.position, G.playerVehicle.heading);
-            G.playerVehicle.addNitro(5);
-            G.raceStats.nearMissCount = (G.raceStats.nearMissCount ?? 0) + 1;
-          }
-        }
-      }
-    }
-    updateNearMissStreaks(frameDt);
-    updateNearMissWhoosh(frameDt, camera.position, G.playerVehicle.heading);
-
-    // ── AI tire spray in rain ──
-    if (wp.sprayDensity > 0) {
-      for (const ai of G.aiRacers) {
-        if (ai.vehicle.speed > 25 && Math.random() < wp.sprayDensity * 0.3) {
-          const aP = ai.vehicle.group.position;
-          const cosA = Math.cos(ai.vehicle.heading);
-          const sinA = Math.sin(ai.vehicle.heading);
-          _rPos.set(aP.x - sinA * 2, aP.y + 0.1, aP.z - cosA * 2);
-          spawnGPUShoulderDust(_rPos, ai.vehicle.speed * 0.2, ai.vehicle.heading);
-        }
-      }
-    }
+    updateNearMissDetection(camera, timestamp, frameDt, s);
 
     updateVictoryConfetti(frameDt);
 
@@ -797,91 +972,8 @@ function gameLoop(timestamp: number) {
     }
 
     // Damage smoke + flames
-    if (s === GameState.RACING && G.playerVehicle) {
-      const dmg = G.playerVehicle.damage;
-      const worstHp = Math.min(dmg.front.hp, dmg.rear.hp, dmg.left.hp, dmg.right.hp);
-      if (worstHp < 50) spawnDamageSmoke(G.playerVehicle.group.position, 1 - worstHp / 50, frameDt);
-
-      const sinH = Math.sin(G.playerVehicle.heading);
-      const cosH = Math.cos(G.playerVehicle.heading);
-      const pp = G.playerVehicle.group.position;
-      const zoneOffsets: [string, number, number, number][] = [
-        ['front', 0, 1.0, -2.0],
-        ['rear', 0, 0.8, 1.8],
-        ['left', -1.0, 0.7, 0],
-        ['right', 1.0, 0.7, 0],
-      ];
-      for (const [zone, lx, ly, lz] of zoneOffsets) {
-        const hp = dmg[zone as keyof typeof dmg].hp;
-        if (hp < 20) {
-          G._flamePos.set(
-            pp.x + cosH * lx + sinH * lz,
-            pp.y + ly,
-            pp.z - sinH * lx + cosH * lz,
-          );
-          spawnFlameParticle(G._flamePos, 1 - hp / 20, frameDt);
-        }
-      }
-
-      // Detached parts
-      for (const zone of ['front', 'rear', 'left', 'right'] as const) {
-        if (G.playerVehicle.detachedZones.has(zone) && !G.detachedParts.some(dp => dp.zone === zone && dp.owner === 'local')) {
-          const partMesh = G.playerVehicle.createDetachedPart(zone);
-          if (partMesh) {
-            scene.add(partMesh);
-            G.detachedParts.push({
-              mesh: partMesh,
-              vx: G.playerVehicle.velX + (Math.random() - 0.5) * 8,
-              vy: 3 + Math.random() * 5,
-              vz: G.playerVehicle.velZ + (Math.random() - 0.5) * 8,
-              ax: (Math.random() - 0.5) * 10,
-              ay: (Math.random() - 0.5) * 10,
-              az: (Math.random() - 0.5) * 10,
-              life: 4.0,
-              zone,
-              owner: 'local',
-            });
-            spawnGPUExplosion(partMesh.position, 30);
-          }
-        }
-      }
-    }
-
-    // Detached parts physics
-    for (let i = G.detachedParts.length - 1; i >= 0; i--) {
-      const dp = G.detachedParts[i];
-      dp.life -= frameDt;
-      if (dp.life <= 0 || dp.mesh.position.y < -10) {
-        scene.remove(dp.mesh);
-        dp.mesh.geometry?.dispose();
-        (dp.mesh.material as THREE.Material)?.dispose();
-        G.detachedParts[i] = G.detachedParts[G.detachedParts.length - 1];
-        G.detachedParts.pop();
-        continue;
-      }
-      dp.mesh.position.x += dp.vx * frameDt;
-      dp.mesh.position.y += dp.vy * frameDt;
-      dp.mesh.position.z += dp.vz * frameDt;
-      dp.vy -= 15 * frameDt;
-      dp.mesh.rotation.x += dp.ax * frameDt;
-      dp.mesh.rotation.y += dp.ay * frameDt;
-      dp.mesh.rotation.z += dp.az * frameDt;
-
-      if (dp.mesh.position.y < 0.1) {
-        dp.mesh.position.y = 0.1;
-        dp.vy = Math.abs(dp.vy) * 0.3;
-        dp.vx *= 0.6; dp.vz *= 0.6;
-        dp.ax *= 0.4; dp.ay *= 0.4; dp.az *= 0.4;
-      }
-
-      if (dp.life < 1.5) {
-        const mat = dp.mesh.material as THREE.MeshStandardMaterial;
-        if (mat.transparent !== undefined) {
-          mat.transparent = true;
-          mat.opacity = dp.life / 1.5;
-        }
-      }
-    }
+    updateDamageAndParts(scene, frameDt);
+    updateDetachedPartsPhysics(scene, frameDt);
 
     // Checkpoint detection
     if (s === GameState.RACING && G.raceEngine) {
@@ -1064,83 +1156,9 @@ function gameLoop(timestamp: number) {
       renderer.render(scene, camera);
     }
 
-    // Rear-view mirror
-    if (G.mirrorCamera && G.playerVehicle && s === GameState.RACING) {
-      if (G.mirrorBorder) G.mirrorBorder.style.display = 'block';
-      const sinH = Math.sin(G.playerVehicle.heading);
-      const cosH = Math.cos(G.playerVehicle.heading);
-      const pp = G.playerVehicle.group.position;
-      G.mirrorCamera.position.set(pp.x, pp.y + 2.5, pp.z);
-      G.mirrorCamera.lookAt(pp.x - sinH * 20, pp.y + 1.5, pp.z - cosH * 20);
+    updateRearMirror(renderer, scene, frameDt);
 
-      G.mirrorCamera.updateMatrixWorld();
-      G.mirrorCamera.updateProjectionMatrix();
-      G.mirrorCamera.projectionMatrix.elements[0] *= -1;
-
-      const precip = getPrecipMesh();
-      if (precip) precip.visible = false;
-
-      const godrays = scene.getObjectByName('godrays');
-      if (godrays) godrays.visible = false;
-
-      const gl = renderer.getContext?.() as WebGLRenderingContext | undefined;
-      if (gl?.frontFace) gl.frontFace(gl.CW);
-
-      const w = 320, h = 120;
-      const x = Math.floor(window.innerWidth / 2 - w / 2);
-      const y = 14; // WebGPURenderer — always top-origin
-
-      renderer.setScissorTest(true);
-      renderer.setScissor(x, y, w, h);
-      renderer.setViewport(x, y, w, h);
-
-      const oldAutoClear = renderer.autoClear;
-      renderer.autoClear = false;
-      renderer.clearColor();
-      renderer.clearDepth();
-
-      renderer.render(scene, G.mirrorCamera);
-
-      renderer.setScissorTest(false);
-      renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
-      renderer.autoClear = oldAutoClear;
-
-      if (gl?.frontFace) gl.frontFace(gl.CCW);
-
-      if (precip) precip.visible = true;
-      if (godrays) godrays.visible = true;
-    }
-
-    // DRS (Dynamic Resolution Scaling)
-    // Evaluate every 30 frames: average frame time → adjust pixel ratio.
-    // Resize is applied at the START of the next game loop iteration (see below)
-    // to avoid invalidating the framebuffer mid-render (which causes blank/black
-    // frames on WebGPU).
-    G._drsFrameTimes[G._drsWriteIdx % 30] = frameDt;
-    G._drsWriteIdx++;
-    if (G._drsWriteIdx >= 30) {
-      G._drsWriteIdx = 0; // reset so we sample a fresh 30-frame window
-      let sum = 0;
-      for (let drsI = 0; drsI < 30; drsI++) sum += G._drsFrameTimes[drsI];
-      const avgDt = sum / 30;
-      // Guard against NaN/Infinity from corrupted frame times
-      if (!isFinite(avgDt) || avgDt <= 0) {
-        // Skip this DRS evaluation — bad data
-      } else {
-        const avgFps = 1 / avgDt;
-        const currentPR = renderer.getPixelRatio();
-        const basePR = Math.min(window.devicePixelRatio, 2);
-        let newPR = currentPR;
-        if (avgFps < 45 && currentPR > 0.5) {
-          newPR = Math.max(currentPR - 0.15, 0.5);
-        } else if (avgFps > 56 && currentPR < basePR) {
-          newPR = Math.min(currentPR + 0.05, basePR);
-        }
-        if (newPR !== currentPR) {
-          _drsPendingPR = newPR;
-        }
-      }
-    }
+    updateDRS(renderer, frameDt);
 
     // Restore physics state after interpolated rendering
     G.playerVehicle.restoreFromRender();
