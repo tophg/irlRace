@@ -35,6 +35,7 @@ const UNLOCK_COSTS: Record<string, number> = {
   kickass: 4000,
   revelator: 3500,
   submit: 4500,
+  marry: 5000,
 
 };
 
