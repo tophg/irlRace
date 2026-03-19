@@ -1,6 +1,6 @@
 /* ── Hood Racer — Vehicle Destruction Animation ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { spawnGPUExplosion, spawnGPUFlame, spawnGPUDamageSmoke, spawnExplosionDust, spawnGPUSparks } from './gpu-particles';
 import { fractureMesh, type MeshFragment } from './mesh-fracture';
 
@@ -406,8 +406,8 @@ export function triggerVehicleDestruction(
   // including the SpotLights we need to keep visible.
   bodyGroup.traverse((child) => {
     if (child === bodyGroup) return; // skip root — keep Group visible
-    if ((child as any).isLight) {
-      (child as any).intensity = 0;
+    if ((child as THREE.Light).isLight) {
+      (child as THREE.Light).intensity = 0;
     } else {
       child.visible = false;
     }

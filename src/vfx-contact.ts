@@ -7,7 +7,7 @@
  *   • Shoulder dust — dirt particles on road edge
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { spawnGPUSparks } from './gpu-particles';
 
 // ── Continuous Rim Sparks (persistent sparking on blown tires) ──

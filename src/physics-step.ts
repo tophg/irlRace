@@ -118,8 +118,7 @@ export function stepPhysics(dt: number, s: GameState) {
       G.vehicleCamera?.shake(Math.min(evt.impactForce / 40, 1));
       _deps.flashDamage(evt.impactForce / 40);
       setImpactIntensity(evt.impactForce / 40);
-    }
-    if (evt.idB === 'local' && G.playerVehicle) {
+    } else if (evt.idB === 'local' && G.playerVehicle) {
       G._impactDir.set(-evt.normalX, 0, -evt.normalZ);
       G.playerVehicle.applyDamage(G._impactDir, evt.impactForce);
       G.raceStats.collisionCount++;

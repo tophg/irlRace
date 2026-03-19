@@ -1,6 +1,6 @@
 /* ── Hood Racer — Shared Types ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import type { SplineBVH } from './bvh';
 
 // ── Game States ──
@@ -48,6 +48,8 @@ export const CAR_ROSTER: CarDef[] = [
   { id: 'phantom',     name: 'Phantom',     file: 'Nissan_Altima.glb',  maxSpeed: 76, acceleration: 27, handling: 2.1, braking: 42, driftFactor: 0.40, gripCoeff: 0.78, latFriction: 4.0, suspStiffness: 0.05, steerSpeed: 2.6,  driftThreshold: 0.10, mass: 1550, cgHeight: 0.16, frontBias: 0.57, heightOffset: 0.05 },
   // Monarch — heavy cruiser, strong accel, planted but slow to turn
   { id: 'monarch',     name: 'Monarch',     file: 'Nissan_Maxima.glb',  maxSpeed: 73, acceleration: 33, handling: 1.9, braking: 44, driftFactor: 0.26, gripCoeff: 0.84, latFriction: 5.0, suspStiffness: 0.04, steerSpeed: 2.8,  driftThreshold: 0.11, mass: 1650, cgHeight: 0.14, frontBias: 0.55, heightOffset: 0.05 },
+  // Stallion — muscle car, high speed, torquey, likes to slide
+  { id: 'stallion',    name: 'Stallion',    file: 'Ford_Mustang.glb',   maxSpeed: 79, acceleration: 35, handling: 2.2, braking: 46, driftFactor: 0.38, gripCoeff: 0.82, latFriction: 4.5, suspStiffness: 0.05, steerSpeed: 2.7,  driftThreshold: 0.10, mass: 1600, cgHeight: 0.13, frontBias: 0.52, heightOffset: 0.0 },
 
 
   // ── EXOTIC TIER ──

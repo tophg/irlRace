@@ -1,6 +1,6 @@
 /* ── Hood Racer — Main Entry Point & Game Orchestrator ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import './index.css';
 
 import { GameState, CarDef, EventType } from './types';
@@ -24,6 +24,7 @@ import {
   showPositionCallout, showEmoteBubble, spawnConfetti,
   togglePause, showRaceConfig, showControlsRef,
 } from './ui-screens';
+import { notifyPositionChanged } from './hud';
 
 // ── Extracted Multiplayer ──
 import { initMultiplayerHandler, enterMultiplayerLobby } from './multiplayer-handler';
@@ -312,6 +313,7 @@ bus.on('finish', (e) => {
 bus.on('position_change', (e) => {
   showPositionCallout(e.gained, e.newRank);
   playPositionSFX(e.gained);
+  notifyPositionChanged();
 });
 
 startGameLoop();

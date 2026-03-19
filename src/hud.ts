@@ -1,12 +1,13 @@
 /* ── Hood Racer — HUD Proxy (Solid.js Adapter) ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { render } from 'solid-js/web';
 import {
   RacingHUD,
   setSpeedMPH,
   setLapInfo,
   setPositionInfo,
+  setPositionChanged,
   setIsWrongWay,
   setTimerText,
   setIsBoostActive,
@@ -29,6 +30,7 @@ let hudWrapperEl: HTMLElement | null = null;
 let _smoothMph = 0;
 
 export function createHUD(overlay: HTMLElement): HTMLElement {
+  _smoothMph = 0; // Reset for new race (BUG-4 fix)
   hudWrapperEl = document.createElement('div');
   hudWrapperEl.style.display = 'block'; // for showHUD support
   overlay.appendChild(hudWrapperEl);
@@ -69,6 +71,11 @@ export function updateHUD(
   setTimerText(RaceEngine.formatTime(elapsedMs));
 
   setIsBoostActive(boostActive);
+}
+
+/** Signal to the HUD badge that a position change occurred (synced with callout). */
+export function notifyPositionChanged() {
+  setPositionChanged(true);
 }
 
 export function updateNitroHUD(nitro: number, isActive: boolean) {

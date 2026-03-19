@@ -1,6 +1,6 @@
 /* ── Hood Racer — Arcade Vehicle Physics (v3 — Pacejka + Bicycle Model) ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { CarDef, InputState, VehicleState, DamageState, createDamageState } from './types';
 import { CAR_LIGHT_MAP, CarLightDef } from './car-lights';
 import { getSettings } from './settings';
@@ -142,10 +142,10 @@ export class Vehicle {
     // We must reverse both for replays.
     this._bodyGroup.traverse((child: THREE.Object3D) => {
       if (child === this._bodyGroup) return; // skip root
-      if ((child as any).isLight) {
+      if ((child as THREE.Light).isLight) {
         // Restore spotlight intensity (headlights default to ~5)
-        if ((child as any).isSpotLight) {
-          (child as any).intensity = 5;
+        if ((child as THREE.SpotLight).isSpotLight) {
+          (child as THREE.SpotLight).intensity = 5;
         }
       } else {
         child.visible = true;
@@ -365,7 +365,7 @@ export class Vehicle {
       if (!(child instanceof THREE.Mesh)) return;
       const mats = Array.isArray(child.material) ? child.material : [child.material];
       
-      for (const mat of mats as any[]) {
+      for (const mat of mats as THREE.MeshStandardMaterial[]) {
         if (!mat) continue;
         // Skip glass / transparent
         if (mat.transparent && mat.opacity < 0.5) continue;
@@ -382,7 +382,7 @@ export class Vehicle {
         // Apply paint
         mat.color.copy(color);
         if (mat.needsUpdate !== undefined) mat.needsUpdate = true;
-        mat.version++; // Force WebGPU uniform re-upload
+        (mat as { version: number }).version++; // Force WebGPU uniform re-upload
       }
     });
   }

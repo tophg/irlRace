@@ -4,7 +4,7 @@
  * camera mode buttons, keyboard shortcuts, and free camera orbit.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { ReplayPlayer } from './replay';
 import { cleanupDestruction, triggerVehicleDestruction } from './vehicle-destruction';
 import { spawnGPUExplosion, spawnGPUGlassShards } from './gpu-particles';

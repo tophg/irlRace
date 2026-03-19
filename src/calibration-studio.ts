@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { CarDef } from './types';
 import { CarLightDef, saveCalibrationOverride, CAR_LIGHT_MAP } from './car-lights';
@@ -16,6 +16,16 @@ let activeMarker: string | null = null; // 'headlightL', 'headlightR', 'tailligh
 const calData: Partial<CarLightDef> = {};
 const markers: Record<string, THREE.Mesh> = {};
 
+// Typed position/size keys for CarLightDef
+type PosKey = 'headlightL' | 'headlightR' | 'taillightL' | 'taillightR';
+type SizeKey = 'headlightSize' | 'taillightSize';
+
+function setCalPos(key: PosKey, val: [number, number, number]) { calData[key] = val; }
+function getCalPos(key: PosKey) { return calData[key]; }
+function setCalSize(key: SizeKey, val: [number, number]) { calData[key] = val; }
+function getCalSize(key: SizeKey) { return calData[key]; }
+function sizeKeyFor(type: string): SizeKey { return type.startsWith('headlight') ? 'headlightSize' : 'taillightSize'; }
+
 // We use 3D glowing planes (PlaneGeometry) aligned backward (-Z) instead of just spheres, 
 // so the developer can see the exact bounding box of the headlights.
 const markerGeo = new THREE.PlaneGeometry(1, 1);
@@ -26,7 +36,7 @@ const hlMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleS
 const tlMat = new THREE.MeshBasicMaterial({ color: 0xff0000, side: THREE.DoubleSide, transparent: true, opacity: 0.8, depthTest: false });
 
 /** Core init called from garage.ts */
-export function initCalibrationStudio(renderer: THREE.WebGLRenderer, container: HTMLElement) {
+export function initCalibrationStudio(renderer: THREE.WebGPURenderer, container: HTMLElement) {
   if (!new URLSearchParams(window.location.search).has('calibrate')) return;
 
   const scene = getGarageScene();
@@ -124,7 +134,7 @@ export function onStudioCarLoaded(carGroup: THREE.Group, def: CarDef) {
   // Clear old markers
   Object.values(markers).forEach(m => m.removeFromParent());
   for (const key in markers) delete markers[key];
-  for (const key in calData) delete (calData as any)[key];
+  for (const key of Object.keys(calData) as (keyof CarLightDef)[]) delete calData[key];
   
   if (transformControls) transformControls.detach();
   activeMarker = null;
@@ -259,8 +269,8 @@ function selectMarker(type: string) {
     markers[type] = m;
     
     // Initialize data
-    (calData as any)[type] = [m.position.x, m.position.y, m.position.z];
-    (calData as any)[isHL ? 'headlightSize' : 'taillightSize'] = [0.2, 0.1];
+    setCalPos(type as PosKey, [m.position.x, m.position.y, m.position.z]);
+    setCalSize(sizeKeyFor(type), [0.2, 0.1]);
   }
 
   // Attach Gizmo
@@ -282,8 +292,8 @@ function syncUIFromActiveMarker() {
   const size = [m.scale.x, m.scale.y];
 
   // Update Data Model
-  (calData as any)[activeMarker] = [parseFloat(pos.x.toFixed(3)), parseFloat(pos.y.toFixed(3)), parseFloat(pos.z.toFixed(3))];
-  if (!(calData as any)[sizeKey]) (calData as any)[sizeKey] = [...size];
+  setCalPos(activeMarker as PosKey, [parseFloat(pos.x.toFixed(3)), parseFloat(pos.y.toFixed(3)), parseFloat(pos.z.toFixed(3))]);
+  if (!getCalSize(sizeKey as SizeKey)) setCalSize(sizeKey as SizeKey, size as [number, number]);
 
   // Update DOM sliders
   const setSlider = (id: string, val: number) => {
@@ -296,9 +306,11 @@ function syncUIFromActiveMarker() {
   setSlider('y', pos.y);
   setSlider('z', pos.z);
   
-  const curSize = (calData as any)[sizeKey];
-  setSlider('w', curSize[0]);
-  setSlider('h', curSize[1]);
+  const curSize = getCalSize(sizeKey as SizeKey);
+  if (curSize) {
+    setSlider('w', curSize[0]);
+    setSlider('h', curSize[1]);
+  }
 }
 
 function applyUIToMarker() {
@@ -312,8 +324,8 @@ function applyUIToMarker() {
 
   // Sync data
   const isHL = activeMarker.startsWith('headlight');
-  (calData as any)[activeMarker] = [m.position.x, m.position.y, m.position.z];
-  (calData as any)[isHL ? 'headlightSize' : 'taillightSize'] = [m.scale.x, m.scale.y];
+  setCalPos(activeMarker as PosKey, [m.position.x, m.position.y, m.position.z]);
+  setCalSize(sizeKeyFor(activeMarker), [m.scale.x, m.scale.y]);
 
   // Force bounds update for raycasting
   m.updateMatrixWorld(true);
@@ -324,11 +336,11 @@ function applyUIToMarker() {
 function syncDataFromMarker(type: string) {
     if(!markers[type]) return;
     const m = markers[type];
-    (calData as any)[type] = [
+    setCalPos(type as PosKey, [
         parseFloat(m.position.x.toFixed(3)),
         parseFloat(m.position.y.toFixed(3)),
         parseFloat(m.position.z.toFixed(3))
-    ];
+    ]);
 }
 
 function applySymmetryIfEnabled() {
@@ -352,11 +364,11 @@ function applySymmetryIfEnabled() {
     oppM.scale.copy(m.scale);
     
     // Update data model for opposite
-    (calData as any)[opposite] = [
+    setCalPos(opposite as PosKey, [
       parseFloat(oppM.position.x.toFixed(3)),
       parseFloat(oppM.position.y.toFixed(3)),
       parseFloat(oppM.position.z.toFixed(3))
-    ];
+    ]);
   }
 }
 
@@ -368,8 +380,8 @@ function resetToSavedData() {
     Object.assign(calData, saved);
     
     // Rebuild markers based on saved data
-    ['headlightL', 'headlightR', 'taillightL', 'taillightR'].forEach(type => {
-      const d = (calData as any)[type];
+    (['headlightL', 'headlightR', 'taillightL', 'taillightR'] as PosKey[]).forEach(type => {
+      const d = getCalPos(type);
       if (d && currentCar) {
         if (!markers[type]) {
           const isHL = type.startsWith('headlight');
@@ -379,7 +391,7 @@ function resetToSavedData() {
         }
         markers[type].position.set(d[0], d[1], d[2]);
         
-        const size = (calData as any)[type.startsWith('headlight') ? 'headlightSize' : 'taillightSize'];
+        const size = getCalSize(sizeKeyFor(type));
         if (size) markers[type].scale.set(size[0], size[1], 1);
       }
     });

@@ -1,6 +1,6 @@
 /* ── Hood Racer — Chase Camera + Spectator Mode ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 
 let CHASE_DISTANCE = 5;
 let CHASE_HEIGHT_RATIO = 0.45;  // height proportional to distance (adjustable via Shift+scroll)
@@ -462,5 +462,8 @@ export class VehicleCamera {
     this.flyoverComplete = false;
     this.flyoverElapsed = 0;
     this.flyoverSpline = null;
+    this.shakeIntensity = 0;
+    this.shakeDecay = 0;
+    this.driftTilt = 0;
   }
 }

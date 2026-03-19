@@ -20,7 +20,6 @@ const state: InputState = {
 
 // Tilt steering state
 let tiltEnabled = false;
-let tiltPermissionGranted = false;
 let tiltSmoothed = 0;
 let tiltHandler: ((e: DeviceOrientationEvent) => void) | null = null;
 
@@ -284,7 +283,7 @@ export async function enableTiltSteering(): Promise<boolean> {
     }
   }
 
-  tiltPermissionGranted = true;
+
   tiltEnabled = true;
 
   tiltHandler = (e: DeviceOrientationEvent) => {
@@ -354,6 +353,15 @@ export function showTouchControls(visible: boolean) {
     el.style.display = visible ? 'flex' : 'none';
     if (visible) applyControlScheme();
   }
+}
+
+export function resetInput() {
+  state.up = false;
+  state.down = false;
+  state.left = false;
+  state.right = false;
+  state.boost = false;
+  state.steerAnalog = 0;
 }
 
 export function getInput(): InputState { return state; }

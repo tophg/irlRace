@@ -1,6 +1,6 @@
 /* ── Hood Racer — Race Engine ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { Checkpoint, RacerProgress } from './types';
 
 export class RaceEngine {
@@ -13,13 +13,15 @@ export class RaceEngine {
   private cpThreshold = 12; // distance to trigger checkpoint (reduced from 18)
   private cpTimestamps = new Map<string, Map<number, number>>(); // id → (globalCpIndex → time)
   private graceMs = 1500; // ignore checkpoint triggers for first 1.5s after race start
+  private totalLength: number; // total spline arc length in world units
 
   // Reusable vector for direction checks
   private static _moveDir = new THREE.Vector3();
 
-  constructor(checkpoints: Checkpoint[], totalLaps = 3) {
+  constructor(checkpoints: Checkpoint[], totalLaps = 3, totalLength = 1000) {
     this.checkpoints = checkpoints;
     this.totalLaps = totalLaps;
+    this.totalLength = totalLength;
   }
 
   /** Register a racer. Pass initialT from placement so prevT is correct on frame 1. */
@@ -27,7 +29,7 @@ export class RaceEngine {
     this.racers.set(id, {
       id,
       lapIndex: 0,
-      checkpointIndex: 0,
+      checkpointIndex: 1, // Start at 1: racer is already at checkpoint 0 (start/finish line)
       finished: false,
       finishTime: 0,
       position: new THREE.Vector3(),
@@ -109,16 +111,23 @@ export class RaceEngine {
     }
 
     // Checkpoint hit!
+    const hitCpIndex = racer.checkpointIndex;
     racer.checkpointIndex++;
 
     // Record timestamp for this checkpoint (global index)
-    const globalCpIndex = racer.lapIndex * this.checkpoints.length + racer.checkpointIndex - 1;
+    const globalCpIndex = racer.lapIndex * this.checkpoints.length + hitCpIndex;
     const timestamps = this.cpTimestamps.get(id);
     if (timestamps) timestamps.set(globalCpIndex, now);
 
     if (racer.checkpointIndex >= this.checkpoints.length) {
-      // All checkpoints passed — lap complete
+      // Visited all interior checkpoints — wrap to 0 so racer must
+      // now cross checkpoint 0 (the actual start/finish line) to complete the lap.
       racer.checkpointIndex = 0;
+      return 'checkpoint';
+    }
+
+    // Checkpoint 0 crossed after all others ⇒ lap / finish
+    if (hitCpIndex === 0) {
       racer.lapIndex++;
 
       // Record lap time
@@ -155,15 +164,11 @@ export class RaceEngine {
   }
 
   /**
-   * Get sorted rankings using distance-based continuous progress.
-   * Formula: progress = lapIndex * N + checkpointIndex + distanceFraction
-   * where distanceFraction = 1 - (distToNextCP / segmentLength), clamped [0, 0.99]
-   *
-   * This approach is monotonic, doesn't wrap, and never produces negative values.
+   * Get sorted rankings using total distance from start line.
+   * Higher distance = further ahead in the race.
    */
   getRankings(): RacerProgress[] {
     const list = this._racersList.slice(); // copy to avoid mutation
-    const N = this.checkpoints.length;
 
     return list.sort((a, b) => {
       // DNF always last
@@ -175,29 +180,21 @@ export class RaceEngine {
       if (!a.finished && b.finished) return 1;
       if (a.finished && b.finished) return a.finishTime - b.finishTime;
 
-      // Distance-based continuous progress
-      const progA = this.continuousProgress(a, N);
-      const progB = this.continuousProgress(b, N);
+      // Distance-based ranking: total distance from start line
+      const progA = this.continuousProgress(a);
+      const progB = this.continuousProgress(b);
       return progB - progA;
     });
   }
 
-  /** Compute continuous progress for a racer using spline-t tiebreaker. */
-  private continuousProgress(r: RacerProgress, N: number): number {
-    // Use spline t parameter for sub-checkpoint granularity.
-    // Checkpoints are placed at t = i/N, so we can compute fractional
-    // progress within the current segment using the racer's rawT.
-    const cpT = r.checkpointIndex / N;
-    const nextCpT = ((r.checkpointIndex + 1) % N === 0) ? 1.0 : (r.checkpointIndex + 1) / N;
-    const segLen = nextCpT > cpT ? nextCpT - cpT : (1.0 - cpT) + nextCpT; // wrap-aware
-
-    let frac = 0;
-    if (segLen > 0.0001) {
-      let distInSeg = r.rawT - cpT;
-      if (distInSeg < 0) distInSeg += 1.0; // handle wrap
-      frac = Math.max(0, Math.min(0.99, distInSeg / segLen));
-    }
-    return r.lapIndex * N + r.checkpointIndex + frac;
+  /**
+   * Compute continuous progress as total distance traveled from the start line.
+   * Formula: lapIndex * totalLength + rawT * totalLength
+   * This is monotonically increasing, never wraps, and doesn't need
+   * checkpoint-segment fractions or wrap-around edge cases.
+   */
+  private continuousProgress(r: RacerProgress): number {
+    return r.lapIndex * this.totalLength + r.rawT * this.totalLength;
   }
 
   /** Get a racer's progress. */

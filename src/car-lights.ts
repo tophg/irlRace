@@ -74,6 +74,19 @@ export const CAR_LIGHT_MAP: Record<string, CarLightDef> = {
     beamRadius: 3.8,
   },
 
+  'Ford_Mustang.glb': {
+    headlightL: [-0.65, 0.40, 1.96],
+    headlightR: [ 0.65, 0.40, 1.96],
+    headlightSize: [0.24, 0.12],
+    taillightL: [-0.65, 0.40, -1.95],
+    taillightR: [ 0.65, 0.40, -1.95],
+    taillightSize: [0.30, 0.08],
+    spotIntensity: 2.2,
+    spotDistance: 22,
+    beamLength: 16,
+    beamRadius: 3.5,
+  },
+
   // ── EXOTIC TIER ──
   'Ferrari.glb': {
     headlightL: [-0.66, 0.30, 1.96],

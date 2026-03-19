@@ -18,7 +18,7 @@
  */
 
 import RAPIER from '@dimforge/rapier3d-compat';
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 
 // ── Module state ──
 let rapier: typeof RAPIER | null = null;

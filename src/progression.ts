@@ -22,6 +22,7 @@ const UNLOCK_COSTS: Record<string, number> = {
   // Mid tier
   phantom: 500,
   monarch: 600,
+  stallion: 800,
 
   // Exotic tier
   venom: 1500,

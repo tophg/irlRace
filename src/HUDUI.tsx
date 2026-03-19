@@ -8,6 +8,7 @@ import { createSignal, createEffect, onMount, Show } from 'solid-js';
 export const [speedMPH, setSpeedMPH] = createSignal(0);
 export const [lapInfo, setLapInfo] = createSignal({ current: 1, total: 3 });
 export const [positionInfo, setPositionInfo] = createSignal({ rank: 1, suffix: 'st' });
+export const [positionChanged, setPositionChanged] = createSignal(false);
 export const [isWrongWay, setIsWrongWay] = createSignal(false);
 export const [timerText, setTimerText] = createSignal('0:00.000');
 export const [isBoostActive, setIsBoostActive] = createSignal(false);
@@ -47,19 +48,19 @@ export const RacingHUD = () => {
     return 'dmg-red';
   };
 
-  // Position badge animation on rank change
+  // Position badge animation — driven by positionChanged signal set from game loop
   let positionEl: HTMLDivElement | undefined;
-  let prevRank = 1;
   createEffect(() => {
-    const rank = positionInfo().rank;
-    if (rank !== prevRank && positionEl) {
+    const changed = positionChanged();
+    if (changed && positionEl) {
       positionEl.classList.remove('position-changed');
       // Force reflow to restart animation
       void positionEl.offsetWidth;
       positionEl.classList.add('position-changed');
       setTimeout(() => positionEl?.classList.remove('position-changed'), 600);
+      // Reset the signal
+      setPositionChanged(false);
     }
-    prevRank = rank;
   });
 
   // ── Radial Speedometer Canvas ──

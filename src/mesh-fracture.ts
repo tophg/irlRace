@@ -16,7 +16,7 @@
  * spatial regions — the hood, doors, roof, trunk, bumpers all split apart.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 
 export interface MeshFragment {
   mesh: THREE.Mesh;

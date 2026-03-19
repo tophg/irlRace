@@ -9,7 +9,7 @@
  * 2. AABB helpers for car-to-car collision broadphase + push-apart.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // AABB — Axis-Aligned Bounding Box

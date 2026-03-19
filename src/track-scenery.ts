@@ -1,11 +1,12 @@
 /* ── Hood Racer — Track Scenery Generation ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { ROAD_WIDTH, BARRIER_THICKNESS, estimateCurvature } from './track';
+import { ROAD_WIDTH, BARRIER_THICKNESS, estimateCurvature, BANK_SCALE, MAX_BANK_ANGLE } from './track';
+import { loadGLB } from './loaders';
 import type { SceneryTheme } from './scene';
 
-export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number, theme?: SceneryTheme): THREE.Group {
+export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => number, theme?: SceneryTheme, roadMesh?: THREE.Mesh): THREE.Group {
   // Default theme fallback (Urban Night style)
   const T: SceneryTheme = theme ?? {
     roadColor: 0x2a2a30, roadRoughness: 0.85, barrierColor: 0x444450,
@@ -98,9 +99,40 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     group.add(trunkIM);
 
     // ── Tree crowns (InstancedMesh with per-instance color + wind sway) ──
-    const crownGeo = T.treeCanopyStyle === 'cone'
-      ? new THREE.ConeGeometry(2.0, 4.0, 8)
-      : new THREE.SphereGeometry(2.0, 8, 6);
+    // Select crown geometry based on tree variant
+    const treeVariant = T.treeVariant ?? 'standard';
+    let crownGeo: THREE.BufferGeometry;
+
+    switch (treeVariant) {
+      case 'joshua':
+        // Spiky desert tree crown — small icosahedron
+        crownGeo = new THREE.IcosahedronGeometry(1.5, 0);
+        break;
+      case 'layered_pine':
+        // Stacked two-cone pine silhouette (merged geometry)
+        {
+          const lowerCone = new THREE.ConeGeometry(2.2, 3.0, 8);
+          const upperCone = new THREE.ConeGeometry(1.5, 2.5, 8);
+          upperCone.translate(0, 2.0, 0);
+          crownGeo = mergeGeometries([lowerCone, upperCone]) ?? new THREE.ConeGeometry(2.0, 4.0, 8);
+        }
+        break;
+      case 'palm_frond':
+        // Wide flat disc for palm tree top
+        crownGeo = new THREE.CylinderGeometry(2.5, 2.5, 0.4, 8);
+        break;
+      case 'snow_capped':
+        // Standard cone but coloring handles the snow cap
+        crownGeo = new THREE.ConeGeometry(2.0, 4.0, 8);
+        break;
+      case 'standard':
+      default:
+        crownGeo = T.treeCanopyStyle === 'cone'
+          ? new THREE.ConeGeometry(2.0, 4.0, 8)
+          : new THREE.SphereGeometry(2.0, 8, 6);
+        break;
+    }
+
     const crownMat = new THREE.MeshStandardMaterial({ color: T.treeCanopyColor, roughness: 0.8 });
 
     // Enhancement 5: Inject wind sway into vertex shader (zero CPU cost)
@@ -134,7 +166,17 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       crownIM.setMatrixAt(i, _m);
       const tc = new THREE.Color(T.treeCanopyColor);
       const g = tc.g + (t.green / 255) * 0.15;
-      _c.setRGB(tc.r * 0.9 + rng() * 0.1, g, tc.b * 0.9 + rng() * 0.1);
+      // Snow-capped variant: blend upper instances toward white
+      if (treeVariant === 'snow_capped') {
+        const snowBlend = 0.3 + rng() * 0.4; // 30-70% white
+        _c.setRGB(
+          tc.r * (1 - snowBlend) + snowBlend,
+          (tc.g + (t.green / 255) * 0.15) * (1 - snowBlend) + snowBlend,
+          tc.b * (1 - snowBlend) + snowBlend
+        );
+      } else {
+        _c.setRGB(tc.r * 0.9 + rng() * 0.1, g, tc.b * 0.9 + rng() * 0.1);
+      }
       crownIM.setColorAt(i, _c);
     }
     crownIM.instanceMatrix.needsUpdate = true;
@@ -413,48 +455,96 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   // ── Start/Finish line (road-conforming checkerboard + 3D gantry arch) ──
   {
     // ── 1. Road-conforming checkerboard strip ──
-    // Build a narrow strip of quads at closely-spaced t-values around t=0,
-    // using the same banked right/up vectors as the road mesh so the pattern
-    // matches the road surface exactly.
-    const STRIP_SAMPLES = 12;
-    const STRIP_T_RANGE = 0.003; // t range around 0 in each direction
+    // Build a strip of quads at closely-spaced t-values around t=0,
+    // Each cross-section conforms to the actual spline surface (slopes & banking).
+    const STRIP_SAMPLES = 16;
+    const STRIP_T_RANGE = 0.008; // t range around 0 in each direction
     const stripVerts: number[] = [];
     const stripUVs: number[] = [];
     const stripNormals: number[] = [];
     const stripIndices: number[] = [];
     const halfW = ROAD_WIDTH / 2;
 
-    // Compute banking ONCE at the strip center (t=0) and apply uniformly.
-    // Per-sample banking over this tiny t-range produces visible tilt differences
-    // between quads, making each "tile" appear individually rotated.
-    const centerTangent = spline.getTangentAt(0).normalize();
-    const centerRight = new THREE.Vector3(centerTangent.z, 0, -centerTangent.x).normalize();
-    const centerKappa = estimateCurvature(spline, 0);
-    const centerBankQuat = new THREE.Quaternion().setFromAxisAngle(centerTangent, -centerKappa * 2.5);
-    const bankedRight = centerRight.clone().applyQuaternion(centerBankQuat);
-    const stripUp = new THREE.Vector3().crossVectors(bankedRight, centerTangent).normalize();
+    // Measure the physical depth of the strip to compute correct UV scaling
+    const tStart = (1 - STRIP_T_RANGE) % 1;
+    const tEnd = STRIP_T_RANGE;
+    const pStart = spline.getPointAt(tStart);
+    const pEnd = spline.getPointAt(tEnd);
+    const stripDepth = pStart.distanceTo(pEnd);
+    const roadWidth = ROAD_WIDTH;
+    // Number of checker squares across the road
+    const CHECKER_COLS = 8;
+    // Each square should be physically square, so rows = depth / (width / cols)
+    const squareSize = roadWidth / CHECKER_COLS;
+    const CHECKER_ROWS = Math.max(1, Math.round(stripDepth / squareSize));
+    // V repeats so that V range [0,1] maps to CHECKER_ROWS squares of depth
+    const vScale = CHECKER_ROWS;
 
-    for (let i = 0; i <= STRIP_SAMPLES; i++) {
-      const frac = i / STRIP_SAMPLES;
-      // Wrap through t=0: go from (1 - range) to (1 + range), then mod 1
-      const t = (1 - STRIP_T_RANGE + frac * 2 * STRIP_T_RANGE) % 1;
-      const p = spline.getPointAt(t);
+    // Build the checkerboard strip by reading vertex positions directly from the
+    // road mesh geometry. This guarantees perfect alignment regardless of banking,
+    // slope, or spline sampling method. The road mesh has vertex pairs (left, right)
+    // at each cross-section: vertex[i*2] = left, vertex[i*2+1] = right.
+    if (roadMesh) {
+      const roadPosAttr = roadMesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const roadNormAttr = roadMesh.geometry.getAttribute('normal') as THREE.BufferAttribute;
+      const totalCrossSections = roadPosAttr.count / 2; // 2 verts per cross-section
 
-      // Left edge — use consistent bankedRight for the entire strip
-      stripVerts.push(
-        p.x - bankedRight.x * halfW, p.y + 0.02 - bankedRight.y * halfW, p.z - bankedRight.z * halfW
-      );
-      // Right edge
-      stripVerts.push(
-        p.x + bankedRight.x * halfW, p.y + 0.02 + bankedRight.y * halfW, p.z + bankedRight.z * halfW
-      );
-      stripUVs.push(0, frac);
-      stripUVs.push(1, frac);
-      stripNormals.push(stripUp.x, stripUp.y, stripUp.z, stripUp.x, stripUp.y, stripUp.z);
+      // Collect cross-section indices near the start (both ends of the loop wrap to t=0)
+      // Road mesh: index 0 = t≈0, index N-1 = t≈1 (wraps back)
+      const STRIP_HALF = 3; // cross-sections on each side of t=0
+      const csIndices: number[] = [];
+      for (let k = totalCrossSections - STRIP_HALF; k < totalCrossSections; k++) {
+        csIndices.push(k);
+      }
+      for (let k = 0; k <= STRIP_HALF; k++) {
+        csIndices.push(k);
+      }
 
-      if (i < STRIP_SAMPLES) {
-        const base = i * 2;
-        stripIndices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+      for (let si = 0; si < csIndices.length; si++) {
+        const cs = csIndices[si];
+        const li = cs * 2;     // left vertex index
+        const ri = cs * 2 + 1; // right vertex index
+
+        // Read exact road surface vertex positions and add tiny Y offset
+        stripVerts.push(roadPosAttr.getX(li), roadPosAttr.getY(li) + 0.01, roadPosAttr.getZ(li));
+        stripVerts.push(roadPosAttr.getX(ri), roadPosAttr.getY(ri) + 0.01, roadPosAttr.getZ(ri));
+
+        // UVs for checkerboard pattern
+        const frac = si / (csIndices.length - 1);
+        stripUVs.push(0, frac * vScale);
+        stripUVs.push(1, frac * vScale);
+
+        // Copy normals from road mesh
+        stripNormals.push(
+          roadNormAttr.getX(li), roadNormAttr.getY(li), roadNormAttr.getZ(li),
+          roadNormAttr.getX(ri), roadNormAttr.getY(ri), roadNormAttr.getZ(ri),
+        );
+
+        if (si < csIndices.length - 1) {
+          const base = si * 2;
+          stripIndices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+        }
+      }
+    } else {
+      // Fallback: use spline sampling if no road mesh available
+      const centerTan = spline.getTangentAt(0).normalize();
+      const flatRight = new THREE.Vector3(centerTan.z, 0, -centerTan.x).normalize();
+      const upVec = new THREE.Vector3(0, 1, 0);
+
+      for (let i = 0; i <= STRIP_SAMPLES; i++) {
+        const frac = i / STRIP_SAMPLES;
+        const t = (1 - STRIP_T_RANGE + frac * 2 * STRIP_T_RANGE) % 1;
+        const p = spline.getPointAt(t);
+        const y = p.y + 0.02;
+        stripVerts.push(p.x - flatRight.x * halfW, y, p.z - flatRight.z * halfW);
+        stripVerts.push(p.x + flatRight.x * halfW, y, p.z + flatRight.z * halfW);
+        stripUVs.push(0, frac * vScale);
+        stripUVs.push(1, frac * vScale);
+        stripNormals.push(upVec.x, upVec.y, upVec.z, upVec.x, upVec.y, upVec.z);
+        if (i < STRIP_SAMPLES) {
+          const base = i * 2;
+          stripIndices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+        }
       }
     }
 
@@ -464,14 +554,17 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     stripGeo.setAttribute('normal', new THREE.Float32BufferAttribute(stripNormals, 3));
     stripGeo.setIndex(stripIndices);
 
-    // Checkerboard canvas texture
+    // Square checkerboard canvas texture (8×8 grid)
+    const CHECKER_TEX_SIZE = 128;
+    const CELL_SIZE = CHECKER_TEX_SIZE / CHECKER_COLS;
     const checkerCanvas = document.createElement('canvas');
-    checkerCanvas.width = 128; checkerCanvas.height = 32;
+    checkerCanvas.width = CHECKER_TEX_SIZE;
+    checkerCanvas.height = CHECKER_TEX_SIZE;
     const checkerCtx = checkerCanvas.getContext('2d')!;
-    for (let row = 0; row < 2; row++) {
-      for (let col = 0; col < 8; col++) {
+    for (let row = 0; row < CHECKER_COLS; row++) {
+      for (let col = 0; col < CHECKER_COLS; col++) {
         checkerCtx.fillStyle = (row + col) % 2 === 0 ? '#ffffff' : '#111111';
-        checkerCtx.fillRect(col * 16, row * 16, 16, 16);
+        checkerCtx.fillRect(col * CELL_SIZE, row * CELL_SIZE, CELL_SIZE, CELL_SIZE);
       }
     }
     const checkerTex = new THREE.CanvasTexture(checkerCanvas);
@@ -481,6 +574,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const checkerMat = new THREE.MeshStandardMaterial({
       map: checkerTex,
       roughness: 0.6,
+      side: THREE.DoubleSide,
       polygonOffset: true,
       polygonOffsetFactor: -2,
       polygonOffsetUnits: -4,
@@ -557,8 +651,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     });
     const banner = new THREE.Mesh(bannerGeo, bannerMat);
     banner.position.set(gP.x, gP.y + postHeight - 1.2, gP.z);
-    // Face along the track tangent
-    banner.lookAt(gP.x + gTangent.x, gP.y + postHeight - 1.2, gP.z + gTangent.z);
+    // Face against the track tangent (so drivers read it as they approach)
+    banner.lookAt(gP.x - gTangent.x, gP.y + postHeight - 1.2, gP.z - gTangent.z);
     group.add(banner);
 
     // Emissive gantry lights (green)
@@ -577,69 +671,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       group.add(lightMesh);
     }
 
-    // ── 3. Grid box lane markings ──
-    // Paint 2 columns × 3 rows of grid boxes behind the start line
-    const gridCanvas = document.createElement('canvas');
-    gridCanvas.width = 128; gridCanvas.height = 128;
-    const gridCtx = gridCanvas.getContext('2d')!;
-    gridCtx.fillStyle = 'rgba(0,0,0,0)';
-    gridCtx.clearRect(0, 0, 128, 128);
-    gridCtx.strokeStyle = '#ffffff';
-    gridCtx.lineWidth = 3;
-    // Grid box outline
-    gridCtx.strokeRect(8, 8, 112, 112);
-    // Center divider
-    gridCtx.beginPath();
-    gridCtx.moveTo(64, 8);
-    gridCtx.lineTo(64, 120);
-    gridCtx.stroke();
-    // Row number
-    gridCtx.fillStyle = '#ffffff';
-    gridCtx.font = 'bold 40px sans-serif';
-    gridCtx.textAlign = 'center';
-
-    const gridTex = new THREE.CanvasTexture(gridCanvas);
-    const gridBoxGeo = new THREE.PlaneGeometry(3.5, 5);
-
-    // Place grid boxes at t slightly behind start (t = 0.002 to 0.008)
-    const gridTs = [0.003, 0.003, 0.006, 0.006, 0.009, 0.009];
-    const gridLanes = [-1, 1, -1, 1, -1, 1];
-
-    for (let gi = 0; gi < 6; gi++) {
-      const gt = gridTs[gi];
-      const gPt = spline.getPointAt(gt);
-      const gTan = spline.getTangentAt(gt).normalize();
-      const gRt = new THREE.Vector3(gTan.z, 0, -gTan.x).normalize();
-      const kappa2 = estimateCurvature(spline, gt);
-      const bankQuat2 = new THREE.Quaternion().setFromAxisAngle(gTan, -kappa2 * 2.5);
-      const bankedRt = gRt.clone().applyQuaternion(bankQuat2);
-      const upVec = new THREE.Vector3().crossVectors(bankedRt, gTan).normalize();
-
-      const laneX = gridLanes[gi] * 3.0; // ±3m from center
-
-      const gridMat2 = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.35,
-        polygonOffset: true,
-        polygonOffsetFactor: -1,
-        polygonOffsetUnits: -2,
-        side: THREE.DoubleSide,
-      });
-
-      const gridMesh = new THREE.Mesh(gridBoxGeo.clone(), gridMat2);
-      gridMesh.position.set(
-        gPt.x + bankedRt.x * laneX,
-        gPt.y + 0.015 + bankedRt.y * laneX,
-        gPt.z + bankedRt.z * laneX,
-      );
-      gridMesh.quaternion.setFromRotationMatrix(
-        new THREE.Matrix4().makeBasis(bankedRt, upVec, gTan)
-      );
-      gridMesh.rotateX(-Math.PI / 2);
-      gridMesh.renderOrder = 1;
-      group.add(gridMesh);
-    }
   }
 
   // ── Tire walls at tight corners (InstancedMesh) ──
@@ -737,44 +768,13 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     group.add(board);
   }
 
-  // ── Procedural buildings (InstancedMesh cityscape backdrop) ──
+  // ── 3D model buildings (async-loaded skyscraper model) ──
   const BUILDING_COUNT = 25;
-  const buildingGeo = new THREE.BoxGeometry(1, 1, 1);
-  const buildingTexCanvas = document.createElement('canvas');
-  buildingTexCanvas.width = 64; buildingTexCanvas.height = 128;
-  {
-    const ctx = buildingTexCanvas.getContext('2d')!;
-    const basePalette = T.buildingPalette;
-    const baseColorHex = basePalette[Math.floor(rng() * basePalette.length)];
-    const baseC = new THREE.Color(baseColorHex);
-    ctx.fillStyle = `rgb(${Math.floor(baseC.r*255)},${Math.floor(baseC.g*255)},${Math.floor(baseC.b*255)})`;
-    ctx.fillRect(0, 0, 64, 128);
-    // Draw window grid
-    const winColor = new THREE.Color(T.windowColor);
-    for (let row = 0; row < 12; row++) {
-      for (let col = 0; col < 4; col++) {
-        const lit = rng() > (1 - T.windowLitChance);
-        if (lit) {
-          const r = Math.floor(winColor.r * 255 * (0.7 + rng() * 0.3));
-          const g = Math.floor(winColor.g * 255 * (0.7 + rng() * 0.3));
-          const b = Math.floor(winColor.b * 255 * (0.7 + rng() * 0.3));
-          ctx.fillStyle = `rgb(${r},${g},${b})`;
-        } else {
-          ctx.fillStyle = '#1a1a22';
-        }
-        ctx.fillRect(4 + col * 15, 4 + row * 10, 10, 7);
-      }
-    }
-  }
-  const buildingTex = new THREE.CanvasTexture(buildingTexCanvas);
-  buildingTex.wrapS = THREE.RepeatWrapping;
-  buildingTex.wrapT = THREE.RepeatWrapping;
-  const buildingMat = new THREE.MeshStandardMaterial({
-    map: buildingTex,
-    roughness: 0.85,
-    metalness: 0.1,
-  });
-  const buildingIM = new THREE.InstancedMesh(buildingGeo, buildingMat, BUILDING_COUNT);
+  const _bm = new THREE.Matrix4();
+
+  // Pre-compute building placements synchronously (position, scale, rotation)
+  interface BuildingPlacement { x: number; z: number; scaleW: number; scaleH: number; scaleD: number; rotY: number; }
+  const placements: BuildingPlacement[] = [];
 
   for (let i = 0; i < BUILDING_COUNT; i++) {
     const t = rng();
@@ -782,16 +782,15 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const tangent = spline.getTangentAt(t).normalize();
     const rx = tangent.z, rz = -tangent.x;
     const side = rng() > 0.5 ? 1 : -1;
-    let offset = ROAD_WIDTH / 2 + 50 + rng() * 60; // Far from road (57-117 units)
+    let offset = ROAD_WIDTH / 2 + 50 + rng() * 60;
     let x = p.x + rx * offset * side;
     let z = p.z + rz * offset * side;
-    const w = 4 + rng() * 8;
-    const [hMin, hMax] = T.buildingHeightRange;
-    const h = hMin + rng() * (hMax - hMin);
-    const d = 4 + rng() * 6;
+    const scaleW = 0.6 + rng() * 0.5;  // width variation
+    const scaleH = 0.5 + rng() * 1.0;  // height variation
+    const scaleD = 0.6 + rng() * 0.5;  // depth variation
+    const rotY = rng() * Math.PI * 2;
 
     // Proximity check: ensure building doesn't land near ANY part of the track
-    // Use 100 samples for dense coverage and 35-unit minimum clearance
     const MIN_CLEARANCE = 35;
     const MIN_CLEARANCE_SQ = MIN_CLEARANCE * MIN_CLEARANCE;
     let placed = false;
@@ -811,69 +810,103 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         placed = true;
         break;
       }
-      // Push building further out and retry
       offset += 40;
       x = p.x + rx * offset * side;
       z = p.z + rz * offset * side;
     }
 
-    if (!placed) {
-      // Skip this building entirely — don't render it on the track
-      _m.makeScale(0, 0, 0);
-      _m.setPosition(0, -1000, 0);
-      buildingIM.setMatrixAt(i, _m);
-      _c.setRGB(0, 0, 0);
-      buildingIM.setColorAt(i, _c);
-      continue;
+    if (placed) {
+      placements.push({ x, z, scaleW, scaleH, scaleD, rotY });
+    }
+  }
+
+  // Pre-assign each placement a random model from the theme's building models list
+  const modelList = T.buildingModels?.length ? T.buildingModels : ['skyscraper.glb'];
+  interface BuildingPlacementWithModel extends BuildingPlacement { model: string; }
+  const placementsWithModel: BuildingPlacementWithModel[] = placements.map((pl) => ({
+    ...pl,
+    model: modelList[Math.floor(rng() * modelList.length)],
+  }));
+
+  // Determine unique models needed for this environment
+  const uniqueModels = [...new Set(placementsWithModel.map(p => p.model))];
+
+  // Async: load all unique building models, then place clones
+  Promise.all(
+    uniqueModels.map(name => loadGLB(`/buildings/${name}`).then(scene => ({ name, scene })))
+  ).then((loaded) => {
+    const modelMap = new Map<string, { scene: THREE.Group; bottom: number }>();
+    for (const { name, scene } of loaded) {
+      const bbox = new THREE.Box3().setFromObject(scene);
+      modelMap.set(name, { scene, bottom: bbox.min.y });
     }
 
-    _m.makeScale(w, h, d);
-    // Buildings sit on the ground plane (y=-5), not floating at spline height
-    _m.setPosition(x, -5 + h / 2, z);
-    buildingIM.setMatrixAt(i, _m);
+    for (const pl of placementsWithModel) {
+      const entry = modelMap.get(pl.model);
+      if (!entry) continue;
 
-    // Vary building color using palette
-    const palColor = new THREE.Color(T.buildingPalette[i % T.buildingPalette.length]);
-    const v = 0.8 + rng() * 0.4;
-    _c.setRGB(palColor.r * v, palColor.g * v, palColor.b * v);
-    buildingIM.setColorAt(i, _c);
-  }
-  buildingIM.instanceMatrix.needsUpdate = true;
-  buildingIM.instanceColor!.needsUpdate = true;
-  group.add(buildingIM);
+      const clone = entry.scene.clone(true);
+      const baseScale = 12;
+      clone.scale.set(baseScale * pl.scaleW, baseScale * pl.scaleH, baseScale * pl.scaleD);
+      clone.position.set(pl.x, -5 - entry.bottom * baseScale * pl.scaleH, pl.z);
+      clone.rotation.y = pl.rotY;
 
-  // ── Grandstand at start/finish ──
+      clone.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          (child as THREE.Mesh).castShadow = true;
+          (child as THREE.Mesh).receiveShadow = true;
+        }
+      });
+
+      group.add(clone);
+    }
+  }).catch((err) => {
+    console.warn('Failed to load building models:', err);
+  });
+
+  // ── Grandstand at start/finish (scaled to vehicle proportions) ──
   {
     const startP = spline.getPointAt(0);
     const startTan = spline.getTangentAt(0).normalize();
     const right = new THREE.Vector3(startTan.z, 0, -startTan.x);
-    const grandstandOffset = ROAD_WIDTH / 2 + 8;
+    const grandstandOffset = ROAD_WIDTH / 2 + 5;
+
+    // Vehicle-proportional dimensions (~4 units long car)
+    const standWidth = 8;    // ~2 car lengths wide
+    const seatDepth = 0.8;   // shallow bench depth
+    const seatHeight = 0.2;
+    const rowStep = 0.45;    // vertical rise per row
+    const rowDepth = 0.9;    // depth step per row
+    const numRows = 4;
 
     // Build stepped seating rows
     const grandstandGroup = new THREE.Group();
-    const seatGeo = new THREE.BoxGeometry(12, 0.4, 1.5);
+    const seatGeo = new THREE.BoxGeometry(standWidth, seatHeight, seatDepth);
 
-    for (let row = 0; row < 5; row++) {
+    for (let row = 0; row < numRows; row++) {
       const seatMat = new THREE.MeshStandardMaterial({
         color: new THREE.Color().setHSL(0.6 - row * 0.05, 0.5, 0.35 + row * 0.05),
         roughness: 0.7,
       });
       const seat = new THREE.Mesh(seatGeo, seatMat);
-      seat.position.set(0, row * 0.8, -row * 1.6);
+      seat.position.set(0, row * rowStep, -row * rowDepth);
       grandstandGroup.add(seat);
     }
 
     // Support structure
-    const supportGeo = new THREE.BoxGeometry(12, 4, 8);
+    const supportW = standWidth;
+    const supportH = numRows * rowStep;
+    const supportD = numRows * rowDepth;
+    const supportGeo = new THREE.BoxGeometry(supportW, supportH, supportD);
     const supportMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.8 });
     const support = new THREE.Mesh(supportGeo, supportMat);
-    support.position.set(0, -1.5, -4);
+    support.position.set(0, -supportH / 2, -supportD / 2);
     grandstandGroup.add(support);
 
     // Position and orient the grandstand
     grandstandGroup.position.set(
       startP.x + right.x * grandstandOffset,
-      0,
+      startP.y,
       startP.z + right.z * grandstandOffset,
     );
     grandstandGroup.lookAt(startP);
@@ -1135,14 +1168,757 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     group.add(stainIM);
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // PHASE 3 ENHANCEMENTS — Per-Environment Nuance
+  // ══════════════════════════════════════════════════════════════
+
+  // ── Accent Props (previously defined but never rendered) ──
+  if (T.accentProps.length > 0) {
+    for (const propId of T.accentProps) {
+      const PROP_COUNT = propId === 'smokestack' || propId === 'wind_turbine' ? 4
+        : propId === 'ceiling_panel' ? 20
+        : propId === 'neon_strip' ? 25
+        : 10;
+
+      let propGeo: THREE.BufferGeometry;
+      let propMat: THREE.Material;
+      let yOffset = 0;
+      let placementOffset = ROAD_WIDTH / 2 + 4;
+      let scaleRange: [number, number] = [0.8, 1.3];
+
+      switch (propId) {
+        case 'traffic_cone': {
+          propGeo = new THREE.ConeGeometry(0.15, 0.5, 8);
+          propMat = new THREE.MeshStandardMaterial({ color: 0xff6600, roughness: 0.7 });
+          yOffset = 0.25;
+          placementOffset = ROAD_WIDTH / 2 + 2;
+          scaleRange = [0.9, 1.2];
+          break;
+        }
+        case 'dumpster': {
+          propGeo = new THREE.BoxGeometry(1.5, 1.2, 1.0);
+          propMat = new THREE.MeshStandardMaterial({ color: 0x2a4a2a, roughness: 0.85 });
+          yOffset = 0.6;
+          placementOffset = ROAD_WIDTH / 2 + 5;
+          scaleRange = [0.8, 1.1];
+          break;
+        }
+        case 'cactus': {
+          propGeo = new THREE.CylinderGeometry(0.2, 0.25, 2.5, 6);
+          propMat = new THREE.MeshStandardMaterial({ color: 0x2a6a2a, roughness: 0.8 });
+          yOffset = 1.25;
+          placementOffset = ROAD_WIDTH / 2 + 6;
+          scaleRange = [0.6, 1.8];
+          break;
+        }
+        case 'palm_trunk': {
+          propGeo = new THREE.CylinderGeometry(0.2, 0.3, 6, 6);
+          propMat = new THREE.MeshStandardMaterial({ color: 0x664422, roughness: 0.9 });
+          yOffset = 3;
+          placementOffset = ROAD_WIDTH / 2 + 5;
+          scaleRange = [0.8, 1.2];
+          break;
+        }
+        case 'neon_strip': {
+          propGeo = new THREE.BoxGeometry(0.08, 0.08, 3);
+          propMat = new THREE.MeshStandardMaterial({
+            color: 0xff00ff,
+            emissive: new THREE.Color(0xff00ff),
+            emissiveIntensity: 1.5,
+            roughness: 0.1,
+          });
+          yOffset = 1.5;
+          placementOffset = ROAD_WIDTH / 2 + BARRIER_THICKNESS + 0.3;
+          scaleRange = [1, 1];
+          break;
+        }
+        case 'debris': {
+          propGeo = new THREE.IcosahedronGeometry(0.3, 0);
+          propMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.95 });
+          yOffset = 0.05;
+          placementOffset = ROAD_WIDTH / 2 + 2;
+          scaleRange = [0.4, 1.2];
+          break;
+        }
+        case 'snow_bollard': {
+          propGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.2, 6);
+          propMat = new THREE.MeshStandardMaterial({ color: 0xff3333, roughness: 0.7 });
+          yOffset = 0.6;
+          placementOffset = ROAD_WIDTH / 2 + 2;
+          scaleRange = [0.9, 1.1];
+          break;
+        }
+        case 'tiki_torch': {
+          propGeo = new THREE.CylinderGeometry(0.06, 0.08, 2.5, 6);
+          propMat = new THREE.MeshStandardMaterial({ color: 0x553322, roughness: 0.85 });
+          yOffset = 1.25;
+          placementOffset = ROAD_WIDTH / 2 + 3;
+          scaleRange = [0.9, 1.1];
+          break;
+        }
+        case 'smokestack': {
+          propGeo = new THREE.CylinderGeometry(0.8, 1.2, 15, 8);
+          propMat = new THREE.MeshStandardMaterial({ color: 0x555550, roughness: 0.9, metalness: 0.2 });
+          yOffset = 7.5;
+          placementOffset = ROAD_WIDTH / 2 + 60;
+          scaleRange = [0.7, 1.3];
+          break;
+        }
+        case 'wind_turbine': {
+          propGeo = new THREE.CylinderGeometry(0.3, 0.5, 18, 8);
+          propMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.4, metalness: 0.3 });
+          yOffset = 9;
+          placementOffset = ROAD_WIDTH / 2 + 80;
+          scaleRange = [0.8, 1.2];
+          break;
+        }
+        case 'ceiling_panel': {
+          propGeo = new THREE.PlaneGeometry(6, 6);
+          propMat = new THREE.MeshStandardMaterial({
+            color: 0x333338,
+            emissive: new THREE.Color(0xffffff),
+            emissiveIntensity: 0.15,
+            side: THREE.DoubleSide,
+          });
+          yOffset = 10;
+          placementOffset = ROAD_WIDTH / 2 - 2;
+          scaleRange = [1, 1];
+          break;
+        }
+        default:
+          continue;
+      }
+
+      const propIM = new THREE.InstancedMesh(propGeo, propMat, PROP_COUNT);
+      let propIdx = 0;
+
+      for (let i = 0; i < PROP_COUNT; i++) {
+        const t = (i + rng() * 0.5) / PROP_COUNT;
+        const p = spline.getPointAt(t % 1);
+        const tangent = spline.getTangentAt(t % 1).normalize();
+        const rx = tangent.z, rz = -tangent.x;
+        const side = i % 2 === 0 ? 1 : -1;
+        const off = placementOffset + rng() * 5;
+        const x = p.x + rx * off * side;
+        const z = p.z + rz * off * side;
+        const scale = scaleRange[0] + rng() * (scaleRange[1] - scaleRange[0]);
+
+        if (propId === 'ceiling_panel') {
+          // Ceiling panels face downward
+          _m.makeRotationX(Math.PI / 2);
+          _m.setPosition(x, yOffset, z);
+        } else if (propId === 'neon_strip') {
+          // Neon strips align with track direction
+          const angle = Math.atan2(tangent.x, tangent.z);
+          _m.makeRotationY(angle);
+          _m.setPosition(x, yOffset, z);
+          // Alternate colors
+          const neonColors = [0xff00ff, 0x00ffff, 0xff4400, 0x44ff00];
+          (propIM as THREE.InstancedMesh).setColorAt(propIdx, _c.setHex(neonColors[i % neonColors.length]));
+        } else {
+          _m.makeScale(scale, scale, scale);
+          _m.setPosition(x, yOffset * scale - 2, z);
+        }
+        propIM.setMatrixAt(propIdx++, _m);
+      }
+
+      propIM.count = propIdx;
+      propIM.instanceMatrix.needsUpdate = true;
+      if ((propIM as any).instanceColor) (propIM as any).instanceColor.needsUpdate = true;
+      group.add(propIM);
+
+      // Add emissive top for tiki torches
+      if (propId === 'tiki_torch') {
+        const flameGeo = new THREE.SphereGeometry(0.12, 6, 4);
+        const flameMat = new THREE.MeshStandardMaterial({
+          color: 0xff8833,
+          emissive: new THREE.Color(0xff6600),
+          emissiveIntensity: 2.0,
+        });
+        const flameIM = new THREE.InstancedMesh(flameGeo, flameMat, propIdx);
+        for (let i = 0; i < propIdx; i++) {
+          const mat4 = new THREE.Matrix4();
+          propIM.getMatrixAt(i, mat4);
+          const pos = new THREE.Vector3();
+          pos.setFromMatrixPosition(mat4);
+          pos.y += 1.3;
+          _m.identity();
+          _m.setPosition(pos.x, pos.y, pos.z);
+          flameIM.setMatrixAt(i, _m);
+        }
+        flameIM.instanceMatrix.needsUpdate = true;
+        group.add(flameIM);
+      }
+
+      // Add reflective sphere top for snow bollards
+      if (propId === 'snow_bollard') {
+        const topGeo = new THREE.SphereGeometry(0.1, 6, 4);
+        const topMat = new THREE.MeshStandardMaterial({
+          color: 0xff0000,
+          emissive: new THREE.Color(0xff0000),
+          emissiveIntensity: 0.5,
+        });
+        const topIM = new THREE.InstancedMesh(topGeo, topMat, propIdx);
+        for (let i = 0; i < propIdx; i++) {
+          const mat4 = new THREE.Matrix4();
+          propIM.getMatrixAt(i, mat4);
+          const pos = new THREE.Vector3();
+          pos.setFromMatrixPosition(mat4);
+          pos.y += 0.65;
+          _m.identity();
+          _m.setPosition(pos.x, pos.y, pos.z);
+          topIM.setMatrixAt(i, _m);
+        }
+        topIM.instanceMatrix.needsUpdate = true;
+        group.add(topIM);
+      }
+    }
+  }
+
+  // ── Road Decals (per-environment surface details) ──
+  const roadDecals = T.roadDecals ?? [];
+  for (const decalType of roadDecals) {
+    const COUNT = decalType === 'lane_paint' ? 20 : decalType === 'frost' ? 18 : 12;
+    const canvas = document.createElement('canvas');
+    canvas.width = 64; canvas.height = 64;
+    const ctx = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, 64, 64);
+
+    let geoW = 2.5, geoH = 2.5;
+    let matOpts: THREE.MeshStandardMaterialParameters = { transparent: true, depthWrite: false };
+
+    switch (decalType) {
+      case 'puddle': {
+        const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 30);
+        grad.addColorStop(0, 'rgba(60,80,100,0.2)');
+        grad.addColorStop(0.6, 'rgba(50,70,90,0.12)');
+        grad.addColorStop(1, 'rgba(40,60,80,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 64, 64);
+        matOpts.roughness = 0.1;
+        matOpts.metalness = 0.3;
+        geoW = 3; geoH = 2;
+        break;
+      }
+      case 'crack': {
+        ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(32, 8); ctx.lineTo(28, 24); ctx.lineTo(36, 32);
+        ctx.lineTo(30, 44); ctx.lineTo(34, 56);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(28, 24); ctx.lineTo(18, 32);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(36, 32); ctx.lineTo(46, 40);
+        ctx.stroke();
+        matOpts.roughness = 0.9;
+        geoW = 2; geoH = 3;
+        break;
+      }
+      case 'lane_paint': {
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fillRect(24, 4, 16, 56);
+        matOpts.roughness = 0.5;
+        geoW = 0.4; geoH = 3;
+        break;
+      }
+      case 'manhole': {
+        ctx.strokeStyle = 'rgba(100,100,100,0.3)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(32, 32, 24, 0, Math.PI * 2);
+        ctx.stroke();
+        // Cross pattern
+        ctx.beginPath();
+        ctx.moveTo(32, 8); ctx.lineTo(32, 56);
+        ctx.moveTo(8, 32); ctx.lineTo(56, 32);
+        ctx.stroke();
+        ctx.strokeStyle = 'rgba(80,80,80,0.2)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(32, 32, 16, 0, Math.PI * 2);
+        ctx.stroke();
+        matOpts.roughness = 0.4;
+        matOpts.metalness = 0.5;
+        geoW = 1.5; geoH = 1.5;
+        break;
+      }
+      case 'frost': {
+        const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 28);
+        grad.addColorStop(0, 'rgba(200,220,240,0.15)');
+        grad.addColorStop(0.5, 'rgba(180,200,220,0.08)');
+        grad.addColorStop(1, 'rgba(160,180,200,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 64, 64);
+        matOpts.roughness = 0.15;
+        matOpts.metalness = 0.4;
+        geoW = 3.5; geoH = 2.5;
+        break;
+      }
+      case 'sand_drift': {
+        const grad = ctx.createLinearGradient(0, 0, 64, 32);
+        grad.addColorStop(0, 'rgba(160,140,100,0)');
+        grad.addColorStop(0.3, 'rgba(160,140,100,0.12)');
+        grad.addColorStop(0.7, 'rgba(160,140,100,0.08)');
+        grad.addColorStop(1, 'rgba(160,140,100,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 64, 64);
+        matOpts.roughness = 0.9;
+        geoW = 4; geoH = 1.5;
+        break;
+      }
+      default: continue;
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    const geo = new THREE.PlaneGeometry(geoW, geoH);
+    const mat = new THREE.MeshStandardMaterial({ map: tex, ...matOpts });
+    const im = new THREE.InstancedMesh(geo, mat, COUNT);
+    let idx = 0;
+
+    for (let i = 0; i < COUNT; i++) {
+      const t = rng();
+      const p = spline.getPointAt(t);
+      const tangent = spline.getTangentAt(t).normalize();
+      const rightV = new THREE.Vector3(tangent.z, 0, -tangent.x);
+      const laneOff = decalType === 'lane_paint'
+        ? (i % 2 === 0 ? -1 : 1) * ROAD_WIDTH * 0.15
+        : (rng() - 0.5) * ROAD_WIDTH * 0.6;
+      const angle = Math.atan2(tangent.x, tangent.z);
+
+      _m.makeRotationX(-Math.PI / 2);
+      const rotY = new THREE.Matrix4().makeRotationZ(angle);
+      _m.multiply(rotY);
+      _m.setPosition(
+        p.x + rightV.x * laneOff,
+        p.y + 0.025,
+        p.z + rightV.z * laneOff
+      );
+      im.setMatrixAt(idx++, _m);
+    }
+    im.count = idx;
+    im.instanceMatrix.needsUpdate = true;
+    group.add(im);
+  }
+
+  // ── Atmospheric Micro-Effects (vertex-shader animated, zero CPU cost) ──
+  const atmoEffects = T.atmosphericEffects ?? [];
+  for (const fx of atmoEffects) {
+    let fxCount = 60;
+    let fxGeo: THREE.BufferGeometry;
+    let fxMat: THREE.MeshStandardMaterial;
+    let spreadRadius = 200;
+    let yRange: [number, number] = [1, 8];
+
+    switch (fx) {
+      case 'fireflies': {
+        fxCount = 80;
+        fxGeo = new THREE.SphereGeometry(0.04, 4, 3);
+        fxMat = new THREE.MeshStandardMaterial({
+          color: 0xeeff44,
+          emissive: new THREE.Color(0xeeff44),
+          emissiveIntensity: 2.5,
+        });
+        spreadRadius = 150;
+        yRange = [0.5, 4];
+        break;
+      }
+      case 'leaves': {
+        fxCount = 50;
+        fxGeo = new THREE.PlaneGeometry(0.2, 0.12);
+        fxMat = new THREE.MeshStandardMaterial({
+          color: 0x886633,
+          side: THREE.DoubleSide,
+          roughness: 0.9,
+        });
+        spreadRadius = 180;
+        yRange = [2, 12];
+        break;
+      }
+      case 'steam': {
+        fxCount = 25;
+        fxGeo = new THREE.PlaneGeometry(1.2, 2.0);
+        fxMat = new THREE.MeshStandardMaterial({
+          color: 0xaaaaaa,
+          transparent: true,
+          opacity: 0.06,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        });
+        spreadRadius = 100;
+        yRange = [0.5, 6];
+        break;
+      }
+      case 'dust': {
+        fxCount = 70;
+        fxGeo = new THREE.SphereGeometry(0.03, 3, 2);
+        fxMat = new THREE.MeshStandardMaterial({
+          color: 0xccbb88,
+          emissive: new THREE.Color(0xccbb88),
+          emissiveIntensity: 0.3,
+        });
+        spreadRadius = 200;
+        yRange = [0.3, 5];
+        break;
+      }
+      case 'snow_extra': {
+        fxCount = 100;
+        fxGeo = new THREE.SphereGeometry(0.025, 3, 2);
+        fxMat = new THREE.MeshStandardMaterial({
+          color: 0xeeeeff,
+          emissive: new THREE.Color(0xaabbcc),
+          emissiveIntensity: 0.2,
+        });
+        spreadRadius = 200;
+        yRange = [0.5, 15];
+        break;
+      }
+      case 'embers': {
+        fxCount = 35;
+        fxGeo = new THREE.SphereGeometry(0.04, 4, 3);
+        fxMat = new THREE.MeshStandardMaterial({
+          color: 0xff6600,
+          emissive: new THREE.Color(0xff4400),
+          emissiveIntensity: 2.0,
+        });
+        spreadRadius = 120;
+        yRange = [0.2, 8];
+        break;
+      }
+      case 'fog_wisps': {
+        fxCount = 15;
+        fxGeo = new THREE.PlaneGeometry(10, 3);
+        fxMat = new THREE.MeshStandardMaterial({
+          color: T.barrierColor,
+          transparent: true,
+          opacity: 0.04,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+          fog: true,
+        });
+        spreadRadius = 250;
+        yRange = [-1, 2];
+        break;
+      }
+      default: continue;
+    }
+
+    // Inject vertex-shader animation for floating/drifting
+    fxMat.onBeforeCompile = (shader) => {
+      shader.uniforms.uWindTime = { value: 0 };
+      shader.vertexShader = 'uniform float uWindTime;\n' + shader.vertexShader;
+      shader.vertexShader = shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        `#include <begin_vertex>
+         vec4 wp = instanceMatrix * vec4(transformed, 1.0);
+         float hash = fract(sin(wp.x * 127.1 + wp.z * 311.7) * 43758.5);
+         float bobY = sin(uWindTime * (0.8 + hash) + hash * 6.28) * 0.3;
+         float driftX = sin(uWindTime * 0.3 + hash * 12.0) * 0.5;
+         float driftZ = cos(uWindTime * 0.25 + hash * 8.0) * 0.4;
+         transformed.x += driftX;
+         transformed.y += bobY;
+         transformed.z += driftZ;`
+      );
+      (fxMat as any)._windShader = shader;
+    };
+
+    const fxIM = new THREE.InstancedMesh(fxGeo, fxMat, fxCount);
+
+    // Compute track center for spread
+    const tc = new THREE.Vector3();
+    for (let t = 0; t < 1; t += 0.02) tc.add(spline.getPointAt(t));
+    tc.multiplyScalar(0.02);
+
+    for (let i = 0; i < fxCount; i++) {
+      // Spread particles around the track
+      const t = rng();
+      const p = spline.getPointAt(t);
+      const tangent = spline.getTangentAt(t).normalize();
+      const rx = tangent.z, rz = -tangent.x;
+      const side = rng() > 0.5 ? 1 : -1;
+      const off = ROAD_WIDTH / 2 + rng() * spreadRadius * 0.5;
+      const x = p.x + rx * off * side;
+      const z = p.z + rz * off * side;
+      const y = yRange[0] + rng() * (yRange[1] - yRange[0]);
+
+      _m.identity();
+      if (fx === 'fog_wisps' || fx === 'steam' || fx === 'leaves') {
+        _m.makeRotationY(rng() * Math.PI * 2);
+      }
+      _m.setPosition(x, y, z);
+      fxIM.setMatrixAt(i, _m);
+    }
+    fxIM.instanceMatrix.needsUpdate = true;
+    group.add(fxIM);
+
+    // Store material ref for wind time updates
+    if (!(group as any)._fxMats) (group as any)._fxMats = [];
+    (group as any)._fxMats.push(fxMat);
+  }
+
+  // ── Ambient Lighting Accents ──
+  const ambientLights = T.ambientLights ?? [];
+  for (const lightType of ambientLights) {
+    switch (lightType) {
+      case 'window_spill': {
+        // Warm light rectangles at building bases
+        const spillCount = 8;
+        const spillGeo = new THREE.PlaneGeometry(2, 3);
+        const spillCanvas = document.createElement('canvas');
+        spillCanvas.width = 32; spillCanvas.height = 64;
+        const sctx = spillCanvas.getContext('2d')!;
+        const spillGrad = sctx.createLinearGradient(0, 0, 0, 64);
+        spillGrad.addColorStop(0, 'rgba(255,200,100,0.08)');
+        spillGrad.addColorStop(1, 'rgba(255,200,100,0)');
+        sctx.fillStyle = spillGrad;
+        sctx.fillRect(0, 0, 32, 64);
+        const spillTex = new THREE.CanvasTexture(spillCanvas);
+        const spillMat = new THREE.MeshBasicMaterial({
+          map: spillTex,
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+          side: THREE.DoubleSide,
+        });
+        const spillIM = new THREE.InstancedMesh(spillGeo, spillMat, spillCount);
+        for (let i = 0; i < spillCount; i++) {
+          const t = rng();
+          const p = spline.getPointAt(t);
+          const tangent = spline.getTangentAt(t).normalize();
+          const rx = tangent.z, rz = -tangent.x;
+          const side = i % 2 === 0 ? 1 : -1;
+          const off = ROAD_WIDTH / 2 + 50 + rng() * 40;
+          const x = p.x + rx * off * side;
+          const z = p.z + rz * off * side;
+          _m.identity();
+          _m.setPosition(x, 0.5, z);
+          spillIM.setMatrixAt(i, _m);
+        }
+        spillIM.instanceMatrix.needsUpdate = true;
+        group.add(spillIM);
+        break;
+      }
+      case 'hazard_flasher': {
+        // Blinking orange spheres on barriers
+        const hazCount = 15;
+        const hazGeo = new THREE.SphereGeometry(0.1, 6, 4);
+        const hazMat = new THREE.MeshStandardMaterial({
+          color: 0xff8800,
+          emissive: new THREE.Color(0xff6600),
+          emissiveIntensity: 1.5,
+        });
+        // Pulse via onBeforeCompile
+        hazMat.onBeforeCompile = (shader) => {
+          shader.uniforms.uWindTime = { value: 0 };
+          shader.vertexShader = 'uniform float uWindTime;\n' + shader.vertexShader;
+          shader.fragmentShader = 'uniform float uWindTime;\n' + shader.fragmentShader;
+          shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <emissivemap_fragment>',
+            `#include <emissivemap_fragment>
+             vec4 hw = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+             float blink = step(0.0, sin(uWindTime * 4.0 + hw.x * 3.0 + hw.z * 5.0));
+             totalEmissiveRadiance *= blink;`
+          );
+          (hazMat as any)._windShader = shader;
+        };
+        const hazIM = new THREE.InstancedMesh(hazGeo, hazMat, hazCount);
+        for (let i = 0; i < hazCount; i++) {
+          const t = (i + 0.5) / hazCount;
+          const p = spline.getPointAt(t);
+          const tangent = spline.getTangentAt(t).normalize();
+          const rx = tangent.z, rz = -tangent.x;
+          const side = i % 2 === 0 ? 1 : -1;
+          const off = ROAD_WIDTH / 2 + BARRIER_THICKNESS + 0.5;
+          _m.identity();
+          _m.setPosition(p.x + rx * off * side, 1.5, p.z + rz * off * side);
+          hazIM.setMatrixAt(i, _m);
+        }
+        hazIM.instanceMatrix.needsUpdate = true;
+        group.add(hazIM);
+        if (!(group as any)._fxMats) (group as any)._fxMats = [];
+        (group as any)._fxMats.push(hazMat);
+        break;
+      }
+      case 'neon_pool': {
+        // Colored ground glow patches
+        const poolCount = 6;
+        const poolGeo = new THREE.PlaneGeometry(4, 4);
+        const poolCanvas = document.createElement('canvas');
+        poolCanvas.width = 64; poolCanvas.height = 64;
+        const pctx = poolCanvas.getContext('2d')!;
+        const poolGrad = pctx.createRadialGradient(32, 32, 0, 32, 32, 30);
+        poolGrad.addColorStop(0, 'rgba(200,50,255,0.12)');
+        poolGrad.addColorStop(0.5, 'rgba(100,0,200,0.05)');
+        poolGrad.addColorStop(1, 'rgba(50,0,100,0)');
+        pctx.fillStyle = poolGrad;
+        pctx.fillRect(0, 0, 64, 64);
+        const poolTex = new THREE.CanvasTexture(poolCanvas);
+        const poolMat = new THREE.MeshBasicMaterial({
+          map: poolTex,
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        const poolIM = new THREE.InstancedMesh(poolGeo, poolMat, poolCount);
+        const neonPoolColors = [0xcc44ff, 0x00ffff, 0xff0088, 0x44ff00, 0xff6600, 0x4488ff];
+        for (let i = 0; i < poolCount; i++) {
+          const t = rng();
+          const p = spline.getPointAt(t);
+          const tangent = spline.getTangentAt(t).normalize();
+          const rx = tangent.z, rz = -tangent.x;
+          const side = i % 2 === 0 ? 1 : -1;
+          const off = ROAD_WIDTH / 2 + 20 + rng() * 30;
+          _m.makeRotationX(-Math.PI / 2);
+          _m.setPosition(p.x + rx * off * side, -1.8, p.z + rz * off * side);
+          poolIM.setMatrixAt(i, _m);
+          _c.setHex(neonPoolColors[i % neonPoolColors.length]);
+          poolIM.setColorAt(i, _c);
+        }
+        poolIM.instanceMatrix.needsUpdate = true;
+        poolIM.instanceColor!.needsUpdate = true;
+        group.add(poolIM);
+        break;
+      }
+      case 'neon_edge': {
+        // Thin emissive strips on building edges
+        const edgeCount = 16;
+        const edgeGeo = new THREE.BoxGeometry(0.05, 1, 0.05);
+        const edgeColors = [0xff00ff, 0x00ffff, 0x4400ff, 0xff4400];
+        const edgeMat = new THREE.MeshStandardMaterial({
+          color: 0xff00ff,
+          emissive: new THREE.Color(0xff00ff),
+          emissiveIntensity: 1.8,
+        });
+        const edgeIM = new THREE.InstancedMesh(edgeGeo, edgeMat, edgeCount);
+        for (let i = 0; i < edgeCount; i++) {
+          const t = rng();
+          const p = spline.getPointAt(t);
+          const tangent = spline.getTangentAt(t).normalize();
+          const rx = tangent.z, rz = -tangent.x;
+          const side = rng() > 0.5 ? 1 : -1;
+          const off = ROAD_WIDTH / 2 + 50 + rng() * 50;
+          const h = 5 + rng() * 15;
+          _m.makeScale(1, h, 1);
+          _m.setPosition(p.x + rx * off * side, -5 + h / 2, p.z + rz * off * side);
+          edgeIM.setMatrixAt(i, _m);
+          _c.setHex(edgeColors[i % edgeColors.length]);
+          edgeIM.setColorAt(i, _c);
+        }
+        edgeIM.instanceMatrix.needsUpdate = true;
+        edgeIM.instanceColor!.needsUpdate = true;
+        group.add(edgeIM);
+        break;
+      }
+      case 'torch_glow': {
+        // Warm orange ground glow near torches/smokestacks
+        const glowCount = 8;
+        const glowGeo = new THREE.PlaneGeometry(3, 3);
+        const glowCanvas = document.createElement('canvas');
+        glowCanvas.width = 64; glowCanvas.height = 64;
+        const gctx2 = glowCanvas.getContext('2d')!;
+        const glowGrad = gctx2.createRadialGradient(32, 32, 0, 32, 32, 30);
+        glowGrad.addColorStop(0, 'rgba(255,120,30,0.1)');
+        glowGrad.addColorStop(0.5, 'rgba(255,80,0,0.04)');
+        glowGrad.addColorStop(1, 'rgba(200,50,0,0)');
+        gctx2.fillStyle = glowGrad;
+        gctx2.fillRect(0, 0, 64, 64);
+        const glowTex = new THREE.CanvasTexture(glowCanvas);
+        const glowMat = new THREE.MeshBasicMaterial({
+          map: glowTex,
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        });
+        const glowIM = new THREE.InstancedMesh(glowGeo, glowMat, glowCount);
+        for (let i = 0; i < glowCount; i++) {
+          const t = rng();
+          const p = spline.getPointAt(t);
+          const tangent = spline.getTangentAt(t).normalize();
+          const rx = tangent.z, rz = -tangent.x;
+          const side = i % 2 === 0 ? 1 : -1;
+          const off = ROAD_WIDTH / 2 + 4 + rng() * 6;
+          _m.makeRotationX(-Math.PI / 2);
+          _m.setPosition(p.x + rx * off * side, -1.8, p.z + rz * off * side);
+          glowIM.setMatrixAt(i, _m);
+        }
+        glowIM.instanceMatrix.needsUpdate = true;
+        group.add(glowIM);
+        break;
+      }
+    }
+  }
+
   return group;
 }
 
 /** Update tree wind sway time. Call once per frame from game loop. */
 export function updateSceneryWind(sceneryGroup: THREE.Group | null, timestamp: number) {
   if (!sceneryGroup) return;
+  const t = timestamp * 0.001;
   const crownMat = (sceneryGroup as any)._crownMat;
   if (crownMat?._windShader) {
-    crownMat._windShader.uniforms.uWindTime.value = timestamp * 0.001;
+    crownMat._windShader.uniforms.uWindTime.value = t;
+  }
+  // Update atmospheric effects + ambient light shader time uniforms
+  const fxMats = (sceneryGroup as any)._fxMats as any[] | undefined;
+  if (fxMats) {
+    for (const mat of fxMats) {
+      if (mat?._windShader?.uniforms?.uWindTime) {
+        mat._windShader.uniforms.uWindTime.value = t;
+      }
+    }
+  }
+}
+
+/**
+ * Dispose ALL Three.js resources in a scenery group to prevent GPU memory leaks.
+ * Must be called before discarding a scenery group (race restart, environment switch).
+ */
+export function destroyScenery(sceneryGroup: THREE.Group | null) {
+  if (!sceneryGroup) return;
+
+  sceneryGroup.traverse((child) => {
+    // Dispose geometries
+    if ((child as THREE.Mesh).geometry) {
+      (child as THREE.Mesh).geometry.dispose();
+    }
+
+    // Dispose materials (single or array)
+    const mesh = child as THREE.Mesh;
+    if (mesh.material) {
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const mat of mats) {
+        // Dispose any texture maps on the material
+        if ((mat as THREE.MeshStandardMaterial).map) (mat as THREE.MeshStandardMaterial).map!.dispose();
+        if ((mat as THREE.MeshStandardMaterial).emissiveMap) (mat as THREE.MeshStandardMaterial).emissiveMap!.dispose();
+        if ((mat as THREE.MeshStandardMaterial).normalMap) (mat as THREE.MeshStandardMaterial).normalMap!.dispose();
+        if ((mat as THREE.MeshStandardMaterial).roughnessMap) (mat as THREE.MeshStandardMaterial).roughnessMap!.dispose();
+        if ((mat as THREE.MeshStandardMaterial).aoMap) (mat as THREE.MeshStandardMaterial).aoMap!.dispose();
+        mat.dispose();
+      }
+    }
+
+    // Dispose InstancedMesh instance attributes
+    if ((child as THREE.InstancedMesh).isInstancedMesh) {
+      const im = child as THREE.InstancedMesh;
+      if (im.instanceMatrix) im.instanceMatrix.array = new Float32Array(0);
+      if (im.instanceColor) im.instanceColor.array = new Float32Array(0);
+    }
+
+    // Dispose lights
+    if ((child as THREE.Light).isLight) {
+      (child as THREE.Light).dispose?.();
+    }
+  });
+
+  // Clear stored shader refs
+  (sceneryGroup as any)._crownMat = null;
+  (sceneryGroup as any)._fxMats = null;
+
+  // Remove all children
+  while (sceneryGroup.children.length > 0) {
+    sceneryGroup.remove(sceneryGroup.children[0]);
   }
 }

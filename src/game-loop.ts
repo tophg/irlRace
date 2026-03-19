@@ -6,7 +6,7 @@
  * Call initGameLoop(deps) once at boot, then startGameLoop() to begin rAF.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { GameState } from './types';
 import { G, PHYSICS_DT, MAX_FRAME_DT, LB_UPDATE_INTERVAL } from './game-context';
 import { getInput } from './input';
@@ -70,7 +70,7 @@ import { stopReplayPlayback as stopReplayUI } from './replay-ui';
 // ── Dependency injection ──
 
 export interface GameLoopDeps {
-  renderer: any; // WebGPURenderer — type stubs unavailable
+  renderer: THREE.WebGPURenderer;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   uiOverlay: HTMLElement;
@@ -239,11 +239,11 @@ function gameLoop(timestamp: number) {
       G.replayPlayer.update(frameDt);
       updateDestructionFragments(frameDt);
       flushToGPU();
-      updateGPUParticles(renderer as any, frameDt);
+      updateGPUParticles(renderer, frameDt);
       updateVFX(frameDt);
       updatePostFX(0, false, frameDt);
-      const hud = document.getElementById('replay-hud');
-      if (hud && (hud as any)._updateHUD) (hud as any)._updateHUD();
+      const replayHud = document.getElementById('replay-hud') as (HTMLElement & { _updateHUD?: () => void }) | null;
+      if (replayHud?._updateHUD) replayHud._updateHUD();
       renderer.render(scene, camera);
       return;
     } else {
@@ -301,7 +301,7 @@ function gameLoop(timestamp: number) {
 
     // AI name tags
     for (const ai of G.aiRacers) {
-      const tag = (ai as any)._nameTag as THREE.Sprite | undefined;
+      const tag = ai.nameTag;
       if (tag) updateNameTag(tag, ai.vehicle.group.position);
     }
 
@@ -408,9 +408,8 @@ function gameLoop(timestamp: number) {
       }
     }
 
-    if (G.playerVehicle.engineJustExploded) {
-      G.playerVehicle.clearExplosionFlag();
-    }
+    // NOTE: clearExplosionFlag() is called AFTER the camera shake block below
+    // (line ~601) so that engineJustExploded is still true for the shake boost.
 
     // ── Landing VFX ──
     if (G.playerVehicle.justLanded) {
@@ -558,7 +557,7 @@ function gameLoop(timestamp: number) {
     if (G._playerUnderglow) {
       updateUnderglow(G._playerUnderglow, G.playerVehicle.speed, timestamp / 1000, G.playerVehicle.isNitroActive);
     }
-    updateBoostFlame(s === GameState.RACING && G.playerVehicle.isNitroActive, G.playerVehicle.group.position, G.playerVehicle.heading, timestamp / 1000, G.playerVehicle.engineHeat);
+    updateBoostFlame(s === GameState.RACING && G.playerVehicle.isNitroActive, G.playerVehicle.group.position, G.playerVehicle.heading, timestamp / 1000, G.playerVehicle.engineHeat, frameDt);
 
     // Nitro activation
     const isNitroNow = s === GameState.RACING && G.playerVehicle.isNitroActive;
@@ -598,6 +597,10 @@ function gameLoop(timestamp: number) {
       const t = timestamp / 1000;
       camera.position.x += Math.sin(t * 90) * shakeDecay;
       camera.position.y += Math.sin(t * 110) * shakeDecay * 0.7;
+    }
+    // Clear explosion flag AFTER shake read (BUG-3 fix)
+    if (G.playerVehicle.engineJustExploded) {
+      G.playerVehicle.clearExplosionFlag();
     }
 
     // Nitro exhaust trail
@@ -666,9 +669,8 @@ function gameLoop(timestamp: number) {
         const dz = pPos.z - aPos.z;
         const dist2 = dx * dx + dz * dz;
         if (dist2 < 3.5 * 3.5 && dist2 > 1.5 * 1.5) {
-          const lastMiss = G._nearMissCooldowns?.get(ai.id) ?? 0;
+          const lastMiss = G._nearMissCooldowns.get(ai.id) ?? 0;
           if (now - lastMiss > 1.0) {
-            if (!G._nearMissCooldowns) G._nearMissCooldowns = new Map();
             G._nearMissCooldowns.set(ai.id, now);
             const cosH = Math.cos(G.playerVehicle.heading);
             const sinH = Math.sin(G.playerVehicle.heading);
@@ -734,7 +736,7 @@ function gameLoop(timestamp: number) {
 
       // Detached parts
       for (const zone of ['front', 'rear', 'left', 'right'] as const) {
-        if (G.playerVehicle.detachedZones.has(zone) && !G.detachedParts.some(dp => (dp as any).zone === zone && (dp as any).owner === 'local')) {
+        if (G.playerVehicle.detachedZones.has(zone) && !G.detachedParts.some(dp => dp.zone === zone && dp.owner === 'local')) {
           const partMesh = G.playerVehicle.createDetachedPart(zone);
           if (partMesh) {
             scene.add(partMesh);
@@ -747,6 +749,8 @@ function gameLoop(timestamp: number) {
               ay: (Math.random() - 0.5) * 10,
               az: (Math.random() - 0.5) * 10,
               life: 4.0,
+              zone,
+              owner: 'local',
             });
             spawnGPUExplosion(partMesh.position, 30);
           }
@@ -956,6 +960,7 @@ function gameLoop(timestamp: number) {
 
     // Rear-view mirror
     if (G.mirrorCamera && G.playerVehicle && s === GameState.RACING) {
+      if (G.mirrorBorder) G.mirrorBorder.style.display = 'block';
       const sinH = Math.sin(G.playerVehicle.heading);
       const cosH = Math.cos(G.playerVehicle.heading);
       const pp = G.playerVehicle.group.position;
@@ -972,13 +977,12 @@ function gameLoop(timestamp: number) {
       const godrays = scene.getObjectByName('godrays');
       if (godrays) godrays.visible = false;
 
-      const gl = (renderer as any).getContext?.() as WebGLRenderingContext | undefined;
+      const gl = renderer.getContext?.() as WebGLRenderingContext | undefined;
       if (gl?.frontFace) gl.frontFace(gl.CW);
 
       const w = 320, h = 120;
       const x = Math.floor(window.innerWidth / 2 - w / 2);
-      const isWebGL = !!(renderer as any).isWebGLRenderer;
-      const y = isWebGL ? Math.floor(window.innerHeight - h - 14) : 14;
+      const y = 14; // WebGPURenderer — always top-origin
 
       renderer.setScissorTest(true);
       renderer.setScissor(x, y, w, h);

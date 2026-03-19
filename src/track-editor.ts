@@ -6,7 +6,7 @@
  * lighting, and interactive orbit controls. Tab toggles view modes.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CustomTrackDef, TrackData, RampDef } from './types';
 import { buildTrackFromControlPoints } from './track';
@@ -66,7 +66,7 @@ let panViewStartZ = 0;
 let hoverIdx = -1;
 
 // 3D Viewport
-let renderer3D: THREE.WebGLRenderer | null = null;
+let renderer3D: THREE.WebGPURenderer | null = null;
 let scene3D: THREE.Scene | null = null;
 let camera3D: THREE.PerspectiveCamera | null = null;
 let orbitControls: OrbitControls | null = null;
@@ -220,7 +220,14 @@ export function destroyTrackEditor() {
   window.removeEventListener('mousemove', onDividerMove);
   window.removeEventListener('mouseup', onDividerUp);
 
-  if (renderer3D) { renderer3D.dispose(); renderer3D = null; }
+  // Clean up 3D viewport listeners (were attached in init3DViewport)
+  if (renderer3D) {
+    renderer3D.domElement.removeEventListener('mousedown', on3DMouseDown);
+    renderer3D.domElement.removeEventListener('mousemove', on3DMouseMove);
+    renderer3D.domElement.removeEventListener('mouseup', on3DMouseUp);
+    renderer3D.domElement.removeEventListener('contextmenu', on3DContextMenu);
+    renderer3D.dispose(); renderer3D = null;
+  }
   if (orbitControls) { orbitControls.dispose(); orbitControls = null; }
   scene3D = null; camera3D = null; trackGroup3D = null; gizmoGroup = null; groundMesh = null;
   if (rebuildTimer) clearTimeout(rebuildTimer);
@@ -1021,10 +1028,8 @@ function init3DViewport() {
   camera3D.lookAt(0, 0, 0);
 
   // Renderer
-  renderer3D = new THREE.WebGLRenderer({ antialias: true });
+  renderer3D = new THREE.WebGPURenderer({ antialias: true });
   renderer3D.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer3D.shadowMap.enabled = true;
-  renderer3D.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer3D.toneMapping = THREE.ACESFilmicToneMapping;
   renderer3D.toneMappingExposure = 1.2;
   rightPane.appendChild(renderer3D.domElement);

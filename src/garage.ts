@@ -49,7 +49,7 @@ const SWIPE_THRESHOLD = 60;
 let dotContainerEl: HTMLElement | null = null;
 
 // Placeholder silhouette
-let placeholderMesh: THREE.Mesh | null = null;
+let placeholderMesh: THREE.Object3D | null = null;
 
 // Loading progress bar
 let progressBarEl: HTMLElement | null = null;
@@ -353,7 +353,7 @@ function wireCanvasInteractions() {
   window.addEventListener('pointercancel', _pointerUpHandler);
 
   // ── Setup Calibration Studio ──
-  initCalibrationStudio(garageRenderer as any, uiEl!);
+  initCalibrationStudio(garageRenderer, uiEl!);
 }
 
 // ── Car Dot Indicators ──
@@ -404,8 +404,8 @@ function buildPlaceholder() {
   group.add(body);
   group.add(cabin);
 
-  placeholderMesh = group as any;
-  placeholderMesh!.visible = false;
+  placeholderMesh = group;
+  placeholderMesh.visible = false;
 }
 
 /** Lazy preload: load neighbors first, then background-load the rest */

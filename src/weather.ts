@@ -1,6 +1,6 @@
 /* ── Hood Racer — Weather System (v2 — Research-Enhanced Physics) ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 
 export type WeatherType = 'clear' | 'light_rain' | 'heavy_rain' | 'snow' | 'blizzard' | 'ice';
 

@@ -279,6 +279,7 @@ export function updateBoostFlame(
   heading: number,
   time: number,
   engineHeat = 0,
+  dt = 1 / 60,
 ) {
   if (!boostFlameL || !boostFlameR) return;
 
@@ -320,7 +321,7 @@ export function updateBoostFlame(
   coreMatR.uniforms.uTime.value = time;
 
   // Subtle scale breathing + burst scale on activation
-  boostBurstScale += (1.0 - boostBurstScale) * 0.15; // decay toward 1.0 (~0.2s at 60fps)
+  boostBurstScale += (1.0 - boostBurstScale) * (1 - Math.exp(-10 * dt)); // frame-rate-independent decay toward 1.0
   const coreFlicker = (0.85 + Math.sin(time * 18) * 0.1 + Math.sin(time * 31) * 0.05) * boostBurstScale;
   boostFlameL.scale.set(coreFlicker, coreFlicker, coreFlicker);
   boostFlameR.scale.set(coreFlicker, coreFlicker, coreFlicker);

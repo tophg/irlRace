@@ -1,4 +1,4 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { CarLightDef } from './car-lights';
 
 /**
@@ -21,27 +21,33 @@ export function detectLightPositions(model: THREE.Group): Partial<CarLightDef> {
       if (mat) {
         if (Array.isArray(mat)) {
           for (const m of mat) {
-            if ((m as any).map) {
-              material = m as any;
-              texture = (m as any).map;
+            const sm = m as THREE.MeshStandardMaterial;
+            if (sm.map) {
+              material = sm;
+              texture = sm.map;
               break;
             }
           }
-        } else if ((mat as any).map) {
-          material = mat as any;
-          texture = (mat as any).map;
+        } else {
+          const sm = mat as THREE.MeshStandardMaterial;
+          if (sm.map) {
+            material = sm;
+            texture = sm.map;
+          }
         }
       }
     }
   });
 
-  if (!mesh || !texture || !(texture as any).image) {
+  if (!mesh || !texture || !(texture as THREE.Texture).image) {
     console.warn('[LightDetector] Could not find mesh or baked texture for analysis');
     return result;
   }
 
   // 2. Render texture to offscreen canvas for CPU pixel access
-  const img = (texture as any).image;
+  // Re-bind after null check (TS can't track closure mutations across traverse)
+  const tex = texture as THREE.Texture;
+  const img = tex.image as HTMLImageElement | ImageBitmap;
   // Handle case where image might be an ImageBitmap or HTMLImageElement
   const width = img.width || 1024;
   const height = img.height || 1024;

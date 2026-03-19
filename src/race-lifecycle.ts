@@ -6,12 +6,13 @@
  * Call initRaceLifecycle(deps) once at boot.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { GameState, CAR_ROSTER, EventType, type TrackData } from './types';
 import { G, resetRaceStats } from './game-context';
 import { getScene, applyEnvironment, getEnvironmentForSeed, getEnvironmentByName } from './scene';
 import { loadCarModel } from './loaders';
 import { generateTrack, buildCheckpointMarkers } from './track';
+import { destroyScenery } from './track-scenery';
 import { Vehicle } from './vehicle';
 import { VehicleCamera } from './vehicle-camera';
 import { RaceEngine } from './race-engine';
@@ -36,7 +37,7 @@ import { setExplosionMode, initPostFX } from './post-fx';
 import { loadGhostForSeed, startGhostPlayback, startGhostRecording, destroyGhost } from './ghost';
 import { initRapierWorld, addBarrierCollider, addCarBody, destroyRapierWorld } from './rapier-world';
 import { rollbackManager } from './rollback-netcode';
-import { showTouchControls } from './input';
+import { showTouchControls, resetInput } from './input';
 import { getSettings } from './settings';
 import { ReplayRecorder } from './replay';
 import { getWeatherForSeed, initWeather, applyWetRoad, destroyWeather, getCurrentWeather } from './weather';
@@ -47,7 +48,7 @@ import { destroySpectateHUD } from './spectator';
 // ── Dependency injection ──
 
 export interface RaceLifecycleDeps {
-  renderer: any;
+  renderer: THREE.WebGPURenderer;
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   uiOverlay: HTMLElement;
@@ -117,7 +118,7 @@ export function clearRaceObjects() {
     disposeMesh(G.trackData.barrierRight);
     disposeMesh(G.trackData.shoulderMesh);
     disposeMesh(G.trackData.kerbGroup);
-    disposeMesh(G.trackData.sceneryGroup);
+    destroyScenery(G.trackData.sceneryGroup);
     disposeMesh(G.trackData.rampGroup);
     G.trackData = null;
   }
@@ -236,7 +237,7 @@ export async function spawnAI(td: TrackData) {
 
     const AI_NAMES = ['SHADOW', 'BLAZE', 'NITRO', 'GHOST', 'VIPER', 'STORM', 'RAZOR', 'DRIFT', 'FURY', 'ACE', 'NOVA'];
     const nameTag = createNameTag(AI_NAMES[i % AI_NAMES.length], scene);
-    (ai as any)._nameTag = nameTag;
+    ai.nameTag = nameTag;
 
     G.aiRacers.push(ai);
   }
@@ -307,6 +308,7 @@ export async function startRace() {
     showLoading();
 
     clearRaceObjects();
+    resetInput(); // BUG-11 fix: zero out any stuck keys from previous race
     G.physicsAccumulator = 0;
     G._drsFrameTimes = new Array(30).fill(0);
     G._drsWriteIdx = 0;
@@ -314,6 +316,29 @@ export async function startRace() {
     renderer.setSize(window.innerWidth, window.innerHeight);
 
     let seed = G.trackSeed ?? Math.floor(Math.random() * 99999);
+
+    // ── Resolve environment + weather BEFORE generating track ──
+    // generateTrack → generateScenery → getCurrentTheme(), so the theme
+    // must be applied before the track is built.
+    const selectedEnv = G._selectedEnvironment;
+    const envPreset = (selectedEnv && selectedEnv !== 'random')
+      ? getEnvironmentByName(selectedEnv)
+      : getEnvironmentForSeed(seed);
+    applyEnvironment(envPreset);
+
+    const selectedW = G._selectedWeather;
+    const weatherType = (selectedW && selectedW !== 'random')
+      ? selectedW as any
+      : getWeatherForSeed(seed);
+    initWeather(scene, weatherType);
+
+    // Weather can override the environment (snow → Alpine Snow, etc.)
+    const w = getCurrentWeather();
+    if (w === 'snow') applyEnvironment(getEnvironmentByName('Alpine Snow'));
+    else if (w === 'blizzard') applyEnvironment(getEnvironmentByName('Blizzard'));
+    else if (w === 'ice') applyEnvironment(getEnvironmentByName('Black Ice'));
+
+    // ── Now generate the track (scenery will use the correct theme) ──
     if (G._customTrack) {
       G.trackData = G._customTrack;
       G._customTrack = null;
@@ -324,21 +349,6 @@ export async function startRace() {
       G.trackData = generateTrack(seed);
     }
     const trackData = G.trackData!;
-    const selectedEnv = G._selectedEnvironment;
-    const envPreset = (selectedEnv && selectedEnv !== 'random')
-      ? getEnvironmentByName(selectedEnv)
-      : getEnvironmentForSeed(seed);
-    applyEnvironment(envPreset);
-    const selectedW = G._selectedWeather;
-    const weatherType = (selectedW && selectedW !== 'random')
-      ? selectedW as any
-      : getWeatherForSeed(seed);
-    initWeather(scene, weatherType);
-
-    const w = getCurrentWeather();
-    if (w === 'snow') applyEnvironment(getEnvironmentByName('Alpine Snow'));
-    else if (w === 'blizzard') applyEnvironment(getEnvironmentByName('Blizzard'));
-    else if (w === 'ice') applyEnvironment(getEnvironmentByName('Black Ice'));
 
     if (w !== 'clear') applyWetRoad(trackData.roadMesh);
     scene.add(trackData.roadMesh);
@@ -352,7 +362,7 @@ export async function startRace() {
     G.checkpointMarkers = buildCheckpointMarkers(trackData.checkpoints);
     scene.add(G.checkpointMarkers);
 
-    G.raceEngine = new RaceEngine(trackData.checkpoints, G.totalLaps);
+    G.raceEngine = new RaceEngine(trackData.checkpoints, G.totalLaps, trackData.totalLength);
 
     const playerModel = await loadCarModel(G.selectedCar.file);
     playerModel.position.set(0, 0, 0);
@@ -376,8 +386,8 @@ export async function startRace() {
     initSpeedLines(container);
     initSkidMarks(scene);
 
-    warmupDestruction(scene, renderer as any, camera);
-    warmupFragmentMaterials(G.playerVehicle.cachedFragments, renderer as any, camera, scene, G.playerVehicle.wheelRefs);
+    warmupDestruction(scene, renderer, camera);
+    warmupFragmentMaterials(G.playerVehicle.cachedFragments, renderer, camera, scene, G.playerVehicle.wheelRefs);
 
     initRainDroplets(container);
     initImpactFlash(container);
@@ -456,7 +466,7 @@ export async function startRace() {
       width: 320px; height: 120px;
       border: 2px solid rgba(255,255,255,0.2); border-radius: 6px;
       pointer-events: none; z-index: 20; opacity: 0.85;
-      overflow: hidden;
+      overflow: hidden; display: none;
     `;
     uiOverlay.appendChild(G.mirrorBorder);
     if (window.matchMedia('(pointer: coarse)').matches) showTouchControls(true);
@@ -479,20 +489,23 @@ export async function startRace() {
     uiOverlay.appendChild(flyoverLabel);
 
     await new Promise<void>((resolve) => {
-      const onSkip = () => {
-        G.vehicleCamera?.skipFlyover();
+      let resolved = false;
+      const cleanup = () => {
+        if (resolved) return;
+        resolved = true;
+        window.removeEventListener('keydown', keyHandler);
+        window.removeEventListener('pointerdown', pointerHandler);
         resolve();
       };
-      const keyHandler = (e: KeyboardEvent) => { if (e.key !== 'F11') onSkip(); };
-      const pointerHandler = () => onSkip();
-      window.addEventListener('keydown', keyHandler, { once: true });
-      window.addEventListener('pointerdown', pointerHandler, { once: true });
+      const keyHandler = (e: KeyboardEvent) => { if (e.key !== 'F11') { G.vehicleCamera?.skipFlyover(); cleanup(); } };
+      const pointerHandler = () => { G.vehicleCamera?.skipFlyover(); cleanup(); };
+      window.addEventListener('keydown', keyHandler);
+      window.addEventListener('pointerdown', pointerHandler);
 
       const poll = () => {
+        if (resolved) return; // stop polling after resolution
         if (G.vehicleCamera?.isFlyoverComplete()) {
-          window.removeEventListener('keydown', keyHandler);
-          window.removeEventListener('pointerdown', pointerHandler);
-          resolve();
+          cleanup();
         } else {
           requestAnimationFrame(poll);
         }

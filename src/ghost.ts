@@ -2,7 +2,7 @@
 /* Records the player's best lap as position/heading snapshots,
  * then replays it as a semi-transparent "ghost" car for time trial. */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 
 // ── Configuration ──
 const SAMPLE_RATE = 10; // snapshots per second (100ms interval)
@@ -32,7 +32,6 @@ interface GhostData {
 // ── Recording State ──
 let recording = false;
 let currentSnapshots: GhostSnapshot[] = [];
-let _recordInterval: number | null = null;
 let lapStartTime = 0;
 
 // ── Playback State ──

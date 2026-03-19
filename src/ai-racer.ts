@@ -1,6 +1,6 @@
 /* ── Hood Racer — AI Racer (v2 — Curvature-Aware + Personalities) ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { CarDef, InputState } from './types';
 import { Vehicle } from './vehicle';
 import { getClosestSplinePoint, getSpeedProfileAt } from './track';
@@ -50,6 +50,7 @@ export class AIRacer {
   readonly vehicle: Vehicle;
   readonly id: string;
   readonly personality: AIPersonality;
+  nameTag: THREE.Sprite | null = null;
 
   private spline: THREE.CatmullRomCurve3 | null = null;
   private bvh: SplineBVH | null = null;

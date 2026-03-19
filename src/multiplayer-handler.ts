@@ -4,7 +4,7 @@
  * and player list broadcasting. Extracted from main.ts.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { GameState, EventType } from './types';
 import { G } from './game-context';
 import { NetPeer } from './net-peer';

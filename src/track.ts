@@ -1,6 +1,6 @@
 /* ── Hood Racer — Procedural Track Generator (v2 — Convex Hull + Elevation) ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { Checkpoint, TrackData, RampDef } from './types';
 import { SplineBVH } from './bvh';
 import { buildRampGroup, placeRampsOnStraights } from './ramps';
@@ -10,8 +10,8 @@ const BARRIER_HEIGHT = 1.8;
 export const BARRIER_THICKNESS = 0.4;
 const SPLINE_SAMPLES = 400;
 const MIN_RADIUS = 18;      // tightest allowed corner
-const MAX_BANK_ANGLE = 0.35; // ~20° banking
-const BANK_SCALE = 8;
+export const MAX_BANK_ANGLE = 0.35; // ~20° banking
+export const BANK_SCALE = 8;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // PUBLIC API
@@ -88,7 +88,7 @@ export function buildTrackFromControlPoints(
     checkpoints.push({ position, tangent, index: i, t });
   }
 
-  const sceneryGroup = generateScenery(finalSpline, rng, getCurrentTheme());
+  const sceneryGroup = generateScenery(finalSpline, rng, getCurrentTheme(), roadMesh);
   const bvh = new SplineBVH(finalSpline, 800);
 
   // Build ramps from user definitions (or empty if none provided)
@@ -142,7 +142,7 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   }
 
   // ── 9. Scenery ──
-  const sceneryGroup = generateScenery(finalSpline, rng, getCurrentTheme());
+  const sceneryGroup = generateScenery(finalSpline, rng, getCurrentTheme(), roadMesh);
 
   // ── 10. Build BVH for O(log N) nearest-point queries ──
   const bvh = new SplineBVH(finalSpline, 800);

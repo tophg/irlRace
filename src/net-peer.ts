@@ -463,7 +463,6 @@ export class NetPeer {
     // Start the reconnection interval if not already running
     if (!this.reconnectInterval) {
       this.reconnectInterval = window.setInterval(() => {
-        const now = performance.now();
         for (const [id, info] of this.pendingReconnect) {
           info.timer -= 500;
           if (info.timer <= 0) {

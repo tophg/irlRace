@@ -9,7 +9,7 @@
  * where `import { gameState }` + `gameState = X` is illegal.
  */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { GameState, CarDef, CAR_ROSTER, type TrackData } from './types';
 import { Vehicle } from './vehicle';
 import { VehicleCamera } from './vehicle-camera';
@@ -24,6 +24,8 @@ export interface DetachedPart {
   vx: number; vy: number; vz: number;
   ax: number; ay: number; az: number;
   life: number;
+  zone?: string;
+  owner?: string;
 }
 
 // ── Race stats for post-race screen ──

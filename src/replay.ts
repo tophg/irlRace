@@ -1,6 +1,6 @@
 /* ── Hood Racer — Race Replay System ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 
 // ── Data Model ──
 
@@ -421,8 +421,11 @@ export class ReplayPlayer {
       }
     }
 
-    this.camera.position.lerp(_camPos, 0.05);
-    this.smoothLookAt.lerp(_target, 0.08);
+    // Frame-rate-independent smoothing (BUG-14 fix)
+    const posAlpha = 1 - Math.exp(-3.0 * (1 / 60)); // ~0.05 at 60fps
+    const lookAlpha = 1 - Math.exp(-5.0 * (1 / 60)); // ~0.08 at 60fps
+    this.camera.position.lerp(_camPos, posAlpha);
+    this.smoothLookAt.lerp(_target, lookAlpha);
     this.camera.lookAt(this.smoothLookAt);
   }
 }

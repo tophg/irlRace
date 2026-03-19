@@ -1,6 +1,6 @@
 /* ── Hood Racer — Ramp Mesh Builder ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import type { RampDef } from './types';
 
 const ROAD_WIDTH = 14;

@@ -1,6 +1,6 @@
 /* ── Hood Racer — Minimap (Canvas-Based Track Radar) ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 
 // ── Configuration ──
 const MAP_SIZE = 160;        // px (square canvas)

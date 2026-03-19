@@ -1,6 +1,6 @@
 /* ── Hood Racer — Model Loaders ── */
 
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { detectLightPositions } from './light-detector';
@@ -142,4 +142,10 @@ export function loadCarModelWithProgress(
 
 export function clearModelCache() {
   modelCache.clear();
+}
+
+/** Load a raw GLB model (no car-specific processing). Returns the scene group. */
+export async function loadGLB(url: string): Promise<THREE.Group> {
+  const gltf = await gltfLoader.loadAsync(url);
+  return gltf.scene;
 }
