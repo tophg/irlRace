@@ -289,7 +289,7 @@ canvas { display: block; }
 .title-content--revealed .menu-btn:nth-child(3) { transition-delay: 0.75s; }
 .title-content--revealed .menu-btn:nth-child(4) { transition-delay: 0.85s; }
 .title-content--revealed .menu-btn:nth-child(5) { transition-delay: 0.95s; }
-.menu-btn {
+.title-screen .menu-btn {
   opacity: 0;
   transform: translateY(12px);
   filter: blur(3px);
