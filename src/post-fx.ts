@@ -1,10 +1,12 @@
-/* ── IRL Race — Post-Processing FX (v2 — Impact Effects) ──
+/* ── IRL Race — Post-Processing FX (v3 — Slow-Mo Cinematic) ──
  *
  * Cinematic post-processing using Three.js WebGPU TSL nodes:
  *   • Bloom — sparks, headlights, nitro glow
  *   • Speed vignette — darkens edges at high speed
  *   • Chromatic aberration — RGB split on collisions
- *   • Radial blur — speed/impact radial streak
+ *   • Radial blur — edge-weighted darkening + chromatic spread (speed/impact/slow-mo)
+ *   • Desaturation — BT.709 luminance partial grayscale during slow-mo
+ *   • Cool tint — subtle blue shift during slow-mo (NFS-style)
  *
  * Usage:
  *   const pp = initPostFX(renderer, scene, camera);
@@ -14,10 +16,10 @@
  */
 
 import * as THREE from 'three/webgpu';
-import { isSlowMotionActive } from './time-scale';
+import { getTimeScale, isSlowMotionActive } from './time-scale';
 import {
-  pass, uniform, float, vec2, vec4,
-  screenUV, length, smoothstep, mix, mul, sub, add, clamp, max,
+  pass, uniform, float, vec2, vec3, vec4,
+  screenUV, length, smoothstep, mix, mul, sub, add, clamp, max, dot,
 } from 'three/tsl';
 import { bloom } from 'three/examples/jsm/tsl/display/BloomNode.js';
 
@@ -27,6 +29,10 @@ let pipeline: THREE.RenderPipeline | null = null;
 const uVignetteStrength = uniform(0.0);
 const uImpactIntensity  = uniform(0.0);   // 0..1 — triggers chromatic + radial blur
 const uBoostIntensity   = uniform(0.0);   // 0..1 — nitro radial blur
+const uSlowMoIntensity  = uniform(0.0);   // 0..1 — slow-mo desaturation + radial blur
+
+// Smoothed internal value for interpolation
+let _smoothSlowMo = 0;
 
 /**
  * Initialize post-processing pipeline.
@@ -43,43 +49,60 @@ export function initPostFX(
   const bloomPass = bloom(scenePass, 0.2, 0.25, 0.9);
   let combined = scenePass.add(bloomPass);
 
-  // ── Chromatic Aberration (on impact) ──
-  // Offset UV radially from center, sample R/G/B at slightly different UVs
+  // ── Chromatic Aberration (on impact + slow-mo) ──
   const center = vec2(0.5, 0.5);
   const dir = screenUV.sub(center);
-  const caStrength = mul(uImpactIntensity, float(0.012)); // max 1.2% RGB split
+  // CA strength from impact + subtle slow-mo contribution
+  const caStrength = max(
+    mul(uImpactIntensity, float(0.012)),
+    mul(uSlowMoIntensity, float(0.005)),  // subtle RGB split in slow-mo
+  );
 
-  const _uvR = screenUV.add(mul(dir, caStrength));
-  const _uvB = screenUV.sub(mul(dir, caStrength));
-
-  // Sample the combined scene at offset UVs for R and B channels
-  const colCenter = combined;
-  const _colR = scenePass.add(bloomPass); // same graph, different UV won't work directly
-  // Note: TSL node-based CA requires sampling the texture at offset UVs
-  // For a simpler fallback, we'll use a color-shift approximation
   const caShift = mul(dir, caStrength);
   const caEffect = vec4(
-    colCenter.r.add(caShift.x.mul(float(8.0))),
-    colCenter.g,
-    colCenter.b.sub(caShift.x.mul(float(8.0))),
+    combined.r.add(caShift.x.mul(float(8.0))),
+    combined.g,
+    combined.b.sub(caShift.x.mul(float(8.0))),
     float(1.0),
   );
-  // Blend: only apply CA when impact > 0
-  combined = mix(combined, caEffect, clamp(uImpactIntensity, float(0.0), float(1.0)));
+  // Blend: apply CA when impact or slow-mo > 0
+  const caAmount = clamp(max(uImpactIntensity, uSlowMoIntensity), float(0.0), float(1.0));
+  combined = mix(combined, caEffect, caAmount);
 
-  // ── Radial Blur (speed + impact) ──
+  // ── Radial Blur (speed + impact + slow-mo) ──
+  // Edge-weighted directional darkening that simulates radial blur perception
   const blurStrength = max(
-    mul(uBoostIntensity, float(0.008)),
-    mul(uImpactIntensity, float(0.015)),
+    max(
+      mul(uBoostIntensity, float(0.008)),
+      mul(uImpactIntensity, float(0.015)),
+    ),
+    mul(uSlowMoIntensity, float(0.012)),   // slow-mo radial blur
   );
   const distFromCenter = length(dir);
-  const blurFade = smoothstep(0.2, 0.8, distFromCenter); // stronger at edges
-  const _blurOffset = mul(dir, mul(blurStrength, blurFade));
+  const blurFade = smoothstep(0.15, 0.75, distFromCenter);  // stronger at edges, clear center
+  const radialDarken = mul(
+    blurFade,
+    max(max(uBoostIntensity, uImpactIntensity), uSlowMoIntensity),
+  ).mul(float(0.35));
 
-  // Simple 2-tap blur toward center
-  const _blurredColor = mix(combined, combined, float(0.5)); // placeholder — TSL can't easily re-sample
-  // Instead, apply a darkening vignette that simulates radial blur perception
-  const radialDarken = mul(blurFade, max(uBoostIntensity, uImpactIntensity)).mul(float(0.3));
+  // ── Desaturation (slow-mo only) ──
+  // BT.709 luminance weights for perceptually accurate grayscale
+  const luminanceWeights = vec3(0.2126, 0.7152, 0.0722);
+  const luminance = dot(combined, luminanceWeights);
+  const grayscale = vec4(luminance, luminance, luminance, float(1.0));
+  // Max 45% desaturation at full slow-mo intensity
+  const desatAmount = mul(uSlowMoIntensity, float(0.45));
+  combined = mix(combined, grayscale, desatAmount);
+
+  // ── Cool Blue Tint (slow-mo only — NFS Most Wanted style) ──
+  // Subtle shift toward cool blue during slow-mo
+  const coolTint = vec4(
+    combined.r.mul(sub(float(1.0), mul(uSlowMoIntensity, float(0.08)))),   // slightly reduce red
+    combined.g.mul(sub(float(1.0), mul(uSlowMoIntensity, float(0.03)))),   // barely touch green
+    combined.b.mul(add(float(1.0), mul(uSlowMoIntensity, float(0.06)))),   // slightly boost blue
+    float(1.0),
+  );
+  combined = mix(combined, coolTint, uSlowMoIntensity);
 
   // ── Speed Vignette ──
   const dist = length(screenUV.sub(0.5).mul(2.0));
@@ -110,6 +133,12 @@ export function updatePostFX(speedRatio: number, isNitroActive = false, dt = 1 /
   if (isSlowMotionActive()) vig = Math.max(vig, 0.55);
 
   uVignetteStrength.value = vig;
+
+  // ── Slow-mo intensity (smooth interpolation) ──
+  const targetSlowMo = isSlowMotionActive() ? (1.0 - getTimeScale()) : 0;
+  _smoothSlowMo += (targetSlowMo - _smoothSlowMo) * Math.min(5.0 * dt, 1.0);
+  if (_smoothSlowMo < 0.005) _smoothSlowMo = 0;
+  uSlowMoIntensity.value = _smoothSlowMo;
 
   // Boost intensity for radial effect during nitrous (dt-scaled linear decay)
   uBoostIntensity.value = Math.max(0, uBoostIntensity.value - 3.0 * dt);
@@ -170,4 +199,5 @@ export function updateExplosionPostFX(dt: number) {
 export function destroyPostFX() {
   pipeline = null;
   explosionMode = false;
+  _smoothSlowMo = 0;
 }
