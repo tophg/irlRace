@@ -895,53 +895,54 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     });
   }
 
-  // ── Road direction arrows (InstancedMesh decals on straight sections) ──
-  const ARROW_COUNT = 12;
-  const arrowCanvas = document.createElement('canvas');
-  arrowCanvas.width = 64; arrowCanvas.height = 128;
+  // ── Road direction chevrons (double-chevron decals along track) ──
+  const CHEVRON_COUNT = 24;
+  const chevronCanvas = document.createElement('canvas');
+  chevronCanvas.width = 64; chevronCanvas.height = 128;
   {
-    const ctx = arrowCanvas.getContext('2d')!;
+    const ctx = chevronCanvas.getContext('2d')!;
     ctx.clearRect(0, 0, 64, 128);
-    // Draw arrow shape
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.lineWidth = 6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // First chevron (upper)
     ctx.beginPath();
-    ctx.moveTo(32, 10);   // Arrow tip
+    ctx.moveTo(12, 50);
+    ctx.lineTo(32, 16);
     ctx.lineTo(52, 50);
-    ctx.lineTo(38, 40);
-    ctx.lineTo(38, 118);
-    ctx.lineTo(26, 118);
-    ctx.lineTo(26, 40);
-    ctx.lineTo(12, 50);
-    ctx.closePath();
-    ctx.fill();
+    ctx.stroke();
+    // Second chevron (lower)
+    ctx.beginPath();
+    ctx.moveTo(12, 90);
+    ctx.lineTo(32, 56);
+    ctx.lineTo(52, 90);
+    ctx.stroke();
   }
-  const arrowTex = new THREE.CanvasTexture(arrowCanvas);
-  const arrowGeo = new THREE.PlaneGeometry(2, 4);
-  const arrowMat = new THREE.MeshStandardMaterial({
-    map: arrowTex,
+  const chevronTex = new THREE.CanvasTexture(chevronCanvas);
+  const chevronGeo = new THREE.PlaneGeometry(2.5, 5);
+  const chevronMat = new THREE.MeshStandardMaterial({
+    map: chevronTex,
     transparent: true,
     depthWrite: false,
     roughness: 0.8,
+    emissive: 0xffffff,
+    emissiveIntensity: 0.15,
   });
 
-  for (let i = 0; i < ARROW_COUNT; i++) {
-    const t = (i + 0.5) / ARROW_COUNT;
-    const kappa = estimateCurvature(spline, t);
-    // Only place arrows on relatively straight sections
-    if (Math.abs(kappa) < 0.02) {
-      const p = spline.getPointAt(t);
-      const tangent = spline.getTangentAt(t).normalize();
-      const arrow = new THREE.Mesh(arrowGeo, arrowMat);
-      arrow.position.copy(p);
-      arrow.position.y += 0.04; // Just above road
-      // Orient arrow to lie flat on road, pointing along track direction
-      const rightVec = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
-      arrow.quaternion.setFromRotationMatrix(
-        new THREE.Matrix4().makeBasis(rightVec, new THREE.Vector3(0, 1, 0), tangent)
-      );
-      arrow.rotateX(-Math.PI / 2);
-      group.add(arrow);
-    }
+  for (let i = 0; i < CHEVRON_COUNT; i++) {
+    const t = (i + 0.5) / CHEVRON_COUNT;
+    const p = spline.getPointAt(t);
+    const tangent = spline.getTangentAt(t).normalize();
+    const chevron = new THREE.Mesh(chevronGeo, chevronMat);
+    chevron.position.copy(p);
+    chevron.position.y += 0.04;
+    const rightVec = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
+    chevron.quaternion.setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(rightVec, new THREE.Vector3(0, 1, 0), tangent)
+    );
+    chevron.rotateX(-Math.PI / 2);
+    group.add(chevron);
   }
 
   // ── Distant mountain silhouettes (1 merged draw call) ──

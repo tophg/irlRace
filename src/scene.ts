@@ -218,14 +218,14 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
   // ── Zermatt — Swiss alpine pass, snow-capped pines, chalet village ──
   {
     name: 'Zermatt',
-    fogColor: 0xbbbbcc, fogDensity: 0.0005,
+    fogColor: 0xbbbbcc, fogDensity: 0.00035,
     skyTop: 0x889099, skyBottom: 0xbbc0cc, skyHorizon: 0xdde0e8,
     hemiSky: 0xccddee, hemiGround: 0x667788, hemiIntensity: 1.0,
     dirColor: 0xeeeeff, dirIntensity: 1.4, dirPosition: [60, 40, 40],
-    groundColor: 0x334455, exposure: 1.05,
+    groundColor: 0x2a3a4a, exposure: 1.05,
     scenery: {
-      roadColor: 0x556068, roadRoughness: 0.6,
-      barrierColor: 0x889099,
+      roadColor: 0x3a4048, roadRoughness: 0.6,
+      barrierColor: 0x667080,
       buildingPalette: [0x8899aa, 0x99aabb, 0x7788aa, 0xaabbcc],
       buildingHeightRange: [3, 7],
       windowLitChance: 0.7, windowColor: 0xffddaa,

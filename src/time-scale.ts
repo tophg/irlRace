@@ -15,10 +15,10 @@ let _rampSpeed = 0; // units/sec toward target
 let _holdTimer = 0; // seconds remaining at target before ramping back
 let _active = false;
 
-// Slow-motion profile
-const SLOW_SCALE = 0.25;
+// Slow-motion profile (mutable for finish variant)
+let SLOW_SCALE = 0.25;
 const RAMP_DOWN_DURATION = 0.4; // seconds to reach slow-mo
-const HOLD_DURATION = 2.5;      // seconds to hold slow-mo
+let HOLD_DURATION = 2.5;        // seconds to hold slow-mo
 const RAMP_UP_DURATION = 0.5;   // seconds to return to normal
 
 type SlowMotionPhase = 'idle' | 'ramp-down' | 'hold' | 'ramp-up';
@@ -95,4 +95,18 @@ export function resetTimeScale() {
   _active = false;
   _holdTimer = 0;
   _rampSpeed = 0;
+}
+
+/**
+ * Trigger a lighter slow-motion for race finish.
+ * Ramps to 0.4× for 1.5s then back to normal.
+ */
+export function triggerFinishSlowMo() {
+  SLOW_SCALE = 0.4;
+  HOLD_DURATION = 1.5;
+  _active = true;
+  _phase = 'ramp-down';
+  _targetScale = 0.4;
+  _rampSpeed = (1.0 - 0.4) / 0.3;
+  _holdTimer = 0;
 }

@@ -80,8 +80,20 @@ export function runCountdown(uiOverlay: HTMLElement, durationMs = 3400): Promise
         if (!overlayEl) return;
         overlayEl.innerHTML = `<div class="${css}">${text}</div>`;
 
+        // Haptic feedback — escalating intensity
+        if (navigator.vibrate) {
+          if (text === 'GO!') navigator.vibrate([40, 30, 40]);
+          else if (text === '1') navigator.vibrate(60);
+          else if (text === '2') navigator.vibrate(50);
+          else navigator.vibrate(40);
+        }
+
         if (text === 'GO!') {
           playGoChord();
+          // Screen flash
+          const flash = document.createElement('div');
+          flash.className = 'countdown-flash';
+          overlayEl!.appendChild(flash);
         } else {
           playBeep(freq, 0.2);
         }

@@ -264,36 +264,35 @@ function buildBokehParticles() {
 // ── Showroom Backdrop Panels ──
 function buildBackdropPanels() {
   backdropGroup = new THREE.Group();
-  const panelCount = 5;
+  const panelCount = 8;
   const radius = 12;
-  const panelWidth = 3;
-  const panelHeight = 10;
+  const panelWidth = 5;
+  const panelHeight = 12;
 
   for (let i = 0; i < panelCount; i++) {
-    const angle = (i / panelCount) * Math.PI - Math.PI / 2; // semicircle behind car
+    const angle = (i / panelCount) * Math.PI - Math.PI / 2;
     const x = Math.sin(angle) * radius;
     const z = -Math.cos(angle) * radius;
 
-    // Main dark panel
     const panelGeo = new THREE.PlaneGeometry(panelWidth, panelHeight);
     const panelMat = new THREE.MeshStandardMaterial({
       color: 0x0a0a18,
       roughness: 0.8,
       metalness: 0.3,
       transparent: true,
-      opacity: 0.6,
+      opacity: 0.75,
     });
     const panel = new THREE.Mesh(panelGeo, panelMat);
     panel.position.set(x, panelHeight / 2 - 1, z);
     panel.lookAt(0, panelHeight / 2 - 1, 0);
     backdropGroup.add(panel);
 
-    // Emissive edge stripe (thin vertical line)
+    // Emissive edge stripe
     const stripeGeo = new THREE.PlaneGeometry(0.02, panelHeight * 0.8);
     const stripeMat = new THREE.MeshBasicMaterial({
       color: 0xff6a2a,
       transparent: true,
-      opacity: 0.25,
+      opacity: 0.2,
     });
     const stripe = new THREE.Mesh(stripeGeo, stripeMat);
     stripe.position.set(x + Math.cos(angle) * (panelWidth / 2 - 0.1), panelHeight / 2 - 1, z + Math.sin(angle) * (panelWidth / 2 - 0.1));
