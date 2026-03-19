@@ -91,106 +91,311 @@ window.addEventListener('keydown', (e) => {
 });
 
 
-
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// TITLE SCREEN — 3D Car Showcase
+// TITLE SCREEN — Cinematic 3-Phase Car Reveal
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 // Title scene state
 let titleScene: THREE.Scene | null = null;
 let titleCamera: THREE.PerspectiveCamera | null = null;
 let titleCarModel: THREE.Group | null = null;
-let titleOrbitAngle = 0;
 let titleAnimFrame = 0;
+let titleStartTime = 0;
 let titleEmberCanvas: HTMLCanvasElement | null = null;
 let titleEmberCtx: CanvasRenderingContext2D | null = null;
 let titleEmberParticles: { x: number; y: number; vx: number; vy: number; size: number; alpha: number; hue: number }[] = [];
 
+// Cinematic elements
+let titleCyanRim: THREE.SpotLight | null = null;
+let titleOrangeRim: THREE.SpotLight | null = null;
+let titleOverhead: THREE.PointLight | null = null;
+let titleKeyLight: THREE.DirectionalLight | null = null;
+let titleUnderglow: THREE.PointLight | null = null;
+let titleNeonStrip: THREE.Mesh | null = null;
+let titleFogPlane: THREE.Mesh | null = null;
+let titleAmbient: THREE.AmbientLight | null = null;
+let titleMenuRevealed = false;
+
+// Easing helpers
+function easeOutCubic(t: number) { return 1 - Math.pow(1 - t, 3); }
+function easeInOutQuad(t: number) { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }
+function clamp01(t: number) { return Math.max(0, Math.min(1, t)); }
+function lerp(a: number, b: number, t: number) { return a + (b - a) * clamp01(t); }
+
 function createTitleScene() {
   titleScene = new THREE.Scene();
-  titleScene.background = new THREE.Color(0x060610);
+  titleScene.background = new THREE.Color(0x030308);
+  titleStartTime = performance.now() / 1000;
+  titleMenuRevealed = false;
 
-  // ── Environment map (must match garage.ts pattern exactly for WebGPU compatibility) ──
+  // ── Environment map (matches garage.ts for WebGPU compat) ──
   const pmremGen = new THREE.PMREMGenerator(renderer);
   try {
     const envMap = pmremGen.fromScene(new RoomEnvironment()).texture;
     titleScene.environment = envMap;
-  } catch { /* fallback: no envmap */ }
+  } catch { /* fallback */ }
   pmremGen.dispose();
 
-  titleCamera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
-  titleCamera.position.set(0, 2.0, 7);
-  titleCamera.lookAt(0, 0.4, 0);
+  titleCamera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
+  // Phase 1 start: low dramatic angle
+  titleCamera.position.set(0, 0.4, 5);
+  titleCamera.lookAt(0, 0.6, 0);
 
-  // ── Lighting — must be very bright to combat WebGPU PBR darkness ──
-  const ambient = new THREE.AmbientLight(0x445566, 2.0);
-  titleScene.add(ambient);
+  // ── Lighting — starts dark, activates during reveal ──
+  titleAmbient = new THREE.AmbientLight(0x334455, 0.15);
+  titleScene.add(titleAmbient);
 
-  // Key directional light (strong white overhead)
-  const keyLight = new THREE.DirectionalLight(0xffffff, 3.0);
-  keyLight.position.set(3, 8, 5);
-  titleScene.add(keyLight);
+  // Key directional (starts off)
+  titleKeyLight = new THREE.DirectionalLight(0xffffff, 0);
+  titleKeyLight.position.set(3, 8, 5);
+  titleScene.add(titleKeyLight);
 
-  // Cyan rim light (right/front) — matches IRL glow
-  const cyanRim = new THREE.SpotLight(0x00e5ff, 400, 20, Math.PI / 4, 0.5, 1.0);
-  cyanRim.position.set(5, 4, 3);
-  cyanRim.target.position.set(0, 0.5, 0);
-  titleScene.add(cyanRim);
-  titleScene.add(cyanRim.target);
+  // Cyan rim (starts off)
+  titleCyanRim = new THREE.SpotLight(0x00e5ff, 0, 20, Math.PI / 4, 0.5, 1.0);
+  titleCyanRim.position.set(5, 4, 3);
+  titleCyanRim.target.position.set(0, 0.5, 0);
+  titleScene.add(titleCyanRim);
+  titleScene.add(titleCyanRim.target);
 
-  // Orange rim light (left/back) — matches RACE accent
-  const orangeRim = new THREE.SpotLight(0xff4d00, 350, 20, Math.PI / 4, 0.5, 1.0);
-  orangeRim.position.set(-5, 3, -3);
-  orangeRim.target.position.set(0, 0.5, 0);
-  titleScene.add(orangeRim);
-  titleScene.add(orangeRim.target);
+  // Orange rim (starts off)
+  titleOrangeRim = new THREE.SpotLight(0xff4d00, 0, 20, Math.PI / 4, 0.5, 1.0);
+  titleOrangeRim.position.set(-5, 3, -3);
+  titleOrangeRim.target.position.set(0, 0.5, 0);
+  titleScene.add(titleOrangeRim);
+  titleScene.add(titleOrangeRim.target);
 
-  // Soft overhead fill
-  const overhead = new THREE.PointLight(0xaabbcc, 40, 15, 1.5);
-  overhead.position.set(0, 6, 0);
-  titleScene.add(overhead);
+  // Overhead fill (starts off)
+  titleOverhead = new THREE.PointLight(0xaabbcc, 0, 15, 1.5);
+  titleOverhead.position.set(0, 6, 0);
+  titleScene.add(titleOverhead);
 
-  // ── Reflective ground plane ──
-  const groundGeo = new THREE.PlaneGeometry(30, 30);
+  // Underglow (cyan pulsing light under car)
+  titleUnderglow = new THREE.PointLight(0x00e5ff, 0, 6, 2);
+  titleUnderglow.position.set(0, 0.1, 0);
+  titleScene.add(titleUnderglow);
+
+  // ── Wet-look reflective floor ──
+  const groundGeo = new THREE.PlaneGeometry(40, 40);
   const groundMat = new THREE.MeshStandardMaterial({
-    color: 0x080812,
-    roughness: 0.15,
-    metalness: 0.85,
+    color: 0x060610,
+    roughness: 0.08,
+    metalness: 0.92,
     transparent: true,
-    opacity: 0.8,
+    opacity: 0.9,
   });
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = 0;
   titleScene.add(ground);
 
-  // Always show the Lamborghini — best visual showcase car
+  // ── Neon floor strip (thin glowing line racing toward car) ──
+  const stripGeo = new THREE.BoxGeometry(0.04, 0.005, 12);
+  const stripMat = new THREE.MeshStandardMaterial({
+    color: 0x00e5ff,
+    emissive: 0x00e5ff,
+    emissiveIntensity: 3.0,
+    transparent: true,
+    opacity: 0,
+  });
+  titleNeonStrip = new THREE.Mesh(stripGeo, stripMat);
+  titleNeonStrip.position.set(0, 0.003, 3);
+  titleScene.add(titleNeonStrip);
+
+  // ── Volumetric fog plane ──
+  const fogGeo = new THREE.PlaneGeometry(30, 30);
+  const fogMat = new THREE.MeshStandardMaterial({
+    color: 0x112233,
+    transparent: true,
+    opacity: 0,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  titleFogPlane = new THREE.Mesh(fogGeo, fogMat);
+  titleFogPlane.rotation.x = -Math.PI / 2;
+  titleFogPlane.position.y = 0.15;
+  titleScene.add(titleFogPlane);
+
+  // ── Load Lamborghini ──
   const titleCar = CAR_ROSTER.find(c => c.file === 'Lamborghini.glb') ?? CAR_ROSTER[CAR_ROSTER.length - 1];
-  console.log('[TitleScreen] Loading car:', titleCar.file);
   loadCarModel(titleCar.file).then((model: THREE.Group) => {
-    if (!titleScene) return; // cleaned up before load finished
-    // Raise slightly so wheels sit on the ground plane (processCarModel centers at tire contact)
-    model.position.y = 0.25;
+    if (!titleScene) return;
+    model.position.y = -0.5; // start below, will float up
+    // Start invisible for fade-in
+    model.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+        if (mat && mat.isMeshStandardMaterial) {
+          mat.transparent = true;
+          mat.opacity = 0;
+          mat.needsUpdate = true;
+        }
+      }
+    });
     titleScene!.add(model);
     titleCarModel = model;
-    console.log('[TitleScreen] Car loaded successfully:', titleCar.file);
   }).catch((err) => {
-    console.warn('[TitleScreen] Failed to load car:', titleCar.file, err);
+    console.warn('[TitleScreen] Failed to load car:', err);
   });
 }
 
 function updateTitleScene() {
   if (!titleScene || !titleCamera) return;
 
-  // Slow orbit
-  titleOrbitAngle += 0.003;
-  const radius = 7;
-  titleCamera.position.x = Math.sin(titleOrbitAngle) * radius;
-  titleCamera.position.z = Math.cos(titleOrbitAngle) * radius;
-  titleCamera.position.y = 2.0 + Math.sin(titleOrbitAngle * 0.5) * 0.3; // gentle bob
-  titleCamera.lookAt(0, 0.4, 0);
+  const now = performance.now() / 1000;
+  const elapsed = now - titleStartTime;
+
+  // ═══════════════════════════════════════════
+  // PHASE 1: THE APPROACH (0–3s)
+  // Low dramatic camera, car fades in
+  // ═══════════════════════════════════════════
+  if (elapsed < 3) {
+    const p = clamp01(elapsed / 3);
+    const ep = easeOutCubic(p);
+
+    // Camera: start low and close, slowly dolly back and rise slightly
+    titleCamera.position.set(
+      Math.sin(ep * 0.3) * 0.5,
+      lerp(0.4, 0.8, ep),
+      lerp(5, 5.5, ep)
+    );
+    titleCamera.lookAt(0, lerp(0.6, 0.5, ep), 0);
+
+    // Ambient slowly brightens
+    if (titleAmbient) titleAmbient.intensity = lerp(0.15, 0.4, ep);
+
+    // Car fade-in and float up
+    if (titleCarModel) {
+      const carP = clamp01((elapsed - 0.5) / 2.0); // starts at 0.5s
+      const carEp = easeOutCubic(carP);
+      titleCarModel.position.y = lerp(-0.3, 0.25, carEp);
+      titleCarModel.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+          if (mat && mat.transparent) {
+            mat.opacity = clamp01(carEp);
+          }
+        }
+      });
+    }
+
+    // Neon strip races in
+    if (titleNeonStrip) {
+      const stripP = clamp01(elapsed / 1.5);
+      const stripMat = titleNeonStrip.material as THREE.MeshStandardMaterial;
+      stripMat.opacity = lerp(0, 0.8, easeOutCubic(stripP));
+      titleNeonStrip.position.z = lerp(8, 0, easeOutCubic(stripP));
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // PHASE 2: THE REVEAL (3–5s)
+  // Camera sweeps up, lights kick on
+  // ═══════════════════════════════════════════
+  else if (elapsed < 5) {
+    const p = clamp01((elapsed - 3) / 2);
+    const ep = easeInOutQuad(p);
+
+    // Camera sweeps from low-front to high-side
+    const angle = lerp(0, Math.PI * 0.4, ep);
+    const height = lerp(0.8, 2.2, ep);
+    const radius = lerp(5.5, 7, ep);
+    titleCamera.position.set(
+      Math.sin(angle) * radius,
+      height,
+      Math.cos(angle) * radius
+    );
+    titleCamera.lookAt(0, 0.4, 0);
+
+    // Sequential light activation
+    // t=3.0: Cyan rim fades in
+    const cyanP = clamp01((elapsed - 3.0) / 0.5);
+    if (titleCyanRim) titleCyanRim.intensity = lerp(0, 400, easeOutCubic(cyanP));
+
+    // t=3.5: Orange rim fades in
+    const orangeP = clamp01((elapsed - 3.5) / 0.5);
+    if (titleOrangeRim) titleOrangeRim.intensity = lerp(0, 350, easeOutCubic(orangeP));
+
+    // t=3.8: Overhead + directional + ambient
+    const fillP = clamp01((elapsed - 3.8) / 0.7);
+    if (titleOverhead) titleOverhead.intensity = lerp(0, 40, easeOutCubic(fillP));
+    if (titleKeyLight) titleKeyLight.intensity = lerp(0, 3.0, easeOutCubic(fillP));
+    if (titleAmbient) titleAmbient.intensity = lerp(0.4, 2.0, easeOutCubic(fillP));
+
+    // Underglow starts
+    if (titleUnderglow) titleUnderglow.intensity = lerp(0, 15, easeOutCubic(cyanP));
+
+    // Neon strip pulses
+    if (titleNeonStrip) {
+      const stripMat = titleNeonStrip.material as THREE.MeshStandardMaterial;
+      stripMat.emissiveIntensity = 3.0 + Math.sin(elapsed * 4) * 1.5;
+    }
+
+    // Fog fades in
+    if (titleFogPlane) {
+      const fogMat = titleFogPlane.material as THREE.MeshStandardMaterial;
+      fogMat.opacity = lerp(0, 0.06, easeOutCubic(p));
+    }
+
+    // Ensure car is fully opaque
+    if (titleCarModel) {
+      titleCarModel.position.y = 0.25;
+      titleCarModel.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+          if (mat && mat.transparent && mat.opacity < 1) {
+            mat.opacity = 1;
+            mat.transparent = false;
+            mat.needsUpdate = true;
+          }
+        }
+      });
+    }
+
+    // Trigger menu reveal at end of phase 2
+    if (p > 0.7 && !titleMenuRevealed) {
+      titleMenuRevealed = true;
+      revealTitleMenu();
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // PHASE 3: THE SHOWCASE (5s+, loops)
+  // Smooth orbit with underglow pulse
+  // ═══════════════════════════════════════════
+  else {
+    const orbitTime = elapsed - 5;
+    const orbitAngle = Math.PI * 0.4 + orbitTime * 0.15; // slow orbit
+    const radius = 7;
+    const height = 2.0 + Math.sin(orbitTime * 0.3) * 0.25; // gentle bob
+
+    titleCamera.position.set(
+      Math.sin(orbitAngle) * radius,
+      height,
+      Math.cos(orbitAngle) * radius
+    );
+    titleCamera.lookAt(0, 0.4, 0);
+
+    // Underglow breathing pulse
+    if (titleUnderglow) {
+      titleUnderglow.intensity = 12 + Math.sin(elapsed * 1.5) * 8;
+    }
+
+    // Neon strip gentle pulse
+    if (titleNeonStrip) {
+      const stripMat = titleNeonStrip.material as THREE.MeshStandardMaterial;
+      stripMat.emissiveIntensity = 2.5 + Math.sin(elapsed * 2) * 1.0;
+    }
+  }
 
   renderer.render(titleScene, titleCamera);
+}
+
+function revealTitleMenu() {
+  // Trigger CSS animations on the menu elements
+  const content = document.querySelector('.title-content') as HTMLElement;
+  if (content) {
+    content.classList.add('title-content--revealed');
+  }
 }
 
 function destroyTitleScene() {
@@ -200,6 +405,15 @@ function destroyTitleScene() {
   }
   titleScene = null;
   titleCamera = null;
+  titleCyanRim = null;
+  titleOrangeRim = null;
+  titleOverhead = null;
+  titleKeyLight = null;
+  titleUnderglow = null;
+  titleNeonStrip = null;
+  titleFogPlane = null;
+  titleAmbient = null;
+  titleMenuRevealed = false;
   cancelAnimationFrame(titleAnimFrame);
 
   // Clean up ember canvas
@@ -222,14 +436,14 @@ function createEmberOverlay() {
 
   // Create particles
   titleEmberParticles = [];
-  for (let i = 0; i < 35; i++) {
+  for (let i = 0; i < 40; i++) {
     titleEmberParticles.push({
       x: Math.random() * titleEmberCanvas.width,
       y: Math.random() * titleEmberCanvas.height,
-      vx: (Math.random() - 0.5) * 0.3,
-      vy: -(0.2 + Math.random() * 0.6), // upward drift
+      vx: (Math.random() - 0.5) * 0.4,
+      vy: -(0.2 + Math.random() * 0.8), // upward drift
       size: 1 + Math.random() * 2.5,
-      alpha: 0.1 + Math.random() * 0.25,
+      alpha: 0.08 + Math.random() * 0.2,
       hue: Math.random() > 0.5 ? 20 : 190, // warm orange or cool cyan
     });
   }
