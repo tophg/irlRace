@@ -1091,7 +1091,9 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           lmP.z + lmRight.z * lmOffset * lmSide,
         );
         model.position.copy(pos);
-        model.lookAt(lmP); // face the road
+        // Face the road using Y-axis rotation only (no tilt — keeps monuments upright)
+        const toRoad = Math.atan2(lmP.x - pos.x, lmP.z - pos.z);
+        model.rotation.set(0, toRoad, 0);
 
         // Store for building exclusion zone
         _landmarkPositions.push(pos);
