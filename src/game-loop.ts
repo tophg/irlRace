@@ -1009,9 +1009,8 @@ function gameLoop(timestamp: number) {
       } else if (event === 'lap') {
         const lastLapTime = progress?.lapTimes[progress.lapTimes.length - 1] ?? 0;
         const bestLap = G.raceEngine.getBestLap('local');
-        // Last lap slow-mo
         if ((progress?.lapIndex ?? 0) === G.totalLaps - 1) {
-          triggerSlowMo('lastLap');
+          // Last lap — no slow-mo, just a marker for HUD
         }
         finalizeGhostLap(lastLapTime, G.currentRaceSeed, G.selectedCar?.id ?? '');
         startGhostRecording(G.playerVehicle.group.position, G.playerVehicle.heading);
@@ -1039,7 +1038,6 @@ function gameLoop(timestamp: number) {
 
       if (G.prevMyRank > 0 && myRank !== G.prevMyRank && myRank > 0) {
         const gained = myRank < G.prevMyRank;
-        if (gained) triggerSlowMo('overtake');
         bus.emit('position_change', {
           racerId: 'local', oldRank: G.prevMyRank, newRank: myRank, gained,
         });

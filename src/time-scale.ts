@@ -22,9 +22,7 @@ export interface SlowMoPreset {
 }
 
 const PRESETS: Record<string, SlowMoPreset> = {
-  finish:    { scale: 0.4,  rampDown: 0.2,  hold: 1.2, rampUp: 0.5, priority: 10 },
-  lastLap:   { scale: 0.5,  rampDown: 0.15, hold: 0.5, rampUp: 0.3, priority: 7  },
-  overtake:  { scale: 0.6,  rampDown: 0.1,  hold: 0.4, rampUp: 0.25, priority: 6 },
+  finish:    { scale: 0.6,  rampDown: 0.15, hold: 0.8, rampUp: 0.4, priority: 10 },
 };
 
 // ── State ──
@@ -41,7 +39,7 @@ let _holdTimer = 0;
 let _currentRampUp = 0.5; // stored from preset for ramp-up phase
 
 // Cooldown: minimum gap between triggers (seconds)
-const COOLDOWN_DURATION = 5.0;
+const COOLDOWN_DURATION = 10.0;
 let _cooldownTimer = 0;
 
 /**
