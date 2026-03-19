@@ -173,7 +173,7 @@ export function initAudio() {
   windSource.start();
 }
 
-export function updateEngineAudio(speed: number, maxSpeed: number) {
+export function updateEngineAudio(speed: number, maxSpeed: number, timeScale = 1.0) {
   if (!audioCtx || !engineMaster || engineOscs.length === 0) return;
 
   const ratio = Math.min(Math.abs(speed) / maxSpeed, 1);
@@ -193,9 +193,9 @@ export function updateEngineAudio(speed: number, maxSpeed: number) {
   const freq = IDLE_FREQ + rpmInGear * (REDLINE_FREQ - IDLE_FREQ);
   const t = audioCtx.currentTime;
   const ramp = 0.06;
-  engineOscs[0].frequency.setTargetAtTime(freq, t, ramp);
-  engineOscs[1].frequency.setTargetAtTime(freq * 2, t, ramp);
-  engineOscs[2].frequency.setTargetAtTime(freq * 3, t, ramp);
+  engineOscs[0].frequency.setTargetAtTime(freq * timeScale, t, ramp);
+  engineOscs[1].frequency.setTargetAtTime(freq * 2 * timeScale, t, ramp);
+  engineOscs[2].frequency.setTargetAtTime(freq * 3 * timeScale, t, ramp);
 
   // Harmonic mix shifts with RPM — more 2nd harmonic at high RPM
   engineGains[0].gain.setTargetAtTime(0.5 + rpmInGear * 0.15, t, ramp);
@@ -529,4 +529,27 @@ export function stopAudio() {
   // Clean up NOS audio
   cleanupNitroAudio();
   // Note: audioCtx is kept alive as a singleton to avoid hitting browser limits
+}
+
+/** Scale game music playback rate for slow-mo effect (ts 0..1 → rate 0.5..1.0). */
+export function setMusicTimeScale(ts: number) {
+  if (gameMusicAudio) gameMusicAudio.playbackRate = 0.5 + ts * 0.5;
+}
+
+/** Play wrong-way warning beep — short descending tone. */
+export function playWrongWayBeep() {
+  if (!audioCtx || !masterGain) return;
+  const sv = getSettings().sfxVolume;
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'square';
+  osc.frequency.setValueAtTime(800, now);
+  osc.frequency.exponentialRampToValueAtTime(400, now + 0.1);
+  gain.gain.setValueAtTime(0.12 * sv, now);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+  osc.connect(gain);
+  gain.connect(masterGain);
+  osc.start();
+  osc.stop(now + 0.12);
 }

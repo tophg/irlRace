@@ -56,7 +56,8 @@ import {
   updateEngineAudio, playDriftSFX,
   playNitroActivate, startNitroBurn, stopNitroBurn,
   updateNitroBurnIntensity, updateDepletionWarning, stopDepletionWarning,
-  playNitroRelease, playRumbleStrip, playFinishFanfare,
+  playNitroRelease, playRumbleStrip, playFinishFanfare, setMusicTimeScale,
+  playWrongWayBeep,
 } from './audio';
 import {
   updateHUD, updateDamageHUD,
@@ -90,6 +91,9 @@ const _nitroTrailOffset = new THREE.Vector3();
 
 // First-boost-per-race tracker
 let _firstBoostFired = false;
+
+// Wrong-way audio cooldown
+let _wrongWayBeepTimer = 0;
 
 // ── Damage flash overlay ──
 let _damageFlashEl: HTMLDivElement | null = null;
@@ -264,9 +268,9 @@ function gameLoop(timestamp: number) {
       G.replayPlayer.update(frameDt);
       updateDestructionFragments(frameDt);
       flushToGPU();
-      updateGPUParticles(renderer, frameDt);
-      updateVFX(frameDt);
-      updatePostFX(0, false, frameDt);
+      updateGPUParticles(renderer, gameDt);
+      updateVFX(gameDt);
+      updatePostFX(0, false, gameDt);
       const replayHud = document.getElementById('replay-hud') as (HTMLElement & { _updateHUD?: () => void }) | null;
       if (replayHud?._updateHUD) replayHud._updateHUD();
       renderer.render(scene, camera);
@@ -514,7 +518,7 @@ function gameLoop(timestamp: number) {
         }
       }
 
-      G.vehicleCamera.update(camTarget, camHeading, camSpeed, camMaxSpeed, G.playerVehicle.driftAngle, frameDt);
+      G.vehicleCamera.update(camTarget, camHeading, camSpeed, camMaxSpeed, G.playerVehicle.driftAngle, gameDt);
     }
 
     // VFX
@@ -528,7 +532,7 @@ function gameLoop(timestamp: number) {
       sampleGhostFrame(G.playerVehicle.group.position, G.playerVehicle.heading);
       updateGhostPlayback();
     }
-    updateVFX(frameDt);
+    updateVFX(gameDt);
 
     // Per-frame damage zone smoke
     if (s === GameState.RACING && G.playerVehicle) {
@@ -570,8 +574,8 @@ function gameLoop(timestamp: number) {
       }
     }
     flushToGPU();
-    updateGPUParticles(renderer, frameDt);
-    updateWeather(frameDt, G.playerVehicle.group.position);
+    updateGPUParticles(renderer, gameDt);
+    updateWeather(gameDt, G.playerVehicle.group.position);
 
     // Rain droplets
     const weatherType = getCurrentWeather();
@@ -610,7 +614,7 @@ function gameLoop(timestamp: number) {
     if (G._playerUnderglow) {
       updateUnderglow(G._playerUnderglow, G.playerVehicle.speed, timestamp / 1000, G.playerVehicle.isNitroActive);
     }
-    updateBoostFlame(s === GameState.RACING && G.playerVehicle.isNitroActive, G.playerVehicle.group.position, G.playerVehicle.heading, timestamp / 1000, G.playerVehicle.engineHeat, frameDt);
+    updateBoostFlame(s === GameState.RACING && G.playerVehicle.isNitroActive, G.playerVehicle.group.position, G.playerVehicle.heading, timestamp / 1000, G.playerVehicle.engineHeat, gameDt);
 
     // Nitro activation
     const isNitroNow = s === GameState.RACING && G.playerVehicle.isNitroActive;
@@ -744,6 +748,19 @@ function gameLoop(timestamp: number) {
     updateNearMissStreaks(frameDt);
     updateNearMissWhoosh(frameDt, camera.position, G.playerVehicle.heading);
 
+    // ── AI tire spray in rain ──
+    if (wp.sprayDensity > 0) {
+      for (const ai of G.aiRacers) {
+        if (ai.vehicle.speed > 25 && Math.random() < wp.sprayDensity * 0.3) {
+          const aP = ai.vehicle.group.position;
+          const cosA = Math.cos(ai.vehicle.heading);
+          const sinA = Math.sin(ai.vehicle.heading);
+          _rPos.set(aP.x - sinA * 2, aP.y + 0.1, aP.z - cosA * 2);
+          spawnGPUShoulderDust(_rPos, ai.vehicle.speed * 0.2, ai.vehicle.heading);
+        }
+      }
+    }
+
     updateVictoryConfetti(frameDt);
 
     const speedRatioForLines = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
@@ -758,7 +775,10 @@ function gameLoop(timestamp: number) {
     }
 
     // Audio
-    updateEngineAudio(G.playerVehicle.speed, G.selectedCar.maxSpeed);
+    // Audio — pitch-shift during slow-mo for cinematic feel
+    const ts = getTimeScale();
+    updateEngineAudio(G.playerVehicle.speed, G.selectedCar.maxSpeed, ts);
+    setMusicTimeScale(ts);
     G.driftSfxCooldown -= frameDt;
     if (s === GameState.RACING && driftAbs > 0.3 && G.driftSfxCooldown <= 0) {
       playDriftSFX(driftAbs);
@@ -917,6 +937,17 @@ function gameLoop(timestamp: number) {
       );
       uiOverlay.classList.toggle('wrong-way-flash', wrongWay);
 
+      // Wrong-way audio warning beep
+      if (wrongWay) {
+        _wrongWayBeepTimer -= frameDt;
+        if (_wrongWayBeepTimer <= 0) {
+          playWrongWayBeep();
+          _wrongWayBeepTimer = 0.5;
+        }
+      } else {
+        _wrongWayBeepTimer = 0;
+      }
+
       updateHUD(
         G.playerVehicle.speed,
         progress?.lapIndex ?? 0,
@@ -1015,7 +1046,7 @@ function gameLoop(timestamp: number) {
     if (G.postFXPipeline) {
       const speedRatio = G.playerVehicle ? Math.abs(G.playerVehicle.speed) / G.playerVehicle.def.maxSpeed : 0;
       const isNitro = G.playerVehicle?.isNitroActive ?? false;
-      updatePostFX(Math.min(speedRatio, 1), isNitro, frameDt);
+      updatePostFX(Math.min(speedRatio, 1), isNitro, gameDt);
       if (isNitro) setBoostActive(true);
       G.postFXPipeline.render();
     } else {

@@ -14,6 +14,7 @@
  */
 
 import * as THREE from 'three/webgpu';
+import { isSlowMotionActive } from './time-scale';
 import {
   pass, uniform, float, vec2, vec4,
   screenUV, length, smoothstep, mix, mul, sub, add, clamp, max,
@@ -103,7 +104,12 @@ export function initPostFX(
 export function updatePostFX(speedRatio: number, isNitroActive = false, dt = 1 / 60) {
   // Speed vignette: stronger during nitrous for tunnel vision
   const baseVignette = 0.1 + speedRatio * 0.3;
-  uVignetteStrength.value = isNitroActive ? Math.max(baseVignette, 0.45 + speedRatio * 0.2) : baseVignette;
+  let vig = isNitroActive ? Math.max(baseVignette, 0.45 + speedRatio * 0.2) : baseVignette;
+
+  // Slow-motion cinematic vignette (dark edges for bullet-time feel)
+  if (isSlowMotionActive()) vig = Math.max(vig, 0.55);
+
+  uVignetteStrength.value = vig;
 
   // Boost intensity for radial effect during nitrous (dt-scaled linear decay)
   uBoostIntensity.value = Math.max(0, uBoostIntensity.value - 3.0 * dt);
