@@ -104,6 +104,7 @@ export interface RaceResult {
   topSpeed: number;      // units/s
   trackLength: number;   // total meters
   lapsCompleted: number;
+  lappingMultiplier: number; // 1.0 = no lapping, 1.5 = lapped opponents etc.
 }
 
 export interface RewardBreakdown {
@@ -117,6 +118,7 @@ export interface RewardBreakdown {
   winCreditsBonus: number;
   podiumCreditsBonus: number;
   totalCredits: number;
+  lappingMultiplier: number; // carried through for display
   leveledUp: boolean;
   newLevel: number;
 }
@@ -134,12 +136,19 @@ export function processRaceRewards(result: RaceResult): RewardBreakdown {
     winCreditsBonus: result.placement === 1 ? CREDITS_WIN_BONUS : 0,
     podiumCreditsBonus: (result.placement === 2 || result.placement === 3) ? CREDITS_PODIUM_BONUS : 0,
     totalCredits: 0,
+    lappingMultiplier: result.lappingMultiplier,
     leveledUp: false,
     newLevel: current.level,
   };
 
   breakdown.totalXP = breakdown.baseXP + breakdown.winBonus + breakdown.podiumBonus + breakdown.cleanBonus + breakdown.driftBonus;
   breakdown.totalCredits = breakdown.baseCredits + breakdown.winCreditsBonus + breakdown.podiumCreditsBonus;
+
+  // Apply lapping multiplier
+  if (breakdown.lappingMultiplier > 1) {
+    breakdown.totalXP = Math.round(breakdown.totalXP * breakdown.lappingMultiplier);
+    breakdown.totalCredits = Math.round(breakdown.totalCredits * breakdown.lappingMultiplier);
+  }
 
   // Update progress
   current.xp += breakdown.totalXP;

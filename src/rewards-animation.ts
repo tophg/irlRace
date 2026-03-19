@@ -150,6 +150,7 @@ function buildRewardRows(r: RewardBreakdown): RewardRow[] {
   if (r.podiumBonus > 0) rows.push({ icon: '🥇', label: 'Podium', xp: r.podiumBonus, cr: r.podiumCreditsBonus, isBonus: true });
   if (r.cleanBonus > 0) rows.push({ icon: '✨', label: 'Clean Race', xp: r.cleanBonus, cr: 0, isBonus: true });
   if (r.driftBonus > 0) rows.push({ icon: '🔥', label: 'Drift Bonus', xp: r.driftBonus, cr: 0, isBonus: true });
+  if (r.lappingMultiplier > 1) rows.push({ icon: '🔄', label: `Lapping ×${r.lappingMultiplier.toFixed(2)}`, xp: 0, cr: 0, isBonus: true });
   return rows;
 }
 
@@ -232,22 +233,27 @@ export function playRewardsAnimation(
         container.appendChild(rowEl);
 
         // Counter-roll the values
-        const parts: string[] = [];
-        if (row.xp > 0) parts.push(`XP_${row.xp}`);
-        if (row.cr > 0) parts.push(`CR_${row.cr}`);
-
-        // Animate: roll XP, then CR
-        const xpSpan = document.createElement('span');
-        right.appendChild(xpSpan);
-        if (row.cr > 0) {
-          const crSpan = document.createElement('span');
-          crSpan.style.color = '#ffcc00';
-          crSpan.style.marginLeft = '8px';
-          right.appendChild(crSpan);
-          counterRoll(xpSpan, row.xp, 350, '+', ' XP');
-          counterRoll(crSpan, row.cr, 350, '+', ' CR');
+        if (row.xp === 0 && row.cr === 0) {
+          // Multiplier row — show label only (no counter)
+          const multSpan = document.createElement('span');
+          multSpan.style.color = '#ffd700';
+          multSpan.style.fontWeight = '700';
+          multSpan.textContent = 'APPLIED TO ALL';
+          right.appendChild(multSpan);
         } else {
-          counterRoll(xpSpan, row.xp, 350, '+', ' XP');
+          // Animate: roll XP, then CR
+          const xpSpan = document.createElement('span');
+          right.appendChild(xpSpan);
+          if (row.cr > 0) {
+            const crSpan = document.createElement('span');
+            crSpan.style.color = '#ffcc00';
+            crSpan.style.marginLeft = '8px';
+            right.appendChild(crSpan);
+            counterRoll(xpSpan, row.xp, 350, '+', ' XP');
+            counterRoll(crSpan, row.cr, 350, '+', ' CR');
+          } else {
+            counterRoll(xpSpan, row.xp, 350, '+', ' XP');
+          }
         }
 
         if (row.isBonus) playBonusChime();

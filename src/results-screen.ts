@@ -40,6 +40,7 @@ function buildRewardHTML(rewards: import('./progression').RewardBreakdown): stri
   if (rewards.podiumBonus > 0) html += `<div class="lap-breakdown-row"><span>🥇 Podium</span><span>+${rewards.podiumBonus} XP / +${rewards.podiumCreditsBonus} CR</span></div>`;
   if (rewards.cleanBonus > 0) html += `<div class="lap-breakdown-row"><span>✨ Clean Race</span><span>+${rewards.cleanBonus} XP</span></div>`;
   if (rewards.driftBonus > 0) html += `<div class="lap-breakdown-row"><span>🔥 Drift Bonus</span><span>+${rewards.driftBonus} XP</span></div>`;
+  if (rewards.lappingMultiplier > 1) html += `<div class="lap-breakdown-row best" style="color:#ffd700;"><span>🔄 Lapping ×${rewards.lappingMultiplier.toFixed(2)}</span><span>APPLIED TO ALL</span></div>`;
   html += `<div class="lap-breakdown-row" style="border-top:1px solid rgba(255,255,255,0.15);padding-top:4px;font-weight:700;"><span>Total</span><span>+${rewards.totalXP} XP / +${rewards.totalCredits} CR</span></div>`;
   if (rewards.leveledUp) html += `<div class="lap-breakdown-row best" style="color:#ffcc00;font-weight:700;"><span>⬆ LEVEL UP!</span><span>Level ${rewards.newLevel}</span></div>`;
   html += `<div class="lap-breakdown-row" style="margin-top:6px;"><span>Level ${prog.level}</span><span>${xpToNextLevel()} XP to next</span></div>`;
@@ -101,6 +102,17 @@ export async function showResults(
   const localRank = rankings.findIndex((r: any) => r.id === 'local') + 1;
   const bestLapForReward = localProgress?.lapTimes?.length ? Math.min(...localProgress.lapTimes) : 0;
   const prevLevelPct = levelProgress(); // capture BEFORE processRaceRewards mutates state
+
+  // Compute lapping multiplier: sum of laps the player is ahead of each opponent
+  let totalLapsLapped = 0;
+  const playerLapIdx = localProgress?.lapIndex ?? 0;
+  for (const r of rankings) {
+    if (r.id === 'local' || r.dnf) continue;
+    const diff = playerLapIdx - r.lapIndex;
+    if (diff > 0) totalLapsLapped += diff;
+  }
+  const lappingMultiplier = 1.0 + totalLapsLapped * 0.25; // +25% per lap lead
+
   const earlyResult: RaceResult = {
     placement: localRank || 1,
     totalRacers: rankings.length,
@@ -111,6 +123,7 @@ export async function showResults(
     topSpeed: G.raceStats.topSpeed,
     trackLength: G.trackData?.totalLength ?? 500,
     lapsCompleted: localProgress?.lapTimes?.length ?? 0,
+    lappingMultiplier,
   };
   const earlyRewards = processRaceRewards(earlyResult);
   await playRewardsAnimation(earlyRewards, localRank || 1, prevLevelPct, uiOverlay);
