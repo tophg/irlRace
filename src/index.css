@@ -2402,24 +2402,56 @@ canvas { display: block; }
   }
 }
 
-/* ── Portrait orientation prompt ── */
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 768px) {
-  .touch-controls::before {
-    content: '↻ Rotate for best experience';
-    position: absolute;
-    top: -28px; left: 50%;
-    transform: translateX(-50%);
-    font-family: var(--font-display);
-    font-size: 11px;
-    letter-spacing: 2px;
-    color: rgba(255, 255, 255, 0.3);
-    white-space: nowrap;
-    pointer-events: none;
-    animation: portrait-hint 3s ease-in-out forwards;
-  }
+/* ── Portrait orientation blocking overlay ── */
+#portrait-lock-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  z-index: 9999;
+  background: rgba(5, 5, 12, 0.97);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  font-family: var(--font-display);
+  text-align: center;
+  padding: 32px;
 }
-@keyframes portrait-hint {
-  0% { opacity: 1; }
-  70% { opacity: 1; }
-  100% { opacity: 0; }
+#portrait-lock-overlay .rotate-icon {
+  width: 64px; height: 100px;
+  border: 3px solid var(--col-cyan);
+  border-radius: 12px;
+  position: relative;
+  animation: rotate-phone 2s ease-in-out infinite;
+  box-shadow: 0 0 20px rgba(0, 229, 255, 0.3);
+}
+#portrait-lock-overlay .rotate-icon::after {
+  content: '';
+  position: absolute;
+  bottom: 8px; left: 50%;
+  transform: translateX(-50%);
+  width: 16px; height: 3px;
+  background: var(--col-cyan);
+  border-radius: 2px;
+}
+@keyframes rotate-phone {
+  0%, 30% { transform: rotate(0deg); }
+  50%, 80% { transform: rotate(90deg); }
+  100% { transform: rotate(0deg); }
+}
+#portrait-lock-overlay .rotate-title {
+  font-size: clamp(18px, 5vw, 24px);
+  letter-spacing: 4px;
+  color: var(--col-text);
+  text-transform: uppercase;
+}
+#portrait-lock-overlay .rotate-subtitle {
+  font-size: clamp(12px, 3vw, 14px);
+  color: var(--col-text-dim);
+  letter-spacing: 1px;
+  line-height: 1.6;
+  max-width: 280px;
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 900px) {
+  #portrait-lock-overlay { display: flex; }
 }

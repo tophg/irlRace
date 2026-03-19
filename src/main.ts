@@ -28,6 +28,7 @@ import { G } from './game-context';
 import {
   showPositionCallout, showEmoteBubble, spawnConfetti,
   togglePause, showRaceConfig, showControlsRef,
+  lockLandscape,
 } from './ui-screens';
 import { notifyPositionChanged } from './hud';
 
@@ -528,6 +529,8 @@ function showTitleScreen() {
   const launchTitle = async () => {
     // Wait for audio to finish downloading
     await audioReady;
+    // Attempt landscape lock on first user gesture (Android)
+    lockLandscape();
     // Start music immediately — we're inside a user gesture so autoplay is allowed
     playTitleMusic();
     // Reset the cinematic animation timeline so it replays from scratch

@@ -108,12 +108,22 @@ export function spawnConfetti() {
 // FULLSCREEN API
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+/** Attempt to lock orientation to landscape via Screen Orientation API. Fails silently. */
+export function lockLandscape() {
+  try {
+    const so = screen.orientation as any;
+    if (so?.lock) so.lock('landscape').catch(() => {});
+  } catch { /* not supported */ }
+}
+
 /** Toggle browser fullscreen mode (hides address bar on Android). */
 export function toggleFullscreen() {
   if (document.fullscreenElement) {
     document.exitFullscreen();
   } else {
-    document.documentElement.requestFullscreen().catch(() => {});
+    document.documentElement.requestFullscreen().then(() => {
+      lockLandscape();
+    }).catch(() => {});
   }
 }
 
