@@ -1123,45 +1123,72 @@ canvas { display: block; }
   touch-action: none;
 }
 
-/* ── Floating Joystick ── */
-.joystick-base {
+/* ── Steering Wheel ── */
+.steering-wheel {
   position: absolute;
-  width: 70px;
-  height: 70px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.06);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
-  border: 2px solid rgba(255, 255, 255, 0.12);
-  pointer-events: none;
-  opacity: 0;
-  transform: translate(-50%, -50%);
-  transition: opacity 0.15s ease-out;
-}
-.joystick-base.active {
-  opacity: 1;
-  border-color: rgba(255, 255, 255, 0.25);
-  box-shadow: 0 0 20px rgba(255, 77, 0, 0.15);
-}
-.joystick-thumb {
-  position: absolute;
-  top: 50%;
+  bottom: 12px;
   left: 50%;
-  width: 28px;
-  height: 28px;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.12);
+  border: 3.5px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.04);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  transform: translate(-50%, -50%);
-  transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1);
   pointer-events: none;
+  transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), border-color 0.3s, box-shadow 0.3s;
 }
-.joystick-base.active .joystick-thumb {
-  background: rgba(255, 77, 0, 0.2);
-  border-color: rgba(255, 77, 0, 0.4);
-  box-shadow: 0 0 12px rgba(255, 77, 0, 0.3);
+.steering-wheel.active {
+  border-color: rgba(255,77,0,0.3);
+  box-shadow: 0 0 16px rgba(255,77,0,0.15);
+}
+
+/* ── Spokes ── */
+.wheel-spoke {
+  position: absolute;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+}
+.wheel-spoke-top {
+  width: 4px; height: 30px;
+  top: 8px; left: 50%;
+  transform: translateX(-50%);
+}
+.wheel-spoke-left {
+  width: 30px; height: 4px;
+  top: 50%; left: 8px;
+  transform: translateY(-50%);
+}
+.wheel-spoke-right {
+  width: 30px; height: 4px;
+  top: 50%; right: 8px;
+  transform: translateY(-50%);
+}
+
+/* ── Hub ── */
+.wheel-hub {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.06);
+  border: 2px solid rgba(255,255,255,0.12);
+  transform: translate(-50%, -50%);
+}
+
+/* ── 12 o'clock notch ── */
+.wheel-notch {
+  position: absolute;
+  top: 2px; left: 50%;
+  width: 6px; height: 14px;
+  background: rgba(255,77,0,0.5);
+  border-radius: 3px;
+  transform: translateX(-50%);
+}
+.steering-wheel.active .wheel-notch {
+  background: rgba(255,77,0,0.8);
+  box-shadow: 0 0 8px rgba(255,77,0,0.4);
 }
 .touch-pedals {
   width: min(35vw, 220px);

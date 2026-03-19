@@ -27,11 +27,14 @@ let tiltHandler: ((e: DeviceOrientationEvent) => void) | null = null;
 let steerTouchId: number | null = null;
 let steerOriginX = 0;
 const STEER_RADIUS = 80; // pixels for full deflection
+const WHEEL_MAX_ROTATION = 90; // degrees visual rotation at full lock
 
-// Steering indicator elements (floating joystick)
-let joystickBase: HTMLElement | null = null;
-let joystickThumb: HTMLElement | null = null;
+// Steering wheel elements
+let wheelEl: HTMLElement | null = null;
 let steerZoneEl: HTMLElement | null = null;
+
+// Haptic tick tracking
+let lastHapticTick = 0;
 
 export function initInput(): InputState {
   // Keyboard — Left/Right are intentionally swapped here to compensate
@@ -66,7 +69,15 @@ function setupTouchControls() {
   container.className = 'touch-controls';
   container.id = 'touch-controls';
   container.innerHTML = `
-    <div class="touch-steer" id="touch-steer-zone"></div>
+    <div class="touch-steer" id="touch-steer-zone">
+      <div class="steering-wheel" id="steering-wheel">
+        <div class="wheel-spoke wheel-spoke-top"></div>
+        <div class="wheel-spoke wheel-spoke-left"></div>
+        <div class="wheel-spoke wheel-spoke-right"></div>
+        <div class="wheel-hub"></div>
+        <div class="wheel-notch"></div>
+      </div>
+    </div>
     <div class="touch-pedals">
       <div class="touch-brake" id="touch-brake">BRAKE</div>
       <div class="touch-gas" id="touch-gas">
@@ -77,37 +88,26 @@ function setupTouchControls() {
   `;
   document.body.appendChild(container);
 
-  // Create floating joystick elements (hidden until touch)
+  // Get steering wheel element
   steerZoneEl = container.querySelector('#touch-steer-zone') as HTMLElement;
-  joystickBase = document.createElement('div');
-  joystickBase.className = 'joystick-base';
-  joystickThumb = document.createElement('div');
-  joystickThumb.className = 'joystick-thumb';
-  joystickBase.appendChild(joystickThumb);
-  steerZoneEl.appendChild(joystickBase);
+  wheelEl = container.querySelector('#steering-wheel') as HTMLElement;
 
-  // ── Floating analog joystick (left side) ──
+  // ── Steering wheel (left side) — horizontal drag rotates wheel ──
   if (steerZoneEl) {
     steerZoneEl.addEventListener('touchstart', (e) => {
       e.preventDefault();
       if (steerTouchId !== null) return;
       const touch = e.changedTouches[0];
       steerTouchId = touch.identifier;
-      const zoneRect = steerZoneEl!.getBoundingClientRect();
       steerOriginX = touch.clientX;
-      const originY = touch.clientY;
+      lastHapticTick = 0;
 
-      // Position joystick base at touch point
-      if (joystickBase) {
-        joystickBase.style.left = `${touch.clientX - zoneRect.left}px`;
-        joystickBase.style.top = `${originY - zoneRect.top}px`;
-        joystickBase.classList.add('active');
-      }
-      if (joystickThumb) {
-        joystickThumb.style.transform = 'translate(-50%, -50%)';
+      // Remove spring transition while dragging
+      if (wheelEl) {
+        wheelEl.style.transition = 'none';
+        wheelEl.classList.add('active');
       }
 
-      // Haptic pulse on touch
       haptic(10);
     }, { passive: false });
 
@@ -131,20 +131,37 @@ function setupTouchControls() {
           state.left = output > 0.15;
           state.right = output < -0.15;
 
-          // Move thumb within base
-          if (joystickThumb) {
-            const thumbOffset = clamped * 22; // max px offset within base
-            joystickThumb.style.transform = `translate(calc(-50% + ${thumbOffset}px), -50%)`;
+          // Rotate wheel visually
+          const rotation = clamped * WHEEL_MAX_ROTATION;
+          if (wheelEl) {
+            wheelEl.style.transform = `rotate(${rotation}deg)`;
+
+            // Glow escalation — border glows hotter at higher steering
+            const intensity = Math.abs(clamped);
+            const r = Math.floor(255);
+            const g = Math.floor(77 + (180 - 77) * (1 - intensity));
+            const b = Math.floor(intensity * 30);
+            const alpha = 0.15 + intensity * 0.45;
+            wheelEl.style.borderColor = `rgba(${r},${g},${b},${alpha})`;
+            wheelEl.style.boxShadow = intensity > 0.2
+              ? `0 0 ${12 + intensity * 20}px rgba(255,77,0,${intensity * 0.3})`
+              : 'none';
           }
 
-          // Follow mode: if past radius, drag base
+          // Haptic ticks at 25%, 50%, 75% thresholds
+          const absOutput = Math.abs(output);
+          const tick = absOutput >= 0.75 ? 3 : absOutput >= 0.5 ? 2 : absOutput >= 0.25 ? 1 : 0;
+          if (tick > lastHapticTick) {
+            haptic(tick === 3 ? [10, 20, 10] : 8);
+            lastHapticTick = tick;
+          } else if (tick < lastHapticTick) {
+            lastHapticTick = tick;
+          }
+
+          // Follow mode: if past radius, drag origin
           if (Math.abs(dx) > STEER_RADIUS) {
             const overflow = dx - Math.sign(dx) * STEER_RADIUS;
             steerOriginX += overflow;
-            if (joystickBase && steerZoneEl) {
-              const zoneRect = steerZoneEl.getBoundingClientRect();
-              joystickBase.style.left = `${steerOriginX - zoneRect.left}px`;
-            }
           }
           break;
         }
@@ -158,8 +175,16 @@ function setupTouchControls() {
           state.steerAnalog = 0;
           state.left = false;
           state.right = false;
-          if (joystickBase) joystickBase.classList.remove('active');
-          if (joystickThumb) joystickThumb.style.transform = 'translate(-50%, -50%)';
+          lastHapticTick = 0;
+
+          // Spring return with transition
+          if (wheelEl) {
+            wheelEl.style.transition = 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.3s, box-shadow 0.3s';
+            wheelEl.style.transform = 'rotate(0deg)';
+            wheelEl.style.borderColor = '';
+            wheelEl.style.boxShadow = '';
+            wheelEl.classList.remove('active');
+          }
           break;
         }
       }
