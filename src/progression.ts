@@ -123,6 +123,14 @@ export interface PlayerProgress {
   unlockedAchievements: string[];  // achievement IDs
   environmentsRaced: string[];     // environment names raced in
   totalOvertakes: number;
+  // Driver DNA
+  speedRating: number;        // 0-100 (pace/race performance)
+  cleanRating: number;        // 0-100 (sportsmanship)
+  // Daily/Weekly challenges
+  dailyChallengeProgress: Record<string, number>; // challengeId → progress
+  dailyChallengeDay: number;  // day-of-year last generated
+  weeklyChallengeProgress: Record<string, number>;
+  weeklyChallengeWeek: number; // week-of-year last generated
 }
 
 function defaultProgress(): PlayerProgress {
@@ -143,6 +151,12 @@ function defaultProgress(): PlayerProgress {
     unlockedAchievements: [],
     environmentsRaced: [],
     totalOvertakes: 0,
+    speedRating: 50,
+    cleanRating: 50,
+    dailyChallengeProgress: {},
+    dailyChallengeDay: 0,
+    weeklyChallengeProgress: {},
+    weeklyChallengeWeek: 0,
   };
 }
 
@@ -314,6 +328,24 @@ export function processRaceRewards(result: RaceResult): RewardBreakdown {
     }
   }
 
+  // ── Driver DNA Update ──
+  // Speed Rating: moves toward 100 when placing well, toward 0 when placing poorly
+  const placementPct = 1 - (result.placement - 1) / Math.max(1, result.totalRacers - 1); // 1.0 = 1st, 0.0 = last
+  const speedTarget = placementPct * 100;
+  current.speedRating = clampRating(current.speedRating + (speedTarget - current.speedRating) * 0.08);
+
+  // Clean Rating: moves up with clean races, down with collisions
+  const cleanScore = result.collisionCount === 0 ? 100 : Math.max(0, 100 - result.collisionCount * 15);
+  current.cleanRating = clampRating(current.cleanRating + (cleanScore - current.cleanRating) * 0.08);
+
+  // ── Daily/Weekly Challenge Progress ──
+  refreshChallengesIfNeeded();
+  const challengeRewards = updateChallengeProgress(result, breakdown);
+  breakdown.totalXP += challengeRewards.xp;
+  breakdown.totalCredits += challengeRewards.cr;
+  current.xp += challengeRewards.xp;
+  current.credits += challengeRewards.cr;
+
   saveProgress();
   return breakdown;
 }
@@ -368,4 +400,149 @@ export function levelProgress(): number {
   const xpInLevel = current.xp - cumulativeXpForLevel(current.level);
   const needed = xpForLevel(current.level);
   return Math.max(0, Math.min(1, xpInLevel / needed));
+}
+
+// ── Driver DNA Helpers ──
+
+function clampRating(v: number): number {
+  return Math.max(0, Math.min(100, Math.round(v)));
+}
+
+/** Get letter grade from rating 0-100. */
+export function ratingGrade(rating: number): string {
+  if (rating >= 90) return 'S';
+  if (rating >= 75) return 'A';
+  if (rating >= 60) return 'B';
+  if (rating >= 40) return 'C';
+  if (rating >= 20) return 'D';
+  return 'E';
+}
+
+// ── Daily / Weekly Challenges ──
+
+export interface ChallengeDefinition {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+  target: number;
+  xpReward: number;
+  crReward: number;
+  type: 'daily' | 'weekly';
+  /** Extract progress from a single race result. */
+  extract: (result: RaceResult) => number;
+}
+
+const CHALLENGE_POOL: Omit<ChallengeDefinition, 'type'>[] = [
+  // Daily-oriented (smaller targets)
+  { id: 'ch_win_1',        name: 'Victor',          icon: '🏆', description: 'Win a race',                          target: 1,  xpReward: 50,  crReward: 30,  extract: r => r.placement === 1 ? 1 : 0 },
+  { id: 'ch_clean_1',      name: 'Spotless',        icon: '✨', description: 'Finish a race with 0 collisions',     target: 1,  xpReward: 40,  crReward: 25,  extract: r => r.collisionCount === 0 ? 1 : 0 },
+  { id: 'ch_drift_30',     name: 'Slide Artist',    icon: '🔥', description: 'Drift for 30 cumulative seconds',      target: 30, xpReward: 40,  crReward: 20,  extract: r => r.driftTime },
+  { id: 'ch_overtake_5',   name: 'Lane Cutter',     icon: '🏎️', description: 'Make 5 overtakes',                     target: 5,  xpReward: 40,  crReward: 20,  extract: r => r.overtakeCount },
+  { id: 'ch_nearmiss_5',   name: 'Thread Needle',   icon: '😤', description: 'Get 5 near misses',                    target: 5,  xpReward: 35,  crReward: 15,  extract: r => r.nearMissCount },
+  { id: 'ch_speed_180',    name: 'Speedster',       icon: '⚡', description: 'Sustain 180+ MPH for 5 seconds',       target: 1,  xpReward: 40,  crReward: 25,  extract: r => r.speedDemonTime >= 5 ? 1 : 0 },
+  { id: 'ch_perfect',      name: 'Quick Draw',      icon: '🚀', description: 'Get a perfect start',                  target: 1,  xpReward: 30,  crReward: 15,  extract: r => r.perfectStart ? 1 : 0 },
+  { id: 'ch_podium_1',     name: 'Podium Finish',   icon: '🥇', description: 'Finish in top 3',                      target: 1,  xpReward: 35,  crReward: 20,  extract: r => r.placement <= 3 ? 1 : 0 },
+  // Weekly-oriented (larger targets)
+  { id: 'ch_win_5',        name: 'Dominator',       icon: '🏆', description: 'Win 5 races',                          target: 5,  xpReward: 200, crReward: 150, extract: r => r.placement === 1 ? 1 : 0 },
+  { id: 'ch_race_10',      name: 'Grinder',         icon: '🏁', description: 'Complete 10 races',                     target: 10, xpReward: 150, crReward: 100, extract: r => 1 },
+  { id: 'ch_clean_5',      name: 'Gentleman Driver', icon: '✨', description: 'Finish 5 races with 0 collisions',    target: 5,  xpReward: 180, crReward: 120, extract: r => r.collisionCount === 0 ? 1 : 0 },
+  { id: 'ch_overtake_20',  name: 'Bulldozer',       icon: '🏎️', description: 'Make 20 overtakes',                    target: 20, xpReward: 180, crReward: 100, extract: r => r.overtakeCount },
+  { id: 'ch_drift_120',    name: 'Drift Legend',    icon: '🔥', description: 'Drift for 2 cumulative minutes',        target: 120, xpReward: 200, crReward: 120, extract: r => r.driftTime },
+  { id: 'ch_podium_7',     name: 'Consistent',      icon: '🥇', description: 'Finish in top 3 seven times',           target: 7,  xpReward: 180, crReward: 100, extract: r => r.placement <= 3 ? 1 : 0 },
+  { id: 'ch_nearmiss_30',  name: 'Risk Taker',      icon: '😤', description: 'Get 30 near misses',                   target: 30, xpReward: 150, crReward: 80,  extract: r => r.nearMissCount },
+];
+
+/** Simple deterministic hash for seed-based rotation. */
+function simpleHash(seed: number): number {
+  let h = seed;
+  h = ((h >> 16) ^ h) * 0x45d9f3b;
+  h = ((h >> 16) ^ h) * 0x45d9f3b;
+  h = (h >> 16) ^ h;
+  return Math.abs(h);
+}
+
+function getDayOfYear(): number {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 0);
+  return Math.floor((now.getTime() - start.getTime()) / 86400000);
+}
+
+function getWeekOfYear(): number {
+  return Math.floor(getDayOfYear() / 7);
+}
+
+/** Refresh challenges if the day/week has changed. */
+function refreshChallengesIfNeeded() {
+  const day = getDayOfYear();
+  const week = getWeekOfYear();
+
+  if (current.dailyChallengeDay !== day) {
+    current.dailyChallengeDay = day;
+    current.dailyChallengeProgress = {};
+  }
+  if (current.weeklyChallengeWeek !== week) {
+    current.weeklyChallengeWeek = week;
+    current.weeklyChallengeProgress = {};
+  }
+}
+
+/** Pick N challenges from the pool using a seed (deterministic). */
+function pickChallenges(seed: number, count: number, type: 'daily' | 'weekly'): ChallengeDefinition[] {
+  // For daily, prefer small-target challenges (first 8); for weekly, prefer big ones (last 7)
+  const pool = type === 'daily' ? CHALLENGE_POOL.slice(0, 8) : CHALLENGE_POOL.slice(8);
+  const picked: ChallengeDefinition[] = [];
+  const indices = new Set<number>();
+
+  for (let i = 0; picked.length < count && i < 20; i++) {
+    const idx = simpleHash(seed + i * 7) % pool.length;
+    if (!indices.has(idx)) {
+      indices.add(idx);
+      picked.push({ ...pool[idx], type });
+    }
+  }
+  return picked;
+}
+
+/** Get today's daily challenges (3 per day). */
+export function getDailyChallenges(): ChallengeDefinition[] {
+  refreshChallengesIfNeeded();
+  return pickChallenges(current.dailyChallengeDay * 1000 + 42, 3, 'daily');
+}
+
+/** Get this week's weekly challenges (3 per week). */
+export function getWeeklyChallenges(): ChallengeDefinition[] {
+  refreshChallengesIfNeeded();
+  return pickChallenges(current.weeklyChallengeWeek * 1000 + 99, 3, 'weekly');
+}
+
+/** Get progress for a challenge. Returns [current, target, completed]. */
+export function getChallengeProgress(ch: ChallengeDefinition): [number, number, boolean] {
+  const store = ch.type === 'daily' ? current.dailyChallengeProgress : current.weeklyChallengeProgress;
+  const prog = store[ch.id] ?? 0;
+  return [Math.min(prog, ch.target), ch.target, prog >= ch.target];
+}
+
+/** Update challenge progress from a race result. Returns bonus XP/CR earned. */
+function updateChallengeProgress(result: RaceResult, _breakdown: RewardBreakdown): { xp: number; cr: number } {
+  let xp = 0;
+  let cr = 0;
+
+  const allChallenges = [...getDailyChallenges(), ...getWeeklyChallenges()];
+  for (const ch of allChallenges) {
+    const store = ch.type === 'daily' ? current.dailyChallengeProgress : current.weeklyChallengeProgress;
+    const before = store[ch.id] ?? 0;
+    if (before >= ch.target) continue; // already completed
+
+    const increment = ch.extract(result);
+    if (increment <= 0) continue;
+
+    store[ch.id] = before + increment;
+    if (store[ch.id] >= ch.target) {
+      // Challenge completed!
+      xp += ch.xpReward;
+      cr += ch.crReward;
+    }
+  }
+  return { xp, cr };
 }

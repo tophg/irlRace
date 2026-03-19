@@ -4,7 +4,7 @@ import { GameState, EventType } from './types';
 import { G } from './game-context';
 type GameContext = typeof G;
 import { RaceEngine } from './race-engine';
-import { processRaceRewards, getProgress, levelProgress, xpToNextLevel, canPrestige, prestige, type RaceResult } from './progression';
+import { processRaceRewards, getProgress, levelProgress, xpToNextLevel, canPrestige, prestige, ratingGrade, getDailyChallenges, getWeeklyChallenges, getChallengeProgress, type RaceResult } from './progression';
 import { playRewardsAnimation } from './rewards-animation';
 import { spawnVictoryConfetti, setConfettiContinuous } from './vfx';
 import { showTouchControls } from './input';
@@ -27,6 +27,56 @@ export function resolvePlayerName(id: string, G: GameContext): string {
   if (netName && netName !== 'Racer') return netName;
   const mpName = G.mpPlayersList.find(p => p.id === id)?.name;
   return mpName || netName || id.slice(0, 8);
+}
+
+function ratingColor(grade: string): string {
+  switch (grade) {
+    case 'S': return '#ffd700';
+    case 'A': return '#00e676';
+    case 'B': return '#4fc3f7';
+    case 'C': return '#fff176';
+    case 'D': return '#ff9800';
+    default: return '#ef5350';
+  }
+}
+
+function buildDriverDNAHTML(): string {
+  const prog = getProgress();
+  const sg = ratingGrade(prog.speedRating);
+  const cg = ratingGrade(prog.cleanRating);
+  return `<div class="lap-breakdown" style="margin-top:8px;">
+    <div class="lap-breakdown-title">DRIVER DNA</div>
+    <div class="lap-breakdown-row"><span>⚡ Speed Rating</span><span style="color:${ratingColor(sg)};font-weight:700;">${sg} (${prog.speedRating})</span></div>
+    <div style="background:rgba(255,255,255,0.1);border-radius:4px;height:4px;margin:2px 0;">
+      <div style="background:${ratingColor(sg)};border-radius:4px;height:100%;width:${prog.speedRating}%;transition:width 0.5s;"></div>
+    </div>
+    <div class="lap-breakdown-row"><span>✨ Clean Rating</span><span style="color:${ratingColor(cg)};font-weight:700;">${cg} (${prog.cleanRating})</span></div>
+    <div style="background:rgba(255,255,255,0.1);border-radius:4px;height:4px;margin:2px 0;">
+      <div style="background:${ratingColor(cg)};border-radius:4px;height:100%;width:${prog.cleanRating}%;transition:width 0.5s;"></div>
+    </div>
+  </div>`;
+}
+
+function buildChallengesHTML(): string {
+  const daily = getDailyChallenges();
+  const weekly = getWeeklyChallenges();
+  let html = `<div class="lap-breakdown" style="margin-top:8px;">
+    <div class="lap-breakdown-title">DAILY CHALLENGES</div>`;
+  for (const ch of daily) {
+    const [cur, tgt, done] = getChallengeProgress(ch);
+    const pct = Math.min(100, Math.round((cur / tgt) * 100));
+    html += `<div class="lap-breakdown-row${done ? ' best' : ''}"><span>${ch.icon} ${ch.name}</span><span>${done ? '✅' : `${cur}/${tgt}`}</span></div>`;
+    if (!done) html += `<div style="background:rgba(255,255,255,0.1);border-radius:3px;height:3px;margin:1px 0;"><div style="background:var(--col-orange);border-radius:3px;height:100%;width:${pct}%;"></div></div>`;
+  }
+  html += `<div class="lap-breakdown-title" style="margin-top:6px;">WEEKLY CHALLENGES</div>`;
+  for (const ch of weekly) {
+    const [cur, tgt, done] = getChallengeProgress(ch);
+    const pct = Math.min(100, Math.round((cur / tgt) * 100));
+    html += `<div class="lap-breakdown-row${done ? ' best' : ''}"><span>${ch.icon} ${ch.name}</span><span>${done ? '✅' : `${cur}/${tgt}`}</span></div>`;
+    if (!done) html += `<div style="background:rgba(255,255,255,0.1);border-radius:3px;height:3px;margin:1px 0;"><div style="background:var(--col-cyan);border-radius:3px;height:100%;width:${pct}%;"></div></div>`;
+  }
+  html += `</div>`;
+  return html;
 }
 
 function buildRewardHTML(rewards: import('./progression').RewardBreakdown): string {
@@ -212,6 +262,8 @@ export async function showResults(
       </div>
       ${buildRewardHTML(earlyRewards)}
       ${earlyRewards.streakMultiplier > 1 ? `<div style="text-align:center;margin:6px 0;color:#ffd700;font-weight:700;">🔥 Win Streak: ${getProgress().winStreak} — ×${earlyRewards.streakMultiplier.toFixed(1)} bonus</div>` : ''}
+      ${buildDriverDNAHTML()}
+      ${buildChallengesHTML()}
     </div>
     <div class="results-actions">
       <div class="menu-buttons" style="width:240px;">
