@@ -817,15 +817,15 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
   // Style tiles per environment
   const STYLE_TILES: Record<string, number[]> = {
-    modern:      [0, 2, 3, 8, 13, 14],
-    adobe:       [1, 4, 7, 9, 15],
-    beach_house: [5, 7, 12, 14],
-    cyberpunk:   [0, 3, 6, 8, 10, 15],
-    weathered:   [1, 2, 5, 9, 12, 15],
-    chalet:      [4, 7, 9, 11],
-    warehouse:   [2, 5, 12, 14],
-    concrete:    [2, 5, 12, 15],
-    bamboo_lodge:[7, 11, 4, 9],
+    modern:      [0, 1, 2, 3, 8, 9, 13, 14, 15],      // 9 tiles — glass, brick, concrete, residential
+    adobe:       [1, 4, 5, 7, 9, 12, 14, 15],           // 8 tiles — brick, ornate, warehouse, shuttered
+    beach_house: [1, 4, 5, 7, 9, 12, 13, 14],           // 8 tiles — warm low-rise, warehouse, shuttered
+    cyberpunk:   [0, 2, 3, 6, 8, 10, 13, 14, 15],       // 9 tiles — glass, neon, deco, lit apartments
+    weathered:   [1, 2, 4, 5, 9, 12, 14, 15],           // 8 tiles — brick, concrete, brownstone
+    chalet:      [1, 4, 5, 7, 9, 11, 12],               // 7 tiles — ornate, warehouse, shuttered, wooden
+    warehouse:   [1, 2, 5, 9, 12, 14, 15],              // 7 tiles — industrial mix
+    concrete:    [2, 5, 8, 12, 13, 14, 15],              // 7 tiles — concrete, glass, residential
+    bamboo_lodge:[4, 5, 7, 9, 11, 12],                   // 6 tiles — wooden, shuttered, warehouse
   };
   const styleName = T.buildingStyle ?? 'modern';
   const tiles = STYLE_TILES[styleName] ?? STYLE_TILES['modern'];
@@ -929,7 +929,13 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const tileW = 1 / ATLAS_COLS, tileH = 1 / ATLAS_ROWS;
 
     // Custom box with per-face UVs: sides = facade tile, top/bottom = dark roof
-    const buildCustomBox = (tile: number, faceW: number, faceH: number, faceD: number) => {
+    // uOffset/vOffset: random sub-region shift (0–0.3) for variety
+    // flipU: horizontally mirror the facade for asymmetry
+    // faceW/faceH/faceD: actual dimensions for tiling computation
+    const buildCustomBox = (
+      tile: number, faceW: number, faceH: number, faceD: number,
+      uOffset = 0, vOffset = 0, flipU = false,
+    ) => {
       const geo = new THREE.BoxGeometry(1, 1, 1);
       const col = tile % ATLAS_COLS;
       const row = Math.floor(tile / ATLAS_COLS);
@@ -939,9 +945,16 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const uvAttr = geo.getAttribute('uv');
       const uv = uvAttr.array as Float32Array;
 
+      // Tiling: repeat facade pattern for wide/tall buildings
       const repeatFB = Math.max(1, Math.round(faceW / 10));
       const repeatLR = Math.max(1, Math.round(faceD / 10));
       const repeatV = Math.max(1, Math.round(faceH / 12));
+
+      // UV sub-region shift (shrink visible area slightly to allow offset)
+      const uScale = 1 - uOffset * 0.5;
+      const vScale = 1 - vOffset * 0.5;
+      const uShift = uOffset * 0.5 * tileW;
+      const vShift = vOffset * 0.5 * tileH;
 
       for (let face = 0; face < 6; face++) {
         const base = face * 4 * 2;
@@ -956,11 +969,19 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         } else {
           const hRepeat = (face === 0 || face === 1) ? repeatLR : repeatFB;
           for (let v = 0; v < 4; v++) {
-            const rawU = uv[base + v * 2];
-            const rawV = uv[base + v * 2 + 1];
-            // Map [0,1] → tile sub-region directly (no modulo — that kills integer edges)
-            uv[base + v * 2] = uMin + rawU * tileW;
-            uv[base + v * 2 + 1] = vMin + rawV * tileH;
+            let rawU = uv[base + v * 2];
+            let rawV = uv[base + v * 2 + 1];
+            // Tile the texture for wider/taller buildings
+            rawU = rawU * hRepeat;
+            rawV = rawV * repeatV;
+            // Fractional wrap (avoid collapse at integer boundaries)
+            rawU = rawU - Math.floor(rawU);
+            rawV = rawV - Math.floor(rawV);
+            // Horizontal flip
+            if (flipU) rawU = 1 - rawU;
+            // Map to tile sub-region with offset
+            uv[base + v * 2]     = uMin + uShift + rawU * tileW * uScale;
+            uv[base + v * 2 + 1] = vMin + vShift + rawV * tileH * vScale;
           }
         }
       }
@@ -985,30 +1006,58 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       emissiveMap: atlasTexture,
       emissive: new THREE.Color(T.windowColor ?? 0xffcc66),
       emissiveIntensity: windowGlow * 0.4,
+      vertexColors: true, // enable per-instance color tinting
     });
 
     const dummy = new THREE.Object3D();
     const _instances: THREE.Vector3[] = [];
 
+    // Create multiple UV-variant geometries per tile to avoid cookie-cutter look
+    const VARIANTS_PER_TILE = 3;
+
     for (const [tile, tilePlacements] of tileGroups) {
-      const rep = tilePlacements[0];
-      const tileGeo = buildCustomBox(tile, rep.w, rep.h, rep.d);
-
-      const instancedMesh = new THREE.InstancedMesh(tileGeo, buildingMat, tilePlacements.length);
-      instancedMesh.castShadow = true;
-      instancedMesh.receiveShadow = true;
-
-      for (let j = 0; j < tilePlacements.length; j++) {
-        const pl = tilePlacements[j];
-        dummy.position.set(pl.x, pl.h / 2 - 2, pl.z);
-        dummy.scale.set(pl.w, pl.h, pl.d);
-        dummy.rotation.set(0, pl.rotY, 0);
-        dummy.updateMatrix();
-        instancedMesh.setMatrixAt(j, dummy.matrix);
-        _instances.push(new THREE.Vector3(pl.x, 0, pl.z));
+      // Build variant geometries with different UV offsets/flips
+      const variantGeos: THREE.BoxGeometry[] = [];
+      for (let vi = 0; vi < VARIANTS_PER_TILE; vi++) {
+        const uOff = vi * 0.15;          // 0, 0.15, 0.3
+        const vOff = (vi % 2) * 0.2;     // 0, 0.2, 0
+        const flip = vi === 1;            // flip variant 1
+        // Use median dimensions for tiling computation
+        const medW = tilePlacements.reduce((s, p) => s + p.w, 0) / tilePlacements.length;
+        const medH = tilePlacements.reduce((s, p) => s + p.h, 0) / tilePlacements.length;
+        const medD = tilePlacements.reduce((s, p) => s + p.d, 0) / tilePlacements.length;
+        variantGeos.push(buildCustomBox(tile, medW, medH, medD, uOff, vOff, flip));
       }
-      instancedMesh.instanceMatrix.needsUpdate = true;
-      group.add(instancedMesh);
+
+      // Split placements across variants
+      const variantBuckets: BoxPlacement[][] = Array.from({ length: VARIANTS_PER_TILE }, () => []);
+      tilePlacements.forEach((pl, i) => variantBuckets[i % VARIANTS_PER_TILE].push(pl));
+
+      for (let vi = 0; vi < VARIANTS_PER_TILE; vi++) {
+        const bucket = variantBuckets[vi];
+        if (bucket.length === 0) continue;
+
+        const instancedMesh = new THREE.InstancedMesh(variantGeos[vi], buildingMat, bucket.length);
+        instancedMesh.castShadow = true;
+        instancedMesh.receiveShadow = true;
+
+        for (let j = 0; j < bucket.length; j++) {
+          const pl = bucket[j];
+          dummy.position.set(pl.x, pl.h / 2 - 2, pl.z);
+          dummy.scale.set(pl.w, pl.h, pl.d);
+          dummy.rotation.set(0, pl.rotY, 0);
+          dummy.updateMatrix();
+          instancedMesh.setMatrixAt(j, dummy.matrix);
+          // Per-instance brightness tint (±15% variation)
+          const bright = 0.85 + (((pl.x * 73 + pl.z * 137) & 0xFF) / 255) * 0.3;
+          _c.setRGB(bright, bright, bright);
+          instancedMesh.setColorAt(j, _c);
+          _instances.push(new THREE.Vector3(pl.x, 0, pl.z));
+        }
+        instancedMesh.instanceMatrix.needsUpdate = true;
+        if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true;
+        group.add(instancedMesh);
+      }
     }
 
     _buildingInstances = _instances;
