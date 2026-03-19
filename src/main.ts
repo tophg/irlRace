@@ -267,7 +267,7 @@ function updateTitleScene() {
     if (titleCarModel) {
       const carP = clamp01((elapsed - 0.5) / 2.0); // starts at 0.5s
       const carEp = easeOutCubic(carP);
-      titleCarModel.position.y = lerp(-0.3, 0.35, carEp);
+      titleCarModel.position.y = lerp(-0.3, 0.4, carEp);
       titleCarModel.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
@@ -338,7 +338,7 @@ function updateTitleScene() {
 
     // Ensure car is fully opaque
     if (titleCarModel) {
-      titleCarModel.position.y = 0.35;
+      titleCarModel.position.y = 0.4;
       titleCarModel.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
