@@ -271,6 +271,8 @@ canvas { display: block; }
 .menu-buttons {
   display: flex; flex-direction: column; gap: 10px;
   width: min(320px, 80vw);
+}
+.title-screen .menu-buttons {
   opacity: 0;
   transform: translateY(16px);
   transition: none;
@@ -396,11 +398,11 @@ canvas { display: block; }
 }
 
 /* Staggered button entrance */
-.menu-buttons .menu-btn:nth-child(1) { animation: menu-fade-in 0.5s ease-out 0.4s both; }
-.menu-buttons .menu-btn:nth-child(2) { animation: menu-fade-in 0.5s ease-out 0.5s both; }
-.menu-buttons .menu-btn:nth-child(3) { animation: menu-fade-in 0.5s ease-out 0.6s both; }
-.menu-buttons .menu-btn:nth-child(4) { animation: menu-fade-in 0.5s ease-out 0.7s both; }
-.menu-row-secondary { animation: menu-fade-in 0.5s ease-out 0.8s both; }
+.title-screen .menu-buttons .menu-btn:nth-child(1) { animation: menu-fade-in 0.5s ease-out 0.4s both; }
+.title-screen .menu-buttons .menu-btn:nth-child(2) { animation: menu-fade-in 0.5s ease-out 0.5s both; }
+.title-screen .menu-buttons .menu-btn:nth-child(3) { animation: menu-fade-in 0.5s ease-out 0.6s both; }
+.title-screen .menu-buttons .menu-btn:nth-child(4) { animation: menu-fade-in 0.5s ease-out 0.7s both; }
+.title-screen .menu-row-secondary { animation: menu-fade-in 0.5s ease-out 0.8s both; }
 
 /* Hover accent bar */
 .menu-btn {
