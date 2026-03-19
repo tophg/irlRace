@@ -164,8 +164,8 @@ function createTitleScene() {
   ground.position.y = 0;
   titleScene.add(ground);
 
-  // Always show the Ferrari — best visual showcase car
-  const titleCar = CAR_ROSTER.find(c => c.file === 'Ferrari.glb') ?? CAR_ROSTER[CAR_ROSTER.length - 1];
+  // Always show the Lamborghini — best visual showcase car
+  const titleCar = CAR_ROSTER.find(c => c.file === 'Lamborghini.glb') ?? CAR_ROSTER[CAR_ROSTER.length - 1];
   console.log('[TitleScreen] Loading car:', titleCar.file);
   loadCarModel(titleCar.file).then((model: THREE.Group) => {
     if (!titleScene) return; // cleaned up before load finished
