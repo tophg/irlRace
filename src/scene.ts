@@ -496,3 +496,33 @@ let _currentPreset: EnvironmentPreset = ENVIRONMENTS[0];
 export function getCurrentTheme(): SceneryTheme { return _currentPreset.scenery; }
 /** Get the currently active environment preset. */
 export function getCurrentPreset(): EnvironmentPreset { return _currentPreset; }
+
+/**
+ * Darken sky and lighting for rain/storm weather.
+ * Call AFTER applyEnvironment() + initWeather().
+ */
+export function applyWeatherSkyDarkening(weather: string) {
+  // Darkening amounts by weather type
+  const darken: Record<string, number> = {
+    light_rain: 0.15, heavy_rain: 0.30, snow: 0.10, blizzard: 0.40,
+  };
+  const amount = darken[weather] ?? 0;
+  if (amount === 0) return;
+
+  // Darken sky uniforms
+  uSkyTop.value.offsetHSL(0, 0, -amount * 0.5);
+  uSkyBottom.value.offsetHSL(0, 0, -amount * 0.4);
+  uSkyHorizon.value.offsetHSL(0, 0, -amount * 0.3);
+  uSkyMid.value.offsetHSL(0, 0, -amount * 0.4);
+
+  // Reduce directional light (sun dimmed by clouds)
+  dirLight.intensity *= (1 - amount * 0.6);
+
+  // Slightly boost hemisphere ambient for moody overcast feel
+  hemiLight.intensity *= (1 + amount * 0.3);
+
+  // Increase fog density slightly for rain haze
+  if (scene.fog && scene.fog instanceof THREE.FogExp2) {
+    scene.fog.density *= (1 + amount * 0.5);
+  }
+}

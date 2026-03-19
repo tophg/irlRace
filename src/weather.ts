@@ -1,4 +1,11 @@
-/* ── IRL Race — Weather System (v2 — Research-Enhanced Physics) ── */
+/* ── IRL Race — Weather System (v3 — Research-Enhanced) ──
+ *
+ * Player-relative precipitation (camera-attached rain volume),
+ * dynamic intensity ramp, expanded splash pool, thunder audio.
+ *
+ * Key fix: precipMesh.position follows player each frame,
+ * particles live in mesh-local space → instant full coverage.
+ */
 
 import * as THREE from 'three/webgpu';
 
@@ -39,7 +46,7 @@ interface PrecipConfig {
   roadSpecular: number;
   opacity: number;
   color: number;
-  windDriftX: number;  // Lateral wind for snow
+  windDriftX: number;
 }
 
 const PRECIP_CONFIGS: Record<WeatherType, PrecipConfig> = {
@@ -51,19 +58,32 @@ const PRECIP_CONFIGS: Record<WeatherType, PrecipConfig> = {
   ice:        { dropCount: 0,   dropSpeed: 0,  dropLength: 0,   roadSpecular: 0.6, opacity: 0,   color: 0xaaccff, windDriftX: 0 },
 };
 
+// ── Precipitation volume dimensions ──
+const PRECIP_WIDTH = 160;   // was 120 — wider rain curtain
+const PRECIP_HEIGHT = 80;   // was 60 — taller rain column
+
 let currentWeather: WeatherType = 'clear';
 let precipMesh: THREE.LineSegments | null = null;
 let precipPositions: Float32Array | null = null;
 let precipVelocities: Float32Array | null = null;
 let precipScene: THREE.Scene | null = null;
 let precipConfig: PrecipConfig = PRECIP_CONFIGS.clear;
+let precipMat: THREE.LineBasicMaterial | null = null;
+
+// Dynamic intensity ramp (Forza-inspired: rain builds over ~3s)
+let _intensityRamp = 0;
+const INTENSITY_RAMP_SPEED = 0.33; // reaches 1.0 in ~3s
 
 // Splashes (pooled sprites — rain only)
-const SPLASH_POOL = 40;
+const SPLASH_POOL = 80; // was 40
 let splashPool: THREE.Mesh[] = [];
 let splashIdx = 0;
 interface SplashParticle { mesh: THREE.Mesh; life: number; }
 const activeSplashes: SplashParticle[] = [];
+
+// Thunder audio
+let _thunderTimer = 0;
+let _thunderCtx: AudioContext | null = null;
 
 export function getWeatherForSeed(seed: number): WeatherType {
   const r = ((seed * 2654435761) >>> 0) % 100;
@@ -98,19 +118,22 @@ export function initWeather(scene: THREE.Scene, weather: WeatherType) {
   currentWeather = weather;
   precipConfig = PRECIP_CONFIGS[weather];
   precipScene = scene;
+  _intensityRamp = 0; // start at 0, ramp up over ~3s
+  _thunderTimer = 8 + Math.random() * 12; // first thunder in 8-20s
 
   if (precipConfig.dropCount === 0) return;
 
-  // Build precipitation line segments (rain or snow)
+  // Build precipitation line segments in MESH-LOCAL space
+  // (mesh will follow player each frame → instant full coverage)
   const count = precipConfig.dropCount;
   const geo = new THREE.BufferGeometry();
-  precipPositions = new Float32Array(count * 6); // 2 vertices per line × 3 components
+  precipPositions = new Float32Array(count * 6);
   precipVelocities = new Float32Array(count);
 
   for (let i = 0; i < count; i++) {
-    const x = (Math.random() - 0.5) * 120;
-    const y = Math.random() * 60;
-    const z = (Math.random() - 0.5) * 120;
+    const x = (Math.random() - 0.5) * PRECIP_WIDTH;
+    const y = Math.random() * PRECIP_HEIGHT;
+    const z = (Math.random() - 0.5) * PRECIP_WIDTH;
     const len = precipConfig.dropLength;
     precipPositions[i * 6]     = x;
     precipPositions[i * 6 + 1] = y;
@@ -123,24 +146,25 @@ export function initWeather(scene: THREE.Scene, weather: WeatherType) {
 
   geo.setAttribute('position', new THREE.BufferAttribute(precipPositions, 3));
 
-  const mat = new THREE.LineBasicMaterial({
+  precipMat = new THREE.LineBasicMaterial({
     color: precipConfig.color,
     transparent: true,
-    opacity: precipConfig.opacity,
+    opacity: 0, // start at 0, ramp up
     depthWrite: false,
   });
 
-  precipMesh = new THREE.LineSegments(geo, mat);
+  precipMesh = new THREE.LineSegments(geo, precipMat);
   precipMesh.frustumCulled = false;
   scene.add(precipMesh);
 
   // Splash pool (rain types only)
   const isRain = weather === 'light_rain' || weather === 'heavy_rain';
   if (isRain) {
-    const splashGeo = new THREE.CircleGeometry(0.15, 6);
-    const splashMat = new THREE.MeshBasicMaterial({ color: 0xaaccff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
     for (let i = 0; i < SPLASH_POOL; i++) {
-      const m = new THREE.Mesh(splashGeo, splashMat.clone());
+      const radius = 0.1 + Math.random() * 0.15; // size variation
+      const splashGeo = new THREE.CircleGeometry(radius, 6);
+      const splashMat = new THREE.MeshBasicMaterial({ color: 0xaaccff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+      const m = new THREE.Mesh(splashGeo, splashMat);
       m.rotation.x = -Math.PI / 2;
       m.visible = false;
       scene.add(m);
@@ -150,13 +174,22 @@ export function initWeather(scene: THREE.Scene, weather: WeatherType) {
 }
 
 export function updateWeather(dt: number, playerPos: THREE.Vector3) {
-  if (!precipPositions || !precipVelocities || !precipMesh) return;
+  if (!precipPositions || !precipVelocities || !precipMesh || !precipMat) return;
+
+  // ── Dynamic intensity ramp: rain builds over ~3s ──
+  _intensityRamp = Math.min(1, _intensityRamp + dt * INTENSITY_RAMP_SPEED);
+  precipMat.opacity = precipConfig.opacity * _intensityRamp;
+
+  // ── Move precipitation mesh to follow player (camera-attached rain volume) ──
+  // Particles live in mesh-local space; mesh follows player → instant full coverage
+  precipMesh.position.set(playerPos.x, 0, playerPos.z);
 
   const count = precipVelocities.length;
   const len = precipConfig.dropLength;
   const windDriftX = precipConfig.windDriftX;
   const isRain = currentWeather === 'light_rain' || currentWeather === 'heavy_rain';
   const attr = precipMesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+  const halfW = PRECIP_WIDTH / 2;
 
   for (let i = 0; i < count; i++) {
     const vel = precipVelocities[i];
@@ -164,18 +197,18 @@ export function updateWeather(dt: number, playerPos: THREE.Vector3) {
     precipPositions[base + 1] -= vel * dt;
     precipPositions[base + 4] -= vel * dt;
 
-    // Snow/blizzard: lateral wind drift
+    // Snow/blizzard: lateral wind drift with coherent pattern
     if (windDriftX !== 0) {
       const drift = windDriftX * dt * (0.5 + Math.sin(i * 0.3 + performance.now() * 0.001) * 0.5);
       precipPositions[base]     += drift;
       precipPositions[base + 3] += drift;
     }
 
-    // Reset drops that fall below ground — recenter around player
+    // Reset drops that fall below ground — respawn in LOCAL coords
     if (precipPositions[base + 1] < -2) {
-      const x = playerPos.x + (Math.random() - 0.5) * 120;
-      const z = playerPos.z + (Math.random() - 0.5) * 120;
-      const y = 40 + Math.random() * 20;
+      const x = (Math.random() - 0.5) * PRECIP_WIDTH;
+      const z = (Math.random() - 0.5) * PRECIP_WIDTH;
+      const y = PRECIP_HEIGHT * 0.5 + Math.random() * PRECIP_HEIGHT * 0.5;
       precipPositions[base]     = x;
       precipPositions[base + 1] = y;
       precipPositions[base + 2] = z;
@@ -183,17 +216,22 @@ export function updateWeather(dt: number, playerPos: THREE.Vector3) {
       precipPositions[base + 4] = y - len;
       precipPositions[base + 5] = z;
 
-      // Spawn splash occasionally (rain only)
+      // Spawn splash (rain only) — world position = local + mesh offset
       if (isRain && Math.random() < 0.15 && splashPool.length > 0) {
         const mesh = splashPool[splashIdx % SPLASH_POOL];
         splashIdx++;
-        mesh.position.set(x, playerPos.y + 0.05, z);
+        mesh.position.set(playerPos.x + x, playerPos.y + 0.05, playerPos.z + z);
         mesh.scale.setScalar(0.5);
         mesh.visible = true;
-        (mesh.material as THREE.MeshBasicMaterial).opacity = 0.4;
+        (mesh.material as THREE.MeshBasicMaterial).opacity = 0.4 * _intensityRamp;
         activeSplashes.push({ mesh, life: 0.3 });
       }
     }
+
+    // Wrap particles that drift laterally out of volume (for wind)
+    if (precipPositions[base] > halfW) precipPositions[base] -= PRECIP_WIDTH;
+    if (precipPositions[base] < -halfW) precipPositions[base] += PRECIP_WIDTH;
+    precipPositions[base + 3] = precipPositions[base]; // sync line end X
   }
 
   attr.needsUpdate = true;
@@ -210,32 +248,77 @@ export function updateWeather(dt: number, playerPos: THREE.Vector3) {
       continue;
     }
     s.mesh.scale.setScalar(0.5 + (0.3 - s.life) * 3);
-    (s.mesh.material as THREE.MeshBasicMaterial).opacity = s.life * 1.3;
+    (s.mesh.material as THREE.MeshBasicMaterial).opacity = s.life * 1.3 * _intensityRamp;
     j++;
   }
 
-  // Keep precipitation centered on player
-  precipMesh.position.set(0, 0, 0);
+  // ── Thunder audio (heavy_rain / blizzard only) ──
+  if (currentWeather === 'heavy_rain' || currentWeather === 'blizzard') {
+    _thunderTimer -= dt;
+    if (_thunderTimer <= 0) {
+      playThunder();
+      _thunderTimer = 8 + Math.random() * 12; // next in 8-20s
+    }
+  }
+}
+
+// ── Thunder: procedural Web Audio rumble ──
+function playThunder() {
+  try {
+    if (!_thunderCtx) _thunderCtx = new AudioContext();
+    const ctx = _thunderCtx;
+    const now = ctx.currentTime;
+    const duration = 1.5 + Math.random() * 1.5;
+
+    // White noise burst filtered to low-frequency rumble
+    const bufferSize = ctx.sampleRate * duration;
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.4));
+    }
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+
+    // Low-pass filter for rumble
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 150 + Math.random() * 100;
+    filter.Q.value = 0.5;
+
+    // Gain envelope: quick attack, slow decay
+    const gain = ctx.createGain();
+    const volume = 0.15 + Math.random() * 0.1; // subtle
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(volume, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    source.connect(filter);
+    filter.connect(gain);
+    gain.connect(ctx.destination);
+    source.start(now);
+    source.stop(now + duration);
+  } catch {
+    // Audio context may not be available
+  }
 }
 
 // ── Saved road material state (for restoration on weather change) ──
 let savedRoadMat: { roughness: number; metalness: number; color: THREE.Color } | null = null;
 let savedRoadMesh: THREE.Mesh | null = null;
 
-// Pre-allocated colors for wet-road lerp targets (avoid per-call allocation)
 const _snowRoadColor = new THREE.Color(0xcccccc);
 const _iceRoadColor = new THREE.Color(0x88aacc);
 
 /**
  * Apply weather-dependent road surface material changes.
  * Rain → wet glossy; Snow → white-dusted; Ice → mirror-glossy.
- * Saves originals for restoration in destroyWeather().
  */
 export function applyWetRoad(roadMesh: THREE.Mesh) {
   const mat = roadMesh.material as THREE.MeshStandardMaterial;
   const w = currentWeather;
 
-  // Save originals on first call (before mutation)
   if (!savedRoadMat) {
     savedRoadMat = { roughness: mat.roughness, metalness: mat.metalness, color: mat.color.clone() };
     savedRoadMesh = roadMesh;
@@ -245,11 +328,9 @@ export function applyWetRoad(roadMesh: THREE.Mesh) {
     mat.roughness = Math.max(0.6, savedRoadMat.roughness - precipConfig.roadSpecular * 0.5);
     mat.metalness = Math.min(0.08, savedRoadMat.metalness + precipConfig.roadSpecular * 0.05);
   } else if (w === 'snow' || w === 'blizzard') {
-    // Snow-dusted road: slightly lighter, rougher
     mat.roughness = Math.min(0.95, savedRoadMat.roughness + 0.15);
     mat.color.copy(savedRoadMat.color).lerp(_snowRoadColor, 0.15);
   } else if (w === 'ice') {
-    // Slightly glossy ice surface (but not mirror-like)
     mat.roughness = 0.35;
     mat.metalness = 0.15;
     mat.color.copy(savedRoadMat.color).lerp(_iceRoadColor, 0.2);
@@ -278,6 +359,7 @@ export function destroyWeather() {
     (precipMesh.material as THREE.Material).dispose();
     precipMesh = null;
   }
+  precipMat = null;
   for (const s of activeSplashes) s.mesh.visible = false;
   activeSplashes.length = 0;
   if (precipScene) {
@@ -294,5 +376,6 @@ export function destroyWeather() {
   precipScene = null;
   currentWeather = 'clear';
   precipConfig = PRECIP_CONFIGS.clear;
+  _intensityRamp = 0;
+  _thunderTimer = 0;
 }
-

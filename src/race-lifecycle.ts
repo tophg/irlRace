@@ -9,7 +9,7 @@
 import * as THREE from 'three/webgpu';
 import { GameState, CAR_ROSTER, EventType, type TrackData } from './types';
 import { G, resetRaceStats } from './game-context';
-import { getScene, applyEnvironment, getEnvironmentForSeed, getEnvironmentByName } from './scene';
+import { getScene, applyEnvironment, getEnvironmentForSeed, getEnvironmentByName, applyWeatherSkyDarkening } from './scene';
 import { loadCarModel } from './loaders';
 import { generateTrack, buildCheckpointMarkers } from './track';
 import { destroyScenery } from './track-scenery';
@@ -342,6 +342,7 @@ export async function startRace() {
     // Weather can override the environment (snow/ice → Zermatt)
     const w = getCurrentWeather();
     if (w === 'snow' || w === 'blizzard' || w === 'ice') applyEnvironment(getEnvironmentByName('Zermatt'));
+    applyWeatherSkyDarkening(w);
 
     // ── Now generate the track (scenery will use the correct theme) ──
     if (G._customTrack) {

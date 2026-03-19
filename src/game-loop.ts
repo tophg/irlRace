@@ -49,7 +49,7 @@ import {
 } from './gpu-particles';
 import { updateTrackRadar } from './minimap';
 import { updateDestructionFragments, triggerVehicleDestruction, isDestructionActive } from './vehicle-destruction';
-import { updateWeather, getCurrentWeather, getPrecipMesh } from './weather';
+import { updateWeather, getCurrentWeather, getPrecipMesh, getWeatherPhysics } from './weather';
 import { updatePostFX, setImpactIntensity, setBoostActive, setExplosionMode } from './post-fx';
 import { showExplosionFlash, showLetterbox, hideLetterbox, showEngineDestroyedText } from './screen-effects';
 import {
@@ -577,6 +577,32 @@ function gameLoop(timestamp: number) {
     const weatherType = getCurrentWeather();
     const rainIntensity = weatherType === 'heavy_rain' ? 0.5 : weatherType === 'light_rain' ? 0.25 : 0;
     updateRainDroplets(rainIntensity, frameDt);
+
+    // ── Wet tire spray (NFS-style rooster tail) ──
+    const wp = getWeatherPhysics();
+    if (wp.sprayDensity > 0 && G.playerVehicle.speed > 30) {
+      const sprayChance = wp.sprayDensity * Math.min(G.playerVehicle.speed / 120, 1) * 0.5;
+      if (Math.random() < sprayChance) {
+        // Spawn dust/spray behind player (reuse shoulder dust as lightweight spray)
+        const cosH = Math.cos(G.playerVehicle.heading);
+        const sinH = Math.sin(G.playerVehicle.heading);
+        const pp = G.playerVehicle.group.position;
+        // Rear left
+        _rPos.set(pp.x - sinH * 2 - cosH * 0.6, pp.y + 0.1, pp.z - cosH * 2 + sinH * 0.6);
+        spawnGPUShoulderDust(_rPos, G.playerVehicle.speed * 0.3, G.playerVehicle.heading);
+        // Rear right
+        _rPos.set(pp.x - sinH * 2 + cosH * 0.6, pp.y + 0.1, pp.z - cosH * 2 - sinH * 0.6);
+        spawnGPUShoulderDust(_rPos, G.playerVehicle.speed * 0.3, G.playerVehicle.heading);
+      }
+    }
+
+    // ── Wind camera sway (heavy rain / blizzard) ──
+    if ((weatherType === 'heavy_rain' || weatherType === 'blizzard') && s === GameState.RACING) {
+      const swayAmp = weatherType === 'blizzard' ? 0.005 : 0.003; // radians (~0.3° / ~0.17°)
+      const swayFreq = weatherType === 'blizzard' ? 1.5 : 2.0;
+      const t = performance.now() * 0.001;
+      camera.rotation.z += Math.sin(t * swayFreq * Math.PI * 2) * swayAmp;
+    }
 
     updateImpactFlash(frameDt);
 
