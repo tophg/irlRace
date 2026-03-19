@@ -1078,8 +1078,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       _asyncLoads.push(loadGLB(`/buildings/${landmarkFile}`).then((model) => {
         const bbox = new THREE.Box3().setFromObject(model);
         const size = bbox.getSize(new THREE.Vector3());
-        // Scale landmark to ~30 world units wide — prominent and imposing
-        const targetW = 30;
+        // Scale landmark to ~15 world units wide (normal building scale)
+        const targetW = 15;
         const sf = targetW / Math.max(size.x, size.z, 1);
         model.scale.setScalar(sf);
 
