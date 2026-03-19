@@ -1731,6 +1731,8 @@ canvas { display: block; }
 /* ── Race Config ── */
 /* ── Race Config — Split Panel ── */
 /* ── Race Config: Overlay ── */
+/* ── Race Config: Toggle Controls & Card Grid ── */
+
 .race-config-overlay {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
@@ -1743,21 +1745,20 @@ canvas { display: block; }
   to   { opacity: 1; }
 }
 
-/* ── Panel: glassmorphism + entrance ── */
 .race-config-panel {
   display: flex;
   gap: 24px;
-  max-width: 900px;
-  width: 90vw;
-  max-height: 85vh;
+  max-width: 960px;
+  width: 92vw;
+  max-height: 88vh;
   padding: 28px;
   border-radius: 16px;
-  background: rgba(12,12,20,0.85);
-  backdrop-filter: blur(20px);
-  border: 1px solid rgba(0,229,255,0.1);
+  background: rgba(12,12,20,0.88);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(0,229,255,0.08);
   box-shadow:
-    0 20px 60px rgba(0,0,0,0.6),
-    inset 0 0 40px rgba(0,229,255,0.03);
+    0 24px 80px rgba(0,0,0,0.7),
+    inset 0 0 50px rgba(0,229,255,0.02);
   animation: rc-panel-in 0.5s cubic-bezier(0.22,1,0.36,1) both;
 }
 @keyframes rc-panel-in {
@@ -1765,14 +1766,14 @@ canvas { display: block; }
   to   { opacity: 1; transform: scale(1) translateY(0); }
 }
 
-/* ── Left controls: slide-in entrance ── */
+/* ── Left: Controls ── */
 .race-config-left {
-  flex: 0 0 320px;
+  flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   overflow-y: auto;
-  max-height: 75vh;
+  max-height: 78vh;
   padding-right: 8px;
   animation: rc-left-in 0.5s ease-out 0.15s both;
 }
@@ -1788,8 +1789,8 @@ canvas { display: block; }
   font-size: 28px;
   letter-spacing: 6px;
   color: #ffffff;
-  text-shadow: 0 0 20px rgba(0,229,255,0.3);
-  margin-bottom: 12px;
+  text-shadow: 0 0 24px rgba(0,229,255,0.3);
+  margin-bottom: 8px;
 }
 
 .race-config-section-label {
@@ -1797,136 +1798,168 @@ canvas { display: block; }
   font-size: 11px;
   letter-spacing: 4px;
   color: var(--col-accent);
-  margin-top: 8px;
-  margin-bottom: 4px;
-  padding-bottom: 4px;
+  margin-top: 10px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
   border-bottom: 1px solid rgba(255,77,0,0.15);
+  background: linear-gradient(90deg, rgba(255,77,0,0.05), transparent 80%);
+  padding-left: 4px;
 }
 
-/* ── Config rows: micro-interactions ── */
+/* ── Config rows ── */
 .rc-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
+  padding: 6px 0;
+  gap: 12px;
+}
+.rc-label {
   font-size: 14px;
-  color: var(--col-text);
-  transition: transform 0.15s ease;
+  color: var(--col-text-dim);
+  white-space: nowrap;
+  min-width: 80px;
 }
-.rc-row:hover {
-  transform: translateX(4px);
-}
-.rc-row span { color: var(--col-text-dim); }
 
-.rc-select, .rc-input {
+/* ── Toggle button groups ── */
+.rc-toggle-group {
+  display: flex;
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+.rc-toggle-group--wrap {
+  flex-wrap: wrap;
+}
+
+.rc-toggle {
+  padding: 8px 14px;
+  min-width: 44px;
+  min-height: 36px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--col-text-dim);
+  background: rgba(255,255,255,0.04);
+  border: 1.5px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.rc-toggle:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.15);
+  transform: translateY(-1px);
+}
+.rc-toggle--active {
+  background: rgba(0,229,255,0.12);
+  border-color: var(--col-cyan);
+  color: var(--col-cyan);
+  box-shadow: 0 0 12px rgba(0,229,255,0.2), inset 0 0 8px rgba(0,229,255,0.05);
+  font-weight: 600;
+}
+.rc-toggle--active:hover {
+  background: rgba(0,229,255,0.18);
+}
+
+/* Seed input */
+.rc-input {
   background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 6px;
+  border: 1.5px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
   color: var(--col-text);
   font-family: var(--font-body);
   font-size: 14px;
-  padding: 6px 10px;
+  padding: 8px 12px;
+  width: 100px;
   outline: none;
-  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  letter-spacing: 2px;
 }
-.rc-select:hover, .rc-input:hover {
-  background: rgba(255,255,255,0.08);
-}
-.rc-select:focus, .rc-input:focus {
+.rc-input:focus {
   border-color: var(--col-cyan);
   box-shadow: 0 0 10px rgba(0,229,255,0.15);
 }
-.rc-select { min-width: 110px; cursor: pointer; }
-.rc-input { width: 90px; letter-spacing: 2px; }
 .rc-input::placeholder { color: var(--col-text-dim); }
 
-/* ── Environment radio list ── */
-.env-radio-list {
-  display: flex;
-  flex-direction: row;
+/* ── Environment Card Grid ── */
+.env-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 4px 2px 8px;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
+  padding: 4px 0;
 }
-.env-radio-list::-webkit-scrollbar { height: 4px; }
-.env-radio-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
 
-.env-radio-item {
+.env-card {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  padding: 12px 14px 10px;
-  min-width: 90px;
+  padding: 14px 10px 12px;
   border-radius: 12px;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+  transition: all 0.25s ease;
   border: 1.5px solid rgba(255,255,255,0.06);
+  border-top: 3px solid var(--env-accent, rgba(255,255,255,0.1));
   background: rgba(255,255,255,0.03);
   backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  scroll-snap-align: center;
   opacity: 0;
   animation: rc-env-fade 0.35s ease-out forwards;
+  text-align: center;
 }
-.env-radio-item:nth-child(1)  { animation-delay: 0.15s; }
-.env-radio-item:nth-child(2)  { animation-delay: 0.20s; }
-.env-radio-item:nth-child(3)  { animation-delay: 0.25s; }
-.env-radio-item:nth-child(4)  { animation-delay: 0.30s; }
-.env-radio-item:nth-child(5)  { animation-delay: 0.35s; }
-.env-radio-item:nth-child(6)  { animation-delay: 0.40s; }
+.env-card:nth-child(1) { animation-delay: 0.10s; }
+.env-card:nth-child(2) { animation-delay: 0.15s; }
+.env-card:nth-child(3) { animation-delay: 0.20s; }
+.env-card:nth-child(4) { animation-delay: 0.25s; }
+.env-card:nth-child(5) { animation-delay: 0.30s; }
+.env-card:nth-child(6) { animation-delay: 0.35s; }
 @keyframes rc-env-fade {
   from { opacity: 0; transform: translateY(8px) scale(0.95); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
-.env-radio-item:hover {
+.env-card:hover {
   background: rgba(255,255,255,0.07);
-  transform: scale(1.04);
+  transform: scale(1.03);
   border-color: rgba(255,255,255,0.12);
 }
-.env-radio-item--selected {
-  background: rgba(0,229,255,0.1);
+.env-card--active {
+  background: rgba(0,229,255,0.08);
   border-color: var(--col-cyan);
-  box-shadow: 0 0 16px rgba(0,229,255,0.15), inset 0 0 12px rgba(0,229,255,0.05);
+  border-top-color: var(--env-accent, var(--col-cyan));
+  box-shadow: 0 0 20px rgba(0,229,255,0.15), inset 0 0 12px rgba(0,229,255,0.04);
+  animation: rc-env-fade 0.35s ease-out forwards, rc-env-pulse 2.5s ease-in-out 0.5s infinite;
 }
-.env-radio-item input[type="radio"] {
-  display: none;
+@keyframes rc-env-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(0,229,255,0.15), inset 0 0 12px rgba(0,229,255,0.04); }
+  50%      { box-shadow: 0 0 30px rgba(0,229,255,0.25), inset 0 0 16px rgba(0,229,255,0.08); }
 }
-.env-radio-emoji {
+.env-card-emoji {
   font-size: 28px;
   line-height: 1;
 }
-.env-radio-info {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-.env-radio-name {
+.env-card-name {
   font-family: var(--font-display);
   font-size: 11px;
   letter-spacing: 1.5px;
   color: var(--col-text);
   text-transform: uppercase;
 }
-.env-radio-item--selected .env-radio-name {
+.env-card--active .env-card-name {
   color: var(--col-cyan);
 }
-.env-radio-desc {
+.env-card-desc {
   font-size: 9px;
   color: var(--col-text-dim);
   opacity: 0.6;
-  text-align: center;
-  max-width: 100px;
   line-height: 1.3;
+  max-width: 120px;
 }
 
-/* ── Right panel: preview + actions, slide-in ── */
+/* ── Right panel: Preview ── */
 .race-config-right {
-  flex: 1;
+  flex: 0 0 45%;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1947,13 +1980,11 @@ canvas { display: block; }
   border: 1px solid rgba(255,255,255,0.08);
   box-shadow: 0 4px 20px rgba(0,0,0,0.4);
 }
-
 .env-preview-canvas {
   width: 100%;
   height: 100%;
   display: block;
 }
-
 .preview-overlay {
   position: absolute;
   bottom: 0; left: 0; right: 0;
@@ -1961,7 +1992,6 @@ canvas { display: block; }
   background: linear-gradient(transparent, rgba(0,0,0,0.7));
   backdrop-filter: blur(4px);
 }
-
 .preview-env-name {
   font-family: var(--font-display);
   font-size: 22px;
@@ -1976,10 +2006,13 @@ canvas { display: block; }
   font-style: italic;
 }
 
-/* ── Action buttons: pulsing START ── */
+/* ── Action bar (inside left column) ── */
 .race-config-actions {
   display: flex;
   gap: 12px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
 }
 .rc-start-btn {
   flex: 1;
@@ -2005,9 +2038,7 @@ canvas { display: block; }
   box-shadow: 0 0 35px rgba(255,77,0,0.6);
   animation: none;
 }
-.rc-start-btn:active {
-  transform: scale(0.97);
-}
+.rc-start-btn:active { transform: scale(0.97); }
 .rc-start-sub {
   display: block;
   font-family: var(--font-body);
@@ -2033,32 +2064,79 @@ canvas { display: block; }
   background: rgba(255,255,255,0.1);
   color: var(--col-text);
 }
-.rc-back-btn:active {
-  transform: scale(0.97);
-}
+.rc-back-btn:active { transform: scale(0.97); }
 
-/* Responsive: stack vertically on mobile */
+/* ── Mobile: full-screen vertical layout ── */
 @media (max-width: 768px) {
   .race-config-panel {
     flex-direction: column;
-    max-height: 90dvh;
-    padding: 12px;
-    gap: 8px;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
+    max-height: 100dvh;
+    height: 100dvh;
+    width: 100vw;
+    max-width: 100vw;
+    padding: 0;
+    gap: 0;
+    border-radius: 0;
+    border: none;
   }
-  .race-config-left {
+
+  .race-config-right {
     flex: none;
-    max-height: 35dvh;
-    overflow-y: auto;
+    order: -1; /* preview goes to top */
   }
   .preview-container {
-    min-height: 80px;
-    max-height: 18dvh;
+    min-height: 100px;
+    max-height: 22dvh;
+    border-radius: 0;
+    border: none;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
   }
+
+  .race-config-left {
+    flex: 1;
+    max-height: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 12px 16px 8px;
+    animation: none;
+  }
+  .race-config-title {
+    font-size: 22px;
+    margin-bottom: 6px;
+  }
+
+  .rc-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .rc-toggle-group {
+    width: 100%;
+  }
+  .rc-toggle {
+    flex: 1;
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .env-card-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+  .env-card {
+    padding: 10px 8px;
+    min-height: 44px;
+  }
+  .env-card-emoji { font-size: 22px; }
+  .env-card-name { font-size: 10px; }
+
   .race-config-actions {
     flex-shrink: 0;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
+    padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+    background: rgba(12,12,20,0.95);
+    border-top: 1px solid rgba(255,255,255,0.06);
+    position: sticky;
+    bottom: 0;
   }
 }
 
@@ -2383,17 +2461,6 @@ canvas { display: block; }
   }
   .settings-row { gap: 12px; min-height: 44px; }
   .settings-section { margin-top: 16px; }
-  /* Race config: landscape mobile overrides */
-  .race-config-panel {
-    max-height: 95dvh;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-  .race-config-panel .select-btn {
-    width: 100%;
-    font-size: clamp(18px, 4.5vw, 24px);
-    min-height: 56px;
-  }
 
   /* ── Garage: constrain to bottom so 3D car stays visible ── */
   .garage-ui {
@@ -2430,43 +2497,43 @@ canvas { display: block; }
   .paint-swatch { width: 24px; height: 24px; }
   .paint-slider { width: 100px; }
 
-  /* ── Race Config: stack vertically, compact controls ── */
+  /* ── Race Config: landscape mobile — compact layout ── */
   .race-config-panel {
-    flex-direction: column;
-    max-height: 92dvh;
+    flex-direction: row;
+    max-height: 95dvh;
     padding: 10px;
-    gap: 6px;
+    gap: 10px;
   }
   .race-config-left {
-    flex: none;
-    max-height: 32dvh;
+    flex: 1;
+    max-height: 85dvh;
     overflow-y: auto;
+  }
+  .race-config-right {
+    flex: 0 0 40%;
+    order: 0;
+  }
+  .preview-container {
+    min-height: 80px;
   }
   .race-config-title {
     font-size: clamp(18px, 5vw, 24px);
     margin-bottom: 6px;
   }
-  .race-config-right {
-    flex: none;
-    min-height: 0;
-  }
-  .preview-container {
-    min-height: 60px;
-    max-height: 15dvh;
-  }
   .race-config-actions {
     flex-shrink: 0;
     padding-bottom: max(8px, env(safe-area-inset-bottom));
   }
-  .env-radio-list {
-    padding: 2px 0 6px;
+  .env-card-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
   }
-  .env-radio-item {
-    min-width: 76px;
-    padding: 8px 10px 6px;
+  .env-card {
+    padding: 8px 6px;
   }
-  .env-radio-emoji { font-size: 22px; }
-  .env-radio-name { font-size: 10px; }
+  .env-card-emoji { font-size: 20px; }
+  .env-card-name { font-size: 9px; }
+  .env-card-desc { display: none; }
 
   /* ── Results: constrain scroll ── */
   .results-overlay {

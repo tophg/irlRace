@@ -617,84 +617,28 @@ export function showRaceConfig(
   const el = document.createElement('div');
   el.className = 'race-config-overlay';
 
-  // Build environment radio list HTML
-  const envListHtml = [
-    `<label class="env-radio-item env-radio-item--selected" data-env="random">
-      <input type="radio" name="env-select" value="random" checked>
-      <span class="env-radio-emoji">${ENV_EMOJI['Random']}</span>
-      <span class="env-radio-info">
-        <span class="env-radio-name">Random</span>
-        <span class="env-radio-desc">${ENV_FLAVOR['Random']}</span>
-      </span>
-    </label>`,
-    ...ENVIRONMENTS.map(e =>
-      `<label class="env-radio-item" data-env="${e.name}">
-        <input type="radio" name="env-select" value="${e.name}">
-        <span class="env-radio-emoji">${ENV_EMOJI[e.name] || '🏁'}</span>
-        <span class="env-radio-info">
-          <span class="env-radio-name">${e.name}</span>
-          <span class="env-radio-desc">${ENV_FLAVOR[e.name] || ''}</span>
-        </span>
-      </label>`
-    ),
+
+
+  // Build environment card grid
+  const envGridHtml = [
+    `<button class="env-card env-card--active" data-env="random" style="--env-accent: #00e5ff">
+      <span class="env-card-emoji">${ENV_EMOJI['Random']}</span>
+      <span class="env-card-name">Random</span>
+      <span class="env-card-desc">${ENV_FLAVOR['Random']}</span>
+    </button>`,
+    ...ENVIRONMENTS.map(e => {
+      const skyHex = '#' + (e.skyTop & 0xFFFFFF).toString(16).padStart(6, '0');
+      return `<button class="env-card" data-env="${e.name}" style="--env-accent: ${skyHex}">
+        <span class="env-card-emoji">${ENV_EMOJI[e.name] || '🏁'}</span>
+        <span class="env-card-name">${e.name}</span>
+        <span class="env-card-desc">${ENV_FLAVOR[e.name] || ''}</span>
+      </button>`;
+    }),
   ].join('');
 
   el.innerHTML = `
     <div class="race-config-panel">
-      <!-- Left: Controls -->
-      <div class="race-config-left">
-        <div class="race-config-title">RACE SETUP</div>
-
-        <div class="race-config-section-label">RACE</div>
-        <label class="rc-row">
-          <span>Laps</span>
-          <select id="cfg-laps" class="rc-select">
-            <option value="1">1</option>
-            <option value="3" selected>3</option>
-            <option value="5">5</option>
-            <option value="10">10</option>
-          </select>
-        </label>
-        <label class="rc-row">
-          <span>AI Opponents</span>
-          <select id="cfg-ai" class="rc-select">
-            <option value="0">None</option>
-            <option value="2">2</option>
-            <option value="4" selected>4</option>
-          </select>
-        </label>
-        <label class="rc-row">
-          <span>Difficulty</span>
-          <select id="cfg-difficulty" class="rc-select">
-            <option value="easy">Easy</option>
-            <option value="medium" selected>Medium</option>
-            <option value="hard">Hard</option>
-          </select>
-        </label>
-        <label class="rc-row">
-          <span>Weather</span>
-          <select id="cfg-weather" class="rc-select">
-            <option value="random" selected>Random</option>
-            <option value="clear">☀️ Clear</option>
-            <option value="light_rain">🌦️ Light Rain</option>
-            <option value="heavy_rain">🌧️ Heavy Rain</option>
-            <option value="snow">❄️ Snow</option>
-            <option value="blizzard">🌨️ Blizzard</option>
-            <option value="ice">🧊 Ice</option>
-          </select>
-        </label>
-        <label class="rc-row">
-          <span>Track Seed</span>
-          <input type="text" id="cfg-seed" placeholder="Random" maxlength="5" class="rc-input">
-        </label>
-
-        <div class="race-config-section-label" style="margin-top:16px;">ENVIRONMENT</div>
-        <div class="env-radio-list" id="env-radio-list">
-          ${envListHtml}
-        </div>
-      </div>
-
-      <!-- Right: Preview + actions -->
+      <!-- Preview (moves to top on mobile) -->
       <div class="race-config-right">
         <div class="preview-container">
           <canvas id="env-preview-canvas" class="env-preview-canvas"></canvas>
@@ -703,6 +647,66 @@ export function showRaceConfig(
             <div class="preview-env-desc" id="preview-env-desc">Let fate decide your track</div>
           </div>
         </div>
+      </div>
+
+      <!-- Controls (scrollable on mobile) -->
+      <div class="race-config-left">
+        <div class="race-config-title">RACE SETUP</div>
+
+        <div class="race-config-section-label">⚡ RACE</div>
+
+        <div class="rc-row">
+          <span class="rc-label">Laps</span>
+          <div class="rc-toggle-group" data-cfg="laps">
+            <button class="rc-toggle" data-val="1">1</button>
+            <button class="rc-toggle rc-toggle--active" data-val="3">3</button>
+            <button class="rc-toggle" data-val="5">5</button>
+            <button class="rc-toggle" data-val="10">10</button>
+          </div>
+        </div>
+
+        <div class="rc-row">
+          <span class="rc-label">AI Opponents</span>
+          <div class="rc-toggle-group" data-cfg="ai">
+            <button class="rc-toggle" data-val="0">None</button>
+            <button class="rc-toggle" data-val="2">2</button>
+            <button class="rc-toggle rc-toggle--active" data-val="4">4</button>
+          </div>
+        </div>
+
+        <div class="rc-row">
+          <span class="rc-label">Difficulty</span>
+          <div class="rc-toggle-group" data-cfg="difficulty">
+            <button class="rc-toggle" data-val="easy">Easy</button>
+            <button class="rc-toggle rc-toggle--active" data-val="medium">Medium</button>
+            <button class="rc-toggle" data-val="hard">Hard</button>
+          </div>
+        </div>
+
+        <div class="rc-row">
+          <span class="rc-label">Weather</span>
+          <div class="rc-toggle-group rc-toggle-group--wrap" data-cfg="weather">
+            <button class="rc-toggle rc-toggle--active" data-val="random" title="Random">🎲</button>
+            <button class="rc-toggle" data-val="clear" title="Clear">☀️</button>
+            <button class="rc-toggle" data-val="light_rain" title="Light Rain">🌦️</button>
+            <button class="rc-toggle" data-val="heavy_rain" title="Heavy Rain">🌧️</button>
+            <button class="rc-toggle" data-val="snow" title="Snow">❄️</button>
+            <button class="rc-toggle" data-val="blizzard" title="Blizzard">🌨️</button>
+            <button class="rc-toggle" data-val="ice" title="Ice">🧊</button>
+          </div>
+        </div>
+
+        <div class="rc-row">
+          <span class="rc-label">Track Seed</span>
+          <input type="text" id="cfg-seed" placeholder="Random" maxlength="5" class="rc-input">
+        </div>
+
+        <div class="race-config-section-label" style="margin-top:12px;">🌍 ENVIRONMENT</div>
+        <div class="env-card-grid" id="env-card-grid">
+          ${envGridHtml}
+        </div>
+
+        <!-- Actions at bottom of controls -->
         <div class="race-config-actions">
           <button class="rc-start-btn" id="cfg-go">START RACE<span class="rc-start-sub" id="rc-start-sub"></span></button>
           <button class="rc-back-btn" id="cfg-back">BACK</button>
@@ -733,23 +737,36 @@ export function showRaceConfig(
     setPreviewEnvironment(initialEnv);
   }
 
-  // Wire environment radio list
-  const envList = document.getElementById('env-radio-list')!;
-  envList.addEventListener('change', (e) => {
-    const target = e.target as HTMLInputElement;
-    if (!target || target.type !== 'radio') return;
+  // Wire toggle groups (generic: works for laps, ai, difficulty, weather)
+  el.querySelectorAll('.rc-toggle-group').forEach(group => {
+    group.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('.rc-toggle') as HTMLElement;
+      if (!btn) return;
+      group.querySelectorAll('.rc-toggle').forEach(t => t.classList.remove('rc-toggle--active'));
+      btn.classList.add('rc-toggle--active');
+
+      // Weather: update preview weather
+      if ((group as HTMLElement).dataset.cfg === 'weather') {
+        _previewWeather = btn.dataset.val || 'random';
+      }
+      updateStartSub(el);
+    });
+  });
+
+  // Wire environment card grid
+  const envGrid = document.getElementById('env-card-grid')!;
+  envGrid.addEventListener('click', (e) => {
+    const card = (e.target as HTMLElement).closest('.env-card') as HTMLElement;
+    if (!card) return;
 
     // Update selected visual
-    envList.querySelectorAll('.env-radio-item').forEach(item =>
-      item.classList.remove('env-radio-item--selected')
-    );
-    (target.closest('.env-radio-item') as HTMLElement)?.classList.add('env-radio-item--selected');
+    envGrid.querySelectorAll('.env-card').forEach(c => c.classList.remove('env-card--active'));
+    card.classList.add('env-card--active');
 
-    const val = target.value;
+    const val = card.dataset.env || 'random';
     if (val === 'random') {
       const randEnv = ENVIRONMENTS[Math.floor(Math.random() * ENVIRONMENTS.length)];
       setPreviewEnvironment(randEnv);
-      // Update overlay text for random
       const nameEl = document.getElementById('preview-env-name');
       const descEl = document.getElementById('preview-env-desc');
       if (nameEl) nameEl.textContent = '🎲 Random';
@@ -758,23 +775,26 @@ export function showRaceConfig(
       const preset = ENVIRONMENTS.find(env => env.name === val);
       if (preset) setPreviewEnvironment(preset);
     }
-  });
-
-  // Wire weather select → preview particles + subtitle update
-  const weatherSelect = el.querySelector('#cfg-weather') as HTMLSelectElement;
-  weatherSelect.addEventListener('change', () => {
-    _previewWeather = weatherSelect.value;
     updateStartSub(el);
   });
 
-  // Wire all config changes to update subtitle
-  el.querySelector('#cfg-laps')?.addEventListener('change', () => updateStartSub(el));
-  el.querySelector('#cfg-ai')?.addEventListener('change', () => updateStartSub(el));
-  el.querySelector('#cfg-difficulty')?.addEventListener('change', () => updateStartSub(el));
-  envList.addEventListener('change', () => setTimeout(() => updateStartSub(el), 10));
-
   // Initial subtitle
   updateStartSub(el);
+
+  // Keyboard navigation
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      document.getElementById('cfg-go')?.click();
+    }
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      const cards = Array.from(envGrid.querySelectorAll('.env-card')) as HTMLElement[];
+      const activeIdx = cards.findIndex(c => c.classList.contains('env-card--active'));
+      const next = e.key === 'ArrowRight'
+        ? Math.min(activeIdx + 1, cards.length - 1)
+        : Math.max(activeIdx - 1, 0);
+      if (next !== activeIdx) cards[next].click();
+    }
+  });
 
   // Wire buttons
   document.getElementById('cfg-back')!.addEventListener('click', () => {
@@ -783,14 +803,20 @@ export function showRaceConfig(
     onBack();
   });
 
+  // Helper: get active toggle value
+  const getToggleVal = (cfgName: string): string => {
+    const active = el.querySelector(`.rc-toggle-group[data-cfg="${cfgName}"] .rc-toggle--active`) as HTMLElement;
+    return active?.dataset.val || '';
+  };
+
   document.getElementById('cfg-go')!.addEventListener('click', () => {
-    const laps = parseInt((el.querySelector('#cfg-laps') as HTMLSelectElement).value);
-    const ai = parseInt((el.querySelector('#cfg-ai') as HTMLSelectElement).value);
-    const difficulty = (el.querySelector('#cfg-difficulty') as HTMLSelectElement).value as 'easy' | 'medium' | 'hard';
+    const laps = parseInt(getToggleVal('laps') || '3');
+    const ai = parseInt(getToggleVal('ai') || '4');
+    const difficulty = (getToggleVal('difficulty') || 'medium') as 'easy' | 'medium' | 'hard';
     const seed = (el.querySelector('#cfg-seed') as HTMLInputElement).value.trim();
-    const weather = (el.querySelector('#cfg-weather') as HTMLSelectElement).value;
-    const envRadio = el.querySelector('input[name="env-select"]:checked') as HTMLInputElement;
-    const environment = envRadio?.value || 'random';
+    const weather = getToggleVal('weather') || 'random';
+    const activeEnv = envGrid.querySelector('.env-card--active') as HTMLElement;
+    const environment = activeEnv?.dataset.env || 'random';
     destroyPreview();
     el.remove();
     onStart(laps, ai, difficulty, seed, weather, environment);
@@ -801,11 +827,17 @@ export function showRaceConfig(
 function updateStartSub(el: HTMLElement) {
   const sub = el.querySelector('#rc-start-sub');
   if (!sub) return;
-  const laps = (el.querySelector('#cfg-laps') as HTMLSelectElement)?.value || '3';
-  const envRadio = el.querySelector('input[name="env-select"]:checked') as HTMLInputElement;
-  const envName = envRadio?.value === 'random' ? 'Random' : (envRadio?.value || 'Random');
-  const weather = (el.querySelector('#cfg-weather') as HTMLSelectElement);
-  const weatherLabel = weather?.selectedOptions?.[0]?.textContent?.replace(/^\S+\s/, '') || 'Random';
+
+  const getVal = (cfg: string) => {
+    const active = el.querySelector(`.rc-toggle-group[data-cfg="${cfg}"] .rc-toggle--active`) as HTMLElement;
+    return active?.dataset.val || '';
+  };
+
+  const laps = getVal('laps') || '3';
+  const activeEnv = el.querySelector('.env-card--active') as HTMLElement;
+  const envName = activeEnv?.dataset.env === 'random' ? 'Random' : (activeEnv?.dataset.env || 'Random');
+  const weatherVal = getVal('weather');
+  const weatherLabel = weatherVal === 'random' ? 'Random' : (el.querySelector(`.rc-toggle-group[data-cfg="weather"] .rc-toggle--active`) as HTMLElement)?.title || 'Random';
   sub.textContent = `${laps} Lap${laps === '1' ? '' : 's'} · ${envName} · ${weatherLabel}`;
 }
 
