@@ -483,6 +483,7 @@ canvas { display: block; }
 }
 
 /* ── Garage / Car Select ── */
+/* ── Garage UI: Layout ── */
 .garage-ui {
   position: absolute; inset: 0;
   display: flex; flex-direction: column;
@@ -491,12 +492,26 @@ canvas { display: block; }
   z-index: 50;
 }
 
+/* ── Car Name: entrance animation ── */
 .car-name {
   font-family: var(--font-display);
   font-size: 36px;
   color: var(--col-text);
   text-shadow: 0 0 16px rgba(255,77,0,0.4);
+  animation: garage-name-in 0.5s ease-out 0.2s both;
 }
+@keyframes garage-name-in {
+  from { opacity: 0; transform: translateY(-16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.car-name.swapping {
+  animation: garage-name-out 0.15s ease-in forwards;
+}
+@keyframes garage-name-out {
+  to { opacity: 0; transform: translateX(12px); }
+}
+
+/* ── Progress Bar ── */
 .garage-progress-bar {
   width: 200px; height: 4px;
   background: rgba(255,255,255,0.08);
@@ -511,9 +526,23 @@ canvas { display: block; }
   transition: width 0.15s ease-out;
 }
 
+/* ── Stats Panel: glassmorphism + entrance ── */
 .car-stats {
   display: flex; gap: 24px;
+  background: rgba(12,12,20,0.7);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(0,229,255,0.1);
+  border-radius: 12px;
+  padding: 16px 24px;
+  box-shadow: inset 0 0 30px rgba(0,229,255,0.03);
+  animation: garage-stats-in 0.5s ease-out 0.3s both;
 }
+@keyframes garage-stats-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Stat Bars ── */
 .stat-bar {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
 }
@@ -532,11 +561,21 @@ canvas { display: block; }
   height: 100%;
   background: linear-gradient(90deg, var(--col-accent), var(--col-yellow));
   border-radius: 3px;
-  transition: width 0.4s ease;
+  animation: stat-sweep 0.6s ease-out forwards;
+}
+@keyframes stat-sweep {
+  from { transform: scaleX(0); transform-origin: left; }
+  to   { transform: scaleX(1); transform-origin: left; }
 }
 
+/* ── Nav Buttons: micro-interactions + entrance ── */
 .car-nav {
   display: flex; gap: 16px; align-items: center;
+  animation: garage-nav-in 0.4s ease-out 0.4s both;
+}
+@keyframes garage-nav-in {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
 }
 .car-nav-btn {
   width: 48px; height: 48px;
@@ -547,10 +586,14 @@ canvas { display: block; }
   font-size: 24px;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  transition: all 0.2s;
+  transition: all 0.2s, transform 0.15s;
 }
 .car-nav-btn:hover { background: var(--col-accent); }
+.car-nav-btn:active { transform: scale(0.88); }
+#garage-prev:hover { transform: translateX(-3px); }
+#garage-next:hover { transform: translateX(3px); }
 
+/* ── SELECT Button: pulsing glow ── */
 .select-btn {
   padding: 14px 48px;
   border: none;
@@ -563,28 +606,49 @@ canvas { display: block; }
   cursor: pointer;
   transition: all 0.2s;
   box-shadow: 0 4px 20px rgba(255,77,0,0.4);
+  animation: select-pulse 2s ease-in-out infinite;
 }
-.select-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 30px rgba(255,77,0,0.6); }
+@keyframes select-pulse {
+  0%, 100% { box-shadow: 0 4px 20px rgba(255,77,0,0.4); }
+  50%      { box-shadow: 0 4px 35px rgba(255,77,0,0.7), 0 0 60px rgba(255,77,0,0.15); }
+}
+.select-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 30px rgba(255,77,0,0.6);
+  animation: none;
+}
+.select-btn:active {
+  transform: scale(0.97);
+}
 
-/* ── Garage Dot Indicators ── */
+/* ── Garage Dot Indicators: enhanced + cascade ── */
 .garage-dots {
   display: flex; gap: 8px;
   justify-content: center;
   margin-top: 8px;
+  animation: garage-dots-in 0.4s ease-out 0.5s both;
+}
+@keyframes garage-dots-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .garage-dot {
-  width: 10px; height: 10px;
+  width: 12px; height: 12px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.2);
-  border: 1.5px solid rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.15);
+  border: 1.5px solid rgba(255,255,255,0.25);
   transition: all 0.3s ease;
   cursor: pointer;
+}
+.garage-dot:hover {
+  background: rgba(255,255,255,0.3);
+  transform: scale(1.15);
 }
 .garage-dot.active {
   background: var(--col-accent);
   border-color: var(--col-accent);
-  box-shadow: 0 0 8px rgba(255,77,0,0.6);
-  transform: scale(1.3);
+  box-shadow: 0 0 10px rgba(255,77,0,0.6), 0 0 20px rgba(255,77,0,0.2);
+  transform: scale(1.4);
 }
 .garage-dot.locked {
   background: rgba(255,255,255,0.05);
@@ -595,6 +659,130 @@ canvas { display: block; }
   background: rgba(255,77,0,0.3);
   border-color: var(--col-accent);
   border-style: solid;
+}
+
+/* ── Paint Shop: proper CSS classes ── */
+.paint-shop {
+  animation: garage-paint-in 0.4s ease-out 0.55s both;
+}
+@keyframes garage-paint-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.paint-shop-row {
+  display: flex; align-items: center; justify-content: center;
+  gap: 10px; margin-bottom: 6px;
+}
+.paint-swatch {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.3);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.paint-swatch:hover {
+  border-color: rgba(255,255,255,0.6);
+  box-shadow: 0 0 8px rgba(0,229,255,0.2);
+}
+.paint-slider {
+  width: 140px;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right,
+    hsl(0,85%,45%), hsl(60,85%,45%), hsl(120,85%,45%),
+    hsl(180,85%,45%), hsl(240,85%,45%), hsl(300,85%,45%), hsl(360,85%,45%)
+  );
+  outline: none;
+}
+.paint-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(0,0,0,0.5);
+  cursor: pointer;
+}
+.paint-actions {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.paint-buy-btn {
+  font-family: var(--font-body);
+  font-size: 11px;
+  padding: 5px 14px;
+  border-radius: 4px;
+  border: none;
+  background: linear-gradient(135deg, #ff8800, #ff6600);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: opacity 0.2s, transform 0.15s;
+}
+.paint-buy-btn:hover { transform: scale(1.03); }
+.paint-buy-btn:active { transform: scale(0.97); }
+.paint-reset-btn {
+  font-family: var(--font-body);
+  font-size: 10px;
+  background: none;
+  border: 1px solid rgba(255,255,255,0.2);
+  color: rgba(255,255,255,0.5);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.paint-reset-btn:hover {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.7);
+}
+.paint-balance {
+  text-align: center;
+  margin-top: 4px;
+  font-size: 10px;
+  color: rgba(255,255,255,0.4);
+}
+.paint-toast {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 4px;
+  height: 16px;
+  transition: opacity 0.3s;
+  opacity: 0;
+}
+
+/* ── Tier Badge ── */
+.tier-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 3px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #111;
+}
+.lock-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #fff;
+  margin-left: 6px;
+}
+.stat-credits {
+  text-align: center;
+  margin-top: 6px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+}
+.stat-credits-value {
+  color: #ffcc00;
+  font-weight: 700;
 }
 
 /* ── HUD ── */

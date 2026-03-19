@@ -452,21 +452,16 @@ function buildGarageUI(overlay: HTMLElement) {
       <button class="car-nav-btn" id="garage-next">▶</button>
     </div>
     <div class="paint-shop" id="paint-shop">
-      <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px">
-        <div id="paint-swatch" style="width:28px;height:28px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);background:hsl(180,85%,45%)"></div>
-        <input type="range" min="0" max="360" value="${getSettings().paintHue >= 0 ? getSettings().paintHue : 180}" id="garage-paint"
-               style="width:140px;-webkit-appearance:none;height:8px;border-radius:4px;
-                      background:linear-gradient(to right,hsl(0,85%,45%),hsl(60,85%,45%),hsl(120,85%,45%),hsl(180,85%,45%),hsl(240,85%,45%),hsl(300,85%,45%),hsl(360,85%,45%))">
+      <div class="paint-shop-row">
+        <div id="paint-swatch" class="paint-swatch" style="background:hsl(${getSettings().paintHue >= 0 ? getSettings().paintHue : 180},85%,45%)"></div>
+        <input type="range" min="0" max="360" value="${getSettings().paintHue >= 0 ? getSettings().paintHue : 180}" id="garage-paint" class="paint-slider">
       </div>
-      <div style="display:flex;align-items:center;justify-content:center;gap:8px">
-        <button id="garage-paint-buy" style="font-size:11px;padding:5px 14px;border-radius:4px;border:none;
-                background:linear-gradient(135deg,#ff8800,#ff6600);color:#fff;font-weight:700;cursor:pointer;
-                letter-spacing:0.5px;transition:opacity 0.2s">BUY PAINT — 100 CR</button>
-        <button id="garage-paint-reset" style="font-size:10px;background:none;border:1px solid rgba(255,255,255,0.2);
-                color:rgba(255,255,255,0.5);padding:4px 10px;border-radius:4px;cursor:pointer">RESET</button>
+      <div class="paint-actions">
+        <button id="garage-paint-buy" class="paint-buy-btn">BUY PAINT — 100 CR</button>
+        <button id="garage-paint-reset" class="paint-reset-btn">RESET</button>
       </div>
-      <div id="paint-balance" style="text-align:center;margin-top:4px;font-size:10px;color:rgba(255,255,255,0.4)"></div>
-      <div id="paint-toast" style="text-align:center;font-size:11px;font-weight:700;margin-top:4px;height:16px;transition:opacity 0.3s;opacity:0"></div>
+      <div id="paint-balance" class="paint-balance"></div>
+      <div id="paint-toast" class="paint-toast"></div>
     </div>
   `;
 
@@ -546,7 +541,7 @@ function buildGarageUI(overlay: HTMLElement) {
     showPaintToast('Paint applied!', '#44ff88');
     playSpraySfx();
     // Update credit display in stats
-    const creditEl = document.querySelector('#garage-stats [style*="color:#ffcc00"]');
+    const creditEl = document.querySelector('.stat-credits-value');
     if (creditEl) creditEl.textContent = `${prog.credits} CR`;
   });
 
@@ -576,7 +571,18 @@ async function showCar(index: number) {
   const requestId = ++showCarRequestId;
 
   const nameEl = document.getElementById('garage-car-name');
-  if (nameEl) nameEl.textContent = car.name;
+  if (nameEl) {
+    // Swap animation: fade out → update → fade in
+    nameEl.classList.add('swapping');
+    setTimeout(() => {
+      nameEl.textContent = car.name;
+      nameEl.classList.remove('swapping');
+      nameEl.style.animation = 'none';
+      // Force reflow
+      void nameEl.offsetHeight;
+      nameEl.style.animation = '';
+    }, 150);
+  }
 
   // Update dot indicator highlights
   updateDots(index);
@@ -590,6 +596,9 @@ async function showCar(index: number) {
   // Update ring color to match tier
   setTierColor(index);
 
+  // Set tier color CSS variable on garage UI
+  if (uiEl) uiEl.style.setProperty('--tier-color', tierInfo.color);
+
   const statsEl = document.getElementById('garage-stats');
   if (statsEl) {
     const maxStat = { speed: 92, accel: 38, handling: 3.4, drift: 0.52, grip: 1.12 };
@@ -601,8 +610,8 @@ async function showCar(index: number) {
 
     statsEl.innerHTML = `
       <div style="text-align:center;margin-bottom:8px">
-        <span style="background:${tierInfo.color};color:#111;padding:2px 10px;border-radius:3px;font-weight:700;font-size:11px;letter-spacing:1px">${tierInfo.label}</span>
-        <span style="background:${lockColor};color:#fff;padding:2px 8px;border-radius:3px;font-weight:700;font-size:10px;letter-spacing:1px;margin-left:6px">${lockLabel}</span>
+        <span class="tier-badge" style="background:${tierInfo.color}">${tierInfo.label}</span>
+        <span class="lock-badge" style="background:${lockColor}">${lockLabel}</span>
       </div>
       <div class="stat-bar">
         <div class="bar-track"><div class="bar-fill" style="width:${(car.maxSpeed / maxStat.speed) * 100}%"></div></div>
@@ -624,8 +633,8 @@ async function showCar(index: number) {
         <div class="bar-track"><div class="bar-fill" style="width:${(car.driftFactor / maxStat.drift) * 100}%"></div></div>
         <label>Drift</label>
       </div>
-      <div style="text-align:center;margin-top:6px;font-size:11px;color:rgba(255,255,255,0.5)">
-        Credits: <span style="color:#ffcc00;font-weight:700">${prog.credits} CR</span>
+      <div class="stat-credits">
+        Credits: <span class="stat-credits-value">${prog.credits} CR</span>
       </div>
     `;
 
