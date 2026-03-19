@@ -112,7 +112,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeCanopyStyle: 'sphere', treeCount: 30,
       billboardStyle: 'neon',
       streetLightColor: 0xffdd88, streetLightDensity: 1.0,
-      groundTexture: 'concrete',
+      groundTexture: 'grass',
       kerbColor: 0x888888, shoulderColor: 0x333333,
       mountainColor: 0x1a1a2e, mountainHeight: 1, cloudOpacity: 0.3, cloudTint: 0x2a2a40,
       fenceDensity: 1.0, rockDensity: 0.3, rockColor: 0x444450, bushDensity: 0.3,
