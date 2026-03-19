@@ -58,6 +58,7 @@ let progressBarEl: HTMLElement | null = null;
 let _pointerDownHandler: ((e: PointerEvent) => void) | null = null;
 let _pointerMoveHandler: ((e: PointerEvent) => void) | null = null;
 let _pointerUpHandler: ((e: PointerEvent) => void) | null = null;
+let _garageResizeHandler: (() => void) | null = null;
 
 export function initGarage(
   renderer: THREE.WebGPURenderer,
@@ -74,6 +75,14 @@ export function initGarage(
   garageCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
   garageCamera.position.set(0, 2.8, 7.5);
   garageCamera.lookAt(0, 0.8, 0);
+
+  // Resize handler for orientation changes mid-garage
+  _garageResizeHandler = () => {
+    if (!garageCamera) return;
+    garageCamera.aspect = window.innerWidth / window.innerHeight;
+    garageCamera.updateProjectionMatrix();
+  };
+  window.addEventListener('resize', _garageResizeHandler);
 
   // ── Showroom Lighting — Bright Cinematic ──
 
@@ -824,6 +833,9 @@ export function destroyGarage() {
 
   // Unwire keyboard navigation
   unwireKeyboardNav();
+
+  // Remove resize listener
+  if (_garageResizeHandler) { window.removeEventListener('resize', _garageResizeHandler); _garageResizeHandler = null; }
 
   // Unwire pointer event listeners
   if (_pointerDownHandler) { window.removeEventListener('pointerdown', _pointerDownHandler); _pointerDownHandler = null; }

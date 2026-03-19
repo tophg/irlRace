@@ -103,6 +103,25 @@ export function spawnConfetti() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// FULLSCREEN API
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** Toggle browser fullscreen mode (hides address bar on Android). */
+export function toggleFullscreen() {
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+  } else {
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
+}
+
+/** Returns true if the browser supports the Fullscreen API (excludes iOS). */
+export function isFullscreenSupported(): boolean {
+  return !!document.documentElement.requestFullscreen
+    && !/iPad|iPhone|iPod/.test(navigator.userAgent);
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // DEBUG OVERLAY
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 

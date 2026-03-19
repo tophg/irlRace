@@ -141,6 +141,14 @@ function createTitleScene() {
   titleCamera.position.set(0, 0.4, 5);
   titleCamera.lookAt(0, 0.6, 0);
 
+  // Resize handler for orientation changes on title screen
+  window.addEventListener('resize', () => {
+    if (titleCamera) {
+      titleCamera.aspect = window.innerWidth / window.innerHeight;
+      titleCamera.updateProjectionMatrix();
+    }
+  });
+
   // ── Lighting — starts dark, activates during reveal ──
   titleAmbient = new THREE.AmbientLight(0x334455, 0.15);
   titleScene.add(titleAmbient);
