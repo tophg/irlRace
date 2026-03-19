@@ -164,21 +164,18 @@ function createTitleScene() {
   ground.position.y = 0;
   titleScene.add(ground);
 
-  // Load random car (async, non-blocking)
-  const carCount = Math.min(5, CAR_ROSTER.length);
-  if (carCount === 0) return;
-  const randomCar = CAR_ROSTER[Math.floor(Math.random() * carCount)];
-  console.log('[TitleScreen] Loading car:', randomCar.file);
-  loadCarModel(randomCar.file).then((model: THREE.Group) => {
+  // Always show the Ferrari — best visual showcase car
+  const titleCar = CAR_ROSTER.find(c => c.file === 'Ferrari.glb') ?? CAR_ROSTER[CAR_ROSTER.length - 1];
+  console.log('[TitleScreen] Loading car:', titleCar.file);
+  loadCarModel(titleCar.file).then((model: THREE.Group) => {
     if (!titleScene) return; // cleaned up before load finished
-    // processCarModel already centers the model with tires at y=0
-    // Just nudge up slightly to sit on the ground plane
-    model.position.y = 0;
+    // Raise slightly so wheels sit on the ground plane (processCarModel centers at tire contact)
+    model.position.y = 0.15;
     titleScene!.add(model);
     titleCarModel = model;
-    console.log('[TitleScreen] Car loaded successfully:', randomCar.file);
+    console.log('[TitleScreen] Car loaded successfully:', titleCar.file);
   }).catch((err) => {
-    console.warn('[TitleScreen] Failed to load car:', randomCar.file, err);
+    console.warn('[TitleScreen] Failed to load car:', titleCar.file, err);
   });
 }
 
