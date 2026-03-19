@@ -1,4 +1,4 @@
-/* ── Hood Racer — Scene Setup + Environment Presets ──
+/* ── IRL Race — Scene Setup + Environment Presets ──
  *
  * Uses WebGPURenderer (auto-fallback to WebGL2).
  * Sky dome uses TSL NodeMaterial with animated gradient, stars, and cloud wisps.

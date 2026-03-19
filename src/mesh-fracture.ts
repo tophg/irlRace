@@ -1,4 +1,4 @@
-/* ── Hood Racer — Runtime Mesh Fracture ──
+/* ── IRL Race — Runtime Mesh Fracture ──
  *
  * Splits a single THREE.Mesh into N spatial fragments at runtime.
  * Used by the vehicle destruction system to break single-mesh GLB car

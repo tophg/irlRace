@@ -1,4 +1,4 @@
-/* ── Hood Racer — Hood Generator (Orchestrator) ── */
+/* ── IRL Race — Hood Generator (Orchestrator) ── */
 /* Address → Playable TrackData */
 
 import { geocodeAddress, reverseGeocode, GeoResult } from './geocode';
@@ -39,19 +39,19 @@ export async function generateHoodTrack(
     maxControlPoints = 16,
   } = options;
 
-  console.log(`[HoodRacer] Generating track for: "${address}"`);
+  console.log(`[IRLRace] Generating track for: "${address}"`);
 
   // ── Step 1: Geocode ──
   const geo = await geocodeAddress(address);
-  console.log(`[HoodRacer] Geocoded to: ${geo.lat.toFixed(5)}, ${geo.lon.toFixed(5)}`);
+  console.log(`[IRLRace] Geocoded to: ${geo.lat.toFixed(5)}, ${geo.lon.toFixed(5)}`);
 
   // ── Step 2: Get hood name ──
   const hoodName = await reverseGeocode(geo.lat, geo.lon);
-  console.log(`[HoodRacer] Hood: ${hoodName}`);
+  console.log(`[IRLRace] Hood: ${hoodName}`);
 
   // ── Step 3: Fetch road network ──
   const network = await fetchRoadNetwork(geo.lat, geo.lon, radiusM);
-  console.log(`[HoodRacer] Fetched ${network.nodes.size} nodes, ${network.ways.length} ways`);
+  console.log(`[IRLRace] Fetched ${network.nodes.size} nodes, ${network.ways.length} ways`);
 
   if (network.ways.length === 0) {
     throw new Error(`No drivable roads found near "${address}". Try a different address.`);
@@ -65,7 +65,7 @@ export async function generateHoodTrack(
     throw new Error(`Could not find a road node near "${address}".`);
   }
 
-  console.log(`[HoodRacer] Graph: ${graph.size} nodes, start=${startNode}`);
+  console.log(`[IRLRace] Graph: ${graph.size} nodes, start=${startNode}`);
 
   // ── Step 5: Find a closed loop ──
   const loopNodeIds = findRaceLoop(graph, network.nodes, startNode, targetLengthM);
@@ -74,7 +74,7 @@ export async function generateHoodTrack(
     throw new Error(`Could not find a suitable race circuit near "${address}". Try a busier area.`);
   }
 
-  console.log(`[HoodRacer] Found loop with ${loopNodeIds.length} nodes`);
+  console.log(`[IRLRace] Found loop with ${loopNodeIds.length} nodes`);
 
   // ── Step 6: Simplify to control points ──
   const simplified = simplifyLoop(loopNodeIds, network.nodes, maxControlPoints);
@@ -86,14 +86,14 @@ export async function generateHoodTrack(
     return { x: projected.x, z: projected.z };
   });
 
-  console.log(`[HoodRacer] ${controlPoints.length} control points, building track...`);
+  console.log(`[IRLRace] ${controlPoints.length} control points, building track...`);
 
   // ── Step 8: Build track using existing pipeline ──
   const trackData = buildTrackFromControlPoints(controlPoints);
 
   const loopCoords = simplified.map(p => ({ lat: p.lat, lon: p.lon }));
 
-  console.log(`[HoodRacer] Track built! Length: ${trackData.totalLength.toFixed(0)}m`);
+  console.log(`[IRLRace] Track built! Length: ${trackData.totalLength.toFixed(0)}m`);
 
   return {
     trackData,

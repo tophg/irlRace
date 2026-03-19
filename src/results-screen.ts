@@ -1,4 +1,4 @@
-/* ── Hood Racer — Results Screen ── */
+/* ── IRL Race — Results Screen ── */
 
 import { GameState, EventType } from './types';
 import { G } from './game-context';

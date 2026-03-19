@@ -1,4 +1,4 @@
-/* ── Hood Racer — Race Replay System ── */
+/* ── IRL Race — Race Replay System ── */
 
 import * as THREE from 'three/webgpu';
 

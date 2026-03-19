@@ -1,4 +1,4 @@
-/* ── Hood Racer — Multiplayer Handler ──
+/* ── IRL Race — Multiplayer Handler ──
  *
  * Handles lobby management, network callback wiring,
  * and player list broadcasting. Extracted from main.ts.

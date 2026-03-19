@@ -1,4 +1,4 @@
-/* ── Hood Racer — Minimap (Canvas-Based Track Radar) ── */
+/* ── IRL Race — Minimap (Canvas-Based Track Radar) ── */
 
 import * as THREE from 'three/webgpu';
 

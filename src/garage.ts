@@ -1,4 +1,4 @@
-/* ── Hood Racer — Garage / Car Selection Scene ── */
+/* ── IRL Race — Garage / Car Selection Scene ── */
 
 import * as THREE from 'three/webgpu';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';

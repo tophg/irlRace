@@ -1,4 +1,4 @@
-/* ── Hood Racer — Nitrous Sound Effects (procedural) ──
+/* ── IRL Race — Nitrous Sound Effects (procedural) ──
  *
  * Extracted from audio.ts. All NOS-related SFX:
  *   • Activation blast (sub-bass thump + air burst + metallic ping)

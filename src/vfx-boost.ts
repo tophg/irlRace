@@ -1,4 +1,4 @@
-/* ── Hood Racer — Boost & Nitro VFX ── */
+/* ── IRL Race — Boost & Nitro VFX ── */
 
 import * as THREE from 'three/webgpu';
 import { spawnGPUBackfire } from './gpu-particles';

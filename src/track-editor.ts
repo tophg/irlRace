@@ -1,4 +1,4 @@
-/* ── Hood Racer — Track Editor ──
+/* ── IRL Race — Track Editor ──
  *
  * Split-view editor: 2D canvas (left) + full 3D viewport (right).
  * Users place/drag/delete CatmullRom control points on the 2D canvas,

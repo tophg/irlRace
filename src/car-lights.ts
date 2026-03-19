@@ -143,7 +143,7 @@ export const CAR_LIGHT_MAP: Record<string, CarLightDef> = {
 };
 
 // ── Persistence Layer ── //
-const CALIBRATION_STORAGE_KEY = 'hood-racer-calibration-overrides';
+const CALIBRATION_STORAGE_KEY = 'irl-race-calibration-overrides';
 
 export function saveCalibrationOverride(modelId: string, def: CarLightDef) {
   CAR_LIGHT_MAP[modelId] = def;

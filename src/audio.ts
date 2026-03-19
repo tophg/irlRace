@@ -1,4 +1,4 @@
-/* ── Hood Racer — Procedural Audio (v2 — Multi-Layer Engine) ── */
+/* ── IRL Race — Procedural Audio (v2 — Multi-Layer Engine) ── */
 
 import { getSettings } from './settings';
 import { initNitroAudio, cleanupNitroAudio } from './audio-nitro';

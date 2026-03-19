@@ -1,4 +1,4 @@
-/* ── Hood Racer — Ghost Car System ── */
+/* ── IRL Race — Ghost Car System ── */
 /* Records the player's best lap as position/heading snapshots,
  * then replays it as a semi-transparent "ghost" car for time trial. */
 

@@ -1,4 +1,4 @@
-/* ── Hood Racer — Progression System ── */
+/* ── IRL Race — Progression System ── */
 
 const STORAGE_KEY = 'hr-progress';
 

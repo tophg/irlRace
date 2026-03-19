@@ -1,4 +1,4 @@
-/* ── Hood Racer — OSM Road Network Fetcher ── */
+/* ── IRL Race — OSM Road Network Fetcher ── */
 
 import { haversineM } from './projection';
 

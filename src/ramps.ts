@@ -1,4 +1,4 @@
-/* ── Hood Racer — Ramp Mesh Builder ── */
+/* ── IRL Race — Ramp Mesh Builder ── */
 
 import * as THREE from 'three/webgpu';
 import type { RampDef } from './types';

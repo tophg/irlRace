@@ -1,4 +1,4 @@
-/* ── Hood Racer — VFX Hub (Particles & Effects) ──
+/* ── IRL Race — VFX Hub (Particles & Effects) ──
  *
  * This file contains smoke-pool-based effects (tire smoke, damage smoke,
  * damage flames, damage zone smoke, tire blowout), speed lines, name tags,

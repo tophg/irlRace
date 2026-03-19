@@ -1,4 +1,4 @@
-/* ── Hood Racer — Spectator Mode ── */
+/* ── IRL Race — Spectator Mode ── */
 
 import { G } from './game-context';
 import { resolvePlayerName } from './results-screen';

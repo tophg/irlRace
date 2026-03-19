@@ -1,4 +1,4 @@
-/* ── Hood Racer — BVH (Bounding Volume Hierarchy) ──
+/* ── IRL Race — BVH (Bounding Volume Hierarchy) ──
  *
  * Two structures:
  *

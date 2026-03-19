@@ -1,4 +1,4 @@
-/* ── Hood Racer — Replay UI & Playback Controller ──
+/* ── IRL Race — Replay UI & Playback Controller ──
  *
  * Extracted from main.ts. Manages replay HUD, scrub bar,
  * camera mode buttons, keyboard shortcuts, and free camera orbit.

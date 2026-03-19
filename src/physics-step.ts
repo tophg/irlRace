@@ -1,4 +1,4 @@
-/* ── Hood Racer — Fixed-Timestep Physics Step ──
+/* ── IRL Race — Fixed-Timestep Physics Step ──
  *
  * Extracted from game-loop.ts. Contains the deterministic 60Hz physics
  * sub-step: vehicle updates, AI pathfinding, car-to-car and barrier

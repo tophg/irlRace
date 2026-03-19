@@ -1,4 +1,4 @@
-/* ── Hood Racer — Environment & Atmosphere VFX ── */
+/* ── IRL Race — Environment & Atmosphere VFX ── */
 
 import * as THREE from 'three/webgpu';
 

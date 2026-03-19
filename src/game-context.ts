@@ -1,4 +1,4 @@
-/* ── Hood Racer — Centralized Game Context ──
+/* ── IRL Race — Centralized Game Context ──
  *
  * All shared mutable state lives here as a single object.
  * Modules import `G` and read/write properties directly:

@@ -1,4 +1,4 @@
-/* ── Hood Racer — Game Loop (extracted from main.ts) ──
+/* ── IRL Race — Game Loop (extracted from main.ts) ──
  *
  * Contains: gameLoop, flashDamage, showDraftingIndicator,
  * updateLeaderboard, destroyLeaderboard.

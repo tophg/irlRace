@@ -1,4 +1,4 @@
-/* ── Hood Racer — P2P Networking (PeerJS + Binary Protocol) ── */
+/* ── IRL Race — P2P Networking (PeerJS + Binary Protocol) ── */
 
 import Peer, { DataConnection } from 'peerjs';
 import { PacketType, EventType } from './types';

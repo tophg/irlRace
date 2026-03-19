@@ -1,4 +1,4 @@
-/* ── Hood Racer — Contact & Surface VFX ──
+/* ── IRL Race — Contact & Surface VFX ──
  *
  * Extracted from vfx.ts. Contains VFX systems for car-surface interactions:
  *   • Rim sparks — persistent sparking on blown tires

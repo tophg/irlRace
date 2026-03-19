@@ -1,4 +1,4 @@
-/* ── Hood Racer — Time Scale System ──
+/* ── IRL Race — Time Scale System ──
  *
  * Global time-scale for dramatic slow-motion effects.
  * Used during explosion cinematic: ramps down to 0.25× then back to 1.0×.

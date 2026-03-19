@@ -1,4 +1,4 @@
-/* ── Hood Racer — Race Lifecycle (extracted from main.ts) ──
+/* ── IRL Race — Race Lifecycle (extracted from main.ts) ──
  *
  * Contains: startRace, spawnAI, spawnRemoteVehicles,
  * clearRaceObjects, disposeMaterial, disposeMesh.

@@ -1,4 +1,4 @@
-/* ── Hood Racer — HUD Proxy (Solid.js Adapter) ── */
+/* ── IRL Race — HUD Proxy (Solid.js Adapter) ── */
 
 import * as THREE from 'three/webgpu';
 import { render } from 'solid-js/web';

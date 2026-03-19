@@ -1,4 +1,4 @@
-/* ── Hood Racer — Custom Track Storage (localStorage persistence) ── */
+/* ── IRL Race — Custom Track Storage (localStorage persistence) ── */
 
 import type { CustomTrackDef } from './types';
 

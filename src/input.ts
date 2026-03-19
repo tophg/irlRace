@@ -1,4 +1,4 @@
-/* ── Hood Racer — Input Handler (v2 — Analog + Tilt) ── */
+/* ── IRL Race — Input Handler (v2 — Analog + Tilt) ── */
 
 import { InputState } from './types';
 import { getSettings } from './settings';

@@ -1,4 +1,4 @@
-/* ── Hood Racer — Closed Circuit Loop Finder ── */
+/* ── IRL Race — Closed Circuit Loop Finder ── */
 
 import { RoadEdge } from './roads';
 import { RoadNode } from './roads';

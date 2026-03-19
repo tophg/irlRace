@@ -1,4 +1,4 @@
-/* ── Hood Racer — Debris, Glass & Engine Smoke VFX ──
+/* ── IRL Race — Debris, Glass & Engine Smoke VFX ──
  *
  * Extracted from vfx.ts. Contains three independent pooled particle systems:
  * 1. Metal debris — tumbling shards on heavy impacts

@@ -1,4 +1,4 @@
-/* ── Hood Racer — Chase Camera + Spectator Mode ── */
+/* ── IRL Race — Chase Camera + Spectator Mode ── */
 
 import * as THREE from 'three/webgpu';
 

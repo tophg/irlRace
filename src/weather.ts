@@ -1,4 +1,4 @@
-/* ── Hood Racer — Weather System (v2 — Research-Enhanced Physics) ── */
+/* ── IRL Race — Weather System (v2 — Research-Enhanced Physics) ── */
 
 import * as THREE from 'three/webgpu';
 

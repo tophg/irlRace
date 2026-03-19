@@ -1,4 +1,4 @@
-/* ── Hood Racer — Geocoding (Nominatim) ── */
+/* ── IRL Race — Geocoding (Nominatim) ── */
 
 export interface GeoResult {
   lat: number;

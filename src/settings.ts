@@ -1,4 +1,4 @@
-/* ── Hood Racer — Settings Menu ── */
+/* ── IRL Race — Settings Menu ── */
 
 import { updateMusicVolume } from './audio';
 

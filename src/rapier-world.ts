@@ -1,4 +1,4 @@
-/* ── Hood Racer — Rapier Physics World ──
+/* ── IRL Race — Rapier Physics World ──
  *
  * Provides collision detection via Rapier3D WASM physics.
  * The arcade vehicle model (Vehicle.update) still handles driving

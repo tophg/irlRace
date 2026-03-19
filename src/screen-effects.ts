@@ -1,4 +1,4 @@
-/* ── Hood Racer — Explosion Screen Effects ──
+/* ── IRL Race — Explosion Screen Effects ──
  *
  * CSS-based screen overlays for the explosion cinematic:
  *   • White flash — full-screen additive, fades 0.3s

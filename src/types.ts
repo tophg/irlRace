@@ -1,4 +1,4 @@
-/* ── Hood Racer — Shared Types ── */
+/* ── IRL Race — Shared Types ── */
 
 import * as THREE from 'three/webgpu';
 import type { SplineBVH } from './bvh';

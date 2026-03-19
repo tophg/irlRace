@@ -1,4 +1,4 @@
-/* ── Hood Racer — Post-Processing FX (v2 — Impact Effects) ──
+/* ── IRL Race — Post-Processing FX (v2 — Impact Effects) ──
  *
  * Cinematic post-processing using Three.js WebGPU TSL nodes:
  *   • Bloom — sparks, headlights, nitro glow

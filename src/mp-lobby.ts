@@ -1,4 +1,4 @@
-/* ── Hood Racer — Multiplayer Lobby UI ── */
+/* ── IRL Race — Multiplayer Lobby UI ── */
 
 let lobbyEl: HTMLElement | null = null;
 let lobbyIsHost = false;

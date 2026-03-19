@@ -1,4 +1,4 @@
-/* ── Hood Racer — GPU Particle System ──
+/* ── IRL Race — GPU Particle System ──
  *
  * All particle data lives on the GPU via StorageBufferAttribute.
  * A TSL compute shader updates positions/velocities/lifetimes per frame.

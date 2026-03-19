@@ -1,4 +1,4 @@
-/* ── Hood Racer — Race Engine ── */
+/* ── IRL Race — Race Engine ── */
 
 import * as THREE from 'three/webgpu';
 import { Checkpoint, RacerProgress } from './types';

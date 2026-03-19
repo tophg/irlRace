@@ -1,4 +1,4 @@
-/* ── Hood Racer — Skid Marks VFX ──
+/* ── IRL Race — Skid Marks VFX ──
  *
  * Extracted from vfx.ts. TSL-based road-surface quads placed during drift
  * with time-decay burn glow (orange→dark over 0.8s).

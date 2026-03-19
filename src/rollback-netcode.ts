@@ -1,4 +1,4 @@
-/* ── Hood Racer — Rollback Netcode ──
+/* ── IRL Race — Rollback Netcode ──
  *
  * Input-based rollback synchronization for multiplayer racing.
  *

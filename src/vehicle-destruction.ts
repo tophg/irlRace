@@ -1,4 +1,4 @@
-/* ── Hood Racer — Vehicle Destruction Animation ── */
+/* ── IRL Race — Vehicle Destruction Animation ── */
 
 import * as THREE from 'three/webgpu';
 import { spawnGPUExplosion, spawnGPUFlame, spawnGPUDamageSmoke, spawnExplosionDust, spawnGPUSparks } from './gpu-particles';

@@ -1,4 +1,4 @@
-/* ── Hood Racer — Procedural Track Generator (v2 — Convex Hull + Elevation) ── */
+/* ── IRL Race — Procedural Track Generator (v2 — Convex Hull + Elevation) ── */
 
 import * as THREE from 'three/webgpu';
 import { Checkpoint, TrackData, RampDef } from './types';

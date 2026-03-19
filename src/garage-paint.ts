@@ -1,4 +1,4 @@
-/* ── Hood Racer — Garage Paint System ──
+/* ── IRL Race — Garage Paint System ──
  *
  * Extracted from garage.ts. Handles car body-panel recoloring
  * while preserving glass, trim, chrome, and named exclusions.

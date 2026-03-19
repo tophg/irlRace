@@ -1,4 +1,4 @@
-/* ── Hood Racer — AI Racer (v2 — Curvature-Aware + Personalities) ── */
+/* ── IRL Race — AI Racer (v2 — Curvature-Aware + Personalities) ── */
 
 import * as THREE from 'three/webgpu';
 import { CarDef, InputState } from './types';

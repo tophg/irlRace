@@ -1,4 +1,4 @@
-/* ── Hood Racer — Track Scenery Generation ── */
+/* ── IRL Race — Track Scenery Generation ── */
 
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';

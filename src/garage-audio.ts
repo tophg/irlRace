@@ -1,4 +1,4 @@
-/* ── Hood Racer — Garage Procedural SFX ──
+/* ── IRL Race — Garage Procedural SFX ──
  *
  * Extracted from garage.ts. All sounds are synthesized via Web Audio API
  * (no sample files needed).

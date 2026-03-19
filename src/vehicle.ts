@@ -1,4 +1,4 @@
-/* ── Hood Racer — Arcade Vehicle Physics (v3 — Pacejka + Bicycle Model) ── */
+/* ── IRL Race — Arcade Vehicle Physics (v3 — Pacejka + Bicycle Model) ── */
 
 import * as THREE from 'three/webgpu';
 import { CarDef, InputState, VehicleState, DamageState, createDamageState } from './types';

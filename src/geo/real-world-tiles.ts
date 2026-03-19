@@ -1,4 +1,4 @@
-/* ── Hood Racer — Google 3D Photorealistic Tiles for Three.js ── */
+/* ── IRL Race — Google 3D Photorealistic Tiles for Three.js ── */
 /* Loads real-world buildings, trees, and terrain around a lat/lon center */
 
 import * as THREE from 'three/webgpu';

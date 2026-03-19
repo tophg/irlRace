@@ -1,4 +1,4 @@
-/* ── Hood Racer — UI Screen Modules ──
+/* ── IRL Race — UI Screen Modules ──
  *
  * Extracted from main.ts. Contains all overlay/screen UI:
  * title screen, pause menu, loading overlay, race config, controls reference,
@@ -230,7 +230,7 @@ export function showLoading() {
   const tipIdx = Math.floor(Math.random() * tips.length);
 
   el.innerHTML = `
-    <div class="title-logo" style="font-size:clamp(36px,8vw,72px);margin-bottom:12px;">HOOD RACER</div>
+    <div class="title-logo" style="font-size:clamp(36px,8vw,72px);margin-bottom:12px;">IRL RACE</div>
     <div class="title-subtitle" style="margin-bottom:40px;">Street Legends Never Stop</div>
     <div class="loading-text">GENERATING TRACK<span class="loading-dots"></span></div>
     <div class="loading-tip" style="margin-top:24px;font-size:13px;color:rgba(255,255,255,0.5);font-style:italic;transition:opacity 0.4s;max-width:360px;text-align:center;">${tips[tipIdx]}</div>
@@ -681,7 +681,7 @@ export function showTitleScreen(callbacks: {
   titleEl.className = 'title-screen';
   titleEl.id = 'title-screen';
   titleEl.innerHTML = `
-    <div class="title-logo">HOOD RACER</div>
+    <div class="title-logo">IRL RACE</div>
     <div class="title-subtitle">Street Legends Never Stop</div>
     <div class="menu-buttons">
       <button class="menu-btn" id="btn-singleplayer">SINGLEPLAYER</button>

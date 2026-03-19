@@ -1,4 +1,4 @@
-/* ── Hood Racer — Typed Event Bus ──
+/* ── IRL Race — Typed Event Bus ──
  *
  * Zero-dependency pub/sub for decoupling game systems.
  * Producers (physics, race engine) emit events.

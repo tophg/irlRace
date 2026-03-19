@@ -1,4 +1,4 @@
-/* ── Hood Racer — Coordinate Projection ── */
+/* ── IRL Race — Coordinate Projection ── */
 /* Adapted from SABLE core/utils.js haversineKm / bearingDeg */
 
 const R_EARTH = 6371000; // Earth radius in meters
