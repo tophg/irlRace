@@ -1,4 +1,4 @@
-/* ── Race IRL — Main Entry Point & Game Orchestrator ── */
+/* ── IRL Race — Main Entry Point & Game Orchestrator ── */
 
 import * as THREE from 'three/webgpu';
 import './index.css';
@@ -500,7 +500,7 @@ function showTitleScreen() {
   titleEl.innerHTML = `
     <div class="title-speed-lines"></div>
     <div class="title-content">
-      <div class="title-logo"><span class="title-race">RACE</span> <span class="title-irl">IRL</span></div>
+      <div class="title-logo"><span class="title-race">IRL</span> <span class="title-irl">RACE</span></div>
       <div class="title-subtitle">INDOOR RACING LEAGUE</div>
       <div class="menu-buttons">
         <button class="menu-btn" id="btn-singleplayer">SINGLEPLAYER</button>
@@ -512,7 +512,7 @@ function showTitleScreen() {
           <button class="menu-btn menu-btn--small" id="btn-settings">SETTINGS</button>
         </div>
       </div>
-      <div class="title-version">v0.9 — raceirl.com</div>
+      <div class="title-version">v0.9 — irlrace.com</div>
       <div class="title-teaser">🏠 Race your actual neighborhood — Coming Soon</div>
     </div>
   `;
