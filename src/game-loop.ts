@@ -12,6 +12,7 @@ import { G, PHYSICS_DT, MAX_FRAME_DT, LB_UPDATE_INTERVAL } from './game-context'
 import { getInput } from './input';
 import { getScene, getDirLight, updateSkyTime } from './scene';
 import { getClosestSplinePoint, updateSceneryWind, updateCheckpointHighlight } from './track';
+import { updateBuildingCulling } from './track-scenery';
 import { resolvePlayerName } from './results-screen';
 import { updateDebugOverlay } from './ui-screens';
 import { rollbackManager, packInput } from './rollback-netcode';
@@ -508,6 +509,7 @@ function gameLoop(timestamp: number) {
   // Animate sky + tree wind sway
   updateSkyTime(timestamp);
   if (G.trackData) updateSceneryWind(G.trackData.sceneryGroup, timestamp);
+  updateBuildingCulling(camera.position);
 
   const s = G.gameState;
 

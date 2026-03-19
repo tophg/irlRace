@@ -67,6 +67,9 @@ export interface SceneryTheme {
   atmosphericEffects?: string[];   // e.g. ['fireflies', 'leaves', 'steam', 'dust', 'snow_extra', 'embers', 'fog_wisps']
   buildingStyle?: string;          // e.g. 'modern', 'adobe', 'beach_house', 'cyberpunk', 'weathered', 'chalet', 'warehouse', 'concrete', 'bamboo_lodge'
   buildingModels?: string[];       // GLB filenames under /buildings/ (e.g. ['skyscraper.glb', 'office.glb'])
+  buildingDensity?: number;        // 0=none, 1=normal, 2=dense city (default 1.0)
+  buildingRowCount?: number;       // 1-3 depth rows from road (default 2)
+  buildingGapChance?: number;      // 0-0.5 probability of skipping a slot (default 0.15)
   treeModels?: string[];           // GLB filenames under /trees/ (e.g. ['red_maple.glb', 'pine.glb'])
   treeVariant?: string;            // e.g. 'standard', 'joshua', 'layered_pine', 'palm_frond', 'snow_capped'
   ambientLights?: string[];        // e.g. ['neon_edge', 'hazard_flasher', 'neon_pool', 'window_spill', 'torch_glow']
@@ -119,6 +122,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       spectatorDensity: 1.0, accentProps: ['traffic_cone', 'dumpster', 'debris'],
       roadDecals: ['lane_paint', 'manhole', 'puddle'], buildingStyle: 'modern', treeVariant: 'standard',
       buildingModels: ['skyscraper.glb', 'nyc_skyscraper.glb', 'nyc_skyscraper_b.glb', 'nyc_apartment.glb', 'nyc_apartment_b.glb', 'nyc_apartment_c.glb', 'nyc_apartment_d.glb', 'office_b.glb', 'highrise_a.glb', 'highrise_b.glb', 'highrise_c.glb', 'highrise_d.glb', 'highrise_e.glb', 'highrise_f.glb'],
+      buildingDensity: 1.5, buildingRowCount: 3, buildingGapChance: 0.12,
       treeModels: ['red_maple.glb', 'red_maple_b.glb', 'dogwood.glb', 'walnut.glb', 'walnut_b.glb', 'oak.glb'],
       ambientLights: ['window_spill', 'hazard_flasher'],
     },
@@ -149,6 +153,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       spectatorDensity: 0.5, accentProps: ['cactus', 'debris'],
       roadDecals: ['crack', 'sand_drift'], atmosphericEffects: ['dust'], buildingStyle: 'adobe', treeVariant: 'joshua',
       buildingModels: ['skyscraper.glb', 'coastal_home.glb'],
+      buildingDensity: 0.3, buildingRowCount: 1, buildingGapChance: 0.5,
       treeModels: ['cactus.glb', 'cactus_tall.glb', 'cactus_b.glb', 'cactus_c.glb'],
     },
   },
@@ -179,6 +184,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       roadDecals: ['puddle', 'lane_paint'], atmosphericEffects: ['fireflies', 'leaves', 'fog_wisps'],
       buildingStyle: 'beach_house', treeVariant: 'palm_frond',
       buildingModels: ['coastal_a.glb', 'coastal_b.glb', 'coastal_home.glb'],
+      buildingDensity: 0.5, buildingRowCount: 2, buildingGapChance: 0.3,
       treeModels: ['palm_tree.glb', 'palm_tree_b.glb', 'palm_tree_c.glb', 'palm_trees_cluster.glb', 'dogwood.glb', 'oak.glb', 'pine.glb'],
       ambientLights: ['torch_glow', 'window_spill'],
     },
@@ -211,6 +217,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       atmosphericEffects: ['steam', 'embers'],
       buildingStyle: 'cyberpunk',
       buildingModels: ['skyscraper.glb', 'nyc_skyscraper.glb', 'nyc_skyscraper_b.glb', 'office.glb', 'office_b.glb', 'nyc_apartment_b.glb', 'nyc_apartment_c.glb', 'highrise_a.glb', 'highrise_b.glb', 'highrise_c.glb', 'highrise_d.glb', 'highrise_e.glb', 'highrise_f.glb'],
+      buildingDensity: 2.0, buildingRowCount: 3, buildingGapChance: 0.05,
       ambientLights: ['neon_edge', 'neon_pool'],
     },
   },
@@ -242,6 +249,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       atmosphericEffects: ['snow_extra', 'fog_wisps'],
       buildingStyle: 'chalet', treeVariant: 'snow_capped',
       buildingModels: ['skyscraper.glb', 'coastal_home.glb'],
+      buildingDensity: 0.3, buildingRowCount: 1, buildingGapChance: 0.4,
       treeModels: ['pine.glb', 'pine_b.glb'],
       ambientLights: ['hazard_flasher'],
     },

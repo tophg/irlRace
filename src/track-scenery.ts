@@ -17,6 +17,23 @@ interface SceneryGroupData {
 const _windShaders = new WeakMap<THREE.Material, WindShaderRef>();
 const _sceneryGroupData = new WeakMap<THREE.Object3D, SceneryGroupData>();
 
+// ── Distance culling for procedural city buildings ──
+let _buildingClones: THREE.Object3D[] = [];
+const _CULL_DIST_SQ = 250 * 250;
+
+/** Call once per frame to cull buildings beyond camera range. */
+export function updateBuildingCulling(camPos: THREE.Vector3) {
+  for (const b of _buildingClones) {
+    const dx = b.position.x - camPos.x, dz = b.position.z - camPos.z;
+    b.visible = (dx * dx + dz * dz) < _CULL_DIST_SQ;
+  }
+}
+
+/** Clean up culling references on race exit. */
+export function destroyBuildingCulling() {
+  _buildingClones = [];
+}
+
 function getGroupData(group: THREE.Object3D): SceneryGroupData {
   let data = _sceneryGroupData.get(group);
   if (!data) {
@@ -766,68 +783,92 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     group.add(board);
   }
 
-  // ── 3D model buildings (async-loaded skyscraper model) ──
-  const BUILDING_COUNT = 25;
-  const _bm = new THREE.Matrix4();
+  // ── 3D model buildings (road-aligned procedural city blocks) ──
+  // Buildings are placed in depth rows along the spline, facing the road.
+  // Row 1 (near): small buildings, Row 2 (mid): medium, Row 3 (far): tall skyline.
+  const modelList = T.buildingModels?.length ? T.buildingModels : ['skyscraper.glb'];
+  const density = T.buildingDensity ?? 1.0;
+  const rowCount = Math.min(3, Math.max(1, T.buildingRowCount ?? 2));
+  const gapChance = T.buildingGapChance ?? 0.15;
 
-  // Pre-compute building placements synchronously (position, scale, rotation)
-  interface BuildingPlacement { x: number; z: number; scaleW: number; scaleH: number; scaleD: number; rotY: number; }
+  // Categorize models by size tier
+  const SMALL_MODELS = new Set(['coastal_a.glb', 'coastal_b.glb', 'coastal_home.glb', 'nyc_apartment.glb', 'nyc_apartment_b.glb', 'nyc_apartment_c.glb', 'nyc_apartment_d.glb']);
+  const TALL_MODELS = new Set(['skyscraper.glb', 'nyc_skyscraper.glb', 'nyc_skyscraper_b.glb', 'highrise_a.glb', 'highrise_b.glb', 'highrise_c.glb', 'highrise_f.glb']);
+  // Everything else is MEDIUM (office, highrise_d, highrise_e, etc.)
+
+  const smallPool = modelList.filter(m => SMALL_MODELS.has(m));
+  const tallPool = modelList.filter(m => TALL_MODELS.has(m));
+  const medPool = modelList.filter(m => !SMALL_MODELS.has(m) && !TALL_MODELS.has(m));
+  // Fallback: if a tier is empty, use the full list
+  const pickSmall = smallPool.length ? smallPool : modelList;
+  const pickMed = medPool.length ? medPool : modelList;
+  const pickTall = tallPool.length ? tallPool : modelList;
+
+  // Row definitions: [offsetMin, offsetMax, tierPool, scaleHMult]
+  const ROW_DEFS: [number, number, string[], number][] = [];
+  if (rowCount >= 1) ROW_DEFS.push([30, 55, pickSmall, 0.7]);
+  if (rowCount >= 2) ROW_DEFS.push([65, 95, pickMed, 1.0]);
+  if (rowCount >= 3) ROW_DEFS.push([105, 140, pickTall, 1.3]);
+
+  // Sample spacing along arc length (denser = closer spacing)
+  const sampleSpacing = Math.max(15, 30 / density);
+  const totalLength = spline.getLength();
+  const sampleCount = Math.floor(totalLength / sampleSpacing);
+
+  // Pre-compute all spline sample points for proximity checking
+  const CLEARANCE_SAMPLES = 80;
+  const splineSamples: THREE.Vector3[] = [];
+  for (let s = 0; s < CLEARANCE_SAMPLES; s++) {
+    splineSamples.push(spline.getPointAt(s / CLEARANCE_SAMPLES));
+  }
+  const MIN_CLEARANCE_SQ = 28 * 28;
+
+  interface BuildingPlacement { x: number; z: number; scaleW: number; scaleH: number; scaleD: number; rotY: number; model: string; }
   const placements: BuildingPlacement[] = [];
 
-  for (let i = 0; i < BUILDING_COUNT; i++) {
-    const t = rng();
+  for (let i = 0; i < sampleCount; i++) {
+    const t = (i / sampleCount) % 1;
     const p = spline.getPointAt(t);
     const tangent = spline.getTangentAt(t).normalize();
-    const rx = tangent.z, rz = -tangent.x;
-    const side = rng() > 0.5 ? 1 : -1;
-    let offset = ROAD_WIDTH / 2 + 50 + rng() * 60;
-    let x = p.x + rx * offset * side;
-    let z = p.z + rz * offset * side;
-    const scaleW = 0.6 + rng() * 0.5;  // width variation
-    const scaleH = 0.5 + rng() * 1.0;  // height variation
-    const scaleD = 0.6 + rng() * 0.5;  // depth variation
-    const rotY = rng() * Math.PI * 2;
+    // Perpendicular direction (road-normal)
+    const nx = tangent.z, nz = -tangent.x;
+    // Building faces the road: rotation from tangent
+    const faceRoadRot = Math.atan2(tangent.x, tangent.z);
 
-    // Proximity check: ensure building doesn't land near ANY part of the track
-    const MIN_CLEARANCE = 35;
-    const MIN_CLEARANCE_SQ = MIN_CLEARANCE * MIN_CLEARANCE;
-    let placed = false;
+    for (const [offMin, offMax, pool, hMult] of ROW_DEFS) {
+      for (const side of [-1, 1] as const) {
+        // Gap probability — skip for variety (alleys, parking lots)
+        if (rng() < gapChance) continue;
 
-    for (let attempt = 0; attempt < 3; attempt++) {
-      let tooClose = false;
-      for (let s = 0; s < 100; s++) {
-        const sp = spline.getPointAt(s / 100);
-        const dx = x - sp.x;
-        const dz = z - sp.z;
-        if (dx * dx + dz * dz < MIN_CLEARANCE_SQ) {
-          tooClose = true;
-          break;
+        const offset = offMin + rng() * (offMax - offMin);
+        const x = p.x + nx * offset * side;
+        const z = p.z + nz * offset * side;
+
+        // Proximity check against spline
+        let tooClose = false;
+        for (const sp of splineSamples) {
+          const dx = x - sp.x, dz = z - sp.z;
+          if (dx * dx + dz * dz < MIN_CLEARANCE_SQ) { tooClose = true; break; }
         }
-      }
-      if (!tooClose) {
-        placed = true;
-        break;
-      }
-      offset += 40;
-      x = p.x + rx * offset * side;
-      z = p.z + rz * offset * side;
-    }
+        if (tooClose) continue;
 
-    if (placed) {
-      placements.push({ x, z, scaleW, scaleH, scaleD, rotY });
+        const scaleW = 0.7 + rng() * 0.4;
+        const scaleH = (0.6 + rng() * 0.6) * hMult;
+        const scaleD = 0.7 + rng() * 0.4;
+        // Face the road with slight random jitter (±10°)
+        const rotY = faceRoadRot + (side > 0 ? Math.PI : 0) + (rng() - 0.5) * 0.35;
+        const model = pool[Math.floor(rng() * pool.length)];
+
+        placements.push({ x, z, scaleW, scaleH, scaleD, rotY, model });
+      }
     }
   }
 
-  // Pre-assign each placement a random model from the theme's building models list
-  const modelList = T.buildingModels?.length ? T.buildingModels : ['skyscraper.glb'];
-  interface BuildingPlacementWithModel extends BuildingPlacement { model: string; }
-  const placementsWithModel: BuildingPlacementWithModel[] = placements.map((pl) => ({
-    ...pl,
-    model: modelList[Math.floor(rng() * modelList.length)],
-  }));
+  // Determine unique models needed
+  const uniqueModels = [...new Set(placements.map(p => p.model))];
 
-  // Determine unique models needed for this environment
-  const uniqueModels = [...new Set(placementsWithModel.map(p => p.model))];
+  // Track placed building clones for distance culling
+  const buildingClones: THREE.Object3D[] = [];
 
   // Async: load all unique building models, then place clones
   Promise.all(
@@ -839,29 +880,17 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       modelMap.set(name, { scene, bottom: bbox.min.y });
     }
 
-    // Per-model scale multipliers — residential buildings should be smaller than commercial
+    // Per-model scale multipliers
     const MODEL_SCALE: Record<string, number> = {
-      'skyscraper.glb': 1.0,
-      'nyc_skyscraper.glb': 1.0,
-      'nyc_skyscraper_b.glb': 0.95,
-      'office.glb': 0.85,
-      'nyc_apartment.glb': 0.7,
-      'nyc_apartment_b.glb': 0.65,
-      'nyc_apartment_c.glb': 0.7,
-      'coastal_a.glb': 0.5,
-      'coastal_b.glb': 0.5,
-      'coastal_home.glb': 0.45,
-      'office_b.glb': 0.8,
-      'nyc_apartment_d.glb': 0.65,
-      'highrise_a.glb': 0.9,
-      'highrise_b.glb': 0.9,
-      'highrise_c.glb': 0.85,
-      'highrise_d.glb': 0.85,
-      'highrise_e.glb': 0.9,
-      'highrise_f.glb': 0.9,
+      'skyscraper.glb': 1.0, 'nyc_skyscraper.glb': 1.0, 'nyc_skyscraper_b.glb': 0.95,
+      'office.glb': 0.85, 'nyc_apartment.glb': 0.7, 'nyc_apartment_b.glb': 0.65,
+      'nyc_apartment_c.glb': 0.7, 'coastal_a.glb': 0.5, 'coastal_b.glb': 0.5,
+      'coastal_home.glb': 0.45, 'office_b.glb': 0.8, 'nyc_apartment_d.glb': 0.65,
+      'highrise_a.glb': 0.9, 'highrise_b.glb': 0.9, 'highrise_c.glb': 0.85,
+      'highrise_d.glb': 0.85, 'highrise_e.glb': 0.9, 'highrise_f.glb': 0.9,
     };
 
-    for (const pl of placementsWithModel) {
+    for (const pl of placements) {
       const entry = modelMap.get(pl.model);
       if (!entry) continue;
 
@@ -880,7 +909,11 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       });
 
       group.add(clone);
+      buildingClones.push(clone);
     }
+
+    // Register for distance culling
+    _buildingClones = buildingClones;
   }).catch((err) => {
     console.warn('Failed to load building models:', err);
   });
