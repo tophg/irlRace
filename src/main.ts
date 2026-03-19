@@ -110,40 +110,43 @@ function createTitleScene() {
   titleScene = new THREE.Scene();
   titleScene.background = new THREE.Color(0x060610);
 
-  // ── Environment map (critical for PBR rendering — without this, metallic materials are black) ──
+  // ── Environment map (must match garage.ts pattern exactly for WebGPU compatibility) ──
   const pmremGen = new THREE.PMREMGenerator(renderer);
-  pmremGen.compileEquirectangularShader();
-  // Use RoomEnvironment for realistic indoor reflections
-  const envScene = new RoomEnvironment();
-  const envMap = pmremGen.fromScene(envScene, 0.04).texture;
-  titleScene.environment = envMap;
-  envScene.dispose?.();
+  try {
+    const envMap = pmremGen.fromScene(new RoomEnvironment()).texture;
+    titleScene.environment = envMap;
+  } catch { /* fallback: no envmap */ }
   pmremGen.dispose();
 
   titleCamera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 100);
   titleCamera.position.set(0, 2.0, 7);
   titleCamera.lookAt(0, 0.4, 0);
 
-  // ── Lighting — Dramatic dual rim ──
-  const ambient = new THREE.AmbientLight(0x222233, 0.8);
+  // ── Lighting — must be very bright to combat WebGPU PBR darkness ──
+  const ambient = new THREE.AmbientLight(0x445566, 2.0);
   titleScene.add(ambient);
 
+  // Key directional light (strong white overhead)
+  const keyLight = new THREE.DirectionalLight(0xffffff, 3.0);
+  keyLight.position.set(3, 8, 5);
+  titleScene.add(keyLight);
+
   // Cyan rim light (right/front) — matches IRL glow
-  const cyanRim = new THREE.SpotLight(0x00e5ff, 200, 20, Math.PI / 5, 0.5, 1.2);
+  const cyanRim = new THREE.SpotLight(0x00e5ff, 400, 20, Math.PI / 4, 0.5, 1.0);
   cyanRim.position.set(5, 4, 3);
   cyanRim.target.position.set(0, 0.5, 0);
   titleScene.add(cyanRim);
   titleScene.add(cyanRim.target);
 
   // Orange rim light (left/back) — matches RACE accent
-  const orangeRim = new THREE.SpotLight(0xff4d00, 180, 20, Math.PI / 5, 0.5, 1.2);
+  const orangeRim = new THREE.SpotLight(0xff4d00, 350, 20, Math.PI / 4, 0.5, 1.0);
   orangeRim.position.set(-5, 3, -3);
   orangeRim.target.position.set(0, 0.5, 0);
   titleScene.add(orangeRim);
   titleScene.add(orangeRim.target);
 
   // Soft overhead fill
-  const overhead = new THREE.PointLight(0x888899, 20, 12, 1.5);
+  const overhead = new THREE.PointLight(0xaabbcc, 40, 15, 1.5);
   overhead.position.set(0, 6, 0);
   titleScene.add(overhead);
 

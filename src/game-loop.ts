@@ -228,7 +228,11 @@ function gameLoop(timestamp: number) {
   }
 
   // ── Title / Lobby ──
-  if (s === GameState.TITLE || s === GameState.LOBBY) {
+  if (s === GameState.TITLE) {
+    // Title screen has its own render loop (titleLoop in main.ts) — don't overwrite it
+    return;
+  }
+  if (s === GameState.LOBBY) {
     renderer.render(scene, camera);
     return;
   }

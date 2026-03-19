@@ -118,7 +118,7 @@ canvas { display: block; }
   position: absolute; inset: 0;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  background: radial-gradient(ellipse at 50% 40%, rgba(10,20,30,0.9) 0%, rgba(6,6,12,0.98) 70%);
+  background: transparent;
   z-index: 100;
   overflow: hidden;
 }
