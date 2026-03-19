@@ -928,39 +928,100 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   if (placements.length > 0) {
     const tileW = 1 / ATLAS_COLS, tileH = 1 / ATLAS_ROWS;
 
-    // Custom box with per-face UVs: sides = facade tile, top/bottom = dark roof
+    // Build a box with subdivided faces for facade tiling
+    // Each face subdivision maps to the FULL tile sub-region, giving proper repetition
     // flipU: horizontally mirror the facade for asymmetry
-    const buildCustomBox = (tile: number, flipU = false) => {
-      const geo = new THREE.BoxGeometry(1, 1, 1);
+    // repW/repH/repD: how many times the tile repeats on each face dimension
+    const buildCustomBox = (
+      tile: number, flipU: boolean,
+      repFB: number, repLR: number, repV: number,
+    ) => {
       const col = tile % ATLAS_COLS;
       const row = Math.floor(tile / ATLAS_COLS);
-      const uMin = col * tileW;
-      const vMin = 1 - (row + 1) * tileH;
+      // Inset slightly to avoid atlas bleeding
+      const uMin = col * tileW + 0.002;
+      const uMax = (col + 1) * tileW - 0.002;
+      const vMin = 1 - (row + 1) * tileH + 0.002;
+      const vMax = 1 - row * tileH - 0.002;
+      const tW = uMax - uMin;
+      const tH = vMax - vMin;
 
-      const uvAttr = geo.getAttribute('uv');
-      const uv = uvAttr.array as Float32Array;
+      // Roof UV (dark corner of parking garage tile)
+      const roofU = (12 % ATLAS_COLS) * tileW + tileW * 0.1;
+      const roofV = 1 - (Math.floor(12 / ATLAS_COLS) + 1) * tileH + tileH * 0.1;
 
-      for (let face = 0; face < 6; face++) {
-        const base = face * 4 * 2;
-        if (face === 2 || face === 3) {
-          // Roof/bottom → dark corner of parking garage tile
-          const roofU = (12 % ATLAS_COLS) * tileW + tileW * 0.1;
-          const roofV = 1 - (Math.floor(12 / ATLAS_COLS) + 1) * tileH + tileH * 0.1;
-          for (let v = 0; v < 4; v++) {
-            uv[base + v * 2] = roofU;
-            uv[base + v * 2 + 1] = roofV;
-          }
-        } else {
-          for (let v = 0; v < 4; v++) {
-            let rawU = uv[base + v * 2];
-            const rawV = uv[base + v * 2 + 1];
-            if (flipU) rawU = 1 - rawU;
-            uv[base + v * 2]     = uMin + rawU * tileW;
-            uv[base + v * 2 + 1] = vMin + rawV * tileH;
+      // Helper: build one face as a subdivided quad grid
+      // Each tile-repeat gets its own quad(s) mapping to the full tile region
+      const positions: number[] = [];
+      const uvs: number[] = [];
+      const indices: number[] = [];
+
+      const addFace = (
+        origin: [number, number, number],
+        axisU: [number, number, number],
+        axisV: [number, number, number],
+        hRep: number, vRep: number,
+        isRoof: boolean,
+      ) => {
+        const baseIdx = positions.length / 3;
+        const cols = hRep;
+        const rows = vRep;
+
+        for (let r = 0; r <= rows; r++) {
+          for (let c = 0; c <= cols; c++) {
+            const u = c / cols;
+            const v = r / rows;
+            positions.push(
+              origin[0] + axisU[0] * u + axisV[0] * v,
+              origin[1] + axisU[1] * u + axisV[1] * v,
+              origin[2] + axisU[2] * u + axisV[2] * v,
+            );
+            if (isRoof) {
+              uvs.push(roofU, roofV);
+            } else {
+              // Position within current tile repeat (sawtooth 0→1 per repeat)
+              const fracC = (c / cols) * hRep;
+              const fracR = (r / rows) * vRep;
+              let tU = fracC - Math.floor(fracC);
+              let tV = fracR - Math.floor(fracR);
+              // Fix edge: last vertex should map to tile end, not wrap to 0
+              if (c === cols) tU = 1.0;
+              if (r === rows) tV = 1.0;
+
+              if (flipU) tU = 1 - tU;
+              uvs.push(uMin + tU * tW, vMin + tV * tH);
+            }
           }
         }
-      }
-      uvAttr.needsUpdate = true;
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const i = baseIdx + r * (cols + 1) + c;
+            indices.push(i, i + 1, i + cols + 1);
+            indices.push(i + 1, i + cols + 2, i + cols + 1);
+          }
+        }
+      };
+
+      // 6 faces of a unit box centered at origin
+      // Front (+Z)
+      addFace([-0.5, -0.5, 0.5], [1, 0, 0], [0, 1, 0], repFB, repV, false);
+      // Back (-Z)
+      addFace([0.5, -0.5, -0.5], [-1, 0, 0], [0, 1, 0], repFB, repV, false);
+      // Right (+X)
+      addFace([0.5, -0.5, 0.5], [0, 0, -1], [0, 1, 0], repLR, repV, false);
+      // Left (-X)
+      addFace([-0.5, -0.5, -0.5], [0, 0, 1], [0, 1, 0], repLR, repV, false);
+      // Top (+Y)
+      addFace([-0.5, 0.5, -0.5], [1, 0, 0], [0, 0, 1], 1, 1, true);
+      // Bottom (-Y)
+      addFace([-0.5, -0.5, 0.5], [1, 0, 0], [0, 0, -1], 1, 1, true);
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      geo.setIndex(indices);
+      geo.computeVertexNormals();
       return geo;
     };
 
@@ -990,10 +1051,18 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const VARIANTS_PER_TILE = 2;
 
     for (const [tile, tilePlacements] of tileGroups) {
+      // Compute median dimensions for tiling calculation
+      const medW = tilePlacements.reduce((s, p) => s + p.w, 0) / tilePlacements.length;
+      const medH = tilePlacements.reduce((s, p) => s + p.h, 0) / tilePlacements.length;
+      const medD = tilePlacements.reduce((s, p) => s + p.d, 0) / tilePlacements.length;
+      const repFB = Math.max(1, Math.round(medW / 10));
+      const repLR = Math.max(1, Math.round(medD / 10));
+      const repV  = Math.max(1, Math.round(medH / 12));
+
       // Build 2 variant geometries: normal and horizontally flipped
-      const variantGeos: THREE.BoxGeometry[] = [
-        buildCustomBox(tile, false),
-        buildCustomBox(tile, true),
+      const variantGeos: THREE.BufferGeometry[] = [
+        buildCustomBox(tile, false, repFB, repLR, repV),
+        buildCustomBox(tile, true,  repFB, repLR, repV),
       ];
 
       // Split placements across variants
