@@ -67,6 +67,7 @@ export interface SceneryTheme {
   atmosphericEffects?: string[];   // e.g. ['fireflies', 'leaves', 'steam', 'dust', 'snow_extra', 'embers', 'fog_wisps']
   buildingStyle?: string;          // e.g. 'modern', 'adobe', 'beach_house', 'cyberpunk', 'weathered', 'chalet', 'warehouse', 'concrete', 'bamboo_lodge'
   buildingModels?: string[];       // GLB filenames under /buildings/ (e.g. ['skyscraper.glb', 'office.glb'])
+  treeModels?: string[];           // GLB filenames under /trees/ (e.g. ['red_maple.glb', 'pine.glb'])
   treeVariant?: string;            // e.g. 'standard', 'joshua', 'layered_pine', 'palm_frond', 'snow_capped'
   ambientLights?: string[];        // e.g. ['neon_edge', 'hazard_flasher', 'neon_pool', 'window_spill', 'torch_glow']
 }
@@ -116,7 +117,8 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       fenceDensity: 1.0, rockDensity: 0.3, rockColor: 0x444450, bushDensity: 0.3,
       spectatorDensity: 1.0, accentProps: ['traffic_cone', 'dumpster'],
       roadDecals: ['lane_paint', 'manhole'], buildingStyle: 'modern', treeVariant: 'standard',
-      buildingModels: ['skyscraper.glb', 'nyc_skyscraper.glb', 'nyc_skyscraper_b.glb', 'nyc_apartment.glb', 'nyc_apartment_b.glb', 'nyc_apartment_c.glb'],
+      buildingModels: ['skyscraper.glb', 'nyc_skyscraper.glb', 'nyc_skyscraper_b.glb', 'nyc_apartment.glb', 'nyc_apartment_b.glb', 'nyc_apartment_c.glb', 'nyc_apartment_d.glb', 'office_b.glb'],
+      treeModels: ['red_maple.glb', 'red_maple_b.glb', 'dogwood.glb'],
       ambientLights: ['window_spill'],
     },
   },
@@ -144,6 +146,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       spectatorDensity: 0.5, accentProps: ['cactus'],
       roadDecals: ['crack', 'sand_drift'], atmosphericEffects: ['dust'], buildingStyle: 'adobe', treeVariant: 'joshua',
       buildingModels: ['skyscraper.glb', 'coastal_home.glb'],
+      treeModels: ['cactus.glb', 'cactus_tall.glb'],
     },
   },
   {
@@ -170,6 +173,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       spectatorDensity: 0.8, accentProps: ['palm_trunk'],
       atmosphericEffects: ['fireflies', 'leaves'], buildingStyle: 'beach_house', treeVariant: 'layered_pine',
       buildingModels: ['coastal_a.glb', 'coastal_b.glb', 'coastal_home.glb'],
+      treeModels: ['pine.glb', 'pine_b.glb', 'dogwood.glb'],
       ambientLights: ['window_spill'],
     },
   },
@@ -223,7 +227,8 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       fenceDensity: 0.8, rockDensity: 0.8, rockColor: 0x3a3a40, bushDensity: 0.5,
       spectatorDensity: 0.3, accentProps: ['debris'],
       roadDecals: ['puddle', 'crack'], atmosphericEffects: ['leaves', 'fog_wisps'], buildingStyle: 'weathered',
-      buildingModels: ['nyc_apartment.glb', 'nyc_apartment_b.glb', 'nyc_apartment_c.glb', 'skyscraper.glb', 'nyc_skyscraper_b.glb', 'office.glb'],
+      buildingModels: ['nyc_apartment.glb', 'nyc_apartment_b.glb', 'nyc_apartment_c.glb', 'nyc_apartment_d.glb', 'skyscraper.glb', 'nyc_skyscraper_b.glb', 'office.glb', 'office_b.glb'],
+      treeModels: ['red_maple.glb', 'red_maple_b.glb', 'pine.glb'],
       ambientLights: ['hazard_flasher'],
     },
   },
@@ -251,6 +256,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       spectatorDensity: 0.8, accentProps: ['snow_bollard'],
       roadDecals: ['frost'], buildingStyle: 'chalet', treeVariant: 'snow_capped',
       buildingModels: ['skyscraper.glb', 'coastal_home.glb'],
+      treeModels: ['pine.glb', 'pine_b.glb'],
     },
   },
   {
@@ -277,6 +283,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       spectatorDensity: 0.2, accentProps: [],
       roadDecals: ['frost'], atmosphericEffects: ['snow_extra', 'fog_wisps'], buildingStyle: 'chalet', treeVariant: 'snow_capped',
       buildingModels: ['skyscraper.glb', 'coastal_home.glb'],
+      treeModels: ['pine.glb', 'pine_b.glb'],
       ambientLights: ['hazard_flasher'],
     },
   },
@@ -303,7 +310,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       fenceDensity: 0.8, rockDensity: 0.3, rockColor: 0x1a2535, bushDensity: 0.2,
       spectatorDensity: 0.5, accentProps: [],
       roadDecals: ['frost'], buildingStyle: 'concrete',
-      buildingModels: ['skyscraper.glb', 'nyc_skyscraper.glb', 'nyc_skyscraper_b.glb', 'office.glb'],
+      buildingModels: ['skyscraper.glb', 'nyc_skyscraper.glb', 'nyc_skyscraper_b.glb', 'office.glb', 'office_b.glb'],
     },
   },
   // ── 4 New Environments ──
@@ -331,6 +338,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       spectatorDensity: 0.5, accentProps: ['tiki_torch'],
       roadDecals: ['puddle'], atmosphericEffects: ['fireflies', 'fog_wisps'], buildingStyle: 'bamboo_lodge', treeVariant: 'palm_frond',
       buildingModels: ['coastal_a.glb', 'coastal_b.glb', 'coastal_home.glb'],
+      treeModels: ['dogwood.glb', 'red_maple.glb'],
       ambientLights: ['torch_glow'],
     },
   },
@@ -357,7 +365,8 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       fenceDensity: 1.5, rockDensity: 0.3, rockColor: 0x555045, bushDensity: 0.2,
       spectatorDensity: 0.3, accentProps: ['smokestack'],
       roadDecals: ['crack', 'manhole'], atmosphericEffects: ['steam', 'embers'], buildingStyle: 'warehouse',
-      buildingModels: ['office.glb', 'nyc_apartment.glb', 'nyc_apartment_c.glb', 'nyc_skyscraper_b.glb'],
+      buildingModels: ['office.glb', 'office_b.glb', 'nyc_apartment.glb', 'nyc_apartment_c.glb', 'nyc_apartment_d.glb', 'nyc_skyscraper_b.glb'],
+      treeModels: ['red_maple.glb'],
       ambientLights: ['torch_glow'],
     },
   },
@@ -385,6 +394,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       spectatorDensity: 0.5, accentProps: ['wind_turbine'],
       roadDecals: ['lane_paint'], atmosphericEffects: ['dust'], buildingStyle: 'beach_house',
       buildingModels: ['coastal_a.glb', 'coastal_b.glb', 'coastal_home.glb'],
+      treeModels: ['pine.glb', 'pine_b.glb', 'dogwood.glb', 'red_maple.glb', 'red_maple_b.glb'],
     },
   },
   {

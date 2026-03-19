@@ -65,9 +65,10 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   }
 
   // Pre-compute all tree positions
-  interface TreeItem { x: number; y: number; z: number; trunkH: number; crownR: number; green: number; }
+  interface TreeItem { x: number; y: number; z: number; trunkH: number; crownR: number; green: number; rotY: number; model: string; }
   const trees: TreeItem[] = [];
-  const treeCount = T.treeCanopyStyle === 'none' ? 0 : T.treeCount;
+  const treeCount = T.treeCanopyStyle === 'none' && !T.treeModels?.length ? 0 : T.treeCount;
+  const treeModelList = T.treeModels?.length ? T.treeModels : [];
   for (let i = 0; i < treeCount; i++) {
     const t = rng();
     const p = spline.getPointAt(t);
@@ -77,14 +78,65 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const offset = ROAD_WIDTH / 2 + 5 + rng() * 30;
     const x = p.x + rx * offset * side;
     const z = p.z + rz * offset * side;
-    trees.push({ x, y: 0, z, trunkH: 2 + rng() * 3, crownR: 1.5 + rng() * 2, green: Math.floor(rng() * 255) });
+    trees.push({
+      x, y: 0, z,
+      trunkH: 2 + rng() * 3,
+      crownR: 1.5 + rng() * 2,
+      green: Math.floor(rng() * 255),
+      rotY: rng() * Math.PI * 2,
+      model: treeModelList.length ? treeModelList[Math.floor(rng() * treeModelList.length)] : '',
+    });
   }
 
   const _m = new THREE.Matrix4();
   const _c = new THREE.Color();
 
-  // ── Tree trunks (InstancedMesh) ──
-  if (trees.length > 0) {
+  // ── Trees: GLB models if available, otherwise procedural ──
+  if (treeModelList.length > 0 && trees.length > 0) {
+    // Async load GLB tree models and place clones
+    const TREE_SCALE: Record<string, number> = {
+      'red_maple.glb': 3.0,
+      'red_maple_b.glb': 2.8,
+      'pine.glb': 3.5,
+      'pine_b.glb': 3.2,
+      'dogwood.glb': 2.5,
+      'cactus_tall.glb': 2.0,
+      'cactus.glb': 1.5,
+    };
+
+    const uniqueTreeModels = [...new Set(trees.map(t => t.model))];
+    Promise.all(
+      uniqueTreeModels.map(name => loadGLB(`/trees/${name}`).then(scene => ({ name, scene })))
+    ).then((loaded) => {
+      const treeMap = new Map<string, { scene: THREE.Group; bottom: number }>();
+      for (const { name, scene } of loaded) {
+        const bbox = new THREE.Box3().setFromObject(scene);
+        treeMap.set(name, { scene, bottom: bbox.min.y });
+      }
+
+      for (const t of trees) {
+        const entry = treeMap.get(t.model);
+        if (!entry) continue;
+
+        const clone = entry.scene.clone(true);
+        const s = (TREE_SCALE[t.model] ?? 2.5) * (0.8 + rng() * 0.4); // add ±20% variation
+        clone.scale.setScalar(s);
+        clone.position.set(t.x, -entry.bottom * s, t.z);
+        clone.rotation.y = t.rotY;
+
+        clone.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            (child as THREE.Mesh).castShadow = true;
+          }
+        });
+
+        group.add(clone);
+      }
+    }).catch((err) => {
+      console.warn('Failed to load tree models:', err);
+    });
+  } else if (trees.length > 0) {
+    // ── Fallback: Procedural trees (InstancedMesh) ──
     const trunkGeo = new THREE.CylinderGeometry(0.25, 0.3, 3.5, 6);
     const trunkMat = new THREE.MeshStandardMaterial({ color: T.treeTrunkColor, roughness: 0.9 });
     const trunkIM = new THREE.InstancedMesh(trunkGeo, trunkMat, trees.length);
@@ -853,6 +905,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       'coastal_a.glb': 0.5,
       'coastal_b.glb': 0.5,
       'coastal_home.glb': 0.45,
+      'office_b.glb': 0.8,
+      'nyc_apartment_d.glb': 0.65,
     };
 
     for (const pl of placementsWithModel) {
