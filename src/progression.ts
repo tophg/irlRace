@@ -23,13 +23,18 @@ const UNLOCK_COSTS: Record<string, number> = {
   phantom: 500,
   monarch: 600,
   stallion: 800,
+  traverse: 700,
 
   // Exotic tier
   venom: 1500,
   precision: 1800,
   apex: 2000,
+  summit: 1600,
+
   // Elite tier
   diablo: 4000,
+  expedition: 3500,
+  raptor: 4500,
 
 };
 

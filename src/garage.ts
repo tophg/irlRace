@@ -207,7 +207,7 @@ const TIER_COLORS: Record<string, number> = {
 };
 
 function setTierColor(index: number) {
-  const tier = index < 3 ? 'ENTRY' : index < 5 ? 'MID' : index < 8 ? 'EXOTIC' : 'ELITE';
+  const tier = index < 1 ? 'ENTRY' : index < 5 ? 'MID' : index < 9 ? 'EXOTIC' : 'ELITE';
   targetTierColor.setHex(TIER_COLORS[tier] ?? 0x44cc88);
 }
 
@@ -588,8 +588,8 @@ async function showCar(index: number) {
   updateDots(index);
 
   // Determine tier from roster position
-  const tierInfo = index < 3 ? { label: 'ENTRY', color: '#6b8' }
-                 : index < 6 ? { label: 'MID', color: '#8af' }
+  const tierInfo = index < 1 ? { label: 'ENTRY', color: '#6b8' }
+                 : index < 5 ? { label: 'MID', color: '#8af' }
                  : index < 9 ? { label: 'EXOTIC', color: '#f8a' }
                  :             { label: 'ELITE', color: '#fd4' };
 
