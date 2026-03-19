@@ -18,8 +18,8 @@
 import * as THREE from 'three/webgpu';
 import { getTimeScale, isSlowMotionActive } from './time-scale';
 import {
-  pass, uniform, float, vec2, vec3, vec4,
-  screenUV, length, smoothstep, mix, mul, sub, add, clamp, max, dot,
+  pass, uniform, float, vec2, vec4,
+  screenUV, length, smoothstep, mix, mul, sub, add, clamp, max,
 } from 'three/tsl';
 import { bloom } from 'three/examples/jsm/tsl/display/BloomNode.js';
 
@@ -69,37 +69,28 @@ export function initPostFX(
   const caAmount = clamp(max(uImpactIntensity, uSlowMoIntensity), float(0.0), float(1.0));
   combined = mix(combined, caEffect, caAmount);
 
-  // ── Radial Blur (speed + impact + slow-mo) ──
+  // ── Radial Blur (speed + impact + slow-mo) — INTENSIFIED ──
   // Edge-weighted directional darkening that simulates radial blur perception
   const blurStrength = max(
     max(
-      mul(uBoostIntensity, float(0.008)),
-      mul(uImpactIntensity, float(0.015)),
+      mul(uBoostIntensity, float(0.015)),    // boost: 0.008→0.015
+      mul(uImpactIntensity, float(0.025)),   // impact: 0.015→0.025
     ),
-    mul(uSlowMoIntensity, float(0.012)),   // slow-mo radial blur
+    mul(uSlowMoIntensity, float(0.025)),     // slow-mo: 0.012→0.025
   );
   const distFromCenter = length(dir);
-  const blurFade = smoothstep(0.15, 0.75, distFromCenter);  // stronger at edges, clear center
+  const blurFade = smoothstep(0.1, 0.65, distFromCenter);  // tighter clear zone, more aggressive edges
   const radialDarken = mul(
     blurFade,
     max(max(uBoostIntensity, uImpactIntensity), uSlowMoIntensity),
-  ).mul(float(0.35));
-
-  // ── Desaturation (slow-mo only) ──
-  // BT.709 luminance weights for perceptually accurate grayscale
-  const luminanceWeights = vec3(0.2126, 0.7152, 0.0722);
-  const luminance = dot(combined, luminanceWeights);
-  const grayscale = vec4(luminance, luminance, luminance, float(1.0));
-  // Max 45% desaturation at full slow-mo intensity
-  const desatAmount = mul(uSlowMoIntensity, float(0.45));
-  combined = mix(combined, grayscale, desatAmount);
+  ).mul(float(0.55));   // edge darkening: 0.35→0.55
 
   // ── Cool Blue Tint (slow-mo only — NFS Most Wanted style) ──
-  // Subtle shift toward cool blue during slow-mo
+  // Shift toward cool blue during slow-mo
   const coolTint = vec4(
-    combined.r.mul(sub(float(1.0), mul(uSlowMoIntensity, float(0.08)))),   // slightly reduce red
-    combined.g.mul(sub(float(1.0), mul(uSlowMoIntensity, float(0.03)))),   // barely touch green
-    combined.b.mul(add(float(1.0), mul(uSlowMoIntensity, float(0.06)))),   // slightly boost blue
+    combined.r.mul(sub(float(1.0), mul(uSlowMoIntensity, float(0.12)))),   // reduce red more
+    combined.g.mul(sub(float(1.0), mul(uSlowMoIntensity, float(0.04)))),   // slight green reduction
+    combined.b.mul(add(float(1.0), mul(uSlowMoIntensity, float(0.10)))),   // boost blue more
     float(1.0),
   );
   combined = mix(combined, coolTint, uSlowMoIntensity);
