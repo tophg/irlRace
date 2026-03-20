@@ -306,17 +306,7 @@ export async function startRace() {
   if (G.raceStarting) return;
   G.raceStarting = true;
 
-  // Bug #6 fix: abort any previous startRace() in flight
-  _raceAbort?.abort();
-  _raceAbort = new AbortController();
-  const signal = _raceAbort.signal;
-
   const { renderer, scene, camera, uiOverlay, container } = _deps;
-
-  /** Throws if the race was cancelled during an async gap. */
-  const checkAbort = () => {
-    if (signal.aborted) throw new DOMException('Race cancelled', 'AbortError');
-  };
 
   try {
     G.gameState = GameState.TITLE;
@@ -326,6 +316,14 @@ export async function startRace() {
     showLoading(envName);
 
     clearRaceObjects();
+
+    // Bug #6 fix: create AbortController AFTER clearRaceObjects()
+    // (clearRaceObjects aborts the previous controller, so we must create ours after)
+    _raceAbort = new AbortController();
+    const signal = _raceAbort.signal;
+    const checkAbort = () => {
+      if (signal.aborted) throw new DOMException('Race cancelled', 'AbortError');
+    };
     resetInput(); // BUG-11 fix: zero out any stuck keys from previous race
     G.physicsAccumulator = 0;
     resetTimeScale();
