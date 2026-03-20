@@ -1101,32 +1101,131 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       emissiveIntensity: windowGlow * 0.4,
     });
 
-    // Shader injection: per-instance atlas column offset + AO banding
+    // Shader injection: per-instance atlas column + AO banding + interior mapping
     buildingMat.onBeforeCompile = (shader) => {
       shader.uniforms.colWidth = { value: columnWidth };
 
-      // Vertex shader: pass atlasColumn and normalized height to fragment
+      // Vertex shader: pass atlasColumn, height, world position, and normal
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `
           #include <common>
           attribute float atlasColumn;
           varying float vAtlasColumn;
           varying float vHeightFrac;
+          varying vec3 vWPos;
+          varying vec3 vWNormal;
         `)
         .replace('#include <uv_vertex>', `
           #include <uv_vertex>
           vAtlasColumn = atlasColumn;
-          // Normalized height within the building (0=bottom, 1=top)
-          vHeightFrac = (position.y + 0.5); // unit box: -0.5 to 0.5 -> 0 to 1
+          vHeightFrac = (position.y + 0.5);
+          vWPos = (modelMatrix * vec4(position, 1.0)).xyz;
+          vWNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
         `);
 
-      // Fragment shader: offset UVs by column + apply AO gradient
+      // Fragment shader: atlas offset + AO + interior mapping
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', `
           #include <common>
           uniform float colWidth;
           varying float vAtlasColumn;
           varying float vHeightFrac;
+          varying vec3 vWPos;
+          varying vec3 vWNormal;
+
+          // Simple hash for per-window interior color variation
+          float hash21(vec2 p) {
+            p = fract(p * vec2(123.34, 456.21));
+            p += dot(p, p + 45.32);
+            return fract(p.x * p.y);
+          }
+
+          // Interior mapping: ray-cast into virtual room behind wall
+          vec3 interiorColor(vec3 worldPos, vec3 viewDir, vec3 wallNormal) {
+            // Room grid: ~4m wide, ~3.5m tall rooms
+            float roomW = 4.0;
+            float roomH = 3.5;
+            float roomDepth = 3.0;
+
+            // Find position within current room cell
+            vec3 tangent = abs(wallNormal.y) > 0.9
+              ? normalize(cross(wallNormal, vec3(1.0, 0.0, 0.0)))
+              : normalize(cross(wallNormal, vec3(0.0, 1.0, 0.0)));
+            vec3 bitangent = cross(wallNormal, tangent);
+
+            float u = dot(worldPos, tangent);
+            float v = worldPos.y;
+
+            // Room cell coordinates
+            vec2 roomCell = vec2(floor(u / roomW), floor(v / roomH));
+            float roomU = fract(u / roomW);
+            float roomV = fract(v / roomH);
+
+            // Ray direction in room space
+            float dU = dot(viewDir, tangent);
+            float dV = dot(viewDir, vec3(0.0, 1.0, 0.0));
+            float dN = dot(viewDir, wallNormal);
+
+            // Only trace if looking into the wall (dN < 0)
+            if (dN >= 0.0) return vec3(0.05);
+
+            // Find intersections with room walls
+            float tBack = -roomDepth / dN;
+            float tLeft = (dU > 0.0) ? ((1.0 - roomU) * roomW) / dU : (-roomU * roomW) / dU;
+            float tRight = (dU < 0.0) ? ((1.0 - roomU) * roomW) / -dU : (-roomU * roomW) / -dU;
+            float tFloor = (-roomV * roomH) / dV;
+            float tCeil = ((1.0 - roomV) * roomH) / dV;
+
+            float tMin = tBack;
+            int hitFace = 0; // 0=back, 1=side, 2=floor, 3=ceiling
+            if (tLeft > 0.0 && tLeft < tMin) { tMin = tLeft; hitFace = 1; }
+            if (tFloor > 0.0 && tFloor < tMin) { tMin = tFloor; hitFace = 2; }
+            if (tCeil > 0.0 && tCeil < tMin) { tMin = tCeil; hitFace = 3; }
+
+            // Per-room deterministic variation
+            float roomHash = hash21(roomCell);
+
+            // Room interior colors based on which surface was hit
+            vec3 backWall, sideWall, floorCol, ceilCol;
+
+            if (roomHash < 0.3) {
+              // Warm lit office
+              backWall = vec3(0.85, 0.78, 0.65);
+              sideWall = vec3(0.75, 0.68, 0.55);
+              floorCol = vec3(0.45, 0.35, 0.25);
+              ceilCol  = vec3(0.92, 0.90, 0.85);
+            } else if (roomHash < 0.6) {
+              // Cool blue office
+              backWall = vec3(0.65, 0.72, 0.82);
+              sideWall = vec3(0.55, 0.62, 0.72);
+              floorCol = vec3(0.35, 0.35, 0.40);
+              ceilCol  = vec3(0.88, 0.90, 0.92);
+            } else if (roomHash < 0.8) {
+              // Dark empty room
+              backWall = vec3(0.15, 0.13, 0.12);
+              sideWall = vec3(0.12, 0.10, 0.09);
+              floorCol = vec3(0.08, 0.07, 0.06);
+              ceilCol  = vec3(0.18, 0.16, 0.15);
+            } else {
+              // Warm lamp glow
+              backWall = vec3(0.90, 0.75, 0.50);
+              sideWall = vec3(0.80, 0.65, 0.40);
+              floorCol = vec3(0.50, 0.38, 0.22);
+              ceilCol  = vec3(0.95, 0.90, 0.80);
+            }
+
+            vec3 col;
+            if (hitFace == 0) col = backWall;
+            else if (hitFace == 1) col = sideWall;
+            else if (hitFace == 2) col = floorCol;
+            else col = ceilCol;
+
+            // Depth-based darkening (further = darker)
+            float depth = tMin / (roomDepth * 2.0);
+            col *= mix(1.0, 0.4, clamp(depth, 0.0, 1.0));
+
+            return col;
+          }
         `)
         .replace('#include <map_fragment>', `
           #ifdef USE_MAP
@@ -1134,6 +1233,19 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
             vec2 atlasUV = vMapUv;
             atlasUV.x = atlasUV.x + vAtlasColumn * colWidth;
             vec4 sampledDiffuseColor = texture2D(map, atlasUV);
+
+            // Interior mapping: detect windows by dark pixels in mid-floor zone
+            float texLum = dot(sampledDiffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+            bool isWallFace = abs(vWNormal.y) < 0.3; // skip roof/floor faces
+            bool isMidZone = vHeightFrac > 0.15 && vHeightFrac < 0.85;
+
+            if (isWallFace && isMidZone && texLum < 0.22) {
+              // This pixel is a window — ray-cast into virtual room
+              vec3 viewDir = normalize(vWPos - cameraPosition);
+              vec3 roomCol = interiorColor(vWPos, viewDir, vWNormal);
+              sampledDiffuseColor.rgb = roomCol;
+            }
+
             diffuseColor *= sampledDiffuseColor;
           #endif
         `)
@@ -1142,7 +1254,17 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
             vec2 emUV = vMapUv;
             emUV.x = emUV.x + vAtlasColumn * colWidth;
             vec4 emissiveColor = texture2D(emissiveMap, emUV);
-            totalEmissiveRadiance *= emissiveColor.rgb;
+
+            // Boost emissive for interior-mapped windows (warm room glow)
+            float emLum = dot(emissiveColor.rgb, vec3(0.299, 0.587, 0.114));
+            bool isEmWall = abs(vWNormal.y) < 0.3;
+            bool isEmMid = vHeightFrac > 0.15 && vHeightFrac < 0.85;
+            if (isEmWall && isEmMid && emLum < 0.22) {
+              // Replace emissive with warm interior glow
+              totalEmissiveRadiance *= vec3(0.9, 0.7, 0.4) * 0.6;
+            } else {
+              totalEmissiveRadiance *= emissiveColor.rgb;
+            }
           #endif
           // AO banding — darker at base and top edges
           float ao = smoothstep(0.0, 0.12, vHeightFrac) *
