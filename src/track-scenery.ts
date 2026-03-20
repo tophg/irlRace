@@ -5,7 +5,6 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { ROAD_WIDTH, BARRIER_THICKNESS, estimateCurvature, BANK_SCALE, MAX_BANK_ANGLE } from './track';
 import { loadGLB } from './loaders';
 import type { SceneryTheme } from './scene';
-import { generateFacadeAtlas, FACADE_COLS, FACADE_ROWS } from './facade-atlas';
 
 // ── Typed data storage (replaces `as any` monkey-patching) ──
 interface WindShaderRef {
@@ -805,12 +804,25 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   const rowCount = isMobile ? 1 : Math.min(3, Math.max(1, T.buildingRowCount ?? 2));
   const gapChance = isMobile ? Math.max(T.buildingGapChance ?? 0.15, 0.3) : (T.buildingGapChance ?? 0.15);
 
-  // ── Procedural facade atlas (8×4 = 32 tiles at 2048×2048) ──
-  const ATLAS_COLS = FACADE_COLS, ATLAS_ROWS = FACADE_ROWS;
+  // ── AI-generated facade atlas (8×4 = 32 tiles, high-resolution PNGs) ──
+  const ATLAS_COLS = 8, ATLAS_ROWS = 4;
+
+  // Each environment has its own AI-generated atlas with photorealistic textures
+  const STYLE_ATLAS: Record<string, string> = {
+    modern:       '/buildings/facade_atlas_dc.png',
+    adobe:        '/buildings/facade_atlas_mojave.png',
+    beach_house:  '/buildings/facade_atlas_havana.png',
+    cyberpunk:    '/buildings/facade_atlas_shibuya.png',
+    weathered:    '/buildings/facade_atlas_weathered.png',
+    chalet:       '/buildings/facade_atlas_zermatt.png',
+    warehouse:    '/buildings/facade_atlas_warehouse.png',
+    concrete:     '/buildings/facade_atlas_dc.png',       // reuse DC's concrete/glass
+    bamboo_lodge: '/buildings/facade_atlas_zermatt.png',  // reuse Zermatt's wood/stone
+  };
 
   const styleName = T.buildingStyle ?? 'modern';
-  const atlasCanvas = generateFacadeAtlas(T);
-  const atlasTexture = new THREE.CanvasTexture(atlasCanvas);
+  const atlasPath = STYLE_ATLAS[styleName] ?? '/buildings/facade_atlas_dc.png';
+  const atlasTexture = new THREE.TextureLoader().load(atlasPath);
   atlasTexture.wrapS = THREE.RepeatWrapping;
   atlasTexture.wrapT = THREE.RepeatWrapping;
   atlasTexture.colorSpace = THREE.SRGBColorSpace;
