@@ -1361,13 +1361,10 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           // Per-instance atlas column (variant 0-3 from placement)
           columnAttr[j] = pl.tile;
 
-          // Per-instance color from environment buildingPalette
-          const palette = T.buildingPalette;
-          const palIdx = ((pl.x * 73 + pl.z * 137) & 0xFF) % palette.length;
-          const palColor = new THREE.Color(palette[palIdx]);
-          // Add ±10% luminance variation
+          // Per-instance tint — AI atlases already have correct colors,
+          // so use near-white with subtle ±10% luminance variation only
           const lum = 0.9 + (((pl.x * 31 + pl.z * 97) & 0xFF) / 255) * 0.2;
-          _c.setRGB(palColor.r * lum, palColor.g * lum, palColor.b * lum);
+          _c.setRGB(lum, lum, lum);
           instancedMesh.setColorAt(j, _c);
           _instances.push(new THREE.Vector3(pl.x, 0, pl.z));
         }
