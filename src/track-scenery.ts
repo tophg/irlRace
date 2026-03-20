@@ -804,30 +804,43 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   const rowCount = isMobile ? 1 : Math.min(3, Math.max(1, T.buildingRowCount ?? 2));
   const gapChance = isMobile ? Math.max(T.buildingGapChance ?? 0.15, 0.3) : (T.buildingGapChance ?? 0.15);
 
-  // ── Facade Atlas (4×4 grid, 16 tiles) ──
+  // ── Per-environment facade atlas ──
   const ATLAS_COLS = 4, ATLAS_ROWS = 4;
 
-  // Load the detailed facade atlas PNG
-  const atlasTexture = new THREE.TextureLoader().load('/buildings/facade_atlas.png');
+  // Each environment has its own atlas tailored to its architectural style
+  const STYLE_ATLAS: Record<string, string> = {
+    modern:       '/buildings/facade_atlas_dc.png',
+    adobe:        '/buildings/facade_atlas_mojave.png',
+    beach_house:  '/buildings/facade_atlas_havana.png',
+    cyberpunk:    '/buildings/facade_atlas_shibuya.png',
+    weathered:    '/buildings/facade_atlas_havana.png',  // reuse Havana's colonial facades
+    chalet:       '/buildings/facade_atlas_zermatt.png',
+    warehouse:    '/buildings/facade_atlas_dc.png',       // reuse DC's industrial mix
+    concrete:     '/buildings/facade_atlas_dc.png',       // reuse DC's concrete/glass
+    bamboo_lodge: '/buildings/facade_atlas_zermatt.png',  // reuse Zermatt's wood/stone
+  };
+
+  const styleName = T.buildingStyle ?? 'modern';
+  const atlasPath = STYLE_ATLAS[styleName] ?? '/buildings/facade_atlas_dc.png';
+  const atlasTexture = new THREE.TextureLoader().load(atlasPath);
   atlasTexture.wrapS = THREE.RepeatWrapping;
   atlasTexture.wrapT = THREE.RepeatWrapping;
   atlasTexture.magFilter = THREE.LinearFilter;
   atlasTexture.minFilter = THREE.LinearMipmapLinearFilter;
   atlasTexture.colorSpace = THREE.SRGBColorSpace;
 
-  // Style tiles per environment
+  // Use all 16 tiles from each environment-specific atlas — every tile is now contextual
   const STYLE_TILES: Record<string, number[]> = {
-    modern:      [0, 1, 2, 3, 8, 9, 13, 14, 15],      // 9 tiles — glass, brick, concrete, residential
-    adobe:       [1, 4, 5, 7, 9, 12, 14, 15],           // 8 tiles — brick, ornate, warehouse, shuttered
-    beach_house: [1, 4, 5, 7, 9, 12, 13, 14],           // 8 tiles — warm low-rise, warehouse, shuttered
-    cyberpunk:   [0, 2, 3, 6, 8, 10, 13, 14, 15],       // 9 tiles — glass, neon, deco, lit apartments
-    weathered:   [1, 2, 4, 5, 9, 12, 14, 15],           // 8 tiles — brick, concrete, brownstone
-    chalet:      [1, 4, 5, 7, 9, 11, 12],               // 7 tiles — ornate, warehouse, shuttered, wooden
-    warehouse:   [1, 2, 5, 9, 12, 14, 15],              // 7 tiles — industrial mix
-    concrete:    [2, 5, 8, 12, 13, 14, 15],              // 7 tiles — concrete, glass, residential
-    bamboo_lodge:[4, 5, 7, 9, 11, 12],                   // 6 tiles — wooden, shuttered, warehouse
+    modern:      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    adobe:       [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    beach_house: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    cyberpunk:   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    weathered:   [0, 1, 2, 3, 5, 6, 8, 9, 10, 13, 14, 15],   // skip some baroque/tourist tiles
+    chalet:      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    warehouse:   [1, 2, 5, 6, 8, 9, 12, 14, 15],              // industrial subset of DC
+    concrete:    [0, 2, 3, 5, 8, 10, 12, 13, 14, 15],         // glass/concrete subset
+    bamboo_lodge:[0, 1, 2, 3, 5, 6, 7, 9, 11, 14],            // wood/stone subset of Zermatt
   };
-  const styleName = T.buildingStyle ?? 'modern';
   const tiles = STYLE_TILES[styleName] ?? STYLE_TILES['modern'];
 
   // Per-tile height clamps for realistic proportions
