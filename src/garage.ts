@@ -37,9 +37,13 @@ let lastInteractionTime = 0;
 const AUTO_ROTATE_RESUME_DELAY = 3000; // ms
 const AUTO_ROTATE_SPEED = 0.005;
 const ORBIT_DAMPING = 0.92;
+
+// Adaptive camera orbit — on mobile landscape the car must sit above the bottom UI
+const _isMobileLandscape = () => window.innerHeight < 500 && window.innerWidth > window.innerHeight;
 const ORBIT_RADIUS = 7.5;
-const ORBIT_HEIGHT = 2.8;
-const ORBIT_LOOK_Y = 0.8;
+let ORBIT_HEIGHT = _isMobileLandscape() ? 2.0 : 2.8;
+let ORBIT_LOOK_Y = _isMobileLandscape() ? 1.4 : 0.8;
+let ORBIT_FOV = _isMobileLandscape() ? 38 : 45;
 
 // Swipe navigation
 let swipeStartX = 0;
@@ -72,13 +76,18 @@ export function initGarage(
   garageScene = new THREE.Scene();
   garageScene.background = new THREE.Color(0x0c0c1a);
 
-  garageCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-  garageCamera.position.set(0, 2.8, 7.5);
-  garageCamera.lookAt(0, 0.8, 0);
+  garageCamera = new THREE.PerspectiveCamera(ORBIT_FOV, window.innerWidth / window.innerHeight, 0.1, 100);
+  garageCamera.position.set(0, ORBIT_HEIGHT, ORBIT_RADIUS);
+  garageCamera.lookAt(0, ORBIT_LOOK_Y, 0);
 
   // Resize handler for orientation changes mid-garage
   _garageResizeHandler = () => {
     if (!garageCamera) return;
+    // Recalculate adaptive orbit for orientation changes
+    ORBIT_HEIGHT = _isMobileLandscape() ? 2.0 : 2.8;
+    ORBIT_LOOK_Y = _isMobileLandscape() ? 1.4 : 0.8;
+    ORBIT_FOV = _isMobileLandscape() ? 38 : 45;
+    garageCamera.fov = ORBIT_FOV;
     garageCamera.aspect = window.innerWidth / window.innerHeight;
     garageCamera.updateProjectionMatrix();
   };
