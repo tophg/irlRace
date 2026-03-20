@@ -1121,7 +1121,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       metalness: 0.15,
       emissiveMap: emissiveMaskTexture,
       emissive: new THREE.Color(T.windowColor ?? 0xffcc66),
-      emissiveIntensity: windowGlow * 1.5,
+      emissiveIntensity: windowGlow * 0.3,
     });
 
     // Shader injection: per-instance atlas column + AO banding + interior mapping
@@ -1291,18 +1291,17 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
             vec2 emUV = vEmissiveMapUv;
             vec4 emissiveColor = texture2D(emissiveMap, emUV);
 
-            // Mask naturally gates: white=window → full emissive, black=wall → zero
-            // Add warm color tint and distance fade for close-up interior glow feel
+            // Mask gates: white=window emissive, black=wall no emissive
             float emCamDist = length(vWPos - cameraPosition);
             float emFade = 1.0 - smoothstep(60.0, 120.0, emCamDist);
             bool isEmWall = abs(vWNormal.y) < 0.3;
             bool isEmMid = vHeightFrac > 0.15 && vHeightFrac < 0.85;
             if (isEmWall && isEmMid && emissiveColor.r > 0.3) {
-              // Warm window glow with distance fading
-              vec3 warmGlow = vec3(0.95, 0.80, 0.55) * emFade;
-              totalEmissiveRadiance *= warmGlow;
+              // Subtle warm window glow, distance-faded
+              totalEmissiveRadiance *= vec3(1.0) * emFade;
             } else {
-              totalEmissiveRadiance *= emissiveColor.rgb;
+              // Non-window area — kill emissive completely
+              totalEmissiveRadiance = vec3(0.0);
             }
           #endif
           float ao = smoothstep(0.0, 0.12, vHeightFrac) *
