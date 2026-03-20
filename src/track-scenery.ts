@@ -925,7 +925,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     // Multi-story: ground (Row 0) → mid repeating (Row 1) → roof cap (Row 2)
     // Single-story (repV ≤ 1): uses singleTile (Row 3) for entire face
     const buildComposedBox = (
-      groundTile: number, midTile: number, roofCapTile: number,
+      groundTile: number, sideGroundTile: number, midTile: number, roofCapTile: number,
       singleTile: number, flipU: boolean,
       repFB: number, repLR: number, repV: number,
     ) => {
@@ -979,6 +979,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         axisU: [number, number, number],
         axisV: [number, number, number],
         hRep: number, vRep: number,
+        faceGroundTile: number,
       ) => {
         const isSingleStory = vRep <= 1;
 
@@ -1022,7 +1023,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
         // Zone definitions: [vStart, vEnd, tile, vRepeat, hRep]
         const zones: { vStart: number; vEnd: number; tile: number; vRepeats: number; zoneHRep: number }[] = [];
-        zones.push({ vStart: 0, vEnd: groundFrac, tile: groundTile, vRepeats: 1, zoneHRep: hRep });
+        zones.push({ vStart: 0, vEnd: groundFrac, tile: faceGroundTile, vRepeats: 1, zoneHRep: hRep });
         if (midBands > 0 && midFrac > 0) {
           zones.push({ vStart: groundFrac, vEnd: groundFrac + midFrac, tile: midTile, vRepeats: midBands, zoneHRep: hRep });
         }
@@ -1066,15 +1067,14 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         }
       };
 
-      // 6 faces of a unit box centered at origin
-      // Front (+Z)
-      addComposedFace([-0.5, -0.5, 0.5], [1, 0, 0], [0, 1, 0], repFB, repV);
-      // Back (-Z)
-      addComposedFace([0.5, -0.5, -0.5], [-1, 0, 0], [0, 1, 0], repFB, repV);
-      // Right (+X)
-      addComposedFace([0.5, -0.5, 0.5], [0, 0, -1], [0, 1, 0], repLR, repV);
-      // Left (-X)
-      addComposedFace([-0.5, -0.5, -0.5], [0, 0, 1], [0, 1, 0], repLR, repV);
+      // Front (+Z) — storefronts/doors
+      addComposedFace([-0.5, -0.5, 0.5], [1, 0, 0], [0, 1, 0], repFB, repV, groundTile);
+      // Back (-Z) — storefronts/doors
+      addComposedFace([0.5, -0.5, -0.5], [-1, 0, 0], [0, 1, 0], repFB, repV, groundTile);
+      // Right (+X) — plain walls at ground level
+      addComposedFace([0.5, -0.5, 0.5], [0, 0, -1], [0, 1, 0], repLR, repV, sideGroundTile);
+      // Left (-X) — plain walls at ground level
+      addComposedFace([-0.5, -0.5, -0.5], [0, 0, 1], [0, 1, 0], repLR, repV, sideGroundTile);
       // Top (+Y) — flat roof
       addFlatFace([-0.5, 0.5, 0.5], [1, 0, 0], [0, 0, -1], true);
       // Bottom (-Y)
@@ -1327,13 +1327,14 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
       // Tile mapping: bake variant column into tile indices
       // Each variant column picks the matching tile from each row
-      const groundTile  = 2 * ATLAS_COLS + variant; // Row 2, Col=variant
-      const midTile     = 0 * ATLAS_COLS + variant; // Row 0, Col=variant
-      const roofCapTile = 3 * ATLAS_COLS + variant; // Row 3, Col=variant
-      const singleTile  = 0 * ATLAS_COLS + variant; // Row 0, Col=variant
+      const groundTile      = 2 * ATLAS_COLS + variant; // Row 2, Col=variant (shops/doors)
+      const sideGroundTile  = 1 * ATLAS_COLS + variant; // Row 1, Col=variant (plain walls)
+      const midTile         = 0 * ATLAS_COLS + variant; // Row 0, Col=variant (windows)
+      const roofCapTile     = 3 * ATLAS_COLS + variant; // Row 3, Col=variant (trim/caps)
+      const singleTile      = 0 * ATLAS_COLS + variant; // Row 0, Col=variant
 
-      const geo0 = buildComposedBox(groundTile, midTile, roofCapTile, singleTile, false, repFB, repLR, repV);
-      const geo1 = buildComposedBox(groundTile, midTile, roofCapTile, singleTile, true,  repFB, repLR, repV);
+      const geo0 = buildComposedBox(groundTile, sideGroundTile, midTile, roofCapTile, singleTile, false, repFB, repLR, repV);
+      const geo1 = buildComposedBox(groundTile, sideGroundTile, midTile, roofCapTile, singleTile, true,  repFB, repLR, repV);
 
       // Split placements into 2 visual variants (flip mirror)
       const bucket0: BoxPlacement[] = [];
