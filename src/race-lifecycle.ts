@@ -93,9 +93,11 @@ function disposeMesh(obj: THREE.Object3D) {
   });
 }
 
-// ── Clear Race Objects ──
+// Bug #6 fix: AbortController for startRace() cancellation
+let _raceAbort: AbortController | null = null;
 
 export function clearRaceObjects() {
+  _raceAbort?.abort(); // Bug #6: cancel any in-flight startRace() promises
   const { scene } = _deps;
 
   G.netPeer?.stopBroadcasting();
@@ -304,7 +306,17 @@ export async function startRace() {
   if (G.raceStarting) return;
   G.raceStarting = true;
 
+  // Bug #6 fix: abort any previous startRace() in flight
+  _raceAbort?.abort();
+  _raceAbort = new AbortController();
+  const signal = _raceAbort.signal;
+
   const { renderer, scene, camera, uiOverlay, container } = _deps;
+
+  /** Throws if the race was cancelled during an async gap. */
+  const checkAbort = () => {
+    if (signal.aborted) throw new DOMException('Race cancelled', 'AbortError');
+  };
 
   try {
     G.gameState = GameState.TITLE;
@@ -356,6 +368,7 @@ export async function startRace() {
       G.trackData = generateTrack(seed);
       updateLoadingProgress(25, 'LOADING VEHICLES');
     }
+    checkAbort(); // Bug #6: bail if cancelled during track gen
     const trackData = G.trackData!;
 
     if (w !== 'clear') applyWetRoad(trackData.roadMesh);
@@ -374,6 +387,7 @@ export async function startRace() {
 
     updateLoadingProgress(35, 'LOADING VEHICLES');
     const playerModel = await loadCarModel(G.selectedCar.file);
+    checkAbort(); // Bug #6: bail if cancelled during model load
     playerModel.position.set(0, 0, 0);
     playerModel.scale.setScalar(1);
     playerModel.rotation.set(0, 0, 0);
@@ -450,6 +464,7 @@ export async function startRace() {
 
     updateLoadingProgress(80, 'SPAWNING RACERS');
     if (!G.netPeer) await spawnAI(trackData);
+    checkAbort(); // Bug #6: bail if cancelled during AI spawn
 
     if (G.netPeer) {
       await spawnRemoteVehicles();

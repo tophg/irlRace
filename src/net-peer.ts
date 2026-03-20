@@ -206,6 +206,7 @@ export class NetPeer {
     view.setUint8(18, Math.round(state.dmgRight ?? 100));
 
     for (const remote of this.connections.values()) {
+      if (!remote.conn) continue; // buffer-only placeholder (Bug #2 fix)
       try { remote.conn.send(this.statePacketBuffer); } catch {}
     }
 

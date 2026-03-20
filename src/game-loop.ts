@@ -93,6 +93,10 @@ const _swayQuat = new THREE.Quaternion();
 const _swayAxis = new THREE.Vector3(0, 0, 1); // roll axis (camera forward)
 let _racingElapsed = 0;
 let _perfectStartChecked = false;
+let _drsLastWallTime = 0;
+
+// Race generation counter — incremented on reset, checked by deferred callbacks
+let _explosionRaceGen = 0;
 
 // First-boost-per-race tracker
 let _firstBoostFired = false;
@@ -228,6 +232,8 @@ export function resetGameLoopState() {
   _wrongWayBeepTimer = 0; // Bug #7 fix
   _racingElapsed = 0;
   _perfectStartChecked = false;
+  _explosionRaceGen++; // Bug #3 fix: invalidate any in-flight explosion callbacks
+  _drsLastWallTime = 0; // Bug #10 fix: reset DRS wall-clock baseline
   G._nearMissCooldowns.clear(); // Bug #5 fix
   if (_speedLinesEl) { _speedLinesEl.remove(); _speedLinesEl = null; }
 }
@@ -291,8 +297,13 @@ function updateRearMirror(renderer: THREE.WebGPURenderer, scene: THREE.Scene, fr
 }
 
 /** Dynamic Resolution Scaling — evaluate every 30 frames, schedule resize for next frame. */
-function updateDRS(renderer: THREE.WebGPURenderer, frameDt: number) {
-  G._drsFrameTimes[G._drsWriteIdx % 30] = frameDt;
+function updateDRS(renderer: THREE.WebGPURenderer, _frameDt: number) {
+  // Bug #10 fix: measure wall-clock time, not gameDt (which includes physics sub-steps)
+  const now = performance.now();
+  const wallDt = _drsLastWallTime > 0 ? (now - _drsLastWallTime) / 1000 : 0;
+  _drsLastWallTime = now;
+  if (wallDt <= 0 || wallDt > 0.5) return; // skip first frame / tab-out spikes
+  G._drsFrameTimes[G._drsWriteIdx % 30] = wallDt;
   G._drsWriteIdx++;
   if (G._drsWriteIdx >= 30) {
     G._drsWriteIdx = 0;
@@ -660,6 +671,7 @@ function gameLoop(timestamp: number) {
 
     // ── Engine overheat explosion VFX ──
     if (G.playerVehicle.engineJustExploded) {
+      const gen = _explosionRaceGen; // Bug #3 fix: capture generation for staleness checks
       const sinH = Math.sin(G.playerVehicle.heading);
       const cosH = Math.cos(G.playerVehicle.heading);
       _hoodExplosionPos.copy(G.playerVehicle.group.position);
@@ -681,6 +693,7 @@ function gameLoop(timestamp: number) {
 
       // ── Phase 2 (frame +1): Fireball wave + vehicle destruction ──
       requestAnimationFrame(() => {
+        if (gen !== _explosionRaceGen) return; // Bug #3: stale — race restarted
         spawnGPUFireballWave(expPos);
         if (isRacing) {
           triggerVehicleDestruction(bodyRef, vGroup, getScene(), pvx, pvz, wheelRefs, cachedFrags);
@@ -689,6 +702,7 @@ function gameLoop(timestamp: number) {
 
         // ── Phase 3 (frame +2): Cinematic + ember rain + glass ──
         requestAnimationFrame(() => {
+          if (gen !== _explosionRaceGen) return; // Bug #3: stale — race restarted
           spawnGPUEmberRain(expPos);
           spawnGPUGlassShards(expPos);
           if (isRacing) {
@@ -705,6 +719,7 @@ function gameLoop(timestamp: number) {
 
           // ── Phase 4 (frame +3): Ground debris ──
           requestAnimationFrame(() => {
+            if (gen !== _explosionRaceGen) return; // Bug #3: stale — race restarted
             spawnDebris(expPos, 35, pvx, pvz);
           });
         });

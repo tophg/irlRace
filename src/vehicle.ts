@@ -519,7 +519,7 @@ export class Vehicle {
       tlLPos = ld.taillightL;
       tlRPos = ld.taillightR;
       tlSize = ld.taillightSize || [0.28, 0.10];
-    } else if (!tlLPos!) {
+    } else if (!tlLPos) {
       // Need bbox fallback for taillights — headlights had auto/manual so compute box now
       const box = new THREE.Box3();
       if (this.model) box.setFromObject(this.model);
@@ -1400,6 +1400,14 @@ export class Vehicle {
   private static _deformLocalImpact = new THREE.Vector3();
   private static _deformLocalDir = new THREE.Vector3();
   private static _deformWorldImpact = new THREE.Vector3();
+  /** Deterministic pseudo-random for vertex deformation (based on vertex index). */
+  private static _deformHash(seed: number): number {
+    let h = seed | 0;
+    h = ((h >> 16) ^ h) * 0x45d9f3b;
+    h = ((h >> 16) ^ h) * 0x45d9f3b;
+    h = (h >> 16) ^ h;
+    return (h & 0xffff) / 0xffff; // 0..1
+  }
 
   /** Displace mesh vertices near the impact for visual crumple.
    * Permanent CPU-side deformation — vertices are moved and never restored.
@@ -1454,10 +1462,10 @@ export class Vehicle {
           const crushX = -positions[idx] * deform * 0.15;
           const crushZ = -positions[idx + 2] * deform * 0.15;
 
-          // Asymmetric noise for natural crumple
-          const nx = (Math.random() - 0.5) * deform * 0.35;
-          const ny = (Math.random() - 0.3) * deform * 0.2; // slightly downward bias
-          const nz = (Math.random() - 0.5) * deform * 0.35;
+          // Asymmetric noise for natural crumple (deterministic per vertex)
+          const nx = (Vehicle._deformHash(idx * 3 + 0) - 0.5) * deform * 0.35;
+          const ny = (Vehicle._deformHash(idx * 3 + 1) - 0.3) * deform * 0.2; // slightly downward bias
+          const nz = (Vehicle._deformHash(idx * 3 + 2) - 0.5) * deform * 0.35;
 
           positions[idx]     += localDir.x * deform * xScale + crushX + nx;
           positions[idx + 1] += localDir.y * deform * 0.3 + ny;

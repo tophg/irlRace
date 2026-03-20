@@ -168,9 +168,8 @@ export class RaceEngine {
    * Higher distance = further ahead in the race.
    */
   getRankings(): RacerProgress[] {
-    const list = this._racersList.slice(); // copy to avoid mutation
-
-    return list.sort((a, b) => {
+    // Sort in-place — callers only read the result, never mutate it (Bug #11 fix)
+    return this._racersList.sort((a, b) => {
       // DNF always last
       if (a.dnf && !b.dnf) return 1;
       if (!a.dnf && b.dnf) return -1;

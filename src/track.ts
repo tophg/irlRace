@@ -214,6 +214,8 @@ function crossProduct(o: THREE.Vector2, a: THREE.Vector2, b: THREE.Vector2): num
 /** Insert 1-3 "dent" points per hull edge to create chicanes. */
 function addChicanes(hull: THREE.Vector2[], rng: () => number): THREE.Vector2[] {
   const result: THREE.Vector2[] = [];
+  // Bug #12 fix: hoist centroid outside loop (was recomputed per dent)
+  const centroid = hull.reduce((acc, p) => acc.add(p.clone()), new THREE.Vector2()).divideScalar(hull.length);
 
   for (let i = 0; i < hull.length; i++) {
     result.push(hull[i].clone());
@@ -229,7 +231,6 @@ function addChicanes(hull: THREE.Vector2[], rng: () => number): THREE.Vector2[] 
         const mid = hull[i].clone().lerp(next, t);
 
         // Dent inward toward the centroid
-        const centroid = hull.reduce((acc, p) => acc.add(p.clone()), new THREE.Vector2()).divideScalar(hull.length);
         const inward = centroid.clone().sub(mid).normalize();
         const dentDepth = 15 + rng() * 40;
         mid.add(inward.multiplyScalar(dentDepth));

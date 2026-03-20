@@ -60,6 +60,7 @@ export class AIRacer {
   // Overtake state
   private overtakeTarget: string | null = null;
   private stuckTimer = 0;
+  private _noiseCounter = 0; // Bug #13 fix: deterministic noise seed
   private laneOffset = 0;       // -1 (left) to 1 (right), 0 = center
   private targetLaneOffset = 0;
 
@@ -119,6 +120,7 @@ export class AIRacer {
     if (!this.spline) return;
 
     const p = this.personality;
+    this._noiseCounter++; // Bug #13 fix
 
     // ── Startup protection: enforce placed heading on first frames ──
     // Prevents backwards driving caused by getClosestSplinePoint returning
@@ -202,7 +204,10 @@ export class AIRacer {
     // Analog-style steering with consistency noise
     let steerInput = Math.max(-1, Math.min(1, headingDiff * 3.5));
     if (p.consistency < 1) {
-      steerInput += (Math.random() - 0.5) * (1 - p.consistency) * 0.3;
+      // Bug #13 fix: deterministic noise from counter + AI id (instead of Math.random())
+      const aiSeed = parseInt(this.id.replace('ai_', ''), 10) || 0;
+      const noise = (Math.sin(this._noiseCounter * 127.1 + aiSeed * 311.7) * 0.5 + 0.5) - 0.5;
+      steerInput += noise * (1 - p.consistency) * 0.3;
       steerInput = Math.max(-1, Math.min(1, steerInput));
     }
 

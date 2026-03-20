@@ -46,10 +46,10 @@ import { initRaceLifecycle, startRace, clearRaceObjects } from './race-lifecycle
 
 
 // ── Initialize Vercel Analytics ──
-inject({ mode: (import.meta as any).env?.PROD ? 'production' : 'development' });
+inject({ mode: import.meta.env.PROD ? 'production' : 'development' });
 
 // ── Register Service Worker (production PWA) ──
-if ('serviceWorker' in navigator && (import.meta as any).env?.PROD) {
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
@@ -562,7 +562,10 @@ function showTitleScreen() {
   createTitleScene();
   titleLoop();
 
+  let launched = false;
   const launchTitle = async () => {
+    if (launched) return;
+    launched = true;
     // Wait for audio to finish downloading
     await audioReady;
     // Auto-fullscreen + landscape lock on first user gesture (mobile)
