@@ -976,9 +976,11 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
       // addComposedFace: builds a wall face with ground/mid/roof zones
       // faceW/faceH are physical dimensions in meters
-      // Atlas tiles are 1:2 aspect (80×160px). Physical tiles must match.
-      const TILE_W = 5;  // fixed tile physical width (meters)
-      const TILE_H = 10; // fixed tile physical height (meters) — 1:2 matches atlas
+      // Physical tile size — 8×8m matches the proportions that looked natural.
+      // Note: atlas tiles are 1:2 pixel aspect, so content is slightly widened.
+      // For perfect 1:1, atlas would need square tiles (e.g., 1280×640 image).
+      const TILE_W = 8;  // fixed tile physical width (meters)
+      const TILE_H = 8;  // fixed tile physical height (meters)
       const addComposedFace = (
         origin: [number, number, number],
         axisU: [number, number, number],
