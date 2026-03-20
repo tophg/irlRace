@@ -587,6 +587,8 @@ function showTitleScreen() {
   // On return from a race, skip the splash gate and go straight to the menu.
   // The splash is only needed on first boot to unlock audio autoplay.
   if (_hasBooted) {
+    // Remove stale title screen div from previous session (prevents DOM stacking)
+    document.getElementById('title-screen')?.remove();
     createTitleScene();
     titleLoop();
     playTitleMusic();

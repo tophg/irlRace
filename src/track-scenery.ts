@@ -805,7 +805,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   const gapChance = isMobile ? Math.max(T.buildingGapChance ?? 0.15, 0.3) : (T.buildingGapChance ?? 0.15);
 
   // ── AI-generated facade atlas (8×4 = 32 tiles, high-resolution PNGs) ──
-  const ATLAS_COLS = 8, ATLAS_ROWS = 4;
+  const ATLAS_COLS = 8, ATLAS_ROWS = 8;
 
   // Each environment has its own AI-generated atlas with photorealistic textures
   const STYLE_ATLAS: Record<string, string> = {
@@ -827,8 +827,15 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   atlasTexture.wrapT = THREE.RepeatWrapping;
   atlasTexture.colorSpace = THREE.SRGBColorSpace;
   atlasTexture.anisotropy = 8; // sharper at oblique angles
-  // Atlas layout: Row 0=windows, Row 1=walls, Row 2=ground floor, Row 3=trim/caps
-  // Each row has 8 style variants (columns 0-7)
+  // Atlas layout (8×8 grid, square tiles):
+  //   Row 0: Window (closed)    — curtains, blinds, shutters
+  //   Row 1: Window (open/lit)  — warm interior, plants
+  //   Row 2: Wall pier (plain)  — windowless wall surfaces
+  //   Row 3: Wall pier (detail) — AC units, pipes, vents
+  //   Row 4: Ground storefront  — shops, doors, awnings (front face)
+  //   Row 5: Ground wall        — plain wall at street level (side face)
+  //   Row 6: Cornice / trim     — decorative ledges, moldings
+  //   Row 7: Roof / cap        — parapet caps, roof edges
   const VARIANT_COUNT = 8;
 
   // Per-tile height clamps (now per-variant column for consistency)
@@ -1329,13 +1336,18 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const avgH = bucketPlacements.reduce((s, p) => s + p.h, 0) / bucketPlacements.length;
       const avgD = bucketPlacements.reduce((s, p) => s + p.d, 0) / bucketPlacements.length;
 
-      // Tile mapping: bake variant column into tile indices
-      // Each variant column picks the matching tile from each row
-      const groundTile      = 2 * ATLAS_COLS + variant; // Row 2, Col=variant (shops/doors)
-      const sideGroundTile  = 1 * ATLAS_COLS + variant; // Row 1, Col=variant (plain walls)
-      const midTile         = 0 * ATLAS_COLS + variant; // Row 0, Col=variant (windows)
-      const roofCapTile     = 3 * ATLAS_COLS + variant; // Row 3, Col=variant (trim/caps)
-      const singleTile      = 0 * ATLAS_COLS + variant; // Row 0, Col=variant
+      // Tile mapping: new 8-row atlas layout
+      // Symmetric column pattern: even cols = wall piers, odd cols = windows
+      // Use building hash for deterministic window state (open vs closed)
+      const buildingHash = ((variant * 73 + hBucket * 137) & 0xFF);
+      const windowRow  = (buildingHash % 2 === 0) ? 0 : 1; // Row 0=closed, Row 1=open
+      const wallRow    = (buildingHash % 3 === 0) ? 3 : 2;  // Row 2=plain, Row 3=detail
+      const windowTile     = windowRow * ATLAS_COLS + variant;
+      const wallPierTile   = wallRow * ATLAS_COLS + variant;
+      const groundTile     = 4 * ATLAS_COLS + variant; // Row 4 (storefronts)
+      const sideGroundTile = 5 * ATLAS_COLS + variant; // Row 5 (plain ground walls)
+      const roofCapTile    = 6 * ATLAS_COLS + variant; // Row 6 (cornice/trim)
+      const singleTile     = wallRow * ATLAS_COLS + variant; // Single-story = wall surface
 
       // Pass physical dimensions — addComposedFace computes tile repeats internally
       const geo0 = buildComposedBox(groundTile, sideGroundTile, midTile, roofCapTile, singleTile, false, avgW, avgH, avgD);

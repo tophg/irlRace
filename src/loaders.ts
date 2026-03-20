@@ -157,10 +157,8 @@ export function loadCarModelWithProgress(
 export function clearModelCache() {
   modelCache.clear();
 }
-
 const glbCache = new Map<string, THREE.Group>();
 const glbInflight = new Map<string, Promise<THREE.Group>>();
-let _preloadAbort: AbortController | null = null;
 
 /** Load a raw GLB model (no car-specific processing). Returns a cloned scene group.
  *  Caches the original so subsequent calls skip Draco decode.
@@ -200,13 +198,4 @@ export function preloadGLB(url: string): void {
     return new THREE.Group(); // dummy — never used
   });
   glbInflight.set(url, promise);
-}
-
-/** Cancel all in-progress background preloads to free bandwidth for race loading.
- *  Already-cached models are preserved. */
-export function cancelPreloads(): void {
-  if (_preloadAbort) {
-    _preloadAbort.abort();
-    _preloadAbort = null;
-  }
 }

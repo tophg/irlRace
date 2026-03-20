@@ -181,6 +181,9 @@ export function stepPhysics(dt: number, s: GameState) {
         spawnGPUGlassShards(G._sparkPos);
       }
     }
+
+    // Clear after consuming — prevents shoulder dust spawning every frame
+    G.playerVehicle.lastBarrierImpact = null;
   }
   // AI barrier hits
   for (const ai of G.aiRacers) {
@@ -188,6 +191,7 @@ export function stepPhysics(dt: number, s: GameState) {
       const b = ai.vehicle.lastBarrierImpact;
       G._sparkPos.set(b.posX, b.posY, b.posZ);
       spawnGPUSparks(G._sparkPos, b.force * 0.5);
+      ai.vehicle.lastBarrierImpact = null; // clear after consuming
     }
   }
 

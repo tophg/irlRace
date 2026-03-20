@@ -55,9 +55,6 @@ export class NetPeer {
   private pingInterval: number | null = null;
   private heartbeatInterval: number | null = null;
   private lastSeen = new Map<string, number>();
-  // 19-byte state packet: 15B position/heading/speed + 4B damage HP
-  private statePacketBuffer = new ArrayBuffer(19);
-  private stateView = new DataView(this.statePacketBuffer);
   private pendingReconnect = new Map<string, { name: string; timer: number; retries: number }>();
   private reconnectInterval: number | null = null;
 
@@ -193,7 +190,10 @@ export class NetPeer {
     x: number; z: number; heading: number; speed: number;
     dmgFront?: number; dmgRear?: number; dmgLeft?: number; dmgRight?: number;
   }) {
-    const view = this.stateView;
+    // Allocate a fresh buffer each send — WebRTC send() is async, reusing
+    // a shared buffer corrupts packets if the previous send hasn't flushed.
+    const buf = new ArrayBuffer(19);
+    const view = new DataView(buf);
     view.setUint8(0, PacketType.STATE);
     view.setFloat32(1, state.x, true);
     view.setFloat32(5, state.z, true);
@@ -207,10 +207,8 @@ export class NetPeer {
 
     for (const remote of this.connections.values()) {
       if (!remote.conn) continue; // buffer-only placeholder (Bug #2 fix)
-      try { remote.conn.send(this.statePacketBuffer); } catch {}
+      try { remote.conn.send(buf); } catch {}
     }
-
-    // FIX: Do NOT relay host's own state — guests already received it directly
   }
 
   /** Send 8-byte input packet: [type(u8), frame(u32), bits(u8), steerI16(i16)] */
@@ -491,6 +489,7 @@ export class NetPeer {
 
   private finalizeDisconnect(peerId: string, name?: string) {
     this.connections.delete(peerId);
+    this.lastSeen.delete(peerId); // prevent unbounded lastSeen growth
     this.onPlayerLeave(peerId, name);
   }
 
@@ -498,6 +497,7 @@ export class NetPeer {
     const name = this.connections.get(peerId)?.name;
     this.connections.delete(peerId);
     this.pendingReconnect.delete(peerId);
+    this.lastSeen.delete(peerId);
     this.onPlayerLeave(peerId, name);
   }
 

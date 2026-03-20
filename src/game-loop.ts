@@ -644,7 +644,7 @@ function gameLoop(timestamp: number) {
           if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
           if (angleDiff < 0.52) {
             const draftStrength = (1 - dist / 15) * 20;
-            G.playerVehicle.addNitro(draftStrength * frameDt);
+            G.playerVehicle.addNitro(draftStrength * gameDt);
             spawnGPUSlipstream(aPos, ai.vehicle.heading, G.playerVehicle.speed);
             showDraftingIndicator();
           }
@@ -712,9 +712,18 @@ function gameLoop(timestamp: number) {
             if (G.vehicleCamera) {
               G.vehicleCamera.startExplosionOrbit(expPos);
             }
-            _explosionTimers.push(window.setTimeout(() => showEngineDestroyedText(), 800));
-            _explosionTimers.push(window.setTimeout(() => { hideLetterbox(); setExplosionMode(false); }, 3500));
-            _explosionTimers.push(window.setTimeout(() => _deps.callShowResults(), 4000));
+            _explosionTimers.push(window.setTimeout(() => {
+              if (gen !== _explosionRaceGen) return; // stale — race restarted
+              showEngineDestroyedText();
+            }, 800));
+            _explosionTimers.push(window.setTimeout(() => {
+              if (gen !== _explosionRaceGen) return;
+              hideLetterbox(); setExplosionMode(false);
+            }, 3500));
+            _explosionTimers.push(window.setTimeout(() => {
+              if (gen !== _explosionRaceGen) return;
+              _deps.callShowResults();
+            }, 4000));
           }
 
           // ── Phase 4 (frame +3): Ground debris ──
@@ -904,11 +913,13 @@ function gameLoop(timestamp: number) {
     G._wasNitroActive = isNitroNow;
     updateBoostShockwave(frameDt);
 
-    // FOV punch
-    const baseFOV = 75;
-    const targetFOV = isNitroNow ? baseFOV + 8 : baseFOV;
-    camera.fov += (targetFOV - camera.fov) * (1 - Math.exp(-(isNitroNow ? 12 : 5) * frameDt));
-    camera.updateProjectionMatrix();
+    // Nitro FOV punch — additive on top of VehicleCamera's speed-based FOV.
+    // VehicleCamera sets FOV in range [FOV_MIN..FOV_MAX] based on speed.
+    // We just bump it a bit more during nitro for the rush effect.
+    if (isNitroNow) {
+      camera.fov = Math.min(camera.fov + 5, 83);
+      camera.updateProjectionMatrix();
+    }
 
     // Camera shake
     if (isNitroNow) {
@@ -995,8 +1006,8 @@ function gameLoop(timestamp: number) {
     if (s === GameState.RACING) {
       const speedMph = Math.abs(G.playerVehicle.speed) * 2.5;
       if (speedMph > G.raceStats.topSpeed) G.raceStats.topSpeed = speedMph;
-      if (speedMph > 180) G.raceStats.speedDemonTime += frameDt;
-      if (driftAbs > 0.15) G.raceStats.totalDriftTime += frameDt;
+      if (speedMph > 180) G.raceStats.speedDemonTime += gameDt;
+      if (driftAbs > 0.15) G.raceStats.totalDriftTime += gameDt;
     }
 
     // Audio
@@ -1193,6 +1204,7 @@ function gameLoop(timestamp: number) {
       const isNitro = G.playerVehicle?.isNitroActive ?? false;
       updatePostFX(Math.min(speedRatio, 1), isNitro, gameDt);
       if (isNitro) setBoostActive(true);
+      else setBoostActive(false);
       G.postFXPipeline.render();
     } else {
       renderer.render(scene, camera);
