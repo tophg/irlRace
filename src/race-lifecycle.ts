@@ -46,6 +46,20 @@ import { showLoading, hideLoading, updateLoadingProgress } from './ui-screens';
 import { destroyLeaderboard, cleanupGameLoopDOM } from './game-loop';
 import { destroySpectateHUD } from './spectator';
 
+/** F1-style staggered starting grid — slot 0 = pole (player / host) */
+const GRID_SLOTS: ReadonlyArray<{ t: number; lane: number }> = [
+  { t: 0.000, lane: -3.0 },   // P1 — pole
+  { t: 0.006, lane:  3.0 },   // P2
+  { t: 0.012, lane: -3.0 },   // P3
+  { t: 0.018, lane:  3.0 },   // P4
+  { t: 0.024, lane: -3.0 },   // P5
+  { t: 0.030, lane:  3.0 },   // P6
+];
+
+function gridSlot(index: number) {
+  return GRID_SLOTS[index] ?? { t: 0.006 * index, lane: index % 2 === 0 ? -3.0 : 3.0 };
+}
+
 // ── Dependency injection ──
 
 export interface RaceLifecycleDeps {
@@ -216,8 +230,7 @@ export async function spawnAI(td: TrackData) {
   const available = CAR_ROSTER.filter(c => c.id !== G.selectedCar.id);
   const count = Math.min(G.aiCount, available.length);
   const aiCars = available.slice(0, count);
-  const laneOffsets = [3.5, -3.5, 3.5, -3.5, 3.5, -3.5];
-  const startTs = [0.005, 0.005, 0.012, 0.012, 0.019, 0.019];
+  // AI racers fill grid slots 1..N (slot 0 = player)
 
   console.log(`[spawnAI] G.aiCount=${G.aiCount}, spawning ${aiCars.length} AI racers`);
 
@@ -225,7 +238,8 @@ export async function spawnAI(td: TrackData) {
     const def = aiCars[i];
     const ai = new AIRacer(`ai_${i}`, { ...def }, i);
     ai.applyDifficulty(G.aiDifficulty);
-    G.raceEngine!.addRacer(`ai_${i}`, startTs[i] ?? 0.02);
+    const slot = gridSlot(i + 1);
+    G.raceEngine!.addRacer(`ai_${i}`, slot.t);
 
     try {
       const model = await loadCarModel(def.file);
@@ -236,7 +250,7 @@ export async function spawnAI(td: TrackData) {
     } catch (err) { console.warn('[race-lifecycle] Failed to load AI model:', def.file, err); }
 
     ai.vehicle.setRoadMesh(G.trackData!.roadMesh, [G.trackData!.rampGroup]);
-    ai.place(G.trackData!.spline, startTs[i] ?? 0.02, laneOffsets[i] ?? 0, G.trackData!.bvh);
+    ai.place(G.trackData!.spline, slot.t, slot.lane, G.trackData!.bvh);
     ai.setSpeedProfile(G.trackData!.speedProfile);
     scene.add(ai.vehicle.group);
     createUnderglow(ai.vehicle.group, i + 1);
@@ -261,23 +275,23 @@ export async function spawnRemoteVehicles() {
     ? G.mpPlayersList.filter(p => p.id !== localId)
     : G.netPeer.getRemotePlayers().map(r => ({ id: r.id, name: r.name, carId: r.carId }));
 
-  const laneOffsets = [3.5, -3.5, 3.5, -3.5, 3.5, -3.5];
-
   for (let ri = 0; ri < allPlayers.length; ri++) {
     const player = allPlayers[ri];
     if (G.remoteMeshes.has(player.id)) continue;
 
+    // Place remote car at its correct grid slot (host=0, guests=1..N)
+    const remoteSlotIdx = G.mpPlayersList.findIndex(p => p.id === player.id);
+    const slot = gridSlot(remoteSlotIdx >= 0 ? remoteSlotIdx : ri + 1);
+
     const def = CAR_ROSTER.find(c => c.id === player.carId) ?? CAR_ROSTER[0];
     try {
       const model = await loadCarModel(def.file);
-      const startT = 0.02 + ri * 0.02;
-      const pt = G.trackData.spline.getPointAt(startT);
-      const tangent = G.trackData.spline.getTangentAt(startT).normalize();
+      const pt = G.trackData.spline.getPointAt(slot.t);
+      const tangent = G.trackData.spline.getTangentAt(slot.t).normalize();
       const right = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
-      const lane = laneOffsets[ri % laneOffsets.length];
       model.position.copy(pt);
-      model.position.x += right.x * lane;
-      model.position.z += right.z * lane;
+      model.position.x += right.x * slot.lane;
+      model.position.z += right.z * slot.lane;
 
       const rayOrigin = new THREE.Vector3(model.position.x, model.position.y + 10, model.position.z);
       const rc = new THREE.Raycaster(rayOrigin, new THREE.Vector3(0, -1, 0), 0, 25);
@@ -395,9 +409,17 @@ export async function startRace() {
     if (paintHue >= 0) G.playerVehicle.setPaintColor(paintHue);
     scene.add(G.playerVehicle.group);
     G.playerVehicle.setRoadMesh(trackData.roadMesh, [trackData.rampGroup]);
-    G.playerVehicle.placeOnTrack(trackData.spline, 0, -3.5);
+    // Compute this player's grid slot: host/SP = 0 (pole), guest = list index
+    let mySlotIdx = 0;
+    if (G.netPeer && !G.netPeer.getIsHost()) {
+      const localId = G.netPeer.getLocalId();
+      mySlotIdx = G.mpPlayersList.findIndex(p => p.id === localId);
+      if (mySlotIdx < 0) mySlotIdx = 1;
+    }
+    const mySlot = gridSlot(mySlotIdx);
+    G.playerVehicle.placeOnTrack(trackData.spline, mySlot.t, mySlot.lane);
     G._playerUnderglow = createUnderglow(G.playerVehicle.group, 0);
-    G.raceEngine.addRacer('local', 0);
+    G.raceEngine.addRacer('local', mySlot.t);
 
     G.vehicleCamera = new VehicleCamera(camera);
 
