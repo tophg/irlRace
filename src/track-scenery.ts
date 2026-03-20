@@ -1033,38 +1033,34 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           const zUV = tileUV(zone.tile);
           const zTW = zUV.uMax - zUV.uMin;
           const zTH = zUV.vMax - zUV.vMin;
-          const rows = zone.vRepeats;
-          const cols = zone.zoneHRep;
-          const baseIdx = positions.length / 3;
+          const hCols = zone.zoneHRep;
+          const vRows = zone.vRepeats;
 
-          for (let r = 0; r <= rows; r++) {
-            for (let c = 0; c <= cols; c++) {
-              const u = c / cols;
-              const v = zone.vStart + (r / rows) * (zone.vEnd - zone.vStart);
-              positions.push(
-                origin[0] + axisU[0] * u + axisV[0] * v,
-                origin[1] + axisU[1] * u + axisV[1] * v,
-                origin[2] + axisU[2] * u + axisV[2] * v,
-              );
-              // Horizontal UV — sawtooth per zone hRep
-              const fracC = (c / cols) * zone.zoneHRep;
-              let tU = fracC - Math.floor(fracC);
-              if (c === cols) tU = 1.0;
-              // Vertical UV — sawtooth per zone vRepeats
-              const fracR = (r / rows) * zone.vRepeats;
-              let tV = fracR - Math.floor(fracR);
-              if (r === rows) tV = 1.0;
-
-              if (flipU) tU = 1 - tU;
-              uvs.push(zUV.uMin + tU * zTW, zUV.vMin + tV * zTH);
-            }
-          }
-
-          for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-              const i = baseIdx + r * (cols + 1) + c;
-              indices.push(i, i + 1, i + cols + 1);
-              indices.push(i + 1, i + cols + 2, i + cols + 1);
+          // Create separate quads per tile repeat to avoid UV discontinuities.
+          // Each quad gets its own 4 vertices with proper 0→1 UV mapping.
+          for (let tileR = 0; tileR < vRows; tileR++) {
+            for (let tileC = 0; tileC < hCols; tileC++) {
+              const baseIdx = positions.length / 3;
+              // 4 corners: [bottom-left, bottom-right, top-left, top-right]
+              for (let vr = 0; vr <= 1; vr++) {
+                for (let vc = 0; vc <= 1; vc++) {
+                  const u = (tileC + vc) / hCols;
+                  const rFrac = (tileR + vr) / vRows;
+                  const v = zone.vStart + rFrac * (zone.vEnd - zone.vStart);
+                  positions.push(
+                    origin[0] + axisU[0] * u + axisV[0] * v,
+                    origin[1] + axisU[1] * u + axisV[1] * v,
+                    origin[2] + axisU[2] * u + axisV[2] * v,
+                  );
+                  let tU = vc; // 0 or 1 within this tile
+                  const tV = vr;
+                  if (flipU) tU = 1 - tU;
+                  uvs.push(zUV.uMin + tU * zTW, zUV.vMin + tV * zTH);
+                }
+              }
+              // Two triangles for this quad
+              indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+              indices.push(baseIdx + 1, baseIdx + 3, baseIdx + 2);
             }
           }
         }
