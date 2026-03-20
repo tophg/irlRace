@@ -60,7 +60,20 @@ const uiOverlay = document.getElementById('ui-overlay')!;
 
 
 // ── Scene (async — WebGPU renderer init) ──
-const { renderer, scene, camera } = await initScene(container);
+let renderer: THREE.WebGPURenderer;
+let scene: THREE.Scene;
+let camera: THREE.PerspectiveCamera;
+try {
+  ({ renderer, scene, camera } = await initScene(container));
+} catch (e) {
+  console.error('[Boot] Failed to initialize renderer:', e);
+  uiOverlay.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;color:#fff;font-family:Outfit,sans-serif;text-align:center;padding:2rem;background:#0a0a0f">
+      <h1 style="font-size:1.8rem;margin-bottom:1rem">Unable to Start</h1>
+      <p style="opacity:0.7;max-width:28rem">Your browser or device doesn't support the graphics features required by IRL Race. Please try Chrome, Edge, or Safari 17.4+ on a newer device.</p>
+    </div>`;
+  throw e; // halt module execution
+}
 
 // ── Input ──
 initInput();

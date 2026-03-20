@@ -432,7 +432,11 @@ export async function startRace() {
     initVictoryConfetti(scene);
 
     setLightningEnabled(getCurrentWeather() === 'heavy_rain');
-    await initGPUParticles(renderer, scene);
+    try {
+      await initGPUParticles(renderer, scene);
+    } catch (e) {
+      console.warn('[GPU Particles] Init failed (WebGL2 fallback — no compute shader support):', e);
+    }
 
     try {
       G.postFXPipeline = initPostFX(renderer, scene, camera);

@@ -18,6 +18,13 @@ let renderer: THREE.WebGPURenderer;
 let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
 
+/** True when the renderer is using the native WebGPU backend (not WebGL2 fallback). */
+let _backendIsWebGPU = false;
+
+/** Check if the renderer is using the native WebGPU backend.
+ *  When false, compute shaders and RenderPipeline are unavailable. */
+export function isWebGPUBackend(): boolean { return _backendIsWebGPU; }
+
 // Mutable references for environment theming
 let hemiLight: THREE.HemisphereLight;
 let dirLight: THREE.DirectionalLight;
@@ -296,7 +303,9 @@ export async function initScene(container: HTMLElement) {
 
   // Async init — requests GPU adapter/device (falls back to WebGL2 automatically)
   await renderer.init();
-  console.log(`[scene] Renderer backend: ${renderer.backend?.constructor?.name ?? 'unknown'}`);
+  const backendName = (renderer as any).backend?.constructor?.name ?? 'unknown';
+  _backendIsWebGPU = backendName.includes('WebGPU');
+  console.log(`[scene] Renderer backend: ${backendName} (WebGPU: ${_backendIsWebGPU})`);
 
   container.appendChild(renderer.domElement);
 
