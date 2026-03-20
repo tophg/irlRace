@@ -1139,12 +1139,23 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           varying vec3 vWPos;
           varying vec3 vWNormal;
         `)
-        .replace('#include <uv_vertex>', `
+         .replace('#include <uv_vertex>', `
           #include <uv_vertex>
           vAtlasColumn = atlasColumn;
           vHeightFrac = (position.y + 0.5);
           vWPos = (modelMatrix * vec4(position, 1.0)).xyz;
           vWNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+          // Offset all UV sets by per-instance atlas column
+          float colOff = atlasColumn * ${columnWidth.toFixed(6)};
+          #ifdef USE_MAP
+            vMapUv.x += colOff;
+          #endif
+          #ifdef USE_NORMALMAP
+            vNormalMapUv.x += colOff;
+          #endif
+          #ifdef USE_EMISSIVEMAP
+            vEmissiveMapUv.x += colOff;
+          #endif
         `);
 
       // Fragment shader: atlas offset + AO + interior mapping
@@ -1255,7 +1266,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         .replace('#include <map_fragment>', `
           #ifdef USE_MAP
             vec2 atlasUV = vMapUv;
-            atlasUV.x = atlasUV.x + vAtlasColumn * colWidth;
             vec4 sampledDiffuseColor = texture2D(map, atlasUV);
 
             float camDist = length(vWPos - cameraPosition);
@@ -1278,8 +1288,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         `)
         .replace('#include <emissivemap_fragment>', `
           #ifdef USE_EMISSIVEMAP
-            vec2 emUV = vMapUv;
-            emUV.x = emUV.x + vAtlasColumn * colWidth;
+            vec2 emUV = vEmissiveMapUv;
             vec4 emissiveColor = texture2D(emissiveMap, emUV);
 
             // Mask naturally gates: white=window → full emissive, black=wall → zero
@@ -1299,16 +1308,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           float ao = smoothstep(0.0, 0.12, vHeightFrac) *
                      mix(1.0, 0.88, smoothstep(0.85, 1.0, vHeightFrac));
           diffuseColor.rgb *= ao;
-        `)
-        // Normal map: apply same atlas column offset
-        .replace('#include <normal_fragment_maps>', `
-          #ifdef USE_NORMALMAP
-            vec2 normalAtlasUV = vNormalMapUv;
-            normalAtlasUV.x = normalAtlasUV.x + vAtlasColumn * colWidth;
-            vec3 mapN = texture2D(normalMap, normalAtlasUV).xyz * 2.0 - 1.0;
-            mapN.xy *= normalScale;
-            normal = normalize(tbn * mapN);
-          #endif
         `);
     };
 
