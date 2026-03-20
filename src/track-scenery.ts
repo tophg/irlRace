@@ -1043,7 +1043,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         for (let col = 0; col < hTiles; col++) {
           const isWindowCol = (col % 2 === 1);
           const colMidTile = isWindowCol ? windowTile : wallPierTile;
-          const colGroundTile = isWindowCol ? faceGroundTile : (isWindowCol ? faceGroundTile : wallPierTile);
           const uStart = col / hTiles;
           const uEnd = (col + 1) / hTiles;
 
