@@ -1097,8 +1097,18 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     // Material with emissive window glow + per-instance atlas column shader
     const windowGlow = T.windowLitChance ?? 0.5;
     const columnWidth = 1.0 / ATLAS_COLS; // 0.125 for 8-column atlas
+
+    // Load companion normal map atlas (same grid layout as diffuse)
+    const normalPath = atlasPath.replace('.png', '_normal.png');
+    const normalTexture = new THREE.TextureLoader().load(normalPath);
+    normalTexture.wrapS = THREE.RepeatWrapping;
+    normalTexture.wrapT = THREE.RepeatWrapping;
+    normalTexture.colorSpace = THREE.LinearSRGBColorSpace; // normal maps are NOT sRGB
+
     const buildingMat = new THREE.MeshStandardMaterial({
       map: atlasTexture,
+      normalMap: normalTexture,
+      normalScale: new THREE.Vector2(0.8, 0.8),
       roughness: 0.75,
       metalness: 0.15,
       emissiveMap: atlasTexture,
@@ -1275,8 +1285,22 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           float ao = smoothstep(0.0, 0.12, vHeightFrac) *
                      mix(1.0, 0.88, smoothstep(0.85, 1.0, vHeightFrac));
           diffuseColor.rgb *= ao;
+        `)
+        // Normal map: apply same atlas column offset
+        .replace('#include <normal_fragment_maps>', `
+          #ifdef USE_NORMALMAP
+            vec2 normalAtlasUV = vNormalMapUv;
+            normalAtlasUV.x = normalAtlasUV.x + vAtlasColumn * colWidth;
+            vec3 mapN = texture2D(normalMap, normalAtlasUV).xyz * 2.0 - 1.0;
+            mapN.xy *= normalScale;
+            normal = normalize(tbn * mapN);
+          #endif
         `);
     };
+
+    // Phase 4: anti-seam — limit mipmap interpolation to prevent tile bleeding
+    atlasTexture.minFilter = THREE.LinearMipmapNearestFilter;
+    normalTexture.minFilter = THREE.LinearMipmapNearestFilter;
 
     const dummy = new THREE.Object3D();
     const _instances: THREE.Vector3[] = [];
