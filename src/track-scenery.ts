@@ -927,7 +927,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const buildComposedBox = (
       groundTile: number, sideGroundTile: number, midTile: number, roofCapTile: number,
       singleTile: number, flipU: boolean,
-      repFB: number, repLR: number, repV: number,
+      boxW: number, boxH: number, boxD: number,
     ) => {
       // Helper: get atlas UV rect for a tile index
       const tileUV = (tile: number) => {
@@ -974,60 +974,63 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       };
 
       // addComposedFace: builds a wall face with ground/mid/roof zones
+      // faceW/faceH are physical dimensions in meters
+      const TILE_W = 4; // fixed tile physical width (meters)
+      const TILE_H = 4; // fixed tile physical height (meters) — square tiles
       const addComposedFace = (
         origin: [number, number, number],
         axisU: [number, number, number],
         axisV: [number, number, number],
-        hRep: number, vRep: number,
+        faceW: number, faceH: number,
         faceGroundTile: number,
       ) => {
-        const isSingleStory = vRep <= 1;
+        const isSingleStory = faceH <= TILE_H * 1.5;
 
         if (isSingleStory) {
-          // Single-story: one tile covering the entire face
+          // Single-story: tile the face with fixed-size tiles
+          const hTiles = Math.max(1, Math.round(faceW / TILE_W));
           const uv = tileUV(singleTile);
           const tW = uv.uMax - uv.uMin;
           const tH = uv.vMax - uv.vMin;
           const baseIdx = positions.length / 3;
-          const cols = hRep;
-          for (let r = 0; r <= 1; r++) {
-            for (let c = 0; c <= cols; c++) {
-              const u = c / cols;
-              const v = r;
+          for (let vr = 0; vr <= 1; vr++) {
+            for (let vc = 0; vc <= 1; vc++) {
               positions.push(
-                origin[0] + axisU[0] * u + axisV[0] * v,
-                origin[1] + axisU[1] * u + axisV[1] * v,
-                origin[2] + axisU[2] * u + axisV[2] * v,
+                origin[0] + axisU[0] * vc + axisV[0] * vr,
+                origin[1] + axisU[1] * vc + axisV[1] * vr,
+                origin[2] + axisU[2] * vc + axisV[2] * vr,
               );
-              const fracC = (c / cols) * hRep;
-              let tU = fracC - Math.floor(fracC);
-              if (c === cols) tU = 1.0;
+              let tU = vc;
               if (flipU) tU = 1 - tU;
-              uvs.push(uv.uMin + tU * tW, uv.vMin + v * tH);
+              uvs.push(uv.uMin + tU * tW, uv.vMin + vr * tH);
             }
           }
-          for (let c = 0; c < cols; c++) {
-            const i = baseIdx + c;
-            indices.push(i, i + 1, i + cols + 1);
-            indices.push(i + 1, i + cols + 2, i + cols + 1);
-          }
+          indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+          indices.push(baseIdx + 1, baseIdx + 3, baseIdx + 2);
           return;
         }
 
-        // Multi-story: ground (1 band) + mid (repeating) + thin roof cap
-        // Vertical zones as fractions of total height:
-        const groundFrac = 1 / vRep;                     // bottom band = one story
-        const roofFrac = Math.min(0.08, 1 / vRep);       // thin cornice cap (max ~8% of height)
-        const midBands = Math.max(1, vRep - 2);           // repeating middle
+        // Multi-story composition using fixed tile sizes
+        const groundH = TILE_H;             // ground floor = one tile height
+        const roofH = TILE_H * 0.3;         // thin cornice cap
+        const midH = Math.max(TILE_H, faceH - groundH - roofH); // remainder
+        const totalH = groundH + midH + roofH;
+
+        const groundFrac = groundH / totalH;
+        const roofFrac = roofH / totalH;
         const midFrac = 1 - groundFrac - roofFrac;
 
-        // Zone definitions: [vStart, vEnd, tile, vRepeat, hRep]
+        // Compute tile repeats from physical dimensions
+        const hTiles = Math.max(1, Math.round(faceW / TILE_W));
+        const midVTiles = Math.max(1, Math.round(midH / TILE_H));
+
+        // Zone definitions
         const zones: { vStart: number; vEnd: number; tile: number; vRepeats: number; zoneHRep: number }[] = [];
-        zones.push({ vStart: 0, vEnd: groundFrac, tile: faceGroundTile, vRepeats: 1, zoneHRep: hRep });
-        if (midBands > 0 && midFrac > 0) {
-          zones.push({ vStart: groundFrac, vEnd: groundFrac + midFrac, tile: midTile, vRepeats: midBands, zoneHRep: hRep });
+        zones.push({ vStart: 0, vEnd: groundFrac, tile: faceGroundTile, vRepeats: 1, zoneHRep: hTiles });
+        if (midFrac > 0) {
+          zones.push({ vStart: groundFrac, vEnd: groundFrac + midFrac, tile: midTile, vRepeats: midVTiles, zoneHRep: hTiles });
         }
-        // Roof cap: hRep=1 — row 3 tiles are standalone details, don't tile horizontally
+        // Roof cap: single tile stretched across (non-tiling architectural detail)
         zones.push({ vStart: 1 - roofFrac, vEnd: 1, tile: roofCapTile, vRepeats: 1, zoneHRep: 1 });
 
         for (const zone of zones) {
@@ -1068,13 +1071,13 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       };
 
       // Front (+Z) — storefronts/doors
-      addComposedFace([-0.5, -0.5, 0.5], [1, 0, 0], [0, 1, 0], repFB, repV, groundTile);
+      addComposedFace([-0.5, -0.5, 0.5], [1, 0, 0], [0, 1, 0], boxW, boxH, groundTile);
       // Back (-Z) — storefronts/doors
-      addComposedFace([0.5, -0.5, -0.5], [-1, 0, 0], [0, 1, 0], repFB, repV, groundTile);
+      addComposedFace([0.5, -0.5, -0.5], [-1, 0, 0], [0, 1, 0], boxW, boxH, groundTile);
       // Right (+X) — plain walls at ground level
-      addComposedFace([0.5, -0.5, 0.5], [0, 0, -1], [0, 1, 0], repLR, repV, sideGroundTile);
+      addComposedFace([0.5, -0.5, 0.5], [0, 0, -1], [0, 1, 0], boxD, boxH, sideGroundTile);
       // Left (-X) — plain walls at ground level
-      addComposedFace([-0.5, -0.5, -0.5], [0, 0, 1], [0, 1, 0], repLR, repV, sideGroundTile);
+      addComposedFace([-0.5, -0.5, -0.5], [0, 0, 1], [0, 1, 0], boxD, boxH, sideGroundTile);
       // Top (+Y) — flat roof
       addFlatFace([-0.5, 0.5, 0.5], [1, 0, 0], [0, 0, -1], true);
       // Bottom (-Y)
@@ -1321,11 +1324,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const avgW = bucketPlacements.reduce((s, p) => s + p.w, 0) / bucketPlacements.length;
       const avgH = bucketPlacements.reduce((s, p) => s + p.h, 0) / bucketPlacements.length;
       const avgD = bucketPlacements.reduce((s, p) => s + p.d, 0) / bucketPlacements.length;
-      // Atlas tiles are 1:2 aspect (80×160px). Use ~4m horizontal × ~8m vertical
-      // to match the natural tile proportions and avoid stretching windows/doors.
-      const repFB = Math.max(1, Math.round(avgW / 4));
-      const repLR = Math.max(1, Math.round(avgD / 4));
-      const repV  = Math.max(1, Math.round(avgH / 8));
 
       // Tile mapping: bake variant column into tile indices
       // Each variant column picks the matching tile from each row
@@ -1335,8 +1333,9 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const roofCapTile     = 3 * ATLAS_COLS + variant; // Row 3, Col=variant (trim/caps)
       const singleTile      = 0 * ATLAS_COLS + variant; // Row 0, Col=variant
 
-      const geo0 = buildComposedBox(groundTile, sideGroundTile, midTile, roofCapTile, singleTile, false, repFB, repLR, repV);
-      const geo1 = buildComposedBox(groundTile, sideGroundTile, midTile, roofCapTile, singleTile, true,  repFB, repLR, repV);
+      // Pass physical dimensions — addComposedFace computes tile repeats internally
+      const geo0 = buildComposedBox(groundTile, sideGroundTile, midTile, roofCapTile, singleTile, false, avgW, avgH, avgD);
+      const geo1 = buildComposedBox(groundTile, sideGroundTile, midTile, roofCapTile, singleTile, true,  avgW, avgH, avgD);
 
       // Split placements into 2 visual variants (flip mirror)
       const bucket0: BoxPlacement[] = [];
