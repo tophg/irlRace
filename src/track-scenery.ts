@@ -1020,21 +1020,21 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         const midBands = Math.max(1, vRep - 2); // repeating middle
         const midFrac = 1 - groundFrac - roofFrac;
 
-        // Zone definitions: [vStart, vEnd, tile, vRepeat]
-        const zones: { vStart: number; vEnd: number; tile: number; vRepeats: number }[] = [];
-        zones.push({ vStart: 0, vEnd: groundFrac, tile: groundTile, vRepeats: 1 });
+        // Zone definitions: [vStart, vEnd, tile, vRepeat, hRep]
+        const zones: { vStart: number; vEnd: number; tile: number; vRepeats: number; zoneHRep: number }[] = [];
+        zones.push({ vStart: 0, vEnd: groundFrac, tile: groundTile, vRepeats: 1, zoneHRep: hRep });
         if (midBands > 0 && midFrac > 0) {
-          zones.push({ vStart: groundFrac, vEnd: groundFrac + midFrac, tile: midTile, vRepeats: midBands });
+          zones.push({ vStart: groundFrac, vEnd: groundFrac + midFrac, tile: midTile, vRepeats: midBands, zoneHRep: hRep });
         }
-        zones.push({ vStart: 1 - roofFrac, vEnd: 1, tile: roofCapTile, vRepeats: 1 });
-
-        const cols = hRep;
+        // Roof cap: hRep=1 — row 3 tiles are standalone details, don't tile horizontally
+        zones.push({ vStart: 1 - roofFrac, vEnd: 1, tile: roofCapTile, vRepeats: 1, zoneHRep: 1 });
 
         for (const zone of zones) {
           const zUV = tileUV(zone.tile);
           const zTW = zUV.uMax - zUV.uMin;
           const zTH = zUV.vMax - zUV.vMin;
           const rows = zone.vRepeats;
+          const cols = zone.zoneHRep;
           const baseIdx = positions.length / 3;
 
           for (let r = 0; r <= rows; r++) {
@@ -1046,8 +1046,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
                 origin[1] + axisU[1] * u + axisV[1] * v,
                 origin[2] + axisU[2] * u + axisV[2] * v,
               );
-              // Horizontal UV — sawtooth per hRep
-              const fracC = (c / cols) * hRep;
+              // Horizontal UV — sawtooth per zone hRep
+              const fracC = (c / cols) * zone.zoneHRep;
               let tU = fracC - Math.floor(fracC);
               if (c === cols) tU = 1.0;
               // Vertical UV — sawtooth per zone vRepeats
