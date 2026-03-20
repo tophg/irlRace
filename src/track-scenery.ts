@@ -1229,21 +1229,22 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         `)
         .replace('#include <map_fragment>', `
           #ifdef USE_MAP
-            // Offset UV horizontally by per-instance atlas column
             vec2 atlasUV = vMapUv;
             atlasUV.x = atlasUV.x + vAtlasColumn * colWidth;
             vec4 sampledDiffuseColor = texture2D(map, atlasUV);
 
-            // Interior mapping: detect windows by dark pixels in mid-floor zone
-            float texLum = dot(sampledDiffuseColor.rgb, vec3(0.299, 0.587, 0.114));
-            bool isWallFace = abs(vWNormal.y) < 0.3; // skip roof/floor faces
+            float camDist = length(vWPos - cameraPosition);
+            float interiorFade = 1.0 - smoothstep(40.0, 60.0, camDist);
+            bool isWallFace = abs(vWNormal.y) < 0.3;
             bool isMidZone = vHeightFrac > 0.15 && vHeightFrac < 0.85;
 
-            if (isWallFace && isMidZone && texLum < 0.22) {
-              // This pixel is a window — ray-cast into virtual room
-              vec3 viewDir = normalize(vWPos - cameraPosition);
-              vec3 roomCol = interiorColor(vWPos, viewDir, vWNormal);
-              sampledDiffuseColor.rgb = roomCol;
+            if (interiorFade > 0.01 && isWallFace && isMidZone) {
+              float texLum = dot(sampledDiffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+              if (texLum < 0.15) {
+                vec3 viewDir = normalize(vWPos - cameraPosition);
+                vec3 roomCol = interiorColor(vWPos, viewDir, vWNormal);
+                sampledDiffuseColor.rgb = mix(sampledDiffuseColor.rgb, roomCol, interiorFade);
+              }
             }
 
             diffuseColor *= sampledDiffuseColor;
@@ -1255,18 +1256,17 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
             emUV.x = emUV.x + vAtlasColumn * colWidth;
             vec4 emissiveColor = texture2D(emissiveMap, emUV);
 
-            // Boost emissive for interior-mapped windows (warm room glow)
+            float emCamDist = length(vWPos - cameraPosition);
+            float emFade = 1.0 - smoothstep(40.0, 60.0, emCamDist);
             float emLum = dot(emissiveColor.rgb, vec3(0.299, 0.587, 0.114));
             bool isEmWall = abs(vWNormal.y) < 0.3;
             bool isEmMid = vHeightFrac > 0.15 && vHeightFrac < 0.85;
-            if (isEmWall && isEmMid && emLum < 0.22) {
-              // Replace emissive with warm interior glow
-              totalEmissiveRadiance *= vec3(0.9, 0.7, 0.4) * 0.6;
+            if (emFade > 0.01 && isEmWall && isEmMid && emLum < 0.15) {
+              totalEmissiveRadiance *= mix(emissiveColor.rgb, vec3(0.9, 0.7, 0.4) * 0.6, emFade);
             } else {
               totalEmissiveRadiance *= emissiveColor.rgb;
             }
           #endif
-          // AO banding — darker at base and top edges
           float ao = smoothstep(0.0, 0.12, vHeightFrac) *
                      mix(1.0, 0.88, smoothstep(0.85, 1.0, vHeightFrac));
           diffuseColor.rgb *= ao;
