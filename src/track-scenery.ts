@@ -1321,8 +1321,10 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const avgW = bucketPlacements.reduce((s, p) => s + p.w, 0) / bucketPlacements.length;
       const avgH = bucketPlacements.reduce((s, p) => s + p.h, 0) / bucketPlacements.length;
       const avgD = bucketPlacements.reduce((s, p) => s + p.d, 0) / bucketPlacements.length;
-      const repFB = Math.max(1, Math.round(avgW / 8));
-      const repLR = Math.max(1, Math.round(avgD / 8));
+      // Atlas tiles are 1:2 aspect (80×160px). Use ~4m horizontal × ~8m vertical
+      // to match the natural tile proportions and avoid stretching windows/doors.
+      const repFB = Math.max(1, Math.round(avgW / 4));
+      const repLR = Math.max(1, Math.round(avgD / 4));
       const repV  = Math.max(1, Math.round(avgH / 8));
 
       // Tile mapping: bake variant column into tile indices
