@@ -204,7 +204,12 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
 }
 
 function destroySettings() {
-  if (settingsEl) { settingsEl.remove(); settingsEl = null; }
+  if (settingsEl) {
+    const el = settingsEl;
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), 200);
+    settingsEl = null;
+  }
   onCloseCallback?.();
   onCloseCallback = null;
 }

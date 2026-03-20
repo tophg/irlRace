@@ -70,10 +70,10 @@ export function runCountdown(uiOverlay: HTMLElement, durationMs = 3400): Promise
     const scale = durationMs / 3400;
     // Ascending frequencies: 3→440Hz, 2→660Hz, 1→880Hz
     const sequence = [
-      { text: '3', css: 'countdown-number', delay: 0,            freq: 440 },
-      { text: '2', css: 'countdown-number', delay: 900 * scale,  freq: 660 },
-      { text: '1', css: 'countdown-number', delay: 1800 * scale, freq: 880 },
-      { text: 'GO!', css: 'countdown-go',   delay: 2700 * scale, freq: 0 },
+      { text: '3', css: 'countdown-number countdown-3', delay: 0,            freq: 440 },
+      { text: '2', css: 'countdown-number countdown-2', delay: 900 * scale,  freq: 660 },
+      { text: '1', css: 'countdown-number countdown-1', delay: 1800 * scale, freq: 880 },
+      { text: 'GO!', css: 'countdown-go',               delay: 2700 * scale, freq: 0 },
     ];
 
     countdownTimers = [];

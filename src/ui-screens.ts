@@ -233,7 +233,12 @@ export function togglePause(callbacks: {
 }
 
 export function destroyPause() {
-  if (G.pauseOverlay) { G.pauseOverlay.remove(); G.pauseOverlay = null; }
+  if (G.pauseOverlay) {
+    const el = G.pauseOverlay;
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), 200);
+    G.pauseOverlay = null;
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -829,7 +834,8 @@ export function showRaceConfig(
   // Wire buttons
   document.getElementById('cfg-back')!.addEventListener('click', () => {
     destroyPreview();
-    el.remove();
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), 200);
     onBack();
   });
 
@@ -848,7 +854,8 @@ export function showRaceConfig(
     const activeEnv = envGrid.querySelector('.env-card--active') as HTMLElement;
     const environment = activeEnv?.dataset.env || 'random';
     destroyPreview();
-    el.remove();
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), 200);
     onStart(laps, ai, difficulty, seed, weather, environment);
   });
 }
@@ -924,15 +931,18 @@ export function showTitleScreen(callbacks: {
   titleEl.className = 'title-screen';
   titleEl.id = 'title-screen';
   titleEl.innerHTML = `
-    <div class="title-logo">IRL RACE</div>
-    <div class="title-subtitle">Street Legends Never Stop</div>
-    <div class="menu-buttons">
-      <button class="menu-btn" id="btn-singleplayer">SINGLEPLAYER</button>
-      <button class="menu-btn" id="btn-multiplayer">MULTIPLAYER</button>
-      <button class="menu-btn" id="btn-track-editor" style="border-color:#ff6600;color:#ff8833;">🏁 TRACK EDITOR</button>
-      <button class="menu-btn" id="btn-calibrate" style="border-color:#00ffff;color:#00ffff;">✨ CALIBRATION STUDIO</button>
-      <button class="menu-btn" id="btn-controls" style="border-color:var(--col-text-dim);font-size:16px;">CONTROLS</button>
-      <button class="menu-btn" id="btn-settings" style="border-color:var(--col-text-dim);font-size:16px;">SETTINGS</button>
+    <div class="title-content" id="title-content">
+      <div class="title-logo"><span class="title-irl">IRL</span> <span class="title-race">RACE</span></div>
+      <div class="title-subtitle">Street Legends Never Stop</div>
+      <div class="menu-buttons">
+        <button class="menu-btn menu-btn--accent" id="btn-singleplayer">SINGLEPLAYER</button>
+        <button class="menu-btn menu-btn--cyan" id="btn-multiplayer">MULTIPLAYER</button>
+        <button class="menu-btn" id="btn-track-editor" style="border-color:#ff6600;color:#ff8833;">🏁 TRACK EDITOR</button>
+        <button class="menu-btn" id="btn-calibrate" style="border-color:#00ffff;color:#00ffff;">✨ CALIBRATION STUDIO</button>
+        <button class="menu-btn menu-btn--small" id="btn-controls">CONTROLS</button>
+        <button class="menu-btn menu-btn--small" id="btn-settings">SETTINGS</button>
+      </div>
+      <div class="title-version">v0.1.0 · EARLY ACCESS</div>
     </div>
   `;
   uiOverlay.appendChild(titleEl);
@@ -940,9 +950,16 @@ export function showTitleScreen(callbacks: {
   // ── Falling ember particles ──
   startTitleEmbers(titleEl);
 
+  // ── Trigger cinematic reveal (needs a frame for CSS transitions to fire) ──
+  requestAnimationFrame(() => {
+    document.getElementById('title-content')?.classList.add('title-content--revealed');
+  });
+
   const removeTitleScreen = () => {
     stopTitleEmbers();
-    titleEl.remove();
+    // Fade out before removing
+    titleEl.classList.add('fade-out');
+    setTimeout(() => titleEl.remove(), 200);
   };
 
   document.getElementById('btn-singleplayer')!.addEventListener('click', () => {

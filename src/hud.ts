@@ -2,6 +2,7 @@
 
 import * as THREE from 'three/webgpu';
 import { render } from 'solid-js/web';
+import { haptic } from './input';
 import {
   RacingHUD,
   setSpeedMPH,
@@ -135,6 +136,7 @@ export function showLapOverlay(overlay: HTMLElement, lapNum: number, lapTimeMs: 
     ${isBestLap ? '<div class="lap-overlay-best">BEST LAP</div>' : ''}
   `;
   overlay.appendChild(el);
+  haptic(isBestLap ? [40, 30, 40] : 30);
 
   lapOverlayTimeout = window.setTimeout(() => {
     el.classList.add('fade-out');
