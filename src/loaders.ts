@@ -3,12 +3,22 @@
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { detectLightPositions } from './light-detector';
 
 const gltfLoader = new GLTFLoader();
 const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
 gltfLoader.setDRACOLoader(dracoLoader);
+
+const ktx2Loader = new KTX2Loader();
+ktx2Loader.setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.175.0/examples/jsm/libs/basis/');
+
+/** Call once with the renderer so KTX2Loader can detect GPU texture support. */
+export function initKTX2(renderer: THREE.WebGPURenderer) {
+  ktx2Loader.detectSupport(renderer);
+  gltfLoader.setKTX2Loader(ktx2Loader);
+}
 
 const modelCache = new Map<string, THREE.Group>();
 

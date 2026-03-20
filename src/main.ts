@@ -13,7 +13,7 @@ import { playCheckpointSFX, playLapFanfare, playFinishFanfare, playPositionSFX, 
 import { showResults, resolvePlayerName } from './results-screen';
 import { enterSpectatorMode, cycleSpectateTarget, destroySpectateHUD } from './spectator';
 import { initGarage, destroyGarage } from './garage';
-import { loadCarModel } from './loaders';
+import { loadCarModel, initKTX2 } from './loaders';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { showTrackEditor, destroyTrackEditor } from './track-editor';
 import { loadProgress } from './progression';
@@ -65,6 +65,7 @@ let scene: THREE.Scene;
 let camera: THREE.PerspectiveCamera;
 try {
   ({ renderer, scene, camera } = await initScene(container));
+  initKTX2(renderer); // Enable KTX2 GPU texture decoding before any model loads
 } catch (e) {
   console.error('[Boot] Failed to initialize renderer:', e);
   uiOverlay.innerHTML = `
