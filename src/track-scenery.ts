@@ -1241,6 +1241,93 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         group.add(setbackIM);
       }
     }
+
+    // ── Ground-level awnings / canopies ──
+    const AWNING_COLORS: Record<string, number[]> = {
+      modern:      [0x2d5a27, 0x8b1a1a, 0x1a3d5c],  // dark green, burgundy, navy
+      adobe:       [0xc4a882, 0xa0805a, 0x8b6b4a],   // sun-bleached tan, faded sand
+      beach_house: [0xe8a0b0, 0xf0d060, 0x70c8c0, 0xa0d8a0], // tropical pastels
+      cyberpunk:   [0x4400aa, 0x00aacc, 0xcc0066],   // neon purple, cyan, pink
+      weathered:   [0xc4a882, 0x8b7355, 0x6b5b45],   // faded warm tones
+      chalet:      [0x5a3a2a, 0x2a4a2a, 0x4a3020],   // dark wood, forest green
+      warehouse:   [0x555555, 0x666666, 0x444444],    // industrial gray
+      concrete:    [0x555555, 0x2d5a27, 0x444444],    // gray + green
+      bamboo_lodge:[0x5a3a2a, 0x3a5a3a, 0x6a4a30],   // warm wood tones
+    };
+    const awningColors = AWNING_COLORS[styleName] ?? AWNING_COLORS['modern'];
+    // ~30% of buildings get awnings
+    const awningPlacements = placements.filter(pl => ((pl.x * 53 + pl.z * 79) & 0xFF) < 77);
+    if (awningPlacements.length > 0) {
+      const awningGeo = new THREE.PlaneGeometry(1, 1);
+      const awningMat = new THREE.MeshStandardMaterial({
+        roughness: 0.9,
+        metalness: 0,
+        side: THREE.DoubleSide,
+      });
+      const awningIM = new THREE.InstancedMesh(awningGeo, awningMat, awningPlacements.length);
+      for (let j = 0; j < awningPlacements.length; j++) {
+        const pl = awningPlacements[j];
+        // Place at front face, ground level with slight downward tilt
+        const awningW = pl.w * 0.7;
+        const awningD = 2.5;
+        dummy.position.set(
+          pl.x + Math.sin(pl.rotY) * (pl.d / 2 + 1),
+          1.5,
+          pl.z + Math.cos(pl.rotY) * (pl.d / 2 + 1),
+        );
+        dummy.scale.set(awningW, awningD, 1);
+        dummy.rotation.set(-0.3, pl.rotY, 0); // slight tilt
+        dummy.updateMatrix();
+        awningIM.setMatrixAt(j, dummy.matrix);
+        const aCol = awningColors[((pl.x * 17 + pl.z * 41) & 0xFF) % awningColors.length];
+        const av = 0.85 + (((pl.x * 61 + pl.z * 83) & 0xFF) / 255) * 0.3;
+        _c.setHex(aCol);
+        _c.multiplyScalar(av);
+        awningIM.setColorAt(j, _c);
+      }
+      awningIM.instanceMatrix.needsUpdate = true;
+      awningIM.instanceColor!.needsUpdate = true;
+      group.add(awningIM);
+    }
+
+    // ── Rooftop props (HVAC units, water tanks, antenna bases) ──
+    // Skip for chalets (peaked roofs) and very short buildings
+    if (styleName !== 'chalet' && styleName !== 'bamboo_lodge') {
+      const roofPropPlacements = placements.filter(pl =>
+        pl.h > 12 && ((pl.x * 41 + pl.z * 67) & 0xFF) < 128 // ~50% of tall buildings
+      );
+      if (roofPropPlacements.length > 0) {
+        const propGeo = new THREE.BoxGeometry(1, 1, 1);
+        const propMat = new THREE.MeshStandardMaterial({
+          color: 0x888888,
+          roughness: 0.9,
+          metalness: 0.3,
+        });
+        const propIM = new THREE.InstancedMesh(propGeo, propMat, roofPropPlacements.length);
+        for (let j = 0; j < roofPropPlacements.length; j++) {
+          const pl = roofPropPlacements[j];
+          const propW = 1.5 + (((pl.x * 23) & 0xFF) / 255) * 2;
+          const propH = 0.8 + (((pl.z * 37) & 0xFF) / 255) * 1.5;
+          const propD = 1.5 + (((pl.x * 59 + pl.z * 11) & 0xFF) / 255) * 2;
+          // Offset from center of roof
+          const offX = ((((pl.x * 71) & 0xFF) / 255) - 0.5) * pl.w * 0.4;
+          const offZ = ((((pl.z * 43) & 0xFF) / 255) - 0.5) * pl.d * 0.4;
+          dummy.position.set(pl.x + offX, pl.h - 2 + propH / 2, pl.z + offZ);
+          dummy.scale.set(propW, propH, propD);
+          dummy.rotation.set(0, pl.rotY + (((pl.x * 13) & 0xFF) / 255) * 0.5, 0);
+          dummy.updateMatrix();
+          propIM.setMatrixAt(j, dummy.matrix);
+          // Slight color variation (darker/lighter gray)
+          const pv = 0.5 + (((pl.x * 31 + pl.z * 97) & 0xFF) / 255) * 0.4;
+          _c.setRGB(pv, pv, pv);
+          propIM.setColorAt(j, _c);
+        }
+        propIM.instanceMatrix.needsUpdate = true;
+        propIM.instanceColor!.needsUpdate = true;
+        propIM.castShadow = true;
+        group.add(propIM);
+      }
+    }
   }
 
 
