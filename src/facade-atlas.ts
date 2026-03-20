@@ -39,61 +39,64 @@ interface FacadePalette {
   signColor: string;
 }
 
-/** Derive a palette from the scenery theme's building style. */
-function paletteForStyle(style: string, theme: SceneryTheme): FacadePalette {
-  // Convert theme building palette hex values to CSS
-  const pal = theme.buildingPalette ?? [0x1a1a2e, 0x22223a, 0x2a2a45];
-  const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
-
+/** Derive a palette from the scenery theme's building style.
+ *
+ * IMPORTANT: Wall/surface colors must be LIGHT (0.7-0.95 range) because
+ * they get multiplied by the per-instance buildingPalette colors. The
+ * atlas provides structural detail; the palette provides the color tint.
+ * Only window glass should be very dark (for luminance-based detection).
+ */
+function paletteForStyle(style: string, _theme: SceneryTheme): FacadePalette {
+  // Light neutral bases — tinted by per-instance color at runtime
   const palettes: Record<string, FacadePalette> = {
     modern: {
-      wallBase: '#404855', wallAlt: '#353d48', wallAccent: '#4a5568',
-      windowFrame: '#2d3748', windowGlass: '#0a1628', windowGlassDark: '#060d1a',
-      windowSill: '#4a5568', brickColor: '#5a4a40', brickMortar: '#6b5b51',
-      doorColor: '#2d3748', doorFrame: '#4a5568',
-      cornice: '#5a6577', roofTop: '#2d3748', awningColor: '#1a365d', signColor: '#e2e8f0',
+      wallBase: '#c8ccd0', wallAlt: '#b8bcc0', wallAccent: '#d0d4d8',
+      windowFrame: '#606870', windowGlass: '#0a1628', windowGlassDark: '#060d1a',
+      windowSill: '#a0a8b0', brickColor: '#c0a898', brickMortar: '#d0b8a8',
+      doorColor: '#707880', doorFrame: '#909498',
+      cornice: '#b0b8c0', roofTop: '#808890', awningColor: '#607090', signColor: '#e8ecf0',
     },
     adobe: {
-      wallBase: '#c4956a', wallAlt: '#b8875e', wallAccent: '#d4a574',
-      windowFrame: '#5a3a2a', windowGlass: '#1a1008', windowGlassDark: '#0d0804',
-      windowSill: '#8b6545', brickColor: '#a0694a', brickMortar: '#c4956a',
-      doorColor: '#4a2a1a', doorFrame: '#6b4530',
-      cornice: '#8b6545', roofTop: '#a08060', awningColor: '#8b4513', signColor: '#f5e6d0',
+      wallBase: '#e0d0b8', wallAlt: '#d8c8b0', wallAccent: '#e8d8c0',
+      windowFrame: '#8a7060', windowGlass: '#1a1008', windowGlassDark: '#0d0804',
+      windowSill: '#c0a888', brickColor: '#d0a880', brickMortar: '#e0c0a0',
+      doorColor: '#8a7060', doorFrame: '#a08870',
+      cornice: '#c0a888', roofTop: '#b0a090', awningColor: '#a07050', signColor: '#f5e8d0',
     },
     beach_house: {
-      wallBase: '#d4c5a0', wallAlt: '#c8b890', wallAccent: '#e0d4b4',
-      windowFrame: '#4a6050', windowGlass: '#15200a', windowGlassDark: '#0a1005',
-      windowSill: '#8a9a7a', brickColor: '#a09070', brickMortar: '#c4b090',
-      doorColor: '#3a5040', doorFrame: '#5a7060',
-      cornice: '#7a8a6a', roofTop: '#8a7a60', awningColor: '#2e8b57', signColor: '#fffff0',
+      wallBase: '#e8e0c8', wallAlt: '#e0d8c0', wallAccent: '#f0e8d0',
+      windowFrame: '#80a090', windowGlass: '#15200a', windowGlassDark: '#0a1005',
+      windowSill: '#b0c0a8', brickColor: '#c8b8a0', brickMortar: '#d8c8b0',
+      doorColor: '#709080', doorFrame: '#90b0a0',
+      cornice: '#a8b898', roofTop: '#b0a890', awningColor: '#60a880', signColor: '#f8f8f0',
     },
     cyberpunk: {
-      wallBase: '#1a1a2e', wallAlt: '#16213e', wallAccent: '#0f3460',
-      windowFrame: '#0a0a1a', windowGlass: '#0a0520', windowGlassDark: '#050210',
-      windowSill: '#2a2a4e', brickColor: '#1a1a30', brickMortar: '#0a0a20',
-      doorColor: '#0f3460', doorFrame: '#e94560',
-      cornice: '#2a2a5e', roofTop: '#0a0a1a', awningColor: '#e94560', signColor: '#00ff88',
+      wallBase: '#a0a0b8', wallAlt: '#9090a8', wallAccent: '#8888b0',
+      windowFrame: '#505060', windowGlass: '#0a0520', windowGlassDark: '#050210',
+      windowSill: '#8080a0', brickColor: '#9090a8', brickMortar: '#707088',
+      doorColor: '#7080a0', doorFrame: '#c06080',
+      cornice: '#8888b0', roofTop: '#606070', awningColor: '#c06080', signColor: '#80ffc0',
     },
     weathered: {
-      wallBase: '#b0a080', wallAlt: '#a09070', wallAccent: '#c0b090',
-      windowFrame: '#5a4a3a', windowGlass: '#181008', windowGlassDark: '#0c0804',
-      windowSill: '#706050', brickColor: '#907060', brickMortar: '#a08070',
-      doorColor: '#4a3a2a', doorFrame: '#6a5a4a',
-      cornice: '#807060', roofTop: '#706050', awningColor: '#6b4226', signColor: '#e8dcc8',
+      wallBase: '#d0c8b0', wallAlt: '#c8c0a8', wallAccent: '#d8d0b8',
+      windowFrame: '#908070', windowGlass: '#181008', windowGlassDark: '#0c0804',
+      windowSill: '#a89888', brickColor: '#c0a890', brickMortar: '#d0b8a0',
+      doorColor: '#887868', doorFrame: '#a09080',
+      cornice: '#b0a898', roofTop: '#a09888', awningColor: '#907050', signColor: '#f0e0d0',
     },
     chalet: {
-      wallBase: '#8b7355', wallAlt: '#7a6245', wallAccent: '#9c8465',
-      windowFrame: '#4a3525', windowGlass: '#120a05', windowGlassDark: '#090503',
-      windowSill: '#5a4535', brickColor: '#6a5a4a', brickMortar: '#8a7a6a',
-      doorColor: '#3a2515', doorFrame: '#5a4535',
-      cornice: '#6a5a4a', roofTop: '#5a4a3a', awningColor: '#654321', signColor: '#f5deb3',
+      wallBase: '#c8b898', wallAlt: '#c0b090', wallAccent: '#d0c0a0',
+      windowFrame: '#806850', windowGlass: '#120a05', windowGlassDark: '#090503',
+      windowSill: '#a08868', brickColor: '#b0a088', brickMortar: '#c8b8a0',
+      doorColor: '#706040', doorFrame: '#907858',
+      cornice: '#a89878', roofTop: '#908068', awningColor: '#886840', signColor: '#f0e0c8',
     },
     warehouse: {
-      wallBase: '#4a4a52', wallAlt: '#3a3a42', wallAccent: '#5a5a62',
-      windowFrame: '#2a2a32', windowGlass: '#0a0a12', windowGlassDark: '#050509',
-      windowSill: '#3a3a42', brickColor: '#5a4a40', brickMortar: '#6a5a50',
-      doorColor: '#2a2a32', doorFrame: '#4a4a52',
-      cornice: '#5a5a62', roofTop: '#2a2a32', awningColor: '#4a4a52', signColor: '#c0c0c0',
+      wallBase: '#b0b0b8', wallAlt: '#a0a0a8', wallAccent: '#b8b8c0',
+      windowFrame: '#707078', windowGlass: '#0a0a12', windowGlassDark: '#050509',
+      windowSill: '#909098', brickColor: '#b0a098', brickMortar: '#c0b0a0',
+      doorColor: '#707078', doorFrame: '#909098',
+      cornice: '#a0a0a8', roofTop: '#808088', awningColor: '#808890', signColor: '#d8d8e0',
     },
   };
 
