@@ -277,18 +277,20 @@ function createTitleScene() {
   const titleCar = CAR_ROSTER.find(c => c.file === 'Street_Racer.glb') ?? CAR_ROSTER[CAR_ROSTER.length - 1];
   loadCarModel(titleCar.file).then((model: THREE.Group) => {
     if (!titleScene) return;
-    model.position.y = -0.5; // start below, will float up
-    // Start invisible for fade-in
-    model.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) {
-        const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
-        if (mat && mat.isMeshStandardMaterial) {
-          mat.transparent = true;
-          mat.opacity = 0;
-          mat.needsUpdate = true;
+    model.position.y = _hasBooted ? 0.5 : -0.5; // start below if first boot, at final pos if returning
+    // Start invisible for fade-in (first boot only — on return, show immediately)
+    if (!_hasBooted) {
+      model.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+          if (mat && mat.isMeshStandardMaterial) {
+            mat.transparent = true;
+            mat.opacity = 0;
+            mat.needsUpdate = true;
+          }
         }
-      }
-    });
+      });
+    }
     titleScene!.add(model);
     titleCarModel = model;
   }).catch((err) => {
@@ -588,9 +590,33 @@ function showTitleScreen() {
     createTitleScene();
     titleLoop();
     playTitleMusic();
-    // Skip the cinematic animation — show menu immediately
+    // Skip the cinematic animation — jump directly to Phase 3 (showcase orbit).
+    // Must force lights + car to their final Phase 2 values since Phases 1-2 won't run.
     titleStartTime = performance.now() / 1000 - 100;
     titleMenuRevealed = true;
+    if (titleAmbient) titleAmbient.intensity = 2.0;
+    if (titleCyanRim) titleCyanRim.intensity = 400;
+    if (titleOrangeRim) titleOrangeRim.intensity = 350;
+    if (titleOverhead) titleOverhead.intensity = 40;
+    if (titleKeyLight) titleKeyLight.intensity = 3.0;
+    if (titleUnderglow) titleUnderglow.intensity = 15;
+    if (titleNeonStrip) {
+      const stripMat = titleNeonStrip.material as THREE.MeshStandardMaterial;
+      stripMat.opacity = 0.8;
+    }
+    if (titleFogPlane) {
+      const fogMat = titleFogPlane.material as THREE.MeshStandardMaterial;
+      fogMat.opacity = 0.06;
+    }
+    if (titleCarModel) {
+      titleCarModel.position.y = 0.5;
+      titleCarModel.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+          if (mat) { mat.opacity = 1; mat.transparent = false; mat.needsUpdate = true; }
+        }
+      });
+    }
     renderFullTitleScreen();
     return;
   }
