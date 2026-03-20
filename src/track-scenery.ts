@@ -1111,7 +1111,22 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           const pl = bucket[j];
           dummy.position.set(pl.x, pl.h / 2 - 2, pl.z);
           dummy.scale.set(pl.w, pl.h, pl.d);
-          dummy.rotation.set(0, pl.rotY, 0);
+
+          // Per-environment silhouette variation
+          const hash = ((pl.x * 73 + pl.z * 137) & 0xFF) / 255; // deterministic 0-1
+          if (styleName === 'beach_house' || styleName === 'weathered') {
+            // Havana/weathered: subtle random lean (±2°) — crumbling colonial feel
+            const leanX = (hash - 0.5) * 0.07;  // ±2° in radians
+            const leanZ = (((pl.x * 31 + pl.z * 97) & 0xFF) / 255 - 0.5) * 0.05;
+            dummy.rotation.set(leanX, pl.rotY, leanZ);
+          } else if (styleName === 'cyberpunk' && pl.h > 25) {
+            // Shibuya tall towers: slight taper (narrower at top) for megastructure feel
+            const taper = 0.92 + hash * 0.08; // 92-100% width at top
+            dummy.scale.set(pl.w * taper, pl.h, pl.d * taper);
+            dummy.rotation.set(0, pl.rotY, 0);
+          } else {
+            dummy.rotation.set(0, pl.rotY, 0);
+          }
           dummy.updateMatrix();
           instancedMesh.setMatrixAt(j, dummy.matrix);
           // Per-instance brightness tint (±15% variation)
@@ -1174,6 +1189,36 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       roofCapIM.instanceColor!.needsUpdate = true;
       roofCapIM.castShadow = true;
       group.add(roofCapIM);
+    }
+
+    // ── Phase 4: Stepped setback towers for cyberpunk megastructures (Shibuya) ──
+    if (styleName === 'cyberpunk') {
+      // Filter tall buildings that get a stepped upper section
+      const tallPlacements = placements.filter(pl => pl.h > 30);
+      if (tallPlacements.length > 0) {
+        // Reuse a random facade tile for the setback section
+        const setbackGeo = new THREE.BoxGeometry(1, 1, 1);
+        const setbackIM = new THREE.InstancedMesh(setbackGeo, buildingMat, tallPlacements.length);
+        for (let j = 0; j < tallPlacements.length; j++) {
+          const pl = tallPlacements[j];
+          const setbackH = pl.h * 0.4;   // 40% of base height
+          const setbackW = pl.w * 0.6;   // 60% narrower
+          const setbackD = pl.d * 0.6;
+          dummy.position.set(pl.x, pl.h - 2 + setbackH / 2, pl.z);
+          dummy.scale.set(setbackW, setbackH, setbackD);
+          dummy.rotation.set(0, pl.rotY, 0);
+          dummy.updateMatrix();
+          setbackIM.setMatrixAt(j, dummy.matrix);
+          // Slightly darker tint for the upper section
+          const bright = 0.7 + (((pl.x * 73 + pl.z * 137) & 0xFF) / 255) * 0.2;
+          _c.setRGB(bright, bright, bright * 1.1); // subtle blue tint
+          setbackIM.setColorAt(j, _c);
+        }
+        setbackIM.instanceMatrix.needsUpdate = true;
+        setbackIM.instanceColor!.needsUpdate = true;
+        setbackIM.castShadow = true;
+        group.add(setbackIM);
+      }
     }
   }
 
