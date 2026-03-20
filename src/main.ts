@@ -68,20 +68,25 @@ try {
   ({ renderer, scene, camera } = await initScene(container));
   initKTX2(renderer); // Enable KTX2 GPU texture decoding before any model loads
 
-  // Background preload: start fetching tree/building GLBs during title screen idle
-  // Delay 2s to yield to critical boot tasks (title music, UI, etc.)
-  setTimeout(() => {
-    const allTrees = new Set<string>();
-    const allBuildings = new Set<string>();
+  // Background preload: sequentially fetch tree/building GLBs during idle time.
+  // Sequential (not parallel) to avoid starving first-race downloads of bandwidth.
+  // Delay 3s to yield to critical boot tasks (title music, UI, etc.)
+  setTimeout(async () => {
+    const urls: string[] = [];
     for (const env of ENVIRONMENTS) {
-      env.scenery.treeModels?.forEach((t: string) => allTrees.add(t));
-      if (env.scenery.grandstandModel) allBuildings.add(env.scenery.grandstandModel);
-      env.scenery.landmarks?.forEach((l: string) => allBuildings.add(l));
+      env.scenery.treeModels?.forEach((t: string) => urls.push(`/trees/${t}`));
+      if (env.scenery.grandstandModel) urls.push(`/buildings/${env.scenery.grandstandModel}`);
+      env.scenery.landmarks?.forEach((l: string) => urls.push(`/buildings/${l}`));
     }
-    allTrees.forEach(t => preloadGLB(`/trees/${t}`));
-    allBuildings.forEach(b => preloadGLB(`/buildings/${b}`));
-    console.log(`[Preload] Queued ${allTrees.size} trees + ${allBuildings.size} buildings`);
-  }, 2000);
+    // Deduplicate
+    const unique = [...new Set(urls)];
+    console.log(`[Preload] Sequentially queuing ${unique.length} assets`);
+    for (const url of unique) {
+      preloadGLB(url);
+      // Yield between downloads so race-critical loads get priority
+      await new Promise(r => setTimeout(r, 100));
+    }
+  }, 3000);
 } catch (e) {
   console.error('[Boot] Failed to initialize renderer:', e);
   uiOverlay.innerHTML = `

@@ -383,7 +383,7 @@ export class VehicleCamera {
   updateFlyover(dt: number): boolean {
     if (this.mode !== 'flyover' || !this.flyoverSpline) return true;
 
-    this.flyoverElapsed += dt;
+    this.flyoverElapsed += Math.min(dt, 0.034); // clamp to ~30fps to prevent download jank from fast-forwarding
     const rawProgress = Math.min(this.flyoverElapsed / this.flyoverDuration, 1);
 
     // Phase 1: orbit start area (first 40% of duration)

@@ -159,23 +159,54 @@ export function clearModelCache() {
 }
 
 const glbCache = new Map<string, THREE.Group>();
+const glbInflight = new Map<string, Promise<THREE.Group>>();
+let _preloadAbort: AbortController | null = null;
 
 /** Load a raw GLB model (no car-specific processing). Returns a cloned scene group.
- *  Caches the original so subsequent calls skip Draco decode. */
+ *  Caches the original so subsequent calls skip Draco decode.
+ *  Deduplicates in-flight requests (shares promise with preloadGLB). */
 export async function loadGLB(url: string): Promise<THREE.Group> {
   const cached = glbCache.get(url);
   if (cached) return cached.clone(true);
 
-  const gltf = await gltfLoader.loadAsync(url);
-  glbCache.set(url, gltf.scene);
-  return gltf.scene.clone(true);
+  // Reuse in-flight download if one exists (e.g. from preloadGLB)
+  const inflight = glbInflight.get(url);
+  if (inflight) {
+    const scene = await inflight;
+    return scene.clone(true);
+  }
+
+  const promise = gltfLoader.loadAsync(url).then(gltf => {
+    glbCache.set(url, gltf.scene);
+    glbInflight.delete(url);
+    return gltf.scene;
+  });
+  glbInflight.set(url, promise);
+  const scene = await promise;
+  return scene.clone(true);
 }
 
 /** Preload a GLB into the cache without returning the model.
+ *  Shares in-flight promise with loadGLB to avoid duplicate downloads.
  *  Errors are silently swallowed — this is for background preloading. */
 export function preloadGLB(url: string): void {
-  if (glbCache.has(url)) return;
-  gltfLoader.loadAsync(url)
-    .then(gltf => { glbCache.set(url, gltf.scene); })
-    .catch(() => {});
+  if (glbCache.has(url) || glbInflight.has(url)) return;
+  const promise = gltfLoader.loadAsync(url).then(gltf => {
+    glbCache.set(url, gltf.scene);
+    glbInflight.delete(url);
+    return gltf.scene;
+  }).catch(() => {
+    glbInflight.delete(url);
+    return new THREE.Group(); // dummy — never used
+  });
+  glbInflight.set(url, promise);
+}
+
+/** Cancel all in-progress background preloads to free bandwidth for race loading.
+ *  Already-cached models are preserved. */
+export function cancelPreloads(): void {
+  if (_preloadAbort) {
+    _preloadAbort.abort();
+    _preloadAbort = null;
+  }
 }
