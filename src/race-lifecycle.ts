@@ -462,14 +462,23 @@ export async function startRace() {
       G.postFXPipeline = null;
     }
     updateLoadingProgress(70, 'PHYSICS ENGINE');
-    try {
-      await initRapierWorld();
-      addBarrierCollider(trackData.barrierLeft);
-      addBarrierCollider(trackData.barrierRight);
-      const playerPos = G.playerVehicle.group.position;
-      addCarBody('local', playerPos.x, playerPos.y, playerPos.z, G.playerVehicle.heading);
-    } catch (e) {
-      console.warn('[Rapier] WASM init failed, running without enhanced collision:', e);
+    // Rapier WASM crashes on iOS Safari due to strict memory limits
+    // (documented WebKit issue — WASM compilation exceeds per-tab budget).
+    // Arcade physics still handles all driving; Rapier only adds collision response.
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (!isIOS) {
+      try {
+        await initRapierWorld();
+        addBarrierCollider(trackData.barrierLeft);
+        addBarrierCollider(trackData.barrierRight);
+        const playerPos = G.playerVehicle.group.position;
+        addCarBody('local', playerPos.x, playerPos.y, playerPos.z, G.playerVehicle.heading);
+      } catch (e) {
+        console.warn('[Rapier] WASM init failed, running without enhanced collision:', e);
+      }
+    } else {
+      console.log('[Rapier] Skipped on iOS — WASM memory limits');
     }
 
     updateLoadingProgress(80, 'SPAWNING RACERS');
