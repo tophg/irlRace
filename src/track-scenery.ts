@@ -1013,11 +1013,11 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           return;
         }
 
-        // Multi-story: ground (1 band) + mid (repeating) + roof cap (1 band)
+        // Multi-story: ground (1 band) + mid (repeating) + thin roof cap
         // Vertical zones as fractions of total height:
-        const groundFrac = 1 / vRep;         // bottom band
-        const roofFrac = 1 / vRep;            // top band
-        const midBands = Math.max(1, vRep - 2); // repeating middle
+        const groundFrac = 1 / vRep;                     // bottom band = one story
+        const roofFrac = Math.min(0.08, 1 / vRep);       // thin cornice cap (max ~8% of height)
+        const midBands = Math.max(1, vRep - 2);           // repeating middle
         const midFrac = 1 - groundFrac - roofFrac;
 
         // Zone definitions: [vStart, vEnd, tile, vRepeat, hRep]
@@ -1133,29 +1133,15 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `
           #include <common>
-          attribute float atlasColumn;
-          varying float vAtlasColumn;
           varying float vHeightFrac;
           varying vec3 vWPos;
           varying vec3 vWNormal;
         `)
          .replace('#include <uv_vertex>', `
           #include <uv_vertex>
-          vAtlasColumn = atlasColumn;
           vHeightFrac = (position.y + 0.5);
           vWPos = (modelMatrix * vec4(position, 1.0)).xyz;
           vWNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
-          // Offset all UV sets by per-instance atlas column
-          float colOff = atlasColumn * ${columnWidth.toFixed(6)};
-          #ifdef USE_MAP
-            vMapUv.x += colOff;
-          #endif
-          #ifdef USE_NORMALMAP
-            vNormalMapUv.x += colOff;
-          #endif
-          #ifdef USE_EMISSIVEMAP
-            vEmissiveMapUv.x += colOff;
-          #endif
         `);
 
       // Fragment shader: atlas offset + AO + interior mapping
@@ -1164,7 +1150,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           #include <common>
           uniform float colWidth;
           uniform sampler2D windowMask;
-          varying float vAtlasColumn;
           varying float vHeightFrac;
           varying vec3 vWPos;
           varying vec3 vWNormal;
@@ -1317,18 +1302,24 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const dummy = new THREE.Object3D();
     const _instances: THREE.Vector3[] = [];
 
-    // Group placements by HEIGHT BUCKET only (column picked per-instance in shader)
+    // Group placements by HEIGHT BUCKET + VARIANT COLUMN
+    // (since WebGPU renderer ignores onBeforeCompile, we bake column into UVs)
     const HEIGHT_BUCKET_SIZE = 10;
-    const heightBuckets = new Map<number, BoxPlacement[]>();
+    const bucketKey = (hBucket: number, variant: number) => `${hBucket}_${variant}`;
+    const combinedBuckets = new Map<string, BoxPlacement[]>();
     for (const pl of placements) {
       const hBucket = Math.floor(pl.h / HEIGHT_BUCKET_SIZE);
-      const arr = heightBuckets.get(hBucket) ?? [];
+      const key = bucketKey(hBucket, pl.tile);
+      const arr = combinedBuckets.get(key) ?? [];
       arr.push(pl);
-      heightBuckets.set(hBucket, arr);
+      combinedBuckets.set(key, arr);
     }
 
-    for (const [, bucketPlacements] of heightBuckets) {
+    for (const [, bucketPlacements] of combinedBuckets) {
       if (bucketPlacements.length === 0) continue;
+
+      // All placements in this bucket share the same variant column
+      const variant = bucketPlacements[0].tile;
 
       // Compute average dimensions for this height bucket
       const avgW = bucketPlacements.reduce((s, p) => s + p.w, 0) / bucketPlacements.length;
@@ -1338,20 +1329,17 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const repLR = Math.max(1, Math.round(avgD / 8));
       const repV  = Math.max(1, Math.round(avgH / 8));
 
-      // Tile mapping for new atlas layout:
-      //   Row 0 = window variants (wall+window combined — used for mid-floors)
-      //   Row 1 = wall surfaces (pure wall — used for side faces/fill)
-      //   Row 2 = ground floor variants (shops, doors, lobbies)
-      //   Row 3 = trim/cap variants (cornices, parapets, rooftops)
-      const groundTile  = 2 * ATLAS_COLS + 0; // Row 2 = ground floor
-      const midTile     = 0 * ATLAS_COLS + 0; // Row 0 = windows (repeating mid-floor)
-      const roofCapTile = 3 * ATLAS_COLS + 0; // Row 3 = trim/caps
-      const singleTile  = 0 * ATLAS_COLS + 0; // Row 0 = windows (for single-story)
+      // Tile mapping: bake variant column into tile indices
+      // Each variant column picks the matching tile from each row
+      const groundTile  = 2 * ATLAS_COLS + variant; // Row 2, Col=variant
+      const midTile     = 0 * ATLAS_COLS + variant; // Row 0, Col=variant
+      const roofCapTile = 3 * ATLAS_COLS + variant; // Row 3, Col=variant
+      const singleTile  = 0 * ATLAS_COLS + variant; // Row 0, Col=variant
 
       const geo0 = buildComposedBox(groundTile, midTile, roofCapTile, singleTile, false, repFB, repLR, repV);
       const geo1 = buildComposedBox(groundTile, midTile, roofCapTile, singleTile, true,  repFB, repLR, repV);
 
-      // Split placements into 2 visual variants
+      // Split placements into 2 visual variants (flip mirror)
       const bucket0: BoxPlacement[] = [];
       const bucket1: BoxPlacement[] = [];
       bucketPlacements.forEach((pl, i) => (i % 2 === 0 ? bucket0 : bucket1).push(pl));
@@ -1367,9 +1355,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         const instancedMesh = new THREE.InstancedMesh(geo, buildingMat, bucket.length);
         instancedMesh.castShadow = true;
         instancedMesh.receiveShadow = true;
-
-        // Per-instance atlas column attribute (shader reads this to offset UVs)
-        const columnAttr = new Float32Array(bucket.length);
 
         for (let j = 0; j < bucket.length; j++) {
           const pl = bucket[j];
@@ -1394,9 +1379,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           dummy.updateMatrix();
           instancedMesh.setMatrixAt(j, dummy.matrix);
 
-          // Per-instance atlas column (variant 0-3 from placement)
-          columnAttr[j] = pl.tile;
-
           // Per-instance tint — AI atlases already have correct colors,
           // so use near-white with subtle ±10% luminance variation only
           const lum = 0.9 + (((pl.x * 31 + pl.z * 97) & 0xFF) / 255) * 0.2;
@@ -1406,11 +1388,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         }
         instancedMesh.instanceMatrix.needsUpdate = true;
         if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true;
-        // Attach per-instance atlas column attribute
-        instancedMesh.geometry.setAttribute(
-          'atlasColumn',
-          new THREE.InstancedBufferAttribute(columnAttr, 1),
-        );
         group.add(instancedMesh);
       }
     }
