@@ -547,36 +547,9 @@ export function generateFacadeAtlas(theme: SceneryTheme): HTMLCanvasElement {
     }
   }
 
-  // ── Alpha pass: mark window glass regions ──
-  // Set alpha=255 (opaque) for all pixels first (already done by fillRect above)
-  // Then set alpha=0 for glass areas so the shader can detect windows for emissive
-  // Wait — we want it the other way: alpha=0 for walls, alpha=255 for glass
-  // Actually, the best approach: alpha=0 everywhere (walls don't glow),
-  // alpha=255 for glass (windows CAN glow)
-  
-  // Get entire image data
-  const imgData = ctx.getImageData(0, 0, FACADE_ATLAS_SIZE, FACADE_ATLAS_SIZE);
-  const data = imgData.data;
-  
-  // First: set ALL alpha to 0 (no emissive)
-  for (let i = 3; i < data.length; i += 4) {
-    data[i] = 0;
-  }
-  
-  // Then: set alpha=255 for glass rects (these CAN be emissive)
-  for (const rect of glassRects) {
-    const x0 = Math.max(0, Math.floor(rect.x));
-    const y0 = Math.max(0, Math.floor(rect.y));
-    const x1 = Math.min(FACADE_ATLAS_SIZE, Math.ceil(rect.x + rect.w));
-    const y1 = Math.min(FACADE_ATLAS_SIZE, Math.ceil(rect.y + rect.h));
-    for (let py = y0; py < y1; py++) {
-      for (let px = x0; px < x1; px++) {
-        data[(py * FACADE_ATLAS_SIZE + px) * 4 + 3] = 255;
-      }
-    }
-  }
-  
-  ctx.putImageData(imgData, 0, 0);
+  // NOTE: No alpha manipulation needed — the shader uses luminance-based
+  // window detection (texLum < 0.15) which works naturally with the dark
+  // glass colors drawn above. Zeroing alpha would make walls invisible.
 
   return canvas;
 }

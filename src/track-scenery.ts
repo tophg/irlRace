@@ -1290,11 +1290,15 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const repLR = Math.max(1, Math.round(avgD / 8));
       const repV  = Math.max(1, Math.round(avgH / 8));
 
-      // Always use column-0 tiles for geometry UVs — shader offsets per-instance
-      const groundTile  = 0 * ATLAS_COLS + 0; // Row 0, Col 0
-      const midTile     = 1 * ATLAS_COLS + 0; // Row 1, Col 0
-      const roofCapTile = 2 * ATLAS_COLS + 0; // Row 2, Col 0
-      const singleTile  = 3 * ATLAS_COLS + 0; // Row 3, Col 0
+      // Tile mapping for new atlas layout:
+      //   Row 0 = window variants (wall+window combined — used for mid-floors)
+      //   Row 1 = wall surfaces (pure wall — used for side faces/fill)
+      //   Row 2 = ground floor variants (shops, doors, lobbies)
+      //   Row 3 = trim/cap variants (cornices, parapets, rooftops)
+      const groundTile  = 2 * ATLAS_COLS + 0; // Row 2 = ground floor
+      const midTile     = 0 * ATLAS_COLS + 0; // Row 0 = windows (repeating mid-floor)
+      const roofCapTile = 3 * ATLAS_COLS + 0; // Row 3 = trim/caps
+      const singleTile  = 0 * ATLAS_COLS + 0; // Row 0 = windows (for single-story)
 
       const geo0 = buildComposedBox(groundTile, midTile, roofCapTile, singleTile, false, repFB, repLR, repV);
       const geo1 = buildComposedBox(groundTile, midTile, roofCapTile, singleTile, true,  repFB, repLR, repV);
