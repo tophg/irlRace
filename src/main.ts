@@ -592,9 +592,11 @@ function showTitleScreen() {
     // Reset the cinematic animation timeline so it replays from scratch
     titleStartTime = performance.now() / 1000;
     titleMenuRevealed = false;
-    // Remove splash and show full title
+    // Remove splash and show full title.
+    // Defer by one frame so the touch event finishes before menu buttons exist —
+    // otherwise the tap passes through to whatever button is at the same coords.
     splashEl.remove();
-    renderFullTitleScreen();
+    requestAnimationFrame(() => renderFullTitleScreen());
   };
 
   splashEl.addEventListener('click', () => launchTitle(), { once: true });
