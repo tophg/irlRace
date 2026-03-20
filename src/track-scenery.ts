@@ -826,6 +826,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   atlasTexture.wrapS = THREE.RepeatWrapping;
   atlasTexture.wrapT = THREE.RepeatWrapping;
   atlasTexture.colorSpace = THREE.SRGBColorSpace;
+  atlasTexture.anisotropy = 8; // sharper at oblique angles
   // Atlas layout: Row 0=windows, Row 1=walls, Row 2=ground floor, Row 3=trim/caps
   // Each row has 8 style variants (columns 0-7)
   const VARIANT_COUNT = 8;
@@ -975,8 +976,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
       // addComposedFace: builds a wall face with ground/mid/roof zones
       // faceW/faceH are physical dimensions in meters
-      const TILE_W = 4; // fixed tile physical width (meters)
-      const TILE_H = 4; // fixed tile physical height (meters) — square tiles
+      const TILE_W = 5; // fixed tile physical width (meters)
+      const TILE_H = 5; // fixed tile physical height (meters)
       const addComposedFace = (
         origin: [number, number, number],
         axisU: [number, number, number],
