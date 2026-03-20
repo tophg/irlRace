@@ -13,7 +13,8 @@ import { playCheckpointSFX, playLapFanfare, playFinishFanfare, playPositionSFX, 
 import { showResults, resolvePlayerName } from './results-screen';
 import { enterSpectatorMode, cycleSpectateTarget, destroySpectateHUD } from './spectator';
 import { initGarage, destroyGarage } from './garage';
-import { loadCarModel, initKTX2 } from './loaders';
+import { loadCarModel, initKTX2, preloadGLB } from './loaders';
+import { ENVIRONMENTS } from './scene';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { showTrackEditor, destroyTrackEditor } from './track-editor';
 import { loadProgress } from './progression';
@@ -66,6 +67,21 @@ let camera: THREE.PerspectiveCamera;
 try {
   ({ renderer, scene, camera } = await initScene(container));
   initKTX2(renderer); // Enable KTX2 GPU texture decoding before any model loads
+
+  // Background preload: start fetching tree/building GLBs during title screen idle
+  // Delay 2s to yield to critical boot tasks (title music, UI, etc.)
+  setTimeout(() => {
+    const allTrees = new Set<string>();
+    const allBuildings = new Set<string>();
+    for (const env of ENVIRONMENTS) {
+      env.scenery.treeModels?.forEach((t: string) => allTrees.add(t));
+      if (env.scenery.grandstandModel) allBuildings.add(env.scenery.grandstandModel);
+      env.scenery.landmarks?.forEach((l: string) => allBuildings.add(l));
+    }
+    allTrees.forEach(t => preloadGLB(`/trees/${t}`));
+    allBuildings.forEach(b => preloadGLB(`/buildings/${b}`));
+    console.log(`[Preload] Queued ${allTrees.size} trees + ${allBuildings.size} buildings`);
+  }, 2000);
 } catch (e) {
   console.error('[Boot] Failed to initialize renderer:', e);
   uiOverlay.innerHTML = `

@@ -61,3 +61,17 @@ self.addEventListener('fetch', (event) => {
   }
   // Everything else: network only (API calls, etc.)
 });
+
+// ── Predictive Pre-caching ──
+// Main thread can send a list of URLs to pre-cache (e.g. environment-specific trees)
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'prefetch' && Array.isArray(event.data.urls)) {
+    caches.open(CACHE_NAME).then((cache) => {
+      event.data.urls.forEach((url) => {
+        cache.match(url).then((hit) => {
+          if (!hit) cache.add(url).catch(() => {});
+        });
+      });
+    });
+  }
+});

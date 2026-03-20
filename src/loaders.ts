@@ -158,8 +158,24 @@ export function clearModelCache() {
   modelCache.clear();
 }
 
-/** Load a raw GLB model (no car-specific processing). Returns the scene group. */
+const glbCache = new Map<string, THREE.Group>();
+
+/** Load a raw GLB model (no car-specific processing). Returns a cloned scene group.
+ *  Caches the original so subsequent calls skip Draco decode. */
 export async function loadGLB(url: string): Promise<THREE.Group> {
+  const cached = glbCache.get(url);
+  if (cached) return cached.clone(true);
+
   const gltf = await gltfLoader.loadAsync(url);
-  return gltf.scene;
+  glbCache.set(url, gltf.scene);
+  return gltf.scene.clone(true);
+}
+
+/** Preload a GLB into the cache without returning the model.
+ *  Errors are silently swallowed — this is for background preloading. */
+export function preloadGLB(url: string): void {
+  if (glbCache.has(url)) return;
+  gltfLoader.loadAsync(url)
+    .then(gltf => { glbCache.set(url, gltf.scene); })
+    .catch(() => {});
 }

@@ -12,6 +12,14 @@ export default defineConfig({
   build: {
     target: 'es2022',
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ['three', 'three/webgpu', 'three/tsl'],
+          peerjs: ['peerjs'],
+        },
+      },
+    },
   },
   optimizeDeps: {
     exclude: ['@dimforge/rapier3d-compat'],

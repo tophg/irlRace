@@ -563,13 +563,13 @@ export async function startRace() {
     await new Promise(resolve => requestAnimationFrame(resolve));
     await new Promise(resolve => requestAnimationFrame(resolve));
 
-    // Wait for all async scenery loads (tree GLBs, grandstand) to complete
-    // before showing the scene — prevents props popping in during flyover
+    // Let async scenery loads (tree GLBs, grandstand, landmarks) stream in
+    // during the flyover instead of blocking the loading screen.
+    // With the GLB memory cache, repeat races load trees instantly anyway.
     const sceneryLoads = trackData.sceneryGroup.userData._asyncLoads as Promise<void>[] | undefined;
-    if (sceneryLoads?.length) {
-      updateLoadingProgress(98, 'FINISHING SCENERY');
-      await Promise.all(sceneryLoads);
-    }
+    const sceneryDone = sceneryLoads?.length
+      ? Promise.all(sceneryLoads).catch(e => console.warn('[Scenery] Async load error:', e))
+      : Promise.resolve();
 
     hideLoading();
 
