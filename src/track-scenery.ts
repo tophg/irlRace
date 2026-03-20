@@ -1039,9 +1039,17 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
         // Build per-column zones: symmetric window/wall-pier pattern
         // Even columns (0,2,4...) = wall pier, odd columns (1,3...) = window
+        // Each column picks a different atlas variant for visual variety
         for (let col = 0; col < hTiles; col++) {
           const isWindowCol = (col % 2 === 1);
-          const colMidTile = isWindowCol ? windowTile : wallPierTile;
+          // Per-column hash for variety: different atlas column + open/closed row
+          const colHash = ((col * 31 + windowTile * 73 + Math.round(faceW) * 17) & 0xFF);
+          const colVariant = colHash % ATLAS_COLS; // pick different atlas column per column
+          const colWindowRow = (colHash % 3 === 0) ? 1 : 0; // ~33% open, ~67% closed
+          const colWallRow = (colHash % 5 === 0) ? 3 : 2;   // ~20% detail, ~80% plain
+          const colMidTile = isWindowCol
+            ? (colWindowRow * ATLAS_COLS + colVariant)
+            : (colWallRow * ATLAS_COLS + colVariant);
           const uStart = col / hTiles;
           const uEnd = (col + 1) / hTiles;
 
