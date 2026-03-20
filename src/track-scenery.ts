@@ -986,8 +986,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       // faceW/faceH are physical dimensions in meters
       // Physical tile size — smaller tiles = less stretch from rounding.
       // Atlas is 8×8 (square tiles), so square physical tiles map 1:1.
-      const TILE_W = 3;  // fixed tile physical width (meters)
-      const TILE_H = 3;  // fixed tile physical height (meters)
+      const TILE_W = 1;  // fixed tile physical width (meters)
+      const TILE_H = 1;  // fixed tile physical height (meters)
       const addComposedFace = (
         origin: [number, number, number],
         axisU: [number, number, number],
