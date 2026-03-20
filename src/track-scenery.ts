@@ -1042,15 +1042,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         // Each column picks a different atlas variant for visual variety
         for (let col = 0; col < hTiles; col++) {
           const isWindowCol = (col % 2 === 1);
-          // Per-column hash: vary ROW (open/closed) but keep same atlas COLUMN (style)
-          const colHash = ((col * 31 + windowTile * 73 + Math.round(faceW) * 17) & 0xFF);
-          const colWindowRow = (colHash % 3 === 0) ? 1 : 0; // ~33% open, ~67% closed
-          const colWallRow = (colHash % 5 === 0) ? 3 : 2;   // ~20% detail, ~80% plain
-          // Keep the building's atlas column (from windowTile/wallPierTile) for style consistency
-          const baseCol = windowTile % ATLAS_COLS;
-          const colMidTile = isWindowCol
-            ? (colWindowRow * ATLAS_COLS + baseCol)
-            : (colWallRow * ATLAS_COLS + baseCol);
           const uStart = col / hTiles;
           const uEnd = (col + 1) / hTiles;
 
@@ -1080,10 +1071,21 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
           // Mid zone for this column (repeating vertically)
           if (midFrac > 0) {
-            const zUV = tileUV(colMidTile);
-            const zTW = zUV.uMax - zUV.uMin;
-            const zTH = zUV.vMax - zUV.vMin;
+            const baseCol = windowTile % ATLAS_COLS;
             for (let tileR = 0; tileR < midVTiles; tileR++) {
+              // Per-TILE randomization: each window independently open or closed
+              const tileHash = ((col * 31 + tileR * 53 + windowTile * 73 + Math.round(faceW) * 17) & 0xFF);
+              let tileMidTile: number;
+              if (isWindowCol) {
+                const tileWindowRow = (tileHash % 3 === 0) ? 1 : 0; // ~33% open, ~67% closed
+                tileMidTile = tileWindowRow * ATLAS_COLS + baseCol;
+              } else {
+                const tileWallRow = (tileHash % 5 === 0) ? 3 : 2; // ~20% detail, ~80% plain
+                tileMidTile = tileWallRow * ATLAS_COLS + baseCol;
+              }
+              const zUV = tileUV(tileMidTile);
+              const zTW = zUV.uMax - zUV.uMin;
+              const zTH = zUV.vMax - zUV.vMin;
               const baseIdx = positions.length / 3;
               for (let vr = 0; vr <= 1; vr++) {
                 for (let vc = 0; vc <= 1; vc++) {
