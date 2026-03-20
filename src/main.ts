@@ -836,7 +836,6 @@ bus.on('finish', (e) => {
     G.vehicleCamera.startOrbit(G.playerVehicle.group.position.clone());
   }
   setTimeout(() => {
-    enterSpectatorMode();
     callShowResults();
   }, 3000);
 });

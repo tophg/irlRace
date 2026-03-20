@@ -9,7 +9,7 @@
 import * as THREE from 'three/webgpu';
 import { GameState, CAR_ROSTER, EventType, type TrackData } from './types';
 import { G, resetRaceStats } from './game-context';
-import { getScene, applyEnvironment, getEnvironmentForSeed, getEnvironmentByName, applyWeatherSkyDarkening } from './scene';
+import { getScene, applyEnvironment, getEnvironmentForSeed, getEnvironmentByName, applyWeatherSkyDarkening, isWebGPUBackend } from './scene';
 import { loadCarModel } from './loaders';
 import { generateTrack, buildCheckpointMarkers } from './track';
 import { destroyScenery } from './track-scenery';
@@ -432,10 +432,18 @@ export async function startRace() {
     initVictoryConfetti(scene);
 
     setLightningEnabled(getCurrentWeather() === 'heavy_rain');
-    try {
-      await initGPUParticles(renderer, scene);
-    } catch (e) {
-      console.warn('[GPU Particles] Init failed (WebGL2 fallback — no compute shader support):', e);
+
+    // GPU particles require compute shaders (WebGPU-only).
+    // On WebGL2 fallback (e.g. iOS Safari), skip entirely — the mesh with
+    // storage().toAttribute() nodes would crash the renderer during rendering.
+    if (isWebGPUBackend()) {
+      try {
+        await initGPUParticles(renderer, scene);
+      } catch (e) {
+        console.warn('[GPU Particles] Init failed:', e);
+      }
+    } else {
+      console.log('[GPU Particles] Skipped — WebGL2 backend does not support compute shaders');
     }
 
     try {
