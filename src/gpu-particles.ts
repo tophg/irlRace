@@ -196,6 +196,7 @@ function writeParticle(
  */
 export function flushToGPU() {
   if (_dirtyEnd < 0) return; // nothing written this frame
+  if (!positionBuffer) return; // GPU particles not initialized (WebGL2 fallback)
 
   // Per-buffer partial upload via addUpdateRange
   const buffers3 = [positionBuffer, velocityBuffer];
