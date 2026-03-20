@@ -1116,7 +1116,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const buildingMat = new THREE.MeshStandardMaterial({
       map: atlasTexture,
       normalMap: normalTexture,
-      normalScale: new THREE.Vector2(0.8, 0.8),
+      normalScale: new THREE.Vector2(0.35, 0.35),
       roughness: 0.75,
       metalness: 0.15,
       emissiveMap: emissiveMaskTexture,
