@@ -825,64 +825,27 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   const atlasTexture = new THREE.TextureLoader().load(atlasPath);
   atlasTexture.wrapS = THREE.RepeatWrapping;
   atlasTexture.wrapT = THREE.RepeatWrapping;
-  atlasTexture.magFilter = THREE.LinearFilter;
-  atlasTexture.minFilter = THREE.LinearMipmapLinearFilter;
-  atlasTexture.colorSpace = THREE.SRGBColorSpace;
+  // Structured atlas layout: Row 0=ground, Row 1=mid-floor, Row 2=roof cap, Row 3=single-story
+  // Each row has 4 style variants (columns A-D)
+  const VARIANT_COUNT = 4;
 
-  // Use all 16 tiles from each environment-specific atlas — every tile is now contextual
-  const STYLE_TILES: Record<string, number[]> = {
-    modern:      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-    adobe:       [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-    beach_house: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-    cyberpunk:   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-    weathered:   [0, 1, 2, 3, 5, 6, 8, 9, 10, 13, 14, 15],   // skip some baroque/tourist tiles
-    chalet:      [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
-    warehouse:   [1, 2, 5, 6, 8, 9, 12, 14, 15],              // industrial subset of DC
-    concrete:    [0, 2, 3, 5, 8, 10, 12, 13, 14, 15],         // glass/concrete subset
-    bamboo_lodge:[0, 1, 2, 3, 5, 6, 7, 9, 11, 14],            // wood/stone subset of Zermatt
-  };
-  const tiles = STYLE_TILES[styleName] ?? STYLE_TILES['modern'];
-
-  // Per-environment roof tile — contextual rooftops instead of always parking garage
-  const ROOF_TILE: Record<string, number> = {
-    modern:       12,  // DC: flat gravel rooftop / parking structure
-    adobe:        3,   // Mojave: rusted corrugated metal roof
-    beach_house:  7,   // Havana: weathered corrugated warehouse roof
-    cyberpunk:    15,  // Shibuya: night apartments with colorful windows (antenna forest)
-    weathered:    7,   // weathered warehouse roof
-    chalet:       3,   // Zermatt: dark weathered wooden barn roof
-    warehouse:    12,  // DC: parking structure / flat roof
-    concrete:     12,  // DC: flat concrete roof
-    bamboo_lodge: 3,   // Zermatt: dark wood barn roof
-  };
-  const roofTile = ROOF_TILE[styleName] ?? 12;
-
-  // Per-tile height clamps for realistic proportions
-  const TILE_HEIGHT: Record<number, [number, number]> = {
-    0: [20, 55], 1: [10, 25], 2: [15, 40], 3: [25, 60], 4: [10, 30],
-    5: [6, 15], 6: [8, 20], 7: [6, 14], 8: [20, 50], 9: [10, 22],
-    10: [18, 45], 11: [8, 18], 12: [5, 12], 13: [20, 50], 14: [8, 22],
-    15: [12, 30],
-  };
+  // Per-tile height clamps (now per-variant column for consistency)
+  // Column heights control the mix of short vs tall buildings
+  const VARIANT_HEIGHT: [number, number][] = [
+    [12, 45], // Variant A — medium to tall
+    [8, 30],  // Variant B — short to medium
+    [15, 55], // Variant C — medium to very tall
+    [6, 20],  // Variant D — short (often single-story)
+  ];
 
   // Row offset definitions (heights come from tile clamp)
   const ROW_DEFS: [number, number][] = [];
   if (rowCount >= 1) ROW_DEFS.push([25, 50]);
-  if (rowCount >= 2) ROW_DEFS.push([55, 85]);
-  if (rowCount >= 3) ROW_DEFS.push([90, 130]);
+  if (rowCount >= 2) ROW_DEFS.push([35, 65]);
+  if (rowCount >= 3) ROW_DEFS.push([50, 80]);
 
-  const sampleSpacing = Math.max(15, 30 / density);
-  const totalLength = spline.getLength();
-  const sampleCount = Math.floor(totalLength / sampleSpacing);
-  const MAX_PLACEMENTS = isMobile ? 60 : 400;
-
-  // Proximity checking (scaled to track length for better coverage)
-  const CLEARANCE_SAMPLES = Math.max(200, Math.floor(totalLength / 5));
-  const splineSamples: THREE.Vector3[] = [];
-  for (let s = 0; s < CLEARANCE_SAMPLES; s++) {
-    splineSamples.push(spline.getPointAt(s / CLEARANCE_SAMPLES));
-  }
-  const MIN_CLEARANCE_SQ = 22 * 22;
+  // ── Place buildings ──
+  const placements: BoxPlacement[] = [];
 
   // Pre-compute landmark positions for building exclusion zones
   const landmarkExclusionZones: { x: number; z: number }[] = [];
@@ -895,58 +858,54 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const lmTan = spline.getTangentAt(lmT).normalize();
       const lmRight = new THREE.Vector3(lmTan.z, 0, -lmTan.x);
       const lmSide = li % 2 === 0 ? 1 : -1;
-      const lmOff = 25; // approximate center of 22-28 range
+      const lmOffset = 22 + 3;
       landmarkExclusionZones.push({
-        x: lmP.x + lmRight.x * lmOff * lmSide,
-        z: lmP.z + lmRight.z * lmOff * lmSide,
+        x: lmP.x + lmRight.x * lmOffset * lmSide,
+        z: lmP.z + lmRight.z * lmOffset * lmSide,
       });
     }
   }
 
   // Collect placements
   interface BoxPlacement { x: number; z: number; w: number; h: number; d: number; rotY: number; tile: number; }
-  const placements: BoxPlacement[] = [];
 
-  for (let i = 0; i < sampleCount && placements.length < MAX_PLACEMENTS; i++) {
-    const t = (i / sampleCount) % 1;
+  const totalLength = spline.getLength();
+  const sampleSpacing = Math.max(15, 30 / density);
+  const totalSamples = Math.floor(totalLength / sampleSpacing);
+  const MAX_PLACEMENTS = isMobile ? 60 : 400;
+
+  for (let si = 0; si < totalSamples && placements.length < MAX_PLACEMENTS; si++) {
+    const t = si / totalSamples;
     const p = spline.getPointAt(t);
-    const tangent = spline.getTangentAt(t).normalize();
-    const nx = tangent.z, nz = -tangent.x;
-    const faceRoadRot = Math.atan2(tangent.x, tangent.z);
+    const tan = spline.getTangentAt(t).normalize();
+    const right = new THREE.Vector3(tan.z, 0, -tan.x);
 
-    for (const [offMin, offMax] of ROW_DEFS) {
-      if (placements.length >= MAX_PLACEMENTS) break;
-      for (const side of [-1, 1] as const) {
-        if (placements.length >= MAX_PLACEMENTS) break;
+    for (const [dist, maxOffset] of ROW_DEFS) {
+      for (let side = -1; side <= 1; side += 2) {
         if (rng() < gapChance) continue;
 
-        const offset = offMin + rng() * (offMax - offMin);
-        const x = p.x + nx * offset * side;
-        const z = p.z + nz * offset * side;
-
-        let tooClose = false;
-        for (const sp of splineSamples) {
-          const dx = x - sp.x, dz = z - sp.z;
-          if (dx * dx + dz * dz < MIN_CLEARANCE_SQ) { tooClose = true; break; }
-        }
-        if (tooClose) continue;
+        const baseD = dist + rng() * (maxOffset - dist);
+        const px = p.x + right.x * baseD * side + (rng() - 0.5) * 6;
+        const pz = p.z + right.z * baseD * side + (rng() - 0.5) * 6;
 
         // Skip buildings near landmark exclusion zones (50m radius)
         let nearLandmark = false;
         for (const lz of landmarkExclusionZones) {
-          const ldx = x - lz.x, ldz = z - lz.z;
+          const ldx = px - lz.x; const ldz = pz - lz.z;
           if (ldx * ldx + ldz * ldz < LANDMARK_EXCLUSION_SQ) { nearLandmark = true; break; }
         }
         if (nearLandmark) continue;
+        // Pick a style variant column (0-3) deterministically from position
+        const variant = ((Math.abs(Math.round(px * 73 + pz * 137))) & 0xFF) % VARIANT_COUNT;
 
-        const tile = tiles[Math.floor(rng() * tiles.length)];
-        const [tileHMin, tileHMax] = TILE_HEIGHT[tile] ?? [12, 35];
-        const h = tileHMin + rng() * (tileHMax - tileHMin);
-        const minW = Math.max(8, h * 0.2);
-        const w = minW + rng() * Math.min(12, h * 0.3);
-        const d = minW + rng() * Math.min(12, h * 0.3);
-        const rotY = faceRoadRot + (side > 0 ? Math.PI : 0) + (rng() - 0.5) * 0.3;
-        placements.push({ x, z, w, h, d, rotY, tile });
+        // Height from variant-specific range
+        const [hMin, hMax] = VARIANT_HEIGHT[variant];
+        const h = hMin + rng() * (hMax - hMin);
+        const w = 8 + rng() * 10;
+        const d = 8 + rng() * 10;
+
+        const rotY = Math.atan2(tan.x, tan.z) + (side > 0 ? Math.PI : 0) + (rng() - 0.5) * 0.3;
+        placements.push({ x: px, z: pz, w, h, d, rotY, tile: variant });
       }
     }
   }
@@ -957,95 +916,168 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
     // Build a box with subdivided faces for facade tiling
     // Each face subdivision maps to the FULL tile sub-region, giving proper repetition
-    // flipU: horizontally mirror the facade for asymmetry
-    // repW/repH/repD: how many times the tile repeats on each face dimension
-    const buildCustomBox = (
-      tile: number, flipU: boolean,
+    // buildComposedBox: vertical facade composition
+    // Multi-story: ground (Row 0) → mid repeating (Row 1) → roof cap (Row 2)
+    // Single-story (repV ≤ 1): uses singleTile (Row 3) for entire face
+    const buildComposedBox = (
+      groundTile: number, midTile: number, roofCapTile: number,
+      singleTile: number, flipU: boolean,
       repFB: number, repLR: number, repV: number,
-      roofTileIdx: number = 12,
     ) => {
-      const col = tile % ATLAS_COLS;
-      const row = Math.floor(tile / ATLAS_COLS);
-      // Inset slightly to avoid atlas bleeding
-      const uMin = col * tileW + 0.002;
-      const uMax = (col + 1) * tileW - 0.002;
-      const vMin = 1 - (row + 1) * tileH + 0.002;
-      const vMax = 1 - row * tileH - 0.002;
-      const tW = uMax - uMin;
-      const tH = vMax - vMin;
+      // Helper: get atlas UV rect for a tile index
+      const tileUV = (tile: number) => {
+        const col = tile % ATLAS_COLS;
+        const row = Math.floor(tile / ATLAS_COLS);
+        return {
+          uMin: col * tileW + 0.002,
+          uMax: (col + 1) * tileW - 0.002,
+          vMin: 1 - (row + 1) * tileH + 0.002,
+          vMax: 1 - row * tileH - 0.002,
+        };
+      };
 
-      // Roof UV — uses environment-specific tile instead of always parking garage
-      const roofCol = roofTileIdx % ATLAS_COLS;
-      const roofRow = Math.floor(roofTileIdx / ATLAS_COLS);
-      const roofU = roofCol * tileW + tileW * 0.1;
-      const roofV = 1 - (roofRow + 1) * tileH + tileH * 0.1;
-
-      // Helper: build one face as a subdivided quad grid
-      // Each tile-repeat gets its own quad(s) mapping to the full tile region
       const positions: number[] = [];
       const uvs: number[] = [];
       const indices: number[] = [];
 
-      const addFace = (
+      // Roof UV (flat top face) — uses roof cap tile
+      const roofUVs = tileUV(roofCapTile);
+
+      const addFlatFace = (
+        origin: [number, number, number],
+        axisU: [number, number, number],
+        axisV: [number, number, number],
+        isRoof: boolean,
+      ) => {
+        const baseIdx = positions.length / 3;
+        for (let r = 0; r <= 1; r++) {
+          for (let c = 0; c <= 1; c++) {
+            positions.push(
+              origin[0] + axisU[0] * c + axisV[0] * r,
+              origin[1] + axisU[1] * c + axisV[1] * r,
+              origin[2] + axisU[2] * c + axisV[2] * r,
+            );
+            if (isRoof) {
+              uvs.push(roofUVs.uMin, roofUVs.vMin);
+            } else {
+              uvs.push(roofUVs.uMin, roofUVs.vMin);
+            }
+          }
+        }
+        indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+        indices.push(baseIdx + 1, baseIdx + 3, baseIdx + 2);
+      };
+
+      // addComposedFace: builds a wall face with ground/mid/roof zones
+      const addComposedFace = (
         origin: [number, number, number],
         axisU: [number, number, number],
         axisV: [number, number, number],
         hRep: number, vRep: number,
-        isRoof: boolean,
       ) => {
-        const baseIdx = positions.length / 3;
-        const cols = hRep;
-        const rows = vRep;
+        const isSingleStory = vRep <= 1;
 
-        for (let r = 0; r <= rows; r++) {
-          for (let c = 0; c <= cols; c++) {
-            const u = c / cols;
-            const v = r / rows;
-            positions.push(
-              origin[0] + axisU[0] * u + axisV[0] * v,
-              origin[1] + axisU[1] * u + axisV[1] * v,
-              origin[2] + axisU[2] * u + axisV[2] * v,
-            );
-            if (isRoof) {
-              uvs.push(roofU, roofV);
-            } else {
-              // Position within current tile repeat (sawtooth 0→1 per repeat)
+        if (isSingleStory) {
+          // Single-story: one tile covering the entire face
+          const uv = tileUV(singleTile);
+          const tW = uv.uMax - uv.uMin;
+          const tH = uv.vMax - uv.vMin;
+          const baseIdx = positions.length / 3;
+          const cols = hRep;
+          for (let r = 0; r <= 1; r++) {
+            for (let c = 0; c <= cols; c++) {
+              const u = c / cols;
+              const v = r;
+              positions.push(
+                origin[0] + axisU[0] * u + axisV[0] * v,
+                origin[1] + axisU[1] * u + axisV[1] * v,
+                origin[2] + axisU[2] * u + axisV[2] * v,
+              );
               const fracC = (c / cols) * hRep;
-              const fracR = (r / rows) * vRep;
               let tU = fracC - Math.floor(fracC);
-              let tV = fracR - Math.floor(fracR);
-              // Fix edge: last vertex should map to tile end, not wrap to 0
               if (c === cols) tU = 1.0;
+              if (flipU) tU = 1 - tU;
+              uvs.push(uv.uMin + tU * tW, uv.vMin + v * tH);
+            }
+          }
+          for (let c = 0; c < cols; c++) {
+            const i = baseIdx + c;
+            indices.push(i, i + 1, i + cols + 1);
+            indices.push(i + 1, i + cols + 2, i + cols + 1);
+          }
+          return;
+        }
+
+        // Multi-story: ground (1 band) + mid (repeating) + roof cap (1 band)
+        // Vertical zones as fractions of total height:
+        const groundFrac = 1 / vRep;         // bottom band
+        const roofFrac = 1 / vRep;            // top band
+        const midBands = Math.max(1, vRep - 2); // repeating middle
+        const midFrac = 1 - groundFrac - roofFrac;
+
+        // Zone definitions: [vStart, vEnd, tile, vRepeat]
+        const zones: { vStart: number; vEnd: number; tile: number; vRepeats: number }[] = [];
+        zones.push({ vStart: 0, vEnd: groundFrac, tile: groundTile, vRepeats: 1 });
+        if (midBands > 0 && midFrac > 0) {
+          zones.push({ vStart: groundFrac, vEnd: groundFrac + midFrac, tile: midTile, vRepeats: midBands });
+        }
+        zones.push({ vStart: 1 - roofFrac, vEnd: 1, tile: roofCapTile, vRepeats: 1 });
+
+        const cols = hRep;
+
+        for (const zone of zones) {
+          const zUV = tileUV(zone.tile);
+          const zTW = zUV.uMax - zUV.uMin;
+          const zTH = zUV.vMax - zUV.vMin;
+          const rows = zone.vRepeats;
+          const baseIdx = positions.length / 3;
+
+          for (let r = 0; r <= rows; r++) {
+            for (let c = 0; c <= cols; c++) {
+              const u = c / cols;
+              const v = zone.vStart + (r / rows) * (zone.vEnd - zone.vStart);
+              positions.push(
+                origin[0] + axisU[0] * u + axisV[0] * v,
+                origin[1] + axisU[1] * u + axisV[1] * v,
+                origin[2] + axisU[2] * u + axisV[2] * v,
+              );
+              // Horizontal UV — sawtooth per hRep
+              const fracC = (c / cols) * hRep;
+              let tU = fracC - Math.floor(fracC);
+              if (c === cols) tU = 1.0;
+              // Vertical UV — sawtooth per zone vRepeats
+              const fracR = (r / rows) * zone.vRepeats;
+              let tV = fracR - Math.floor(fracR);
               if (r === rows) tV = 1.0;
 
               if (flipU) tU = 1 - tU;
-              uvs.push(uMin + tU * tW, vMin + tV * tH);
+              uvs.push(zUV.uMin + tU * zTW, zUV.vMin + tV * zTH);
             }
           }
-        }
 
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-            const i = baseIdx + r * (cols + 1) + c;
-            indices.push(i, i + 1, i + cols + 1);
-            indices.push(i + 1, i + cols + 2, i + cols + 1);
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              const i = baseIdx + r * (cols + 1) + c;
+              indices.push(i, i + 1, i + cols + 1);
+              indices.push(i + 1, i + cols + 2, i + cols + 1);
+            }
           }
         }
       };
 
       // 6 faces of a unit box centered at origin
       // Front (+Z)
-      addFace([-0.5, -0.5, 0.5], [1, 0, 0], [0, 1, 0], repFB, repV, false);
+      addComposedFace([-0.5, -0.5, 0.5], [1, 0, 0], [0, 1, 0], repFB, repV);
       // Back (-Z)
-      addFace([0.5, -0.5, -0.5], [-1, 0, 0], [0, 1, 0], repFB, repV, false);
+      addComposedFace([0.5, -0.5, -0.5], [-1, 0, 0], [0, 1, 0], repFB, repV);
       // Right (+X)
-      addFace([0.5, -0.5, 0.5], [0, 0, -1], [0, 1, 0], repLR, repV, false);
+      addComposedFace([0.5, -0.5, 0.5], [0, 0, -1], [0, 1, 0], repLR, repV);
       // Left (-X)
-      addFace([-0.5, -0.5, -0.5], [0, 0, 1], [0, 1, 0], repLR, repV, false);
-      // Top (+Y)
-      addFace([-0.5, 0.5, 0.5], [1, 0, 0], [0, 0, -1], 1, 1, true);
+      addComposedFace([-0.5, -0.5, -0.5], [0, 0, 1], [0, 1, 0], repLR, repV);
+      // Top (+Y) — flat roof
+      addFlatFace([-0.5, 0.5, 0.5], [1, 0, 0], [0, 0, -1], true);
       // Bottom (-Y)
-      addFace([-0.5, -0.5, -0.5], [1, 0, 0], [0, 0, 1], 1, 1, true);
+      addFlatFace([-0.5, -0.5, -0.5], [1, 0, 0], [0, 0, 1], false);
 
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
@@ -1103,9 +1135,15 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const repLR = Math.max(1, Math.round(avgD / 8));
       const repV  = Math.max(1, Math.round(avgH / 8));
 
-      // Build 2 UV-variant geometries: normal and horizontally flipped
-      const geo0 = buildCustomBox(tile, false, repFB, repLR, repV, roofTile);
-      const geo1 = buildCustomBox(tile, true,  repFB, repLR, repV, roofTile);
+      // Structured atlas: variant column determines all 4 row tiles
+      const variant = bucketPlacements[0].tile; // tile stores the variant column (0-3)
+      const groundTile  = 0 * ATLAS_COLS + variant; // Row 0
+      const midTile     = 1 * ATLAS_COLS + variant; // Row 1
+      const roofCapTile = 2 * ATLAS_COLS + variant; // Row 2
+      const singleTile  = 3 * ATLAS_COLS + variant; // Row 3
+
+      const geo0 = buildComposedBox(groundTile, midTile, roofCapTile, singleTile, false, repFB, repLR, repV);
+      const geo1 = buildComposedBox(groundTile, midTile, roofCapTile, singleTile, true,  repFB, repLR, repV);
 
       // Split placements into 2 visual variants
       const bucket0: BoxPlacement[] = [];
