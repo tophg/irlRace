@@ -397,8 +397,22 @@ export async function startRace() {
 
     G.raceEngine = new RaceEngine(trackData.checkpoints, G.totalLaps, trackData.totalLength);
 
+    // ── Parallel init: kick off independent async work simultaneously ──
+    // Player model download, Rapier WASM init, and GPU particles have zero
+    // cross-dependencies — run them all at once instead of sequentially.
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const useWebGPU = isWebGPUBackend();
+
     updateLoadingProgress(35, 'LOADING VEHICLES');
-    const playerModel = await loadCarModel(G.selectedCar.file);
+    const [playerModel, rapierReady] = await Promise.all([
+      loadCarModel(G.selectedCar.file),
+      // Rapier WASM init runs in parallel with model download
+      (!isIOS ? initRapierWorld().catch(e => {
+        console.warn('[Rapier] WASM init failed, running without enhanced collision:', e);
+        return null;
+      }) : Promise.resolve(null)),
+    ]);
     checkAbort(); // Bug #6: bail if cancelled during model load
     playerModel.position.set(0, 0, 0);
     playerModel.scale.setScalar(1);
@@ -423,7 +437,15 @@ export async function startRace() {
 
     G.vehicleCamera = new VehicleCamera(camera);
 
+    // ── Kick off AI spawn early so model downloads overlap with VFX init ──
     updateLoadingProgress(50, 'INITIALIZING VFX');
+    const aiSpawnPromise = !G.netPeer ? spawnAI(trackData) : Promise.resolve();
+    // GPU particles can also init in parallel with VFX warmup
+    const gpuParticlesPromise = useWebGPU
+      ? initGPUParticles(renderer, scene).catch(e => { console.warn('[GPU Particles] Init failed:', e); })
+      : Promise.resolve();
+
+    // ── Sync VFX inits (CPU-only, ~instant) — run while downloads happen ──
     initVFX(scene);
     warmupVFX();
     initBoostFlame(scene);
@@ -455,22 +477,8 @@ export async function startRace() {
 
     setLightningEnabled(getCurrentWeather() === 'heavy_rain');
 
-    // GPU particles require compute shaders (WebGPU-only).
-    // On WebGL2 fallback (e.g. iOS Safari), skip entirely — the mesh with
-    // storage().toAttribute() nodes would crash the renderer during rendering.
-    if (isWebGPUBackend()) {
-      try {
-        await initGPUParticles(renderer, scene);
-      } catch (e) {
-        console.warn('[GPU Particles] Init failed:', e);
-      }
-    } else {
-      console.log('[GPU Particles] Skipped — WebGL2 backend does not support compute shaders');
-    }
-
-    // PostFX (RenderPipeline + bloom + chromatic aberration) also uses advanced
-    // TSL pipeline features that can crash on WebGL2 fallback — skip on non-WebGPU.
-    if (isWebGPUBackend()) {
+    // PostFX (sync — doesn't need await)
+    if (useWebGPU) {
       try {
         G.postFXPipeline = initPostFX(renderer, scene, camera);
         initAfterimage(renderer.domElement as HTMLCanvasElement);
@@ -483,28 +491,25 @@ export async function startRace() {
       console.log('[PostFX] Skipped — WebGL2 fallback mode');
       G.postFXPipeline = null;
     }
+
+    // ── Wait for parallel work to finish ──
     updateLoadingProgress(70, 'PHYSICS ENGINE');
-    // Rapier WASM crashes on iOS Safari due to strict memory limits
-    // (documented WebKit issue — WASM compilation exceeds per-tab budget).
-    // Arcade physics still handles all driving; Rapier only adds collision response.
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    if (!isIOS) {
+    await gpuParticlesPromise;
+
+    // Rapier: add colliders now that both Rapier and player vehicle are ready
+    if (rapierReady !== null && !isIOS) {
       try {
-        await initRapierWorld();
         addBarrierCollider(trackData.barrierLeft);
         addBarrierCollider(trackData.barrierRight);
         const playerPos = G.playerVehicle.group.position;
         addCarBody('local', playerPos.x, playerPos.y, playerPos.z, G.playerVehicle.heading);
       } catch (e) {
-        console.warn('[Rapier] WASM init failed, running without enhanced collision:', e);
+        console.warn('[Rapier] Collider setup failed:', e);
       }
-    } else {
-      console.log('[Rapier] Skipped on iOS — WASM memory limits');
     }
 
     updateLoadingProgress(80, 'SPAWNING RACERS');
-    if (!G.netPeer) await spawnAI(trackData);
+    await aiSpawnPromise;
     checkAbort(); // Bug #6: bail if cancelled during AI spawn
 
     if (G.netPeer) {
