@@ -573,6 +573,8 @@ function titleLoop() {
   titleAnimFrame = requestAnimationFrame(titleLoop);
 }
 
+let _hasBooted = false;
+
 function showTitleScreen() {
   G.gameState = GameState.TITLE;
   showTouchControls(false);
@@ -580,7 +582,20 @@ function showTitleScreen() {
   // Start preloading audio immediately
   const audioReady = preloadTitleMusic();
 
-  // ── Splash screen: gate on user tap + audio ready ──
+  // On return from a race, skip the splash gate and go straight to the menu.
+  // The splash is only needed on first boot to unlock audio autoplay.
+  if (_hasBooted) {
+    createTitleScene();
+    titleLoop();
+    playTitleMusic();
+    // Skip the cinematic animation — show menu immediately
+    titleStartTime = performance.now() / 1000 - 100;
+    titleMenuRevealed = true;
+    renderFullTitleScreen();
+    return;
+  }
+
+  // ── First boot: Splash screen gate on user tap + audio ready ──
   const splashEl = document.createElement('div');
   splashEl.className = 'title-screen title-splash';
   splashEl.id = 'title-splash';
@@ -601,6 +616,7 @@ function showTitleScreen() {
   const launchTitle = async () => {
     if (launched) return;
     launched = true;
+    _hasBooted = true;
     // Wait for audio to finish downloading
     await audioReady;
     // Auto-fullscreen + landscape lock on first user gesture (mobile)
