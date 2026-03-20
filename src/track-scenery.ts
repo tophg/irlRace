@@ -822,7 +822,6 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
   const styleName = T.buildingStyle ?? 'modern';
   const atlasPath = STYLE_ATLAS[styleName] ?? '/buildings/facade_atlas_dc.png';
-  console.log(`[BUILDINGS] style=${styleName} atlas=${atlasPath}`);
   const atlasTexture = new THREE.TextureLoader().load(atlasPath);
   atlasTexture.wrapS = THREE.RepeatWrapping;
   atlasTexture.wrapT = THREE.RepeatWrapping;
