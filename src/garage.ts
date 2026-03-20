@@ -37,13 +37,24 @@ let lastInteractionTime = 0;
 const AUTO_ROTATE_RESUME_DELAY = 3000; // ms
 const AUTO_ROTATE_SPEED = 0.005;
 const ORBIT_DAMPING = 0.92;
-
-// Adaptive camera orbit — on mobile landscape the car must sit above the bottom UI
-const _isMobileLandscape = () => window.innerHeight < 500 && window.innerWidth > window.innerHeight;
 const ORBIT_RADIUS = 7.5;
-let ORBIT_HEIGHT = _isMobileLandscape() ? 2.0 : 2.8;
-let ORBIT_LOOK_Y = _isMobileLandscape() ? 1.4 : 0.8;
-let ORBIT_FOV = _isMobileLandscape() ? 38 : 45;
+const ORBIT_HEIGHT = 2.8;
+const ORBIT_LOOK_Y = 0.8;
+
+/** On mobile landscape, shift the camera frustum downward so the car
+ *  renders in the upper half of the screen, above the bottom UI panel. */
+function applyMobileViewOffset(cam: THREE.PerspectiveCamera) {
+  const isMobile = window.innerHeight < 500 && window.innerWidth > window.innerHeight;
+  if (isMobile) {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    // Shift frustum down by ~18% of viewport → car moves up on screen
+    const offsetY = Math.round(h * 0.18);
+    cam.setViewOffset(w, h, 0, offsetY, w, h);
+  } else {
+    cam.clearViewOffset();
+  }
+}
 
 // Swipe navigation
 let swipeStartX = 0;
@@ -76,19 +87,16 @@ export function initGarage(
   garageScene = new THREE.Scene();
   garageScene.background = new THREE.Color(0x0c0c1a);
 
-  garageCamera = new THREE.PerspectiveCamera(ORBIT_FOV, window.innerWidth / window.innerHeight, 0.1, 100);
+  garageCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
   garageCamera.position.set(0, ORBIT_HEIGHT, ORBIT_RADIUS);
   garageCamera.lookAt(0, ORBIT_LOOK_Y, 0);
+  applyMobileViewOffset(garageCamera);
 
   // Resize handler for orientation changes mid-garage
   _garageResizeHandler = () => {
     if (!garageCamera) return;
-    // Recalculate adaptive orbit for orientation changes
-    ORBIT_HEIGHT = _isMobileLandscape() ? 2.0 : 2.8;
-    ORBIT_LOOK_Y = _isMobileLandscape() ? 1.4 : 0.8;
-    ORBIT_FOV = _isMobileLandscape() ? 38 : 45;
-    garageCamera.fov = ORBIT_FOV;
     garageCamera.aspect = window.innerWidth / window.innerHeight;
+    applyMobileViewOffset(garageCamera);
     garageCamera.updateProjectionMatrix();
   };
   window.addEventListener('resize', _garageResizeHandler);
@@ -835,6 +843,8 @@ export function updateGarage() {
 }
 
 export function destroyGarage() {
+  // Clear mobile view offset so the main game camera isn't affected
+  if (garageCamera) garageCamera.clearViewOffset();
   if (uiEl) { uiEl.remove(); uiEl = null; }
   progressBarEl = null;
   dotContainerEl = null;
