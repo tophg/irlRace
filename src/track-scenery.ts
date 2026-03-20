@@ -1105,6 +1105,14 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     normalTexture.wrapT = THREE.RepeatWrapping;
     normalTexture.colorSpace = THREE.LinearSRGBColorSpace; // normal maps are NOT sRGB
 
+    // Load companion emissive mask atlas (white=window glass, black=wall)
+    const emissiveMaskPath = atlasPath.replace('.png', '_emissive.png');
+    const emissiveMaskTexture = new THREE.TextureLoader().load(emissiveMaskPath);
+    emissiveMaskTexture.wrapS = THREE.RepeatWrapping;
+    emissiveMaskTexture.wrapT = THREE.RepeatWrapping;
+    emissiveMaskTexture.colorSpace = THREE.LinearSRGBColorSpace;
+    emissiveMaskTexture.minFilter = THREE.LinearMipmapNearestFilter;
+
     const buildingMat = new THREE.MeshStandardMaterial({
       map: atlasTexture,
       normalMap: normalTexture,
@@ -1119,6 +1127,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     // Shader injection: per-instance atlas column + AO banding + interior mapping
     buildingMat.onBeforeCompile = (shader) => {
       shader.uniforms.colWidth = { value: columnWidth };
+      shader.uniforms.windowMask = { value: emissiveMaskTexture };
 
       // Vertex shader: pass atlasColumn, height, world position, and normal
       shader.vertexShader = shader.vertexShader
@@ -1143,6 +1152,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         .replace('#include <common>', `
           #include <common>
           uniform float colWidth;
+          uniform sampler2D windowMask;
           varying float vAtlasColumn;
           varying float vHeightFrac;
           varying vec3 vWPos;
@@ -1253,9 +1263,10 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
             bool isWallFace = abs(vWNormal.y) < 0.3;
             bool isMidZone = vHeightFrac > 0.15 && vHeightFrac < 0.85;
 
+            // Use dedicated emissive mask instead of fragile luminance detection
+            float maskVal = texture2D(windowMask, atlasUV).r;
             if (interiorFade > 0.01 && isWallFace && isMidZone) {
-              float texLum = dot(sampledDiffuseColor.rgb, vec3(0.299, 0.587, 0.114));
-              if (texLum < 0.15) {
+              if (maskVal > 0.5) {
                 vec3 viewDir = normalize(vWPos - cameraPosition);
                 vec3 roomCol = interiorColor(vWPos, viewDir, vWNormal);
                 sampledDiffuseColor.rgb = mix(sampledDiffuseColor.rgb, roomCol, interiorFade);
@@ -1273,10 +1284,11 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
             float emCamDist = length(vWPos - cameraPosition);
             float emFade = 1.0 - smoothstep(40.0, 60.0, emCamDist);
-            float emLum = dot(emissiveColor.rgb, vec3(0.299, 0.587, 0.114));
+            // Use dedicated mask instead of luminance
+            float emMask = texture2D(windowMask, emUV).r;
             bool isEmWall = abs(vWNormal.y) < 0.3;
             bool isEmMid = vHeightFrac > 0.15 && vHeightFrac < 0.85;
-            if (emFade > 0.01 && isEmWall && isEmMid && emLum < 0.15) {
+            if (emFade > 0.01 && isEmWall && isEmMid && emMask > 0.5) {
               totalEmissiveRadiance *= mix(emissiveColor.rgb, vec3(0.9, 0.7, 0.4) * 0.6, emFade);
             } else {
               totalEmissiveRadiance *= emissiveColor.rgb;
