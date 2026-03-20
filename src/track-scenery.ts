@@ -1397,7 +1397,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         const scaledBox = new THREE.Box3().setFromObject(model);
         const pos = new THREE.Vector3(
           lmP.x + lmRight.x * lmOffset * lmSide,
-          -scaledBox.min.y, // sit on ground plane (y=0), not elevated road
+          -scaledBox.min.y - 2, // sit on ground plane matching building base (y=-2)
           lmP.z + lmRight.z * lmOffset * lmSide,
         );
         model.position.copy(pos);
