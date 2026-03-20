@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { ROAD_WIDTH, BARRIER_THICKNESS, estimateCurvature, BANK_SCALE, MAX_BANK_ANGLE } from './track';
 import { loadGLB } from './loaders';
 import type { SceneryTheme } from './scene';
+import { generateFacadeAtlas, FACADE_COLS, FACADE_ROWS } from './facade-atlas';
 
 // ── Typed data storage (replaces `as any` monkey-patching) ──
 interface WindShaderRef {
@@ -820,10 +821,14 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   // Per-tile height clamps (now per-variant column for consistency)
   // Column heights control the mix of short vs tall buildings
   const VARIANT_HEIGHT: [number, number][] = [
-    [12, 45], // Variant A — medium to tall
-    [8, 30],  // Variant B — short to medium
-    [15, 55], // Variant C — medium to very tall
-    [6, 20],  // Variant D — short (often single-story)
+    [12, 45], // Col 0 — medium to tall
+    [8, 30],  // Col 1 — short to medium
+    [15, 55], // Col 2 — medium to very tall
+    [6, 20],  // Col 3 — short (often single-story)
+    [10, 40], // Col 4 — medium
+    [14, 50], // Col 5 — medium-tall
+    [8, 25],  // Col 6 — short-medium
+    [18, 60], // Col 7 — tall
   ];
 
   // Row offset definitions (heights come from tile clamp)
