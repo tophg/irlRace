@@ -933,7 +933,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     // Multi-story: ground (Row 0) → mid repeating (Row 1) → roof cap (Row 2)
     // Single-story (repV ≤ 1): uses singleTile (Row 3) for entire face
     const buildComposedBox = (
-      groundTile: number, sideGroundTile: number, midTile: number, roofCapTile: number,
+      groundTile: number, sideGroundTile: number,
+      windowTile: number, wallPierTile: number, roofCapTile: number,
       singleTile: number, flipU: boolean,
       boxW: number, boxH: number, boxD: number,
     ) => {
@@ -1032,53 +1033,96 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         const midFrac = 1 - groundFrac - roofFrac;
 
         // Compute tile repeats from physical dimensions
-        const hTiles = Math.max(1, Math.round(faceW / TILE_W));
+        // Force odd column count so edges are always wall piers
+        let hTiles = Math.max(1, Math.round(faceW / TILE_W));
+        if (hTiles > 1 && hTiles % 2 === 0) hTiles++; // force odd
         const midVTiles = Math.max(1, Math.round(midH / TILE_H));
 
-        // Zone definitions
-        const zones: { vStart: number; vEnd: number; tile: number; vRepeats: number; zoneHRep: number }[] = [];
-        zones.push({ vStart: 0, vEnd: groundFrac, tile: faceGroundTile, vRepeats: 1, zoneHRep: hTiles });
-        if (midFrac > 0) {
-          zones.push({ vStart: groundFrac, vEnd: groundFrac + midFrac, tile: midTile, vRepeats: midVTiles, zoneHRep: hTiles });
-        }
-        // Roof cap: single tile stretched across (non-tiling architectural detail)
-        zones.push({ vStart: 1 - roofFrac, vEnd: 1, tile: roofCapTile, vRepeats: 1, zoneHRep: 1 });
+        // Build per-column zones: symmetric window/wall-pier pattern
+        // Even columns (0,2,4...) = wall pier, odd columns (1,3...) = window
+        for (let col = 0; col < hTiles; col++) {
+          const isWindowCol = (col % 2 === 1);
+          const colMidTile = isWindowCol ? windowTile : wallPierTile;
+          const colGroundTile = isWindowCol ? faceGroundTile : (isWindowCol ? faceGroundTile : wallPierTile);
+          const uStart = col / hTiles;
+          const uEnd = (col + 1) / hTiles;
 
-        for (const zone of zones) {
-          const zUV = tileUV(zone.tile);
-          const zTW = zUV.uMax - zUV.uMin;
-          const zTH = zUV.vMax - zUV.vMin;
-          const hCols = zone.zoneHRep;
-          const vRows = zone.vRepeats;
+          // Ground zone for this column
+          {
+            const zUV = tileUV(isWindowCol ? faceGroundTile : wallPierTile);
+            const zTW = zUV.uMax - zUV.uMin;
+            const zTH = zUV.vMax - zUV.vMin;
+            const baseIdx = positions.length / 3;
+            for (let vr = 0; vr <= 1; vr++) {
+              for (let vc = 0; vc <= 1; vc++) {
+                const u = uStart + vc * (uEnd - uStart);
+                const v = vr * groundFrac;
+                positions.push(
+                  origin[0] + axisU[0] * u + axisV[0] * v,
+                  origin[1] + axisU[1] * u + axisV[1] * v,
+                  origin[2] + axisU[2] * u + axisV[2] * v,
+                );
+                let tU = vc;
+                if (flipU) tU = 1 - tU;
+                uvs.push(zUV.uMin + tU * zTW, zUV.vMin + vr * zTH);
+              }
+            }
+            indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+            indices.push(baseIdx + 1, baseIdx + 3, baseIdx + 2);
+          }
 
-          // Create separate quads per tile repeat to avoid UV discontinuities.
-          // Each quad gets its own 4 vertices with proper 0→1 UV mapping.
-          for (let tileR = 0; tileR < vRows; tileR++) {
-            for (let tileC = 0; tileC < hCols; tileC++) {
+          // Mid zone for this column (repeating vertically)
+          if (midFrac > 0) {
+            const zUV = tileUV(colMidTile);
+            const zTW = zUV.uMax - zUV.uMin;
+            const zTH = zUV.vMax - zUV.vMin;
+            for (let tileR = 0; tileR < midVTiles; tileR++) {
               const baseIdx = positions.length / 3;
-              // 4 corners: [bottom-left, bottom-right, top-left, top-right]
               for (let vr = 0; vr <= 1; vr++) {
                 for (let vc = 0; vc <= 1; vc++) {
-                  const u = (tileC + vc) / hCols;
-                  const rFrac = (tileR + vr) / vRows;
-                  const v = zone.vStart + rFrac * (zone.vEnd - zone.vStart);
+                  const u = uStart + vc * (uEnd - uStart);
+                  const rFrac = (tileR + vr) / midVTiles;
+                  const v = groundFrac + rFrac * midFrac;
                   positions.push(
                     origin[0] + axisU[0] * u + axisV[0] * v,
                     origin[1] + axisU[1] * u + axisV[1] * v,
                     origin[2] + axisU[2] * u + axisV[2] * v,
                   );
-                  let tU = vc; // 0 or 1 within this tile
-                  const tV = vr;
+                  let tU = vc;
                   if (flipU) tU = 1 - tU;
-                  uvs.push(zUV.uMin + tU * zTW, zUV.vMin + tV * zTH);
+                  uvs.push(zUV.uMin + tU * zTW, zUV.vMin + vr * zTH);
                 }
               }
-              // Two triangles for this quad
               indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
               indices.push(baseIdx + 1, baseIdx + 3, baseIdx + 2);
             }
           }
         }
+
+        // Roof cap: single tile across full width (non-tiling architectural detail)
+        {
+          const zUV = tileUV(roofCapTile);
+          const zTW = zUV.uMax - zUV.uMin;
+          const zTH = zUV.vMax - zUV.vMin;
+          const baseIdx = positions.length / 3;
+          for (let vr = 0; vr <= 1; vr++) {
+            for (let vc = 0; vc <= 1; vc++) {
+              const u = vc;
+              const v = (1 - roofFrac) + vr * roofFrac;
+              positions.push(
+                origin[0] + axisU[0] * u + axisV[0] * v,
+                origin[1] + axisU[1] * u + axisV[1] * v,
+                origin[2] + axisU[2] * u + axisV[2] * v,
+              );
+              let tU = vc;
+              if (flipU) tU = 1 - tU;
+              uvs.push(zUV.uMin + tU * zTW, zUV.vMin + vr * zTH);
+            }
+          }
+          indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+          indices.push(baseIdx + 1, baseIdx + 3, baseIdx + 2);
+        }
+
       };
 
       // Front (+Z) — storefronts/doors
@@ -1336,10 +1380,13 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const avgH = bucketPlacements.reduce((s, p) => s + p.h, 0) / bucketPlacements.length;
       const avgD = bucketPlacements.reduce((s, p) => s + p.d, 0) / bucketPlacements.length;
 
+      // Parse height bucket from key for hashing
+      const hBucketNum = Math.floor(avgH / HEIGHT_BUCKET_SIZE);
+
       // Tile mapping: new 8-row atlas layout
       // Symmetric column pattern: even cols = wall piers, odd cols = windows
       // Use building hash for deterministic window state (open vs closed)
-      const buildingHash = ((variant * 73 + hBucket * 137) & 0xFF);
+      const buildingHash = ((variant * 73 + hBucketNum * 137) & 0xFF);
       const windowRow  = (buildingHash % 2 === 0) ? 0 : 1; // Row 0=closed, Row 1=open
       const wallRow    = (buildingHash % 3 === 0) ? 3 : 2;  // Row 2=plain, Row 3=detail
       const windowTile     = windowRow * ATLAS_COLS + variant;
@@ -1350,8 +1397,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const singleTile     = wallRow * ATLAS_COLS + variant; // Single-story = wall surface
 
       // Pass physical dimensions — addComposedFace computes tile repeats internally
-      const geo0 = buildComposedBox(groundTile, sideGroundTile, midTile, roofCapTile, singleTile, false, avgW, avgH, avgD);
-      const geo1 = buildComposedBox(groundTile, sideGroundTile, midTile, roofCapTile, singleTile, true,  avgW, avgH, avgD);
+      const geo0 = buildComposedBox(groundTile, sideGroundTile, windowTile, wallPierTile, roofCapTile, singleTile, false, avgW, avgH, avgD);
+      const geo1 = buildComposedBox(groundTile, sideGroundTile, windowTile, wallPierTile, roofCapTile, singleTile, true,  avgW, avgH, avgD);
 
       // Split placements into 2 visual variants (flip mirror)
       const bucket0: BoxPlacement[] = [];

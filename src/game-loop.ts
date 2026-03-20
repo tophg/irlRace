@@ -270,9 +270,6 @@ function updateRearMirror(renderer: THREE.WebGPURenderer, scene: THREE.Scene, fr
   const godrays = scene.getObjectByName('godrays');
   if (godrays) godrays.visible = false;
 
-  const gl = renderer.getContext?.() as WebGLRenderingContext | undefined;
-  if (gl?.frontFace) gl.frontFace(gl.CW);
-
   const w = 320, h = 120;
   const x = Math.floor(window.innerWidth / 2 - w / 2);
   const y = 14;
@@ -291,7 +288,6 @@ function updateRearMirror(renderer: THREE.WebGPURenderer, scene: THREE.Scene, fr
   renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
   renderer.autoClear = oldAutoClear;
 
-  if (gl?.frontFace) gl.frontFace(gl.CCW);
   if (precip) precip.visible = true;
   if (godrays) godrays.visible = true;
 }

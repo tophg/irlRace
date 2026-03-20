@@ -185,12 +185,14 @@ export function stepPhysics(dt: number, s: GameState) {
     // Clear after consuming — prevents shoulder dust spawning every frame
     G.playerVehicle.lastBarrierImpact = null;
   }
-  // AI barrier hits
+  // AI barrier hits — apply damage + VFX (was missing, making AI indestructible from walls)
   for (const ai of G.aiRacers) {
     if (ai.vehicle.lastBarrierImpact) {
       const b = ai.vehicle.lastBarrierImpact;
       G._sparkPos.set(b.posX, b.posY, b.posZ);
-      spawnGPUSparks(G._sparkPos, b.force * 0.5);
+      spawnGPUSparks(G._sparkPos, b.force);
+      G._impactDir.set(b.normalX, 0, b.normalZ);
+      ai.vehicle.applyDamage(G._impactDir, b.force * 0.7);
       ai.vehicle.lastBarrierImpact = null; // clear after consuming
     }
   }
