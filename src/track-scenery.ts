@@ -126,7 +126,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const x = p.x + rx * offset * side;
     const z = p.z + rz * offset * side;
     trees.push({
-      x, y: 0, z,
+      x, y: p.y, z,
       trunkH: 2 + rng() * 3,
       crownR: 1.5 + rng() * 2,
       green: Math.floor(rng() * 255),
@@ -179,7 +179,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         const clone = entry.scene.clone(true);
         const s = (TREE_SCALE[t.model] ?? 2.5) * (0.8 + rng() * 0.4); // add ±20% variation
         clone.scale.setScalar(s);
-        clone.position.set(t.x, -entry.bottom * s, t.z);
+        clone.position.set(t.x, t.y - entry.bottom * s, t.z);
         clone.rotation.y = t.rotY;
 
         clone.traverse((child) => {
