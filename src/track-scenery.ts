@@ -843,6 +843,20 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   };
   const tiles = STYLE_TILES[styleName] ?? STYLE_TILES['modern'];
 
+  // Per-environment roof tile — contextual rooftops instead of always parking garage
+  const ROOF_TILE: Record<string, number> = {
+    modern:       12,  // DC: flat gravel rooftop / parking structure
+    adobe:        3,   // Mojave: rusted corrugated metal roof
+    beach_house:  7,   // Havana: weathered corrugated warehouse roof
+    cyberpunk:    15,  // Shibuya: night apartments with colorful windows (antenna forest)
+    weathered:    7,   // weathered warehouse roof
+    chalet:       3,   // Zermatt: dark weathered wooden barn roof
+    warehouse:    12,  // DC: parking structure / flat roof
+    concrete:     12,  // DC: flat concrete roof
+    bamboo_lodge: 3,   // Zermatt: dark wood barn roof
+  };
+  const roofTile = ROOF_TILE[styleName] ?? 12;
+
   // Per-tile height clamps for realistic proportions
   const TILE_HEIGHT: Record<number, [number, number]> = {
     0: [20, 55], 1: [10, 25], 2: [15, 40], 3: [25, 60], 4: [10, 30],
@@ -948,6 +962,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const buildCustomBox = (
       tile: number, flipU: boolean,
       repFB: number, repLR: number, repV: number,
+      roofTileIdx: number = 12,
     ) => {
       const col = tile % ATLAS_COLS;
       const row = Math.floor(tile / ATLAS_COLS);
@@ -959,9 +974,11 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const tW = uMax - uMin;
       const tH = vMax - vMin;
 
-      // Roof UV (dark corner of parking garage tile)
-      const roofU = (12 % ATLAS_COLS) * tileW + tileW * 0.1;
-      const roofV = 1 - (Math.floor(12 / ATLAS_COLS) + 1) * tileH + tileH * 0.1;
+      // Roof UV — uses environment-specific tile instead of always parking garage
+      const roofCol = roofTileIdx % ATLAS_COLS;
+      const roofRow = Math.floor(roofTileIdx / ATLAS_COLS);
+      const roofU = roofCol * tileW + tileW * 0.1;
+      const roofV = 1 - (roofRow + 1) * tileH + tileH * 0.1;
 
       // Helper: build one face as a subdivided quad grid
       // Each tile-repeat gets its own quad(s) mapping to the full tile region
@@ -1074,8 +1091,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
       // Build 2 variant geometries: normal and horizontally flipped
       const variantGeos: THREE.BufferGeometry[] = [
-        buildCustomBox(tile, false, repFB, repLR, repV),
-        buildCustomBox(tile, true,  repFB, repLR, repV),
+        buildCustomBox(tile, false, repFB, repLR, repV, roofTile),
+        buildCustomBox(tile, true,  repFB, repLR, repV, roofTile),
       ];
 
       // Split placements across variants
