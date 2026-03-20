@@ -1133,6 +1133,48 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         _buildingInstancedMeshes.push(child as THREE.InstancedMesh);
       }
     });
+
+    // ── Phase 4: Peaked roof caps for chalet-style buildings (Zermatt) ──
+    if (styleName === 'chalet' || styleName === 'bamboo_lodge') {
+      // Triangular prism geometry for gabled roofs
+      const roofPositions = new Float32Array([
+        // Front triangle
+        -0.5, 0, 0.5,   0.5, 0, 0.5,   0, 0.35, 0.5,
+        // Back triangle
+        0.5, 0, -0.5,   -0.5, 0, -0.5,   0, 0.35, -0.5,
+        // Left slope
+        -0.5, 0, 0.5,   0, 0.35, 0.5,   0, 0.35, -0.5,
+        -0.5, 0, 0.5,   0, 0.35, -0.5,   -0.5, 0, -0.5,
+        // Right slope
+        0.5, 0, 0.5,   0.5, 0, -0.5,   0, 0.35, -0.5,
+        0.5, 0, 0.5,   0, 0.35, -0.5,   0, 0.35, 0.5,
+      ]);
+      const roofGeo = new THREE.BufferGeometry();
+      roofGeo.setAttribute('position', new THREE.Float32BufferAttribute(roofPositions, 3));
+      roofGeo.computeVertexNormals();
+
+      // Use a darkened version of roof tile as color
+      const roofCapMat = new THREE.MeshStandardMaterial({
+        color: 0x4a3a2a, roughness: 0.85, metalness: 0,
+      });
+      const roofCapIM = new THREE.InstancedMesh(roofGeo, roofCapMat, placements.length);
+      for (let j = 0; j < placements.length; j++) {
+        const pl = placements[j];
+        dummy.position.set(pl.x, pl.h - 2, pl.z);
+        dummy.scale.set(pl.w * 1.1, pl.h * 0.25, pl.d * 1.1); // overhang + proportional height
+        dummy.rotation.set(0, pl.rotY, 0);
+        dummy.updateMatrix();
+        roofCapIM.setMatrixAt(j, dummy.matrix);
+        // Slight color variation
+        const rv = 0.8 + (((pl.x * 31 + pl.z * 97) & 0xFF) / 255) * 0.4;
+        _c.setRGB(0.29 * rv, 0.23 * rv, 0.17 * rv);
+        roofCapIM.setColorAt(j, _c);
+      }
+      roofCapIM.instanceMatrix.needsUpdate = true;
+      roofCapIM.instanceColor!.needsUpdate = true;
+      roofCapIM.castShadow = true;
+      group.add(roofCapIM);
+    }
   }
 
 
