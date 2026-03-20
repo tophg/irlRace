@@ -476,7 +476,7 @@ export class Vehicle {
     const auto = this.model?.userData?.autoLights as Partial<CarLightDef> | undefined;
 
     let hlLPos: [number, number, number], hlRPos: [number, number, number];
-    let tlLPos: [number, number, number], tlRPos: [number, number, number];
+    let tlLPos: [number, number, number] = undefined!, tlRPos: [number, number, number] = undefined!;
     let hlSize: [number, number], tlSize: [number, number];
     let spotI: number, spotD: number;
 
