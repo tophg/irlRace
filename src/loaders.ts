@@ -86,13 +86,17 @@ function processCarModel(model: THREE.Group, filename = 'unknown'): THREE.Group 
       mesh.receiveShadow = true;
 
       if (mesh.geometry) {
-        mesh.geometry.computeVertexNormals();
+        // Only recompute normals if the geometry doesn't have them
+        // (Draco-compressed models preserve authored normals — recomputing flattens them)
+        if (!mesh.geometry.getAttribute('normal')) {
+          mesh.geometry.computeVertexNormals();
+        }
       }
 
       const mat = mesh.material as THREE.MeshStandardMaterial;
       if (mat && mat.isMeshStandardMaterial) {
-        mat.envMapIntensity = 0.6;
-        mat.roughness = Math.max(mat.roughness * 0.7, 0.05);
+        mat.envMapIntensity = 1.0;
+        mat.roughness = Math.max(mat.roughness * 0.6, 0.03);
         mat.needsUpdate = true;
       }
     }

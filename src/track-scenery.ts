@@ -804,30 +804,18 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   const rowCount = isMobile ? 1 : Math.min(3, Math.max(1, T.buildingRowCount ?? 2));
   const gapChance = isMobile ? Math.max(T.buildingGapChance ?? 0.15, 0.3) : (T.buildingGapChance ?? 0.15);
 
-  // ── Per-environment facade atlas ──
-  const ATLAS_COLS = 4, ATLAS_ROWS = 4;
-
-  // Each environment has its own atlas tailored to its architectural style
-  const STYLE_ATLAS: Record<string, string> = {
-    modern:       '/buildings/facade_atlas_dc.png',
-    adobe:        '/buildings/facade_atlas_mojave.png',
-    beach_house:  '/buildings/facade_atlas_havana.png',
-    cyberpunk:    '/buildings/facade_atlas_shibuya.png',
-    weathered:    '/buildings/facade_atlas_havana.png',  // reuse Havana's colonial facades
-    chalet:       '/buildings/facade_atlas_zermatt.png',
-    warehouse:    '/buildings/facade_atlas_dc.png',       // reuse DC's industrial mix
-    concrete:     '/buildings/facade_atlas_dc.png',       // reuse DC's concrete/glass
-    bamboo_lodge: '/buildings/facade_atlas_zermatt.png',  // reuse Zermatt's wood/stone
-  };
+  // ── Procedural facade atlas (8×4 = 32 tiles at 2048×2048) ──
+  const ATLAS_COLS = FACADE_COLS, ATLAS_ROWS = FACADE_ROWS;
 
   const styleName = T.buildingStyle ?? 'modern';
-  const atlasPath = STYLE_ATLAS[styleName] ?? '/buildings/facade_atlas_dc.png';
-  const atlasTexture = new THREE.TextureLoader().load(atlasPath);
+  const atlasCanvas = generateFacadeAtlas(T);
+  const atlasTexture = new THREE.CanvasTexture(atlasCanvas);
   atlasTexture.wrapS = THREE.RepeatWrapping;
   atlasTexture.wrapT = THREE.RepeatWrapping;
-  // Structured atlas layout: Row 0=ground, Row 1=mid-floor, Row 2=roof cap, Row 3=single-story
-  // Each row has 4 style variants (columns A-D)
-  const VARIANT_COUNT = 4;
+  atlasTexture.colorSpace = THREE.SRGBColorSpace;
+  // Atlas layout: Row 0=windows, Row 1=walls, Row 2=ground floor, Row 3=trim/caps
+  // Each row has 8 style variants (columns 0-7)
+  const VARIANT_COUNT = 8;
 
   // Per-tile height clamps (now per-variant column for consistency)
   // Column heights control the mix of short vs tall buildings
@@ -896,7 +884,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         }
         if (nearLandmark) continue;
         // Pick a style variant column (0-3) deterministically from position
-        const variant = ((Math.abs(Math.round(px * 73 + pz * 137))) & 0xFF) % VARIANT_COUNT;
+        const variant = ((Math.abs(Math.round(px * 73 + pz * 137))) & 0xFF) % VARIANT_COUNT;  // 0-7 for 8 columns
 
         // Height from variant-specific range
         const [hMin, hMax] = VARIANT_HEIGHT[variant];
@@ -1089,16 +1077,18 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
     // (tileGroups no longer needed — bucketing uses height only)
 
-    // Material with emissive window glow + per-instance atlas column shader
+    // Material with alpha-masked emissive window glow
     const windowGlow = T.windowLitChance ?? 0.5;
-    const columnWidth = 1.0 / ATLAS_COLS; // 0.25 for 4-column atlas
+    const columnWidth = 1.0 / ATLAS_COLS; // 0.125 for 8-column atlas
     const buildingMat = new THREE.MeshStandardMaterial({
       map: atlasTexture,
       roughness: 0.75,
       metalness: 0.15,
       emissiveMap: atlasTexture,
       emissive: new THREE.Color(T.windowColor ?? 0xffcc66),
-      emissiveIntensity: windowGlow * 0.4,
+      emissiveIntensity: windowGlow * 0.5,
+      transparent: true,  // needed to read alpha from atlas
+      alphaTest: 0.0,     // don't discard any fragments — we use alpha for emissive only
     });
 
     // Shader injection: per-instance atlas column + AO banding + interior mapping
@@ -1234,18 +1224,19 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
             atlasUV.x = atlasUV.x + vAtlasColumn * colWidth;
             vec4 sampledDiffuseColor = texture2D(map, atlasUV);
 
-            // Interior mapping: detect windows by dark pixels in mid-floor zone
-            float texLum = dot(sampledDiffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+            // Alpha-based window detection: alpha=1.0 means glass, 0.0 means wall
+            float isGlass = sampledDiffuseColor.a;
             bool isWallFace = abs(vWNormal.y) < 0.3; // skip roof/floor faces
-            bool isMidZone = vHeightFrac > 0.15 && vHeightFrac < 0.85;
 
-            if (isWallFace && isMidZone && texLum < 0.22) {
+            if (isWallFace && isGlass > 0.5) {
               // This pixel is a window — ray-cast into virtual room
               vec3 viewDir = normalize(vWPos - cameraPosition);
               vec3 roomCol = interiorColor(vWPos, viewDir, vWNormal);
               sampledDiffuseColor.rgb = roomCol;
             }
 
+            // Force alpha to 1.0 for rendering (we don't want actual transparency)
+            sampledDiffuseColor.a = 1.0;
             diffuseColor *= sampledDiffuseColor;
           #endif
         `)
@@ -1255,15 +1246,15 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
             emUV.x = emUV.x + vAtlasColumn * colWidth;
             vec4 emissiveColor = texture2D(emissiveMap, emUV);
 
-            // Boost emissive for interior-mapped windows (warm room glow)
-            float emLum = dot(emissiveColor.rgb, vec3(0.299, 0.587, 0.114));
+            // Alpha channel = emissive mask: 1.0 = glass (can glow), 0.0 = wall (no glow)
+            float glassMask = emissiveColor.a;
             bool isEmWall = abs(vWNormal.y) < 0.3;
-            bool isEmMid = vHeightFrac > 0.15 && vHeightFrac < 0.85;
-            if (isEmWall && isEmMid && emLum < 0.22) {
-              // Replace emissive with warm interior glow
-              totalEmissiveRadiance *= vec3(0.9, 0.7, 0.4) * 0.6;
+            if (isEmWall && glassMask > 0.5) {
+              // Window glass — apply warm interior glow
+              totalEmissiveRadiance *= vec3(0.9, 0.7, 0.4) * 0.7;
             } else {
-              totalEmissiveRadiance *= emissiveColor.rgb;
+              // Wall or roof — suppress emissive entirely
+              totalEmissiveRadiance *= vec3(0.0);
             }
           #endif
           // AO banding — darker at base and top edges
