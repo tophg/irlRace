@@ -1077,33 +1077,50 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const dummy = new THREE.Object3D();
     const _instances: THREE.Vector3[] = [];
 
-    // Create multiple UV-variant geometries per tile to avoid cookie-cutter look
-    const VARIANTS_PER_TILE = 2;
+    // Group placements by tile AND height bucket for correct UV tiling
+    // Height bucket = 10m bands, ensuring UV repeats match actual building scale
+    const HEIGHT_BUCKET_SIZE = 10;
+    type TileHeightKey = string; // "tile:heightBucket"
+    const bucketGroups = new Map<TileHeightKey, BoxPlacement[]>();
+    for (const pl of placements) {
+      const hBucket = Math.floor(pl.h / HEIGHT_BUCKET_SIZE);
+      const key = `${pl.tile}:${hBucket}`;
+      const arr = bucketGroups.get(key) ?? [];
+      arr.push(pl);
+      bucketGroups.set(key, arr);
+    }
 
-    for (const [tile, tilePlacements] of tileGroups) {
-      // Compute median dimensions for tiling calculation
-      const medW = tilePlacements.reduce((s, p) => s + p.w, 0) / tilePlacements.length;
-      const medH = tilePlacements.reduce((s, p) => s + p.h, 0) / tilePlacements.length;
-      const medD = tilePlacements.reduce((s, p) => s + p.d, 0) / tilePlacements.length;
-      const repFB = Math.max(1, Math.round(medW / 10));
-      const repLR = Math.max(1, Math.round(medD / 10));
-      const repV  = Math.max(1, Math.round(medH / 12));
+    for (const [, bucketPlacements] of bucketGroups) {
+      if (bucketPlacements.length === 0) continue;
 
-      // Build 2 variant geometries: normal and horizontally flipped
-      const variantGeos: THREE.BufferGeometry[] = [
-        buildCustomBox(tile, false, repFB, repLR, repV, roofTile),
-        buildCustomBox(tile, true,  repFB, repLR, repV, roofTile),
+      const tile = bucketPlacements[0].tile;
+      // Compute average dimensions FOR THIS BUCKET (buildings are similar height)
+      const avgW = bucketPlacements.reduce((s, p) => s + p.w, 0) / bucketPlacements.length;
+      const avgH = bucketPlacements.reduce((s, p) => s + p.h, 0) / bucketPlacements.length;
+      const avgD = bucketPlacements.reduce((s, p) => s + p.d, 0) / bucketPlacements.length;
+      // Tile repeats — one repeat per ~8m width, ~8m depth, ~8m height (one "floor")
+      const repFB = Math.max(1, Math.round(avgW / 8));
+      const repLR = Math.max(1, Math.round(avgD / 8));
+      const repV  = Math.max(1, Math.round(avgH / 8));
+
+      // Build 2 UV-variant geometries: normal and horizontally flipped
+      const geo0 = buildCustomBox(tile, false, repFB, repLR, repV, roofTile);
+      const geo1 = buildCustomBox(tile, true,  repFB, repLR, repV, roofTile);
+
+      // Split placements into 2 visual variants
+      const bucket0: BoxPlacement[] = [];
+      const bucket1: BoxPlacement[] = [];
+      bucketPlacements.forEach((pl, i) => (i % 2 === 0 ? bucket0 : bucket1).push(pl));
+
+      const variantSets: [THREE.BufferGeometry, BoxPlacement[]][] = [
+        [geo0, bucket0],
+        [geo1, bucket1],
       ];
 
-      // Split placements across variants
-      const variantBuckets: BoxPlacement[][] = Array.from({ length: VARIANTS_PER_TILE }, () => []);
-      tilePlacements.forEach((pl, i) => variantBuckets[i % VARIANTS_PER_TILE].push(pl));
-
-      for (let vi = 0; vi < VARIANTS_PER_TILE; vi++) {
-        const bucket = variantBuckets[vi];
+      for (const [geo, bucket] of variantSets) {
         if (bucket.length === 0) continue;
 
-        const instancedMesh = new THREE.InstancedMesh(variantGeos[vi], buildingMat, bucket.length);
+        const instancedMesh = new THREE.InstancedMesh(geo, buildingMat, bucket.length);
         instancedMesh.castShadow = true;
         instancedMesh.receiveShadow = true;
 
@@ -1129,9 +1146,13 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           }
           dummy.updateMatrix();
           instancedMesh.setMatrixAt(j, dummy.matrix);
-          // Per-instance brightness tint (±15% variation)
-          const bright = 0.85 + (((pl.x * 73 + pl.z * 137) & 0xFF) / 255) * 0.3;
-          _c.setRGB(bright, bright, bright);
+          // Per-instance color from environment buildingPalette
+          const palette = T.buildingPalette;
+          const palIdx = ((pl.x * 73 + pl.z * 137) & 0xFF) % palette.length;
+          const palColor = new THREE.Color(palette[palIdx]);
+          // Add ±10% luminance variation
+          const lum = 0.9 + (((pl.x * 31 + pl.z * 97) & 0xFF) / 255) * 0.2;
+          _c.setRGB(palColor.r * lum, palColor.g * lum, palColor.b * lum);
           instancedMesh.setColorAt(j, _c);
           _instances.push(new THREE.Vector3(pl.x, 0, pl.z));
         }
