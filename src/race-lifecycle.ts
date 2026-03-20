@@ -446,19 +446,19 @@ export async function startRace() {
       console.log('[GPU Particles] Skipped — WebGL2 backend does not support compute shaders');
     }
 
-    try {
-      G.postFXPipeline = initPostFX(renderer, scene, camera);
-      initAfterimage(renderer.domElement as HTMLCanvasElement);
-      // Force ONE render through the postFX pipeline to compile shaders
-      // for ALL currently visible objects (including pool meshes at y=-100).
-      // renderer.compile() in warmupDestruction only builds node trees for
-      // the BASE renderer, but the game renders through the postFX pipeline
-      // which has its own render targets + node graph. Without this render,
-      // pool meshes are "new" to the postFX pipeline at explosion time,
-      // triggering 1.8s of lazy shader compilation.
-      G.postFXPipeline.render();
-    } catch (e) {
-      console.warn('[PostFX] Pipeline init failed, rendering without post-processing:', e);
+    // PostFX (RenderPipeline + bloom + chromatic aberration) also uses advanced
+    // TSL pipeline features that can crash on WebGL2 fallback — skip on non-WebGPU.
+    if (isWebGPUBackend()) {
+      try {
+        G.postFXPipeline = initPostFX(renderer, scene, camera);
+        initAfterimage(renderer.domElement as HTMLCanvasElement);
+        G.postFXPipeline.render();
+      } catch (e) {
+        console.warn('[PostFX] Pipeline init failed, rendering without post-processing:', e);
+        G.postFXPipeline = null;
+      }
+    } else {
+      console.log('[PostFX] Skipped — WebGL2 fallback mode');
       G.postFXPipeline = null;
     }
     updateLoadingProgress(70, 'PHYSICS ENGINE');
