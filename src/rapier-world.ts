@@ -17,17 +17,18 @@
  *   const { pos, vel } = readCarFromRapier(handle);
  */
 
-import RAPIER from '@dimforge/rapier3d-compat';
+import type RapierModule from '@dimforge/rapier3d-compat';
 import * as THREE from 'three/webgpu';
 
 // ── Module state ──
-let rapier: typeof RAPIER | null = null;
-let world: RAPIER.World | null = null;
-let eventQueue: RAPIER.EventQueue | null = null;
+// Rapier loaded lazily via dynamic import() — avoids eagerly bundling the 2.2MB WASM
+let rapier: typeof RapierModule | null = null;
+let world: RapierModule.World | null = null;
+let eventQueue: RapierModule.EventQueue | null = null;
 
 // Lookup: Rapier collider handle → car ID string
 const colliderToCarId = new Map<number, string>();
-const carIdToBody = new Map<string, RAPIER.RigidBody>();
+const carIdToBody = new Map<string, RapierModule.RigidBody>();
 
 // Barrier collider handles (for car-vs-wall detection)
 const barrierHandles = new Set<number>();
@@ -197,7 +198,7 @@ export function stepRapierWorld(dt: number): RapierCollisionEvent[] {
 
   const events: RapierCollisionEvent[] = [];
 
-  eventQueue.drainCollisionEvents((handle1, handle2, started) => {
+  eventQueue.drainCollisionEvents((handle1: number, handle2: number, started: boolean) => {
     if (!started) return; // Only care about contact start
 
     const id1 = colliderToCarId.get(handle1);
