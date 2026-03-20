@@ -234,20 +234,32 @@ export async function spawnAI(td: TrackData) {
 
   console.log(`[spawnAI] G.aiCount=${G.aiCount}, spawning ${aiCars.length} AI racers`);
 
+  // Download all AI car models in parallel (was sequential — 3-4× faster)
+  const aiModels = await Promise.all(
+    aiCars.map(def =>
+      loadCarModel(def.file).catch(err => {
+        console.warn('[race-lifecycle] Failed to load AI model:', def.file, err);
+        return null;
+      })
+    )
+  );
+
+  const AI_NAMES = ['SHADOW', 'BLAZE', 'NITRO', 'GHOST', 'VIPER', 'STORM', 'RAZOR', 'DRIFT', 'FURY', 'ACE', 'NOVA'];
+
   for (let i = 0; i < aiCars.length; i++) {
+    const model = aiModels[i];
+    if (!model) continue; // skip failed loads
+
     const def = aiCars[i];
     const ai = new AIRacer(`ai_${i}`, { ...def }, i);
     ai.applyDifficulty(G.aiDifficulty);
     const slot = gridSlot(i + 1);
     G.raceEngine!.addRacer(`ai_${i}`, slot.t);
 
-    try {
-      const model = await loadCarModel(def.file);
-      model.position.set(0, 0, 0);
-      model.scale.setScalar(1);
-      model.rotation.set(0, 0, 0);
-      ai.vehicle.setModel(model, renderer, camera, scene);
-    } catch (err) { console.warn('[race-lifecycle] Failed to load AI model:', def.file, err); }
+    model.position.set(0, 0, 0);
+    model.scale.setScalar(1);
+    model.rotation.set(0, 0, 0);
+    ai.vehicle.setModel(model, renderer, camera, scene);
 
     ai.vehicle.setRoadMesh(G.trackData!.roadMesh, [G.trackData!.rampGroup]);
     ai.place(G.trackData!.spline, slot.t, slot.lane, G.trackData!.bvh);
@@ -255,7 +267,6 @@ export async function spawnAI(td: TrackData) {
     scene.add(ai.vehicle.group);
     createUnderglow(ai.vehicle.group, i + 1);
 
-    const AI_NAMES = ['SHADOW', 'BLAZE', 'NITRO', 'GHOST', 'VIPER', 'STORM', 'RAZOR', 'DRIFT', 'FURY', 'ACE', 'NOVA'];
     const nameTag = createNameTag(AI_NAMES[i % AI_NAMES.length], scene);
     ai.nameTag = nameTag;
 
