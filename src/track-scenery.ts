@@ -909,7 +909,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         const w = 8 + rng() * 10;
         const d = 8 + rng() * 10;
 
-        const rotY = Math.atan2(tan.x, tan.z) + (side > 0 ? Math.PI : 0) + (rng() - 0.5) * 0.3;
+        const rotY = Math.atan2(tan.x, tan.z) + (side > 0 ? Math.PI : 0) + (rng() - 0.5) * 0.1;
         placements.push({ x: px, z: pz, w, h, d, rotY, tile: variant });
       }
     }
@@ -1359,12 +1359,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
           // Per-environment silhouette variation
           const hash = ((pl.x * 73 + pl.z * 137) & 0xFF) / 255; // deterministic 0-1
-          if (styleName === 'beach_house' || styleName === 'weathered') {
-            // Havana/weathered: subtle random lean (±2°) — crumbling colonial feel
-            const leanX = (hash - 0.5) * 0.07;  // ±2° in radians
-            const leanZ = (((pl.x * 31 + pl.z * 97) & 0xFF) / 255 - 0.5) * 0.05;
-            dummy.rotation.set(leanX, pl.rotY, leanZ);
-          } else if (styleName === 'cyberpunk' && pl.h > 25) {
+          if (styleName === 'cyberpunk' && pl.h > 25) {
             // Shibuya tall towers: slight taper (narrower at top) for megastructure feel
             const taper = 0.92 + hash * 0.08; // 92-100% width at top
             dummy.scale.set(pl.w * taper, pl.h, pl.d * taper);

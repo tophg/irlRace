@@ -195,7 +195,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       buildingStyle: 'beach_house', treeVariant: 'palm_frond',
       buildingModels: [],
       buildingDensity: 1.0, buildingRowCount: 2, buildingGapChance: 0.2,
-      treeModels: ['palm_tree.glb', 'palm_tree_b.glb', 'palm_tree_c.glb', 'palm_trees_cluster.glb', 'dogwood.glb', 'oak.glb', 'pine.glb'],
+      treeModels: ['palm_tree.glb', 'palm_tree_b.glb', 'palm_tree_c.glb', 'palm_trees_cluster.glb'],
       ambientLights: ['torch_glow', 'window_spill'],
     },
   },
