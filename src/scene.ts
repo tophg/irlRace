@@ -206,7 +206,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       buildingDensity: 1.0, buildingRowCount: 2, buildingGapChance: 0.2,
       treeModels: ['palm_tree.glb', 'palm_tree_b.glb', 'palm_tree_c.glb', 'palm_trees_cluster.glb'],
       ambientLights: ['torch_glow', 'window_spill'],
-      barrierStyle: 'concrete_clean',
+      barrierStyle: 'metal_galvanized',
     },
   },
 
@@ -634,7 +634,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['oak.glb', 'walnut.glb', 'pine.glb', 'pine_b.glb'],
       ambientLights: ['window_spill'],
-      barrierStyle: 'concrete_clean',
+      barrierStyle: 'metal_galvanized',
     },
   },
 
@@ -711,7 +711,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['pine.glb', 'pine_b.glb', 'oak.glb', 'black_walnut.glb'],
       ambientLights: ['window_spill'],
-      barrierStyle: 'concrete_clean',
+      barrierStyle: 'metal_galvanized',
     },
   },
 
@@ -782,7 +782,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['red_maple.glb', 'red_maple_b.glb', 'oak.glb', 'dogwood.glb', 'walnut.glb'],
       ambientLights: ['window_spill'],
-      barrierStyle: 'concrete_clean',
+      barrierStyle: 'metal_galvanized',
     },
   },
 
@@ -856,7 +856,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'snow_capped',
       treeModels: ['pine.glb', 'pine_b.glb'],
       ambientLights: ['hazard_flasher'],
-      barrierStyle: 'concrete_clean',
+      barrierStyle: 'metal_galvanized',
     },
   },
 
@@ -892,7 +892,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'tropical',
       treeModels: ['royal_palm.glb', 'palm.glb', 'palm_b.glb'],
       ambientLights: ['window_spill'],
-      barrierStyle: 'concrete_clean',
+      barrierStyle: 'metal_galvanized',
     },
   },
 
@@ -928,7 +928,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'tropical',
       treeModels: ['royal_palm.glb', 'palm.glb', 'palm_b.glb', 'flamboyant.glb'],
       ambientLights: ['window_spill'],
-      barrierStyle: 'concrete_clean',
+      barrierStyle: 'metal_galvanized',
     },
   },
 
@@ -965,7 +965,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'snow_capped',
       treeModels: ['pine.glb', 'pine_b.glb', 'spruce.glb'],
       ambientLights: ['hazard_flasher'],
-      barrierStyle: 'concrete_clean',
+      barrierStyle: 'metal_galvanized',
     },
   },
 
@@ -1002,7 +1002,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['olive.glb', 'olive_b.glb'],
       ambientLights: ['window_spill'],
-      barrierStyle: 'concrete_clean',
+      barrierStyle: 'metal_galvanized',
     },
   },
 
@@ -1039,7 +1039,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'snow_capped',
       treeModels: ['pine.glb'],
       ambientLights: ['hazard_flasher'],
-      barrierStyle: 'concrete_clean',
+      barrierStyle: 'metal_galvanized',
     },
   },
 
@@ -1076,7 +1076,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'snow_capped',
       treeModels: ['pine.glb', 'pine_b.glb', 'spruce.glb'],
       ambientLights: ['window_spill', 'hazard_flasher'],
-      barrierStyle: 'concrete_clean',
+      barrierStyle: 'metal_galvanized',
     },
   },
 
@@ -1150,7 +1150,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['pine.glb'],
       ambientLights: ['window_spill'],
-      barrierStyle: 'concrete_clean',
+      barrierStyle: 'metal_galvanized',
     },
   },
 
