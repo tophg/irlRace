@@ -54,6 +54,8 @@ All scripts live in `scripts/` (NOT `/tmp/`). They require the `sharp` npm packa
 
 | Script | Purpose | Usage |
 |--------|---------|-------|
+| `scripts/nb2-generate.mjs` | NB2 API wrapper (supports `--ref` for reference images) | `GEMINI_API_KEY=... node scripts/nb2-generate.mjs "<prompt>" <output.png> [--ref <ref.png>]` |
+| `scripts/gen-dc-facade-tiles.mjs` | Batch facade tile generator with ref feedback | `GEMINI_API_KEY=... node scripts/gen-dc-facade-tiles.mjs [diffuse|emissive|normal]` |
 | `scripts/stitch-atlas.mjs` | Stitch tiles → 4096×4096 diffuse atlas | `node scripts/stitch-atlas.mjs <tiles_dir> <output.png>` |
 | `scripts/gen-emissive-normal.mjs` | Generate emissive + normal from tiles | `node scripts/gen-emissive-normal.mjs <tiles_dir> <emissive.png> <normal.png>` |
 | `scripts/stitch-ground.mjs` | Stitch 8 ground tiles → 2048×256 | `node scripts/stitch-ground.mjs <tiles_dir> <output.png>` |
@@ -92,10 +94,22 @@ Generate and keep individual tiles in a **persistent** location (macOS clears `/
 - **Never delete individual tiles** after stitching — they are the source of truth
 - To modify a single tile, regenerate just that file and re-run the full stitch
 
-### 1. Generate 40 diffuse tiles (8 columns × 5 rows)
-Generate tiles sequentially by column, feeding previous tiles as reference for style consistency. For each column, generate all 5 rows: window → wall pier → ground → cornice → roof cap.
+### 1. Research the target location
+Search online for reference images of the target city's architecture. Identify 8 distinct building styles for the columns, noting specific materials, colors, proportions, and period details. Also research ground surface types.
 
-Save to `/tmp/atlas_tiles/{env}/r{row}_c{col}.png`.
+### 2. Generate 40 diffuse tiles (8 columns × 5 rows) via NB2 API
+Generate tiles **column-by-column** using `nb2-generate.mjs` with **reference image feedback**:
+- For each column, generate **row 0 (windows) first** as the seed tile
+- Then pass it as `--ref` when generating rows 1–4, ensuring material/color/style continuity
+- The batch script `gen-dc-facade-tiles.mjs` automates this pattern
+
+```bash
+GEMINI_API_KEY=... node scripts/gen-dc-facade-tiles.mjs diffuse
+GEMINI_API_KEY=... node scripts/gen-dc-facade-tiles.mjs emissive
+GEMINI_API_KEY=... node scripts/gen-dc-facade-tiles.mjs normal
+```
+
+Save to `/tmp/dc_facade_{type}/r{row}_c{col}.png`.
 
 ### 2. Quality Checklist (before stitching)
 Verify tiles before committing to the stitch:
