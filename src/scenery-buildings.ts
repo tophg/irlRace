@@ -45,7 +45,10 @@ function loadAtlasTexture(
   ktx2Loader.load(
     ktx2Path,
     (ktx2Tex) => {
-      // KTX2 loaded — apply properties and notify caller
+      // KTX2 loaded — match TextureLoader's orientation (flipY=true) so that
+      // the UV coordinates computed in buildComposedBox map correctly.
+      // KTX2Loader defaults to flipY=false for WebGPU, which inverts all atlas rows.
+      ktx2Tex.flipY = true;
       ktx2Tex.colorSpace = colorSpace;
       onUpgrade?.(ktx2Tex);
     },
