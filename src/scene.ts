@@ -895,7 +895,7 @@ export async function initScene(container: HTMLElement) {
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     const envMap = pmremGenerator.fromScene(new RoomEnvironment()).texture;
     scene.environment = envMap;
-    scene.environmentIntensity = 0.35;
+    scene.environmentIntensity = 0.6;
     pmremGenerator.dispose();
   }
 
