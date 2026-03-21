@@ -326,7 +326,7 @@ export class Vehicle {
     // Pre-fracture the mesh NOW (at load time) so explosion is instant
     const meshes: THREE.Mesh[] = [];
     this._bodyGroup.traverse((child) => {
-      if (child instanceof THREE.Mesh && child.geometry && child.visible) {
+      if (child instanceof THREE.Mesh && child.geometry && child.visible && !child.userData.excludeFromFracture) {
         meshes.push(child);
       }
     });
@@ -536,6 +536,7 @@ export class Vehicle {
     spotD = ld?.spotDistance || 20;
 
     // ── Headlight decals (flat planes flush on front face, facing +Z) ──
+    // DoubleSide so emissive glow is visible from 3rd-person camera behind car
     const hlGeo = new THREE.PlaneGeometry(hlSize[0], hlSize[1]);
     const hlMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
@@ -543,18 +544,21 @@ export class Vehicle {
       emissiveIntensity: 3.0,
       roughness: 0.05,
       metalness: 0.0,
+      side: THREE.DoubleSide,
     });
 
     const hlL = new THREE.Mesh(hlGeo, hlMat);
-    hlL.position.set(hlLPos[0], hlLPos[1], hlLPos[2] + 0.01); // tiny offset to prevent z-fighting
+    hlL.position.set(hlLPos[0], hlLPos[1], hlLPos[2] + 0.01);
+    hlL.userData.excludeFromFracture = true; // prevent fracture from splitting this
     this._bodyGroup.add(hlL);
 
     const hlR = new THREE.Mesh(hlGeo, hlMat.clone());
     hlR.position.set(hlRPos[0], hlRPos[1], hlRPos[2] + 0.01);
+    hlR.userData.excludeFromFracture = true;
     this._bodyGroup.add(hlR);
 
-    // SpotLights for road illumination
-    const hlSpotL = new THREE.SpotLight(0xffeedd, spotI, spotD, Math.PI / 5, 0.8, 2);
+    // SpotLights for road illumination (boosted intensity for WebGPU)
+    const hlSpotL = new THREE.SpotLight(0xffeedd, spotI * 2.5, spotD, Math.PI / 5, 0.8, 2);
     hlSpotL.position.set(hlLPos[0], hlLPos[1], hlLPos[2]);
     const targetL = new THREE.Object3D();
     targetL.position.set(hlLPos[0] * 0.5, hlLPos[1] - 1, hlLPos[2] + 12);
@@ -562,7 +566,7 @@ export class Vehicle {
     hlSpotL.target = targetL;
     this._bodyGroup.add(hlSpotL);
 
-    const hlSpotR = new THREE.SpotLight(0xffeedd, spotI, spotD, Math.PI / 5, 0.8, 2);
+    const hlSpotR = new THREE.SpotLight(0xffeedd, spotI * 2.5, spotD, Math.PI / 5, 0.8, 2);
     hlSpotR.position.set(hlRPos[0], hlRPos[1], hlRPos[2]);
     const targetR = new THREE.Object3D();
     targetR.position.set(hlRPos[0] * 0.5, hlRPos[1] - 1, hlRPos[2] + 12);
@@ -570,8 +574,32 @@ export class Vehicle {
     hlSpotR.target = targetR;
     this._bodyGroup.add(hlSpotR);
 
-    // (Volumetric beam cones removed — subtle at 2.5% opacity and caused
-    //  disembodied cone fragments during explosion VFX via the fracture system)
+    // ── Volumetric beam cones (tagged to exclude from fracture system) ──
+    const beamLen = ld?.beamLength || 15;
+    const beamRad = ld?.beamRadius || 3.5;
+    const beamGeo = new THREE.ConeGeometry(beamRad, beamLen, 12, 1, true);
+    beamGeo.translate(0, -beamLen / 2, 0); // pivot at apex (headlight)
+    beamGeo.rotateX(Math.PI / 2);          // point along +Z (forward)
+
+    const beamMat = new THREE.MeshBasicMaterial({
+      color: 0xffeedd,
+      transparent: true,
+      opacity: 0.035,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+
+    const beamL = new THREE.Mesh(beamGeo, beamMat);
+    beamL.position.set(hlLPos[0], hlLPos[1], hlLPos[2]);
+    beamL.userData.excludeFromFracture = true;
+    beamL.renderOrder = 999; // render after opaque geometry
+    this._bodyGroup.add(beamL);
+
+    const beamR = new THREE.Mesh(beamGeo, beamMat.clone());
+    beamR.position.set(hlRPos[0], hlRPos[1], hlRPos[2]);
+    beamR.userData.excludeFromFracture = true;
+    beamR.renderOrder = 999;
+    this._bodyGroup.add(beamR);
 
     // ── Taillight decals — DISABLED ──
     // const tlGeo = new THREE.PlaneGeometry(tlSize[0], tlSize[1]);
