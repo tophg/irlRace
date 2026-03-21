@@ -1109,6 +1109,7 @@ function gameLoop(timestamp: number) {
         wrongWay,
         G.raceEngine.getElapsedTime() * 1000,
         G.playerVehicle.isNitroActive,
+        frameDt,
       );
 
 

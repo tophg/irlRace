@@ -89,10 +89,10 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     gctx.fillStyle = base;
     gctx.fillRect(0, 0, 256, 256);
     for (let i = 0; i < 200; i++) {
-      const px = Math.random() * 256;
-      const py = Math.random() * 256;
-      gctx.fillStyle = Math.random() > 0.5 ? v1 : v2;
-      gctx.fillRect(px, py, 3 + Math.random() * 8, 3 + Math.random() * 8);
+      const px = rng() * 256;
+      const py = rng() * 256;
+      gctx.fillStyle = rng() > 0.5 ? v1 : v2;
+      gctx.fillRect(px, py, 3 + rng() * 8, 3 + rng() * 8);
     }
     const groundTex = new THREE.CanvasTexture(groundCanvas);
     groundTex.wrapS = THREE.RepeatWrapping;
@@ -1037,18 +1037,26 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         if (hTiles > 1 && hTiles % 2 === 0) hTiles++; // force odd
         const midVTiles = Math.max(1, Math.round(midH / TILE_H));
 
-        // Symmetric column pattern: even cols = wall piers, odd cols = windows
-        // Within window columns: each tile picks a DIFFERENT atlas column for variety
-        // Wall piers stay consistent (same style column) for structural look
-        const pierCol = windowTile % ATLAS_COLS; // building's style column for piers
+        // Build per-column zones: symmetric window/wall-pier pattern
+        // Even columns (0,2,4...) = wall pier, odd columns (1,3...) = window
+        // Each column picks a different atlas variant for visual variety
         for (let col = 0; col < hTiles; col++) {
           const isWindowCol = (col % 2 === 1);
+          // Per-column hash: vary ROW (open/closed) but keep same atlas COLUMN (style)
+          const colHash = ((col * 31 + windowTile * 73 + Math.round(faceW) * 17) & 0xFF);
+          const colWindowRow = (colHash % 3 === 0) ? 1 : 0; // ~33% open, ~67% closed
+          const colWallRow = (colHash % 5 === 0) ? 3 : 2;   // ~20% detail, ~80% plain
+          // Keep the building's atlas column (from windowTile/wallPierTile) for style consistency
+          const baseCol = windowTile % ATLAS_COLS;
+          const colMidTile = isWindowCol
+            ? (colWindowRow * ATLAS_COLS + baseCol)
+            : (colWallRow * ATLAS_COLS + baseCol);
           const uStart = col / hTiles;
           const uEnd = (col + 1) / hTiles;
 
           // Ground zone for this column
           {
-            const zUV = tileUV(isWindowCol ? faceGroundTile : (Math.floor(wallPierTile / ATLAS_COLS) * ATLAS_COLS + pierCol));
+            const zUV = tileUV(isWindowCol ? faceGroundTile : wallPierTile);
             const zTW = zUV.uMax - zUV.uMin;
             const zTH = zUV.vMax - zUV.vMin;
             const baseIdx = positions.length / 3;
@@ -1072,21 +1080,10 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
           // Mid zone for this column (repeating vertically)
           if (midFrac > 0) {
+            const zUV = tileUV(colMidTile);
+            const zTW = zUV.uMax - zUV.uMin;
+            const zTH = zUV.vMax - zUV.vMin;
             for (let tileR = 0; tileR < midVTiles; tileR++) {
-              let tileMidTile: number;
-              if (isWindowCol) {
-                // WINDOW COLUMN: each tile picks random atlas column + open/closed
-                const tileHash = ((col * 31 + tileR * 53 + windowTile * 73 + Math.round(faceW) * 17) & 0xFF);
-                const winCol = tileHash % ATLAS_COLS; // random from all 8 window styles
-                const winRow = ((tileHash >> 3) % 3 === 0) ? 1 : 0; // ~33% open, ~67% closed
-                tileMidTile = winRow * ATLAS_COLS + winCol;
-              } else {
-                // WALL PIER: consistent style column, same row
-                tileMidTile = wallPierTile;
-              }
-              const zUV = tileUV(tileMidTile);
-              const zTW = zUV.uMax - zUV.uMin;
-              const zTH = zUV.vMax - zUV.vMin;
               const baseIdx = positions.length / 3;
               for (let vr = 0; vr <= 1; vr++) {
                 for (let vc = 0; vc <= 1; vc++) {

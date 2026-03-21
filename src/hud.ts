@@ -53,12 +53,13 @@ export function updateHUD(
   wrongWay: boolean,
   elapsedMs: number,
   boostActive: boolean,
+  dt = 1 / 60,
 ) {
   if (!disposeSolid) return;
 
-  // Smooth the speedometer (lerp toward actual speed for analog feel)
+  // Smooth the speedometer (frame-rate-independent exponential decay)
   const rawMph = Math.abs(speed) * 2.5;
-  _smoothMph += (rawMph - _smoothMph) * 0.15;
+  _smoothMph += (rawMph - _smoothMph) * (1 - Math.exp(-8 * dt));
   setSpeedMPH(Math.floor(_smoothMph));
   setSpeedRatio(Math.min(1, _smoothMph / 160));
 

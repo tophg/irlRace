@@ -25,6 +25,8 @@ export function runCountdown(uiOverlay: HTMLElement, durationMs = 3400): Promise
     countdownAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const audioCtx = countdownAudioCtx;
 
+    const sfxVol = getSettings().sfxVolume;
+
     const playBeep = (freq: number, duration: number, vol = 0.3) => {
       if (!audioCtx || audioCtx.state === 'closed') return;
       // Dual oscillators for richer tone
@@ -35,7 +37,7 @@ export function runCountdown(uiOverlay: HTMLElement, durationMs = 3400): Promise
       osc1.frequency.value = freq;
       osc2.type = 'triangle';
       osc2.frequency.value = freq;
-      gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+      gain.gain.setValueAtTime(vol * sfxVol, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
       osc1.connect(gain);
       osc2.connect(gain);
@@ -57,7 +59,7 @@ export function runCountdown(uiOverlay: HTMLElement, durationMs = 3400): Promise
         osc.frequency.value = freq;
         const start = audioCtx!.currentTime + i * 0.03;
         gain.gain.setValueAtTime(0, start);
-        gain.gain.linearRampToValueAtTime(0.25, start + 0.04);
+        gain.gain.linearRampToValueAtTime(0.25 * sfxVol, start + 0.04);
         gain.gain.exponentialRampToValueAtTime(0.001, start + 0.5);
         osc.connect(gain);
         gain.connect(audioCtx!.destination);

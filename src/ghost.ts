@@ -197,6 +197,10 @@ export function updateGhostPlayback() {
         mat.opacity = targetOpacity;
       }
     });
+    // Stop processing once fully faded — prevents invisible mesh from consuming traversal
+    if (fadeFrac >= 1) {
+      playbackActive = false;
+    }
   }
 }
 
