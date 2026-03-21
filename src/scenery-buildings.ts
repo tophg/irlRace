@@ -944,7 +944,7 @@ if (placements.length > 0) {
     }
   }
 
-  // ── Ground-level awnings / canopies ──
+  // ── Ground-level awnings / canopies — DISABLED (looked like dark bands on facades) ──
   const AWNING_COLORS: Record<string, number[]> = {
     modern:      [0x2d5a27, 0x8b1a1a, 0x1a3d5c],  // dark green, burgundy, navy
     adobe:       [0xc4a882, 0xa0805a, 0x8b6b4a],   // sun-bleached tan, faded sand
@@ -957,8 +957,8 @@ if (placements.length > 0) {
     bamboo_lodge:[0x5a3a2a, 0x3a5a3a, 0x6a4a30],   // warm wood tones
   };
   const awningColors = AWNING_COLORS[styleName] ?? AWNING_COLORS['modern'];
-  // ~30% of buildings get awnings — skip on mobile
-  const awningPlacements = isMobile ? [] : placements.filter(pl => ((pl.x * 53 + pl.z * 79) & 0xFF) < 77);
+  // Awnings disabled — they render as dark rectangles on building faces
+  const awningPlacements: typeof placements = [];
   if (awningPlacements.length > 0) {
     const awningGeo = new THREE.PlaneGeometry(1, 1);
     const awningMat = new THREE.MeshStandardMaterial({
