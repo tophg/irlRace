@@ -41,7 +41,7 @@ const uGroundColor = uniform(new THREE.Color(0x222228));    // ground terrain co
 
 // Ground atlas textures (updated per-environment and per-track)
 // Use mutable THREE.Texture references; the shader's TextureNodes hold refs to these.
-let _dftTexture: THREE.Texture = (() => {
+export let _dftTexture: THREE.Texture = (() => {
   // Pre-size at 256×256 so the GPU backing texture never needs resizing.
   // Default fill 0 = "on track" (shoulder zone shows as fallback).
   const DFT_SIZE = 256;
@@ -51,7 +51,7 @@ let _dftTexture: THREE.Texture = (() => {
   t.needsUpdate = true;
   return t;
 })();
-let _groundAtlasTexture: THREE.Texture = (() => {
+export let _groundAtlasTexture: THREE.Texture = (() => {
   // Pre-size at 4×4 with alpha=0 so the shader falls back to uGroundColor
   // via mix(groundColor, atlas, atlas.a). Alpha=0 → 100% groundColor.
   const t = new THREE.DataTexture(new Uint8Array(4 * 4 * 4).fill(0), 4, 4, THREE.RGBAFormat);

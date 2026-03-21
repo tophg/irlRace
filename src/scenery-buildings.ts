@@ -5,7 +5,12 @@
  */
 
 import * as THREE from 'three/webgpu';
-import { type SceneryTheme, getTerrainHeight } from './scene';
+import { MeshStandardNodeMaterial } from 'three/webgpu';
+import {
+  mix, smoothstep, vec2, float, sin, cos, mul, add, fract,
+  floor, texture, positionWorld, step,
+} from 'three/tsl';
+import { type SceneryTheme, getTerrainHeight, _groundAtlasTexture, _dftTexture } from './scene';
 
 // ── Building culling state (shared with track-scenery.ts) ──
 export let _buildingInstances: THREE.Vector3[] = [];
@@ -740,32 +745,58 @@ if (placements.length > 0) {
   }
 
   // ── Foundation pads: flat boxes beneath each building to bridge terrain gap ──
-  // Extends from building base (pl.y) down to ground plane (Y=-0.5)
+  // Uses TSL ground-atlas material for seamless terrain-to-building transition
   // Skip on mobile — visual polish, not gameplay-relevant
   if (!isMobile && placements.length > 0) {
     const padGeo = new THREE.BoxGeometry(1, 1, 1);
-    const padMat = new THREE.MeshStandardMaterial({
-      color: 0x3a3a38, roughness: 0.95, metalness: 0,
-    });
+
+    // TSL material that samples the same ground atlas as the terrain shader
+    const padMat = new MeshStandardNodeMaterial({ roughness: 0.95, metalness: 0 });
+    const wXZ = positionWorld.xz;
+    // DFT sampling for zone selection
+    const dUV = vec2(add(mul(wXZ.x, 1.0 / 1200), 0.5), add(mul(wXZ.y, 1.0 / 1200), 0.5));
+    const dDist = texture(_dftTexture, dUV).x;
+    const pT01 = smoothstep(0.05, 0.12, dDist);
+    const pT12 = smoothstep(0.15, 0.25, dDist);
+    const pT23 = smoothstep(0.45, 0.65, dDist);
+    // Simple tiling UV (no rotation needed for pads — they're small)
+    const pTileUV = fract(mul(wXZ, 0.12));
+    const pTw = float(0.125);
+    // Variant hash
+    const pCell = floor(mul(wXZ, 0.08));
+    const pHash = fract(mul(sin(add(mul(pCell.x, 127.1), mul(pCell.y, 311.7))), 43758.5453));
+    const pVar = smoothstep(0.3, 0.7, pHash);
+    // Sample all 4 zones with A/B variant blending
+    const pA0 = texture(_groundAtlasTexture, vec2(add(mul(pTileUV.x, pTw), mul(pTw, 0)), pTileUV.y));
+    const pB0 = texture(_groundAtlasTexture, vec2(add(mul(pTileUV.x, pTw), mul(pTw, 1)), pTileUV.y));
+    const pA1 = texture(_groundAtlasTexture, vec2(add(mul(pTileUV.x, pTw), mul(pTw, 2)), pTileUV.y));
+    const pB1 = texture(_groundAtlasTexture, vec2(add(mul(pTileUV.x, pTw), mul(pTw, 3)), pTileUV.y));
+    const pA2 = texture(_groundAtlasTexture, vec2(add(mul(pTileUV.x, pTw), mul(pTw, 4)), pTileUV.y));
+    const pB2 = texture(_groundAtlasTexture, vec2(add(mul(pTileUV.x, pTw), mul(pTw, 5)), pTileUV.y));
+    const pA3 = texture(_groundAtlasTexture, vec2(add(mul(pTileUV.x, pTw), mul(pTw, 6)), pTileUV.y));
+    const pB3 = texture(_groundAtlasTexture, vec2(add(mul(pTileUV.x, pTw), mul(pTw, 7)), pTileUV.y));
+    const pC0 = mix(pA0, pB0, pVar);
+    const pC1 = mix(pA1, pB1, pVar);
+    const pC2 = mix(pA2, pB2, pVar);
+    const pC3 = mix(pA3, pB3, pVar);
+    const pAtlas = mix(mix(mix(pC0, pC1, pT01), pC2, pT12), pC3, pT23);
+    padMat.colorNode = pAtlas.xyz;
+
     const padIM = new THREE.InstancedMesh(padGeo, padMat, placements.length);
     padIM.receiveShadow = true;
     for (let j = 0; j < placements.length; j++) {
       const pl = placements[j];
-      const padH = Math.max(0.1, pl.y + 0.5); // height from ground plane (-0.5) to building base
+      const groundY = getTerrainHeight(pl.x, pl.z);
+      const padH = Math.max(0.1, (groundY + pl.h / 2) - groundY + 0.5); // bridge terrain to building base
       const padW = pl.w + 4; // 2-unit overhang each side
       const padD = pl.d + 4;
-      dummy.position.set(pl.x, pl.y - padH / 2, pl.z);
+      dummy.position.set(pl.x, groundY + padH / 2 - 0.5, pl.z);
       dummy.scale.set(padW, padH, padD);
       dummy.rotation.set(0, pl.rotY, 0);
       dummy.updateMatrix();
       padIM.setMatrixAt(j, dummy.matrix);
-      // Match ground color with slight variation
-      const lum = 0.22 + (((pl.x * 31 + pl.z * 97) & 0xFF) / 255) * 0.06;
-      _c.setRGB(lum, lum, lum * 0.95);
-      padIM.setColorAt(j, _c);
     }
     padIM.instanceMatrix.needsUpdate = true;
-    if (padIM.instanceColor) padIM.instanceColor.needsUpdate = true;
     group.add(padIM);
   }
 
