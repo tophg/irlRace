@@ -16,25 +16,29 @@
  *   - Remap [-1,1] → [0,255]: R = (nx+1)*127.5, G = (ny+1)*127.5, B = (nz+1)*127.5
  *   - Flat surface = (128, 128, 255) which is the purple/blue default
  * 
- * Usage: node gen_emissive_normal.mjs <tiles_dir> <output_emissive> <output_normal> [tileSize=512]
+ * Usage: node scripts/gen-emissive-normal.mjs <tiles_dir> <output_emissive> <output_normal>
  */
 import { readdir } from 'fs/promises';
 import { join } from 'path';
 import sharp from 'sharp';
 
-const [,, tilesDir, outEmissive, outNormal, tileSizeStr = '512'] = process.argv;
+const [,, tilesDir, outEmissive, outNormal] = process.argv;
 if (!tilesDir || !outEmissive || !outNormal) {
-  console.error('Usage: node gen_emissive_normal.mjs <tiles_dir> <output_emissive> <output_normal> [tileSize]');
+  console.error('Usage: node scripts/gen-emissive-normal.mjs <tiles_dir> <output_emissive> <output_normal>');
   process.exit(1);
 }
 
-const TILE_SIZE = parseInt(tileSizeStr, 10);
+// Must match stitch-atlas.mjs: 8×5 grid in 4096×4096 POT canvas
+// Each tile cell is 512×819 (non-square, stretched to fill)
 const GRID_COLS = 8;
 const GRID_ROWS = 5;
-const ATLAS_W = TILE_SIZE * GRID_COLS;
-const ATLAS_H = TILE_SIZE * GRID_ROWS;
+const ATLAS_SIZE = 4096;
+const TILE_W = Math.floor(ATLAS_SIZE / GRID_COLS);  // 512
+const TILE_H = Math.floor(ATLAS_SIZE / GRID_ROWS);  // 819
+// Internal processing size (square, for Sobel etc)
+const PROC_SIZE = 512;
 
-console.log(`Generating ${ATLAS_W}×${ATLAS_H} emissive mask and normal map from ${tilesDir}`);
+console.log(`Generating ${ATLAS_SIZE}×${ATLAS_SIZE} emissive mask and normal map from ${tilesDir}`);
 
 // Read all tile images
 const files = await readdir(tilesDir);
@@ -52,7 +56,7 @@ function luminance(r, g, b) {
 async function generateEmissiveTile(tileBuffer, row) {
   // Get raw RGBA pixel data
   const { data, info } = await sharp(tileBuffer)
-    .resize(TILE_SIZE, TILE_SIZE, { fit: 'fill' })
+    .resize(PROC_SIZE, PROC_SIZE, { fit: 'fill' })
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
@@ -134,13 +138,13 @@ async function generateEmissiveTile(tileBuffer, row) {
 async function generateNormalTile(tileBuffer) {
   // Get grayscale data (used as height map)
   const grayData = await sharp(tileBuffer)
-    .resize(TILE_SIZE, TILE_SIZE, { fit: 'fill' })
+    .resize(PROC_SIZE, PROC_SIZE, { fit: 'fill' })
     .greyscale()
     .raw()
     .toBuffer();
   
-  const w = TILE_SIZE, h = TILE_SIZE;
-  const normalBuf = Buffer.alloc(w * h * 3); // RGB output
+  const w = PROC_SIZE, h = PROC_SIZE;
+  const normalBuf = Buffer.alloc(PROC_SIZE * PROC_SIZE * 3); // RGB output
   
   // Sobel strength: controls depth of normal map effect
   // Higher = flatter appearance, lower = more pronounced bumps
@@ -202,22 +206,24 @@ for (const file of tileFiles) {
   if (!match) continue;
   const row = parseInt(match[1], 10);
   const col = parseInt(match[2], 10);
-  const x = col * TILE_SIZE;
-  const y = row * TILE_SIZE;
+  const x = col * TILE_W;
+  const y = row * TILE_H;
 
   const filePath = join(tilesDir, file);
   const tileBuffer = await sharp(filePath).png().toBuffer();
 
-  // Generate emissive tile
+  // Generate emissive tile (process at PROC_SIZE, resize to TILE_W×TILE_H for atlas)
   const emissiveRaw = await generateEmissiveTile(tileBuffer, row);
-  const emissivePng = await sharp(emissiveRaw, { raw: { width: TILE_SIZE, height: TILE_SIZE, channels: 3 } })
+  const emissivePng = await sharp(emissiveRaw, { raw: { width: PROC_SIZE, height: PROC_SIZE, channels: 3 } })
+    .resize(TILE_W, TILE_H, { kernel: sharp.kernel.lanczos3 })
     .png()
     .toBuffer();
   emissiveComposites.push({ input: emissivePng, left: x, top: y });
 
-  // Generate normal map tile
+  // Generate normal map tile (process at PROC_SIZE, resize to TILE_W×TILE_H for atlas)
   const normalRaw = await generateNormalTile(tileBuffer);
-  const normalPng = await sharp(normalRaw, { raw: { width: TILE_SIZE, height: TILE_SIZE, channels: 3 } })
+  const normalPng = await sharp(normalRaw, { raw: { width: PROC_SIZE, height: PROC_SIZE, channels: 3 } })
+    .resize(TILE_W, TILE_H, { kernel: sharp.kernel.lanczos3 })
     .png()
     .toBuffer();
   normalComposites.push({ input: normalPng, left: x, top: y });
@@ -229,22 +235,22 @@ for (const file of tileFiles) {
 // ── Assemble emissive atlas ──
 console.log('\\nAssembling emissive mask atlas...');
 const emissiveBase = await sharp({
-  create: { width: ATLAS_W, height: ATLAS_H, channels: 3, background: { r: 0, g: 0, b: 0 } }
+  create: { width: ATLAS_SIZE, height: ATLAS_SIZE, channels: 3, background: { r: 0, g: 0, b: 0 } }
 }).png().toBuffer();
 
 await sharp(emissiveBase)
   .composite(emissiveComposites)
   .toFile(outEmissive);
-console.log(`✅ Emissive mask saved: ${outEmissive} (${ATLAS_W}×${ATLAS_H})`);
+console.log(`✅ Emissive mask saved: ${outEmissive} (${ATLAS_SIZE}×${ATLAS_SIZE})`);
 
 // ── Assemble normal map atlas ──
 console.log('Assembling normal map atlas...');
 // Base = flat normal (128, 128, 255)
 const normalBase = await sharp({
-  create: { width: ATLAS_W, height: ATLAS_H, channels: 3, background: { r: 128, g: 128, b: 255 } }
+  create: { width: ATLAS_SIZE, height: ATLAS_SIZE, channels: 3, background: { r: 128, g: 128, b: 255 } }
 }).png().toBuffer();
 
 await sharp(normalBase)
   .composite(normalComposites)
   .toFile(outNormal);
-console.log(`✅ Normal map saved: ${outNormal} (${ATLAS_W}×${ATLAS_H})`);
+console.log(`✅ Normal map saved: ${outNormal} (${ATLAS_SIZE}×${ATLAS_SIZE})`);
