@@ -579,7 +579,8 @@ export class Vehicle {
     const beamRad = ld?.beamRadius || 3.5;
     const beamGeo = new THREE.ConeGeometry(beamRad, beamLen, 12, 1, true);
     beamGeo.translate(0, -beamLen / 2, 0); // pivot at apex (headlight)
-    beamGeo.rotateX(Math.PI / 2);          // point along +Z (forward)
+    beamGeo.rotateX(-Math.PI / 2);         // point along +Z (forward)
+    beamGeo.rotateX(-0.14);                // tilt ~8° downward toward road
 
     const beamMat = new THREE.MeshBasicMaterial({
       color: 0xffeedd,
