@@ -75,8 +75,6 @@ export const CAR_ROSTER: CarDef[] = [
   // ── ELITE TIER ──
   // Kick Ass — top speed king, lightweight, fragile glass cannon
   { id: 'kickass',       name: 'Kick Ass',      file: 'Lamborghini.glb',    maxSpeed: 92, acceleration: 36, handling: 2.2, braking: 55, driftFactor: 0.36, gripCoeff: 0.88, latFriction: 5.5, suspStiffness: 0.04, steerSpeed: 3.2,  driftThreshold: 0.10, mass: 1320, cgHeight: 0.08, frontBias: 0.42, heightOffset: 0.0 },
-  // Revelator — luxury performance SUV, massive grip, heavy but fast
-  { id: 'revelator',     name: 'Revelator',     file: 'Family_SUV_C.glb',  maxSpeed: 85, acceleration: 33, handling: 2.5, braking: 50, driftFactor: 0.28, gripCoeff: 1.02, latFriction: 6.0, suspStiffness: 0.05, steerSpeed: 3.0,  driftThreshold: 0.12, mass: 1900, cgHeight: 0.24, frontBias: 0.52, heightOffset: 0.30 },
   // Submit — elite pickup brawler, massive torque, unstoppable presence
   { id: 'submit',        name: 'Submit',        file: 'Pickup_Truck.glb',      maxSpeed: 86, acceleration: 34, handling: 2.3, braking: 52, driftFactor: 0.34, gripCoeff: 0.94, latFriction: 5.8, suspStiffness: 0.05, steerSpeed: 3.0,  driftThreshold: 0.11, mass: 1950, cgHeight: 0.20, frontBias: 0.56, heightOffset: 0.25 },
   // Marry — futuristic sports car, razor steering, featherweight, loves to slide
