@@ -5,6 +5,7 @@
  * Tap anywhere to skip.
  */
 
+import { COLORS } from './colors';
 import type { RewardBreakdown } from './progression';
 import { levelProgress, xpToNextLevel, getProgress } from './progression';
 
@@ -127,7 +128,7 @@ function placementText(p: number): string {
 }
 
 function placementColor(p: number): string {
-  if (p === 1) return '#ffd700';
+  if (p === 1) return COLORS.GOLD;
   if (p === 2) return '#c0c0c0';
   if (p === 3) return '#cd7f32';
   return '#ffffff';
@@ -245,7 +246,7 @@ export function playRewardsAnimation(
         if (row.xp === 0 && row.cr === 0) {
           // Multiplier row — show label only (no counter)
           const multSpan = document.createElement('span');
-          multSpan.style.color = '#ffd700';
+          multSpan.style.color = COLORS.GOLD;
           multSpan.style.fontWeight = '700';
           multSpan.textContent = 'APPLIED TO ALL';
           right.appendChild(multSpan);
@@ -255,7 +256,7 @@ export function playRewardsAnimation(
           right.appendChild(xpSpan);
           if (row.cr > 0) {
             const crSpan = document.createElement('span');
-            crSpan.style.color = '#ffcc00';
+            crSpan.style.color = COLORS.YELLOW;
             crSpan.style.marginLeft = '8px';
             right.appendChild(crSpan);
             counterRoll(xpSpan, row.xp, 350, '+', ' XP');
@@ -291,7 +292,7 @@ export function playRewardsAnimation(
       const xpS = document.createElement('span');
       totalValue.appendChild(xpS);
       const crS = document.createElement('span');
-      crS.style.color = '#ffcc00';
+      crS.style.color = COLORS.YELLOW;
       crS.style.marginLeft = '10px';
       totalValue.appendChild(crS);
       counterRoll(xpS, rewards.totalXP, 500, '+', ' XP');
@@ -332,7 +333,7 @@ export function playRewardsAnimation(
       const credLabel = document.createElement('span');
       credLabel.textContent = 'Credits';
       const credValue = document.createElement('span');
-      credValue.style.color = '#ffcc00';
+      credValue.style.color = COLORS.YELLOW;
       credValue.style.fontWeight = '700';
       credRow.appendChild(credLabel);
       credRow.appendChild(credValue);
@@ -366,7 +367,7 @@ export function playRewardsAnimation(
         schedule(() => {
           const achEl = document.createElement('div');
           achEl.className = 'rewards-row rewards-row-bonus';
-          achEl.style.color = '#ffd700';
+          achEl.style.color = COLORS.GOLD;
           achEl.style.fontWeight = '700';
           achEl.innerHTML = `<span class="rewards-row-label">${ach.icon} ${ach.name}</span><span class="rewards-row-value">+${ach.creditReward} CR</span>`;
           container.appendChild(achEl);

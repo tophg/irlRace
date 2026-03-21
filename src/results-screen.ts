@@ -1,3 +1,4 @@
+import { COLORS } from './colors';
 /* ── IRL Race — Results Screen ── */
 
 import { GameState, EventType } from './types';
@@ -31,7 +32,7 @@ export function resolvePlayerName(id: string, G: GameContext): string {
 
 function ratingColor(grade: string): string {
   switch (grade) {
-    case 'S': return '#ffd700';
+    case 'S': return COLORS.GOLD;
     case 'A': return '#00e676';
     case 'B': return '#4fc3f7';
     case 'C': return '#fff176';
@@ -82,7 +83,7 @@ function buildChallengesHTML(): string {
 function buildPerksHTML(): string {
   const sp = getAvailableSkillPoints();
   let html = `<div class="lap-breakdown" style="margin-top:8px;" id="perks-section">
-    <div class="lap-breakdown-title">DRIVER PERKS <span style="color:#ffd700;float:right;">${sp} SP available</span></div>`;
+    <div class="lap-breakdown-title">DRIVER PERKS <span style="color:${COLORS.GOLD};float:right;">${sp} SP available</span></div>`;
   for (const perk of DRIVER_PERKS) {
     const tier = getPerkTier(perk.id);
     const bonus = getPerkBonus(perk.id);
@@ -93,9 +94,9 @@ function buildPerksHTML(): string {
     html += `<span style="display:flex;align-items:center;gap:6px;">`;
     if (bonus > 0) html += `<span style="color:#4fc3f7;">+${bonus}${perk.unit}</span>`;
     if (!maxed && sp > 0) {
-      html += `<button class="perk-upgrade-btn" data-perk="${perk.id}" style="padding:2px 8px;font-size:11px;background:linear-gradient(135deg,#ffd700,#ff8c00);color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:700;">▲ UP</button>`;
+      html += `<button class="perk-upgrade-btn" data-perk="${perk.id}" style="padding:2px 8px;font-size:11px;background:linear-gradient(135deg,${COLORS.GOLD},#ff8c00);color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:700;">▲ UP</button>`;
     } else if (maxed) {
-      html += `<span style="color:#ffd700;font-size:11px;">MAX</span>`;
+      html += `<span style="color:${COLORS.GOLD};font-size:11px;">MAX</span>`;
     }
     html += `</span></div>`;
   }
@@ -123,12 +124,12 @@ function buildRewardHTML(rewards: import('./progression').RewardBreakdown): stri
   if (rewards.streakMultiplier > 1) mults.push(`Streak ×${rewards.streakMultiplier.toFixed(1)}`);
   if (rewards.lappingMultiplier > 1) mults.push(`Lapping ×${rewards.lappingMultiplier.toFixed(2)}`);
   if (rewards.prestigeMultiplier > 1) mults.push(`Prestige ×${rewards.prestigeMultiplier.toFixed(2)}`);
-  if (mults.length > 0) html += `<div class="lap-breakdown-row best" style="color:#ffd700;"><span>🔄 ${mults.join(' · ')}</span><span>APPLIED</span></div>`;
+  if (mults.length > 0) html += `<div class="lap-breakdown-row best" style="color:${COLORS.GOLD};"><span>🔄 ${mults.join(' · ')}</span><span>APPLIED</span></div>`;
   html += `<div class="lap-breakdown-row" style="border-top:1px solid rgba(255,255,255,0.15);padding-top:4px;font-weight:700;"><span>Total</span><span>+${rewards.totalXP} XP / +${rewards.totalCredits} CR</span></div>`;
   if (rewards.leveledUp) html += `<div class="lap-breakdown-row best" style="color:#ffcc00;font-weight:700;"><span>⬆ LEVEL UP!</span><span>Level ${rewards.newLevel}</span></div>`;
   // Achievements
   for (const ach of rewards.newAchievements) {
-    html += `<div class="lap-breakdown-row best" style="color:#ffd700;font-weight:700;"><span>${ach.icon} ${ach.name}</span><span>+${ach.creditReward} CR</span></div>`;
+    html += `<div class="lap-breakdown-row best" style="color:${COLORS.GOLD};font-weight:700;"><span>${ach.icon} ${ach.name}</span><span>+${ach.creditReward} CR</span></div>`;
   }
   html += `<div class="lap-breakdown-row" style="margin-top:6px;"><span>Level ${prog.level}${prog.prestige > 0 ? ` ⭐${prog.prestige}` : ''}</span><span>${xpToNextLevel()} XP to next</span></div>`;
   html += `<div style="background:rgba(255,255,255,0.1);border-radius:4px;height:6px;margin:4px 0;"><div style="background:var(--col-orange);border-radius:4px;height:100%;width:${lvlPct}%;transition:width 0.5s;"></div></div>`;
@@ -285,7 +286,7 @@ export async function showResults(
         ${G.raceStats.perfectStart ? '<div class="lap-breakdown-row best"><span>🚀 Perfect Start</span><span>YES</span></div>' : ''}
       </div>
       ${buildRewardHTML(earlyRewards)}
-      ${earlyRewards.streakMultiplier > 1 ? `<div style="text-align:center;margin:6px 0;color:#ffd700;font-weight:700;">🔥 Win Streak: ${getProgress().winStreak} — ×${earlyRewards.streakMultiplier.toFixed(1)} bonus</div>` : ''}
+      ${earlyRewards.streakMultiplier > 1 ? `<div style="text-align:center;margin:6px 0;color:${COLORS.GOLD};font-weight:700;">🔥 Win Streak: ${getProgress().winStreak} — ×${earlyRewards.streakMultiplier.toFixed(1)} bonus</div>` : ''}
       ${buildDriverDNAHTML()}
       ${buildChallengesHTML()}
       ${buildPerksHTML()}
@@ -293,7 +294,7 @@ export async function showResults(
     <div class="results-actions">
       <div class="menu-buttons" style="width:240px;">
         ${hasReplay ? '<button class="menu-btn" id="btn-replay" style="border-color:var(--col-cyan);color:var(--col-cyan);">WATCH REPLAY</button>' : ''}
-        ${canPrestige() ? '<button class="menu-btn" id="btn-prestige" style="background:linear-gradient(135deg,#ffd700,#ff8c00);color:#000;font-weight:700;">⭐ PRESTIGE</button>' : ''}
+        ${canPrestige() ? '<button class="menu-btn" id="btn-prestige" style="background:linear-gradient(135deg,${COLORS.GOLD},#ff8c00);color:#000;font-weight:700;">⭐ PRESTIGE</button>' : ''}
         ${isMultiplayer ? '<button class="menu-btn" id="btn-rematch" style="background:var(--col-green);">REMATCH</button>' : ''}
         ${!isMultiplayer ? '<button class="menu-btn" id="btn-play-again">PLAY AGAIN</button>' : ''}
         <button class="menu-btn" id="btn-main-menu">MAIN MENU</button>
