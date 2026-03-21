@@ -9,7 +9,7 @@ import { inject } from '@vercel/analytics';
 import { GameState, CarDef, EventType, CAR_ROSTER } from './types';
 import { initScene, getScene } from './scene';
 import { showLapOverlay } from './hud';
-import { playCheckpointSFX, playLapFanfare, playFinishFanfare, playPositionSFX, playTitleMusic, preloadTitleMusic, pauseMusic, resumeMusic, stopAllMusic } from './audio';
+import { playCheckpointSFX, playLapFanfare, playPositionSFX, playTitleMusic, preloadTitleMusic, pauseMusic, resumeMusic, stopAllMusic } from './audio';
 import { showResults, resolvePlayerName } from './results-screen';
 import { enterSpectatorMode, cycleSpectateTarget, destroySpectateHUD } from './spectator';
 import { initGarage, destroyGarage } from './garage';
@@ -903,7 +903,7 @@ bus.on('lap', (e) => {
 bus.on('finish', (e) => {
   G.netPeer?.broadcastEvent(EventType.RACE_FINISH, { finishTime: e.finishTime });
   destroyLeaderboard();
-  playFinishFanfare();
+  // Note: playFinishFanfare() is called in loop-race-events.ts when finish is detected
   spawnConfetti();
   if (G.vehicleCamera && G.playerVehicle) {
     G.vehicleCamera.startOrbit(G.playerVehicle.group.position.clone());

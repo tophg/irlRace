@@ -234,6 +234,7 @@ export class NetPeer {
     view.setInt16(6, steerI16, true);
 
     for (const remote of this.connections.values()) {
+      if (!remote.conn) continue; // skip buffer-only placeholders
       _safeSend(remote.conn, buf);
     }
   }
@@ -298,6 +299,7 @@ export class NetPeer {
     new Uint8Array(buf, 2).set(jsonBytes);
 
     for (const remote of this.connections.values()) {
+      if (!remote.conn) continue; // skip buffer-only placeholders
       _safeSend(remote.conn, buf);
     }
   }

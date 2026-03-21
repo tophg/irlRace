@@ -91,9 +91,8 @@ export class ResourceTracker {
     // Remove Object3Ds from scene
     if (scene) {
       for (const obj of this._objects) {
-        if (obj.parent === scene) {
-          scene.remove(obj);
-        }
+        // Remove from any parent (not just direct scene children)
+        obj.parent?.remove(obj);
       }
     }
 
