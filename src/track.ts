@@ -95,7 +95,10 @@ export function buildTrackFromControlPoints(
   const rampDefs: RampDef[] = ramps ?? [];
   const rampGroup = buildRampGroup(finalSpline, rampDefs);
 
-  return { spline: finalSpline, roadMesh, barrierLeft, barrierRight, shoulderMesh, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures, rampGroup, rampDefs };
+  // Bake distance field for ground zone blending
+  const distanceField = bakeDistanceField(finalSpline);
+
+  return { spline: finalSpline, roadMesh, barrierLeft, barrierRight, shoulderMesh, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures, rampGroup, rampDefs, distanceField };
 }
 
 interface TrackAttemptResult { data: TrackData; qualityScore: number }
@@ -154,7 +157,7 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   // ── 11. Quality score ──
   const qualityScore = scoreTrack(curvatures, totalLength, speedProfile);
 
-  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, shoulderMesh, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures, rampGroup, rampDefs };
+  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, shoulderMesh, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures, rampGroup, rampDefs, distanceField: bakeDistanceField(finalSpline) };
   return { data, qualityScore };
 }
 
@@ -861,6 +864,43 @@ function seededRandom(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DISTANCE FIELD BAKING (ground zone blending)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/** Bake a 256×256 distance-from-spline texture for ground zone blending.
+ *  Each texel stores min distance to any spline sample point,
+ *  encoded as 0 (on track) → 255 (≥100m away). */
+function bakeDistanceField(spline: THREE.CatmullRomCurve3): THREE.DataTexture {
+  const size = 256;
+  const worldSize = 1200;  // matches ground PlaneGeometry
+  const data = new Uint8Array(size * size);
+  const splinePoints = spline.getSpacedPoints(500);
+
+  for (let y = 0; y < size; y++) {
+    const wz = (y / size - 0.5) * worldSize;
+    for (let x = 0; x < size; x++) {
+      const wx = (x / size - 0.5) * worldSize;
+      let minDistSq = Infinity;
+      for (const sp of splinePoints) {
+        const dx = wx - sp.x, dz = wz - sp.z;
+        const d2 = dx * dx + dz * dz;
+        if (d2 < minDistSq) minDistSq = d2;
+      }
+      // Encode: 0 = on track, 255 = 100m+ away
+      data[y * size + x] = Math.min(255, Math.floor(Math.sqrt(minDistSq) * 2.55));
+    }
+  }
+
+  const tex = new THREE.DataTexture(data, size, size, THREE.RedFormat);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.wrapS = THREE.ClampToEdgeWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.needsUpdate = true;
+  return tex;
 }
 
 function clamp(v: number, min: number, max: number): number {

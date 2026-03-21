@@ -124,6 +124,7 @@ export interface TrackData {
   curvatures: number[];
   rampGroup: THREE.Group;
   rampDefs: RampDef[];
+  distanceField?: THREE.DataTexture;  // baked spline distance for ground zone blending
 }
 
 // ── Ramps ──

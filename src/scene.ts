@@ -8,9 +8,9 @@
 import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import {
-  mix, smoothstep, normalWorld, uniform, vec3, float,
+  mix, smoothstep, normalWorld, uniform, vec3, vec2, vec4, float,
   sin, cos, mul, add, fract, max,
-  step, positionLocal,
+  step, positionLocal, positionWorld, dot, floor, texture,
 } from 'three/tsl';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
@@ -38,6 +38,37 @@ const uSkyMid = uniform(new THREE.Color(0x151530));       // mid-sky tint zone
 const uHorizonGlow = uniform(new THREE.Color(0x3a2040));   // warm horizon glow band
 const uSkyTime = uniform(0.0);                              // animated time for stars/wisps
 const uGroundColor = uniform(new THREE.Color(0x222228));    // ground terrain color
+
+// Ground atlas textures (updated per-environment and per-track)
+const _defaultDFT = new THREE.DataTexture(new Uint8Array([255]), 1, 1, THREE.RedFormat);
+_defaultDFT.needsUpdate = true;
+const uDistanceField = uniform(_defaultDFT);   // baked spline distance field
+const _defaultAtlas = new THREE.DataTexture(new Uint8Array([80, 80, 80, 255]), 1, 1, THREE.RGBAFormat);
+_defaultAtlas.needsUpdate = true;
+const uGroundAtlas = uniform(_defaultAtlas);     // per-environment ground tile atlas
+
+// Ground atlas paths per environment name
+const GROUND_ATLAS: Record<string, string> = {
+  'Washington D.C.': '/ground/ground_atlas_dc.png',
+  'Havana':          '/ground/ground_atlas_havana.png',
+  'Gaza City':       '/ground/ground_atlas_gaza.png',
+  'Kiev':            '/ground/ground_atlas_kiev.png',
+  'Baghdad':         '/ground/ground_atlas_baghdad.png',
+  'Damascus':        '/ground/ground_atlas_damascus.png',
+  'Beirut':          '/ground/ground_atlas_beirut.png',
+  'Tripoli':         '/ground/ground_atlas_tripoli.png',
+  'Mogadishu':       '/ground/ground_atlas_mogadishu.png',
+  'Tehran':          '/ground/ground_atlas_tehran.png',
+  'Khartoum':        '/ground/ground_atlas_khartoum.png',
+  'Chennai':         '/ground/ground_atlas_chennai.png',
+  'Sukhumi':         '/ground/ground_atlas_sukhumi.png',
+  'Shanghai':        '/ground/ground_atlas_shanghai.png',
+  'Sochi':           '/ground/ground_atlas_sochi.png',
+  'Tokyo':           '/ground/ground_atlas_tokyo.png',
+  'Montclair':       '/ground/ground_atlas_montclair.png',
+  'Lille':           '/ground/ground_atlas_lille.png',
+  'Nuuk':            '/ground/ground_atlas_nuuk.png',
+};
 
 // ── Scenery Theme (controls visual identity of track-side props) ──
 export interface SceneryTheme {
@@ -868,7 +899,41 @@ export async function initScene(container: HTMLElement) {
   const groundMat = new MeshStandardNodeMaterial({
     roughness: 0.85, metalness: 0.05,
   });
-  groundMat.colorNode = vec3(uGroundColor);
+  // ── Ground colorNode: distance-based 4-zone atlas blending ──
+  // When a ground atlas is loaded, blends 4 zones (shoulder/urban/open/far)
+  // by sampling a baked distance-from-spline texture.
+  // Falls back to flat uGroundColor when no atlas is available.
+  const worldXZ = positionWorld.xz;
+
+  // Sample distance field: 0 = on track, 1 = 100m+ away
+  const dfUV = add(mul(worldXZ, 1.0 / 1200), 0.5);
+  const dist = texture(uDistanceField, dfUV).x;
+
+  // Zone thresholds
+  const t01 = smoothstep(0.05, 0.12, dist);  // shoulder → urban
+  const t12 = smoothstep(0.15, 0.25, dist);  // urban → open
+  const t23 = smoothstep(0.45, 0.65, dist);  // open → far
+
+  // Position-based hash for variant selection (0 or 1)
+  const cellXZ = floor(mul(worldXZ, 0.1));
+  const hashVal = fract(mul(sin(add(mul(cellXZ.x, 127.1), mul(cellXZ.y, 311.7))), 43758.5453));
+  const variant = step(0.5, hashVal);
+
+  // Tiling UV (seamless repeat)
+  const tileUV = fract(mul(worldXZ, 0.15));
+  const tw = float(0.125);  // 1/8 atlas width per tile
+
+  // Sample atlas tiles with variant selection
+  const c0 = texture(uGroundAtlas, vec2(add(mul(tileUV.x, tw), mul(variant, tw)), tileUV.y));           // shoulder
+  const c1 = texture(uGroundAtlas, vec2(add(mul(tileUV.x, tw), add(mul(tw, 2.0), mul(variant, tw))), tileUV.y)); // urban
+  const c2 = texture(uGroundAtlas, vec2(add(mul(tileUV.x, tw), add(mul(tw, 4.0), mul(variant, tw))), tileUV.y)); // open
+  const c3 = texture(uGroundAtlas, vec2(add(mul(tileUV.x, tw), add(mul(tw, 6.0), mul(variant, tw))), tileUV.y)); // far
+
+  // Blend zones
+  const atlasColor = mix(mix(mix(c0, c1, t01), c2, t12), c3, t23);
+
+  // Mix atlas result with fallback ground color (atlas alpha controls blend)
+  groundMat.colorNode = mix(vec4(uGroundColor, 1.0), atlasColor, atlasColor.w).xyz;
 
   // Vertex displacement: gentle rolling terrain via layered sine noise
   // Operates in the XZ plane of the undisplaced geometry (before rotation)

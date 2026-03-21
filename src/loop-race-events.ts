@@ -21,7 +21,7 @@ import {
 let _wrongWayBeepTimer = 0;
 let _pendingRank = 0;         // candidate rank waiting for confirmation
 let _pendingRankFrames = 0;   // consecutive frames the candidate rank has held
-const RANK_HYSTERESIS = 3;    // require 3 stable frames (~50ms at 60fps)
+const RANK_HYSTERESIS = 30;   // require 30 stable frames (~500ms at 60fps)
 
 export function resetRaceEventsState() {
   _wrongWayBeepTimer = 0;
