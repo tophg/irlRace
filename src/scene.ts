@@ -73,6 +73,7 @@ const GROUND_ATLAS: Record<string, string> = {
   'Shanghai':        '/ground/ground_atlas_shanghai.png',
   'Kiev':            '/ground/ground_atlas_kiev.png',
   'Montclair':        '/ground/ground_atlas_montclair.png',
+  'Nuuk':             '/ground/ground_atlas_nuuk.png',
 };
 
 // ── Scenery Theme (controls visual identity of track-side props) ──
@@ -851,7 +852,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       accentProps: ['snow_bollard', 'debris'],
       roadDecals: ['frost'],
       atmosphericEffects: ['snow_extra', 'fog_wisps'],
-      buildingStyle: 'weathered', // placeholder — reuse weathered atlas
+      buildingStyle: 'nuuk',
       buildingModels: [],
       buildingDensity: 0.6, buildingRowCount: 1, buildingGapChance: 0.35,
       treeVariant: 'snow_capped',
