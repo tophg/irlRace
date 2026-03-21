@@ -29,10 +29,12 @@ if (!tilesDir || !outEmissive || !outNormal) {
 }
 
 const TILE_SIZE = parseInt(tileSizeStr, 10);
-const GRID = 8;
-const ATLAS_SIZE = TILE_SIZE * GRID;
+const GRID_COLS = 8;
+const GRID_ROWS = 5;
+const ATLAS_W = TILE_SIZE * GRID_COLS;
+const ATLAS_H = TILE_SIZE * GRID_ROWS;
 
-console.log(`Generating ${ATLAS_SIZE}×${ATLAS_SIZE} emissive mask and normal map from ${tilesDir}`);
+console.log(`Generating ${ATLAS_W}×${ATLAS_H} emissive mask and normal map from ${tilesDir}`);
 
 // Read all tile images
 const files = await readdir(tilesDir);
@@ -58,24 +60,23 @@ async function generateEmissiveTile(tileBuffer, row) {
   const w = info.width, h = info.height;
   const outBuf = Buffer.alloc(w * h * 3); // RGB output
 
-  if (row >= 4) {
-    // Rows 4-7: pure black (wall/ground/cornice/roof) — no emissive
+  // Atlas row layout (5-row format):
+  //   Row 0: Windows — full warm glow
+  //   Row 1: Wall pier — no windows, no glow
+  //   Row 2: Ground floor — faint storefront glow
+  //   Row 3: Transition band — decorative, no glow
+  //   Row 4: Roof cap — no glow
+
+  // Rows with no emissive — return black
+  if (row === 1 || row === 3 || row >= 4) {
     return outBuf;
   }
 
-  // Row-specific glow behavior:
-  // Row 0 (curtains): faint warm glow where curtain fabric is backlit
-  // Row 1 (blinds): moderate warm glow through slats
-  // Row 2 (lit windows): strong warm glow — interior light visible
-  // Row 3 (dark windows): very faint cool/neutral — ambient sky reflections
-
   // Glow color and intensity per row
-  const glowConfigs = [
-    { r: 255, g: 200, b: 100, threshold: 90, intensity: 0.35 },  // Row 0: faint warm
-    { r: 255, g: 204, b: 102, threshold: 80, intensity: 0.50 },  // Row 1: moderate warm
-    { r: 255, g: 204, b: 102, threshold: 60, intensity: 1.00 },  // Row 2: full warm glow
-    { r: 180, g: 200, b: 220, threshold: 100, intensity: 0.15 }, // Row 3: very faint cool
-  ];
+  const glowConfigs = {
+    0: { r: 255, g: 204, b: 102, threshold: 60, intensity: 1.00 }, // Row 0: windows — full warm glow
+    2: { r: 255, g: 200, b: 100, threshold: 90, intensity: 0.25 }, // Row 2: ground floor — faint storefront glow
+  };
   const config = glowConfigs[row];
 
   // Step 1: Compute luminance for each pixel
@@ -221,29 +222,29 @@ for (const file of tileFiles) {
     .toBuffer();
   normalComposites.push({ input: normalPng, left: x, top: y });
 
-  const rowType = ['curtains', 'blinds', 'lit', 'dark', 'wall', 'ground', 'cornice', 'roof'][row];
+  const rowType = ['window', 'wall_pier', 'ground', 'transition', 'roof'][row] ?? 'unknown';
   console.log(`  ${file} → (${x}, ${y}) [${rowType}]`);
 }
 
 // ── Assemble emissive atlas ──
 console.log('\\nAssembling emissive mask atlas...');
 const emissiveBase = await sharp({
-  create: { width: ATLAS_SIZE, height: ATLAS_SIZE, channels: 3, background: { r: 0, g: 0, b: 0 } }
+  create: { width: ATLAS_W, height: ATLAS_H, channels: 3, background: { r: 0, g: 0, b: 0 } }
 }).png().toBuffer();
 
 await sharp(emissiveBase)
   .composite(emissiveComposites)
   .toFile(outEmissive);
-console.log(`✅ Emissive mask saved: ${outEmissive} (${ATLAS_SIZE}×${ATLAS_SIZE})`);
+console.log(`✅ Emissive mask saved: ${outEmissive} (${ATLAS_W}×${ATLAS_H})`);
 
 // ── Assemble normal map atlas ──
 console.log('Assembling normal map atlas...');
 // Base = flat normal (128, 128, 255)
 const normalBase = await sharp({
-  create: { width: ATLAS_SIZE, height: ATLAS_SIZE, channels: 3, background: { r: 128, g: 128, b: 255 } }
+  create: { width: ATLAS_W, height: ATLAS_H, channels: 3, background: { r: 128, g: 128, b: 255 } }
 }).png().toBuffer();
 
 await sharp(normalBase)
   .composite(normalComposites)
   .toFile(outNormal);
-console.log(`✅ Normal map saved: ${outNormal} (${ATLAS_SIZE}×${ATLAS_SIZE})`);
+console.log(`✅ Normal map saved: ${outNormal} (${ATLAS_W}×${ATLAS_H})`);

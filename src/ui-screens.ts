@@ -324,6 +324,7 @@ const ENV_FLAVOR: Record<string, string> = {
   'Havana': 'Tropical heat, golden hour, palm shadows',
   'Shibuya': 'Neon-drenched megacity, wet reflections',
   'Zermatt': 'Frozen mountain pass, icy curves',
+  'Gaza City': 'Dense Levantine streets, dusty Mediterranean dusk',
 };
 
 const ENV_EMOJI: Record<string, string> = {
@@ -333,6 +334,7 @@ const ENV_EMOJI: Record<string, string> = {
   'Havana': '🌴',
   'Shibuya': '🌆',
   'Zermatt': '🏔️',
+  'Gaza City': '🕌',
 };
 
 // Preview state (Canvas 2D gradient)

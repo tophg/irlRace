@@ -50,6 +50,8 @@ const STYLE_ATLAS: Record<string, string> = {
   weathered:    '/buildings/facade_atlas_weathered.png',
   chalet:       '/buildings/facade_atlas_zermatt.png',
   warehouse:    '/buildings/facade_atlas_warehouse.png',
+  levantine:    '/buildings/facade_atlas_gaza.png',
+  soviet_bloc:  '/buildings/facade_atlas_kiev.png',
   concrete:     '/buildings/facade_atlas_dc.png',       // reuse DC's concrete/glass
   bamboo_lodge: '/buildings/facade_atlas_zermatt.png',  // reuse Zermatt's wood/stone
 };
