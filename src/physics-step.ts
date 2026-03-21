@@ -39,6 +39,7 @@ export function initPhysicsStep(deps: PhysicsStepDeps) {
 /** One deterministic physics sub-step at fixed dt. Contains all gameplay simulation. */
 export function stepPhysics(dt: number, s: GameState) {
   if (!G.playerVehicle || !G.trackData) return;
+  if (!_deps) return; // Audit #8: guard against uninitialized deps
 
   // ── Countdown / Flyover: zero-input physics so cars settle on road surface ──
   if (s === GameState.COUNTDOWN || s === GameState.FLYOVER) {
@@ -163,13 +164,14 @@ export function stepPhysics(dt: number, s: GameState) {
     if (evt.impactForce > 5) {
       const cA = colliderMap.get(evt.idA)!;
       const cB = colliderMap.get(evt.idB)!;
-      G._sparkPos.set(
+      // Audit #2 fix: clone position per event to prevent shared mutation in pileups
+      const sparkPos = new THREE.Vector3(
         (cA.position.x + cB.position.x) / 2,
         (cA.position.y + cB.position.y) / 2 + 0.5,
         (cA.position.z + cB.position.z) / 2,
       );
-      spawnGPUSparks(G._sparkPos, evt.impactForce);
-      if (evt.impactForce > 20) spawnGPUExplosion(G._sparkPos, evt.impactForce);
+      spawnGPUSparks(sparkPos, evt.impactForce);
+      if (evt.impactForce > 20) spawnGPUExplosion(sparkPos, evt.impactForce);
       playCollisionSFX(Math.min(evt.impactForce / 30, 1));
       haptic(Math.min(Math.floor(evt.impactForce * 3), 150));
     }

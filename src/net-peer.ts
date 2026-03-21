@@ -611,7 +611,8 @@ export class NetPeer {
   addToBuffer(id: string, snap: StateSnapshot) {
     let remote = this.connections.get(id);
     if (!remote) {
-      remote = { id, conn: null as any, buffer: [], name: 'Racer', carId: '', rtt: 0, ready: false };
+      // Audit #11 fix: explicit null instead of `null as any` — all send paths guard with `if (!remote.conn)`
+      remote = { id, conn: null!, buffer: [], name: 'Racer', carId: '', rtt: 0, ready: false };
       this.connections.set(id, remote);
     }
     remote.buffer.push(snap);
@@ -627,7 +628,10 @@ export class NetPeer {
     if (remote) remote.ready = ready;
   }
 
-  /** Check if all connected players are ready. */
+  /** Check if all connected players are ready.
+   *  Audit #9: Returns false when connections.size === 0 (intentional —
+   *  a solo host with no guests should not satisfy "all ready" for MP start).
+   */
   allPlayersReady(): boolean {
     if (this.connections.size === 0) return false;
     for (const remote of this.connections.values()) {
@@ -670,7 +674,7 @@ export class NetPeer {
     return this.connections.get(id)?.rtt ?? 0;
   }
 
-  /** Kick a player (host only). Sends KICK event, then closes connection. */
+  /** Kick a player (host only). Sends KICK event, waits for send buffer to flush, then closes. */
   kickPlayer(id: string) {
     const remote = this.connections.get(id);
     if (!remote) return;
@@ -682,12 +686,31 @@ export class NetPeer {
     new DataView(buf).setUint8(1, EventType.KICK);
     new Uint8Array(buf, 2).set(jsonBytes);
     _safeSend(remote.conn, buf);
-    setTimeout(() => {
+
+    // Audit #7 fix: wait for WebRTC send buffer to flush before closing,
+    // up to 500ms max. This ensures the kicked player actually receives
+    // the kick event before the connection is torn down.
+    const dc = (remote.conn as any)?._dc as RTCDataChannel | undefined;
+    const closeAndCleanup = () => {
       remote.conn?.close();
       this.connections.delete(id);
       this.pendingReconnect.delete(id);
       this.onPlayerLeave(id, remote.name);
-    }, 100);
+    };
+
+    if (dc && dc.bufferedAmount > 0) {
+      let waited = 0;
+      const pollFlush = setInterval(() => {
+        waited += 50;
+        if (!dc || dc.bufferedAmount === 0 || waited >= 500) {
+          clearInterval(pollFlush);
+          closeAndCleanup();
+        }
+      }, 50);
+    } else {
+      // No buffered data or no access to data channel — use short delay
+      setTimeout(closeAndCleanup, 100);
+    }
   }
 
   destroy() {

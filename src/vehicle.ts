@@ -974,11 +974,17 @@ export class Vehicle {
       }
     }
 
-    if (!usedRaycast && !this._airborne && spline) {
+    // Audit #10 fix: single cached spline lookup per tick instead of 3 separate calls.
+    // Used by: spline Y fallback, safety teleport, and barrier collision.
+    // Audit #6 note: this runs during the physics step (before lerpToRender), so
+    // group.position.y is the authoritative physics value, not the interpolated one.
+    if (spline && !nearestSpline) {
       nearestSpline = bvh
         ? getClosestSplinePoint(spline, this.group.position, bvh)
         : getClosestSplinePoint(spline, this.group.position, 200);
+    }
 
+    if (!usedRaycast && !this._airborne && nearestSpline) {
       // Smooth Y tracking for spline fallback
       const splineTargetY = nearestSpline.point.y + this.groundOffset;
       const splineYLerp = 1 - Math.exp(-30 * dt);
@@ -998,11 +1004,6 @@ export class Vehicle {
     }
 
     // Safety teleport: if car is way too far from track, snap back to nearest spline point
-    if (spline && !nearestSpline) {
-      nearestSpline = bvh
-        ? getClosestSplinePoint(spline, this.group.position, bvh)
-        : getClosestSplinePoint(spline, this.group.position, 200);
-    }
     if (nearestSpline && nearestSpline.distance > 30) {
       // Car escaped the track — teleport back
       this.group.position.x = nearestSpline.point.x;
@@ -1015,12 +1016,7 @@ export class Vehicle {
 
     // ── Multi-corner barrier collision (4-corner probes) ──
     this.lastBarrierImpact = null; // Clear each frame
-    if (spline) {
-      if (!nearestSpline) {
-        nearestSpline = bvh
-          ? getClosestSplinePoint(spline, this.group.position, bvh)
-          : getClosestSplinePoint(spline, this.group.position, 200);
-      }
+    if (spline && nearestSpline) {
       const roadHalfWidth = 6.5; // Tighter — accounts for barrier wall thickness
 
       // Vehicle corner offsets in local space

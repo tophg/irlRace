@@ -230,25 +230,32 @@ function updateDRS(renderer: THREE.WebGPURenderer, _frameDt: number) {
   const wallDt = _drsLastWallTime > 0 ? (now - _drsLastWallTime) / 1000 : 0;
   _drsLastWallTime = now;
   if (wallDt <= 0 || wallDt > 0.5) return;
+
+  // Audit #1 fix: true sliding-window average instead of batched-only sampling.
+  // Write into ring buffer and advance (wrapping via modulo).
   G._drsFrameTimes[G._drsWriteIdx % 30] = wallDt;
   G._drsWriteIdx++;
-  if (G._drsWriteIdx >= 30) {
-    G._drsWriteIdx = 0;
-    let sum = 0;
-    for (let i = 0; i < 30; i++) sum += G._drsFrameTimes[i];
-    const avgDt = sum / 30;
-    if (!isFinite(avgDt) || avgDt <= 0) return;
-    const avgFps = 1 / avgDt;
-    const currentPR = renderer.getPixelRatio();
-    const basePR = Math.min(window.devicePixelRatio, 2);
-    let newPR = currentPR;
-    if (avgFps < 45 && currentPR > 0.5) {
-      newPR = Math.max(currentPR - 0.15, 0.5);
-    } else if (avgFps > 56 && currentPR < basePR) {
-      newPR = Math.min(currentPR + 0.05, basePR);
-    }
-    if (newPR !== currentPR) _drsPendingPR = newPR;
+
+  // Don't evaluate until the buffer has filled at least once
+  if (G._drsWriteIdx < 30) return;
+
+  // Evaluate every 15 frames (~0.25s) to avoid per-frame resize churn
+  if (G._drsWriteIdx % 15 !== 0) return;
+
+  let sum = 0;
+  for (let i = 0; i < 30; i++) sum += G._drsFrameTimes[i];
+  const avgDt = sum / 30;
+  if (!isFinite(avgDt) || avgDt <= 0) return;
+  const avgFps = 1 / avgDt;
+  const currentPR = renderer.getPixelRatio();
+  const basePR = Math.min(window.devicePixelRatio, 2);
+  let newPR = currentPR;
+  if (avgFps < 45 && currentPR > 0.5) {
+    newPR = Math.max(currentPR - 0.15, 0.5);
+  } else if (avgFps > 56 && currentPR < basePR) {
+    newPR = Math.min(currentPR + 0.05, basePR);
   }
+  if (newPR !== currentPR) _drsPendingPR = newPR;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -570,6 +577,9 @@ function gameLoop(timestamp: number) {
           mesh.rotation.y = snap.heading;
 
           // Feed remote position into race engine for unified totalDistance tracking
+          // Audit #4 fix: also feed when no new snapshot arrives (stale interpolation),
+          // because updateRacer accumulates deltaT which keeps totalDistance growing
+          // as long as the estimated spline-t changes — even with jitter from stale data.
           if (s === GameState.RACING && G.raceEngine && G.trackData) {
             _rPos.set(snap.x, mesh.position.y, snap.z);
             const remoteNearest = getClosestSplinePoint(G.trackData.spline, _rPos, G.trackData.bvh);

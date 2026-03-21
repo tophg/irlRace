@@ -26,6 +26,9 @@ export class RaceEngine {
 
   /** Register a racer. Pass initialT from placement so prevT is correct on frame 1. */
   addRacer(id: string, initialT = 0) {
+    // Audit #5 fix: late-joining racers get lastLapStart = current elapsed time
+    // so their first lap time doesn't include pre-join period.
+    const elapsed = this.raceStartTime > 0 ? performance.now() - this.raceStartTime : 0;
     this.racers.set(id, {
       id,
       lapIndex: 0,
@@ -37,7 +40,7 @@ export class RaceEngine {
       prevT: initialT,
       totalDistance: 0,
       lapTimes: [],
-      lastLapStart: 0,
+      lastLapStart: elapsed,
     });
     this._racersList = Array.from(this.racers.values());
     this.cpTimestamps.set(id, new Map());
@@ -192,8 +195,9 @@ export class RaceEngine {
   private _rankingsDirty = true;
   /** Previous-frame rank order, used as tiebreaker in dead-zone. */
   private _prevOrder = new Map<string, number>();
-  /** Minimum totalDistance gap required to swap rankings (prevents oscillation). */
-  private static RANK_DEAD_ZONE = 5; // ~1 car length in world units
+  /** Minimum totalDistance gap required to swap rankings (prevents oscillation).
+   *  Audit #4: enlarged from 5 to 8 to absorb jitter from remote packet loss. */
+  private static RANK_DEAD_ZONE = 8; // ~1.5 car lengths in world units
 
   /** Mark rankings as needing re-sort (called internally after any update). */
   invalidateRankings() { this._rankingsDirty = true; }
