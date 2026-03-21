@@ -918,26 +918,59 @@ export async function initScene(container: HTMLElement) {
   const t12 = smoothstep(0.15, 0.25, dist);  // urban → open
   const t23 = smoothstep(0.45, 0.65, dist);  // open → far
 
-  // Position-based hash for variant selection (0 or 1)
-  const cellXZ = floor(mul(worldXZ, 0.1));
+  // Position-based hash for variant blending (soft 0→1 instead of hard step)
+  const cellXZ = floor(mul(worldXZ, 0.08));  // ~12.5m cells
   const hashVal = fract(mul(sin(add(mul(cellXZ.x, 127.1), mul(cellXZ.y, 311.7))), 43758.5453));
-  const variant = step(0.5, hashVal);
+  const variant = smoothstep(0.3, 0.7, hashVal);  // soft blend between A/B tiles
 
-  // Tiling UV (seamless repeat)
-  const tileUV = fract(mul(worldXZ, 0.15));
+  // Per-cell UV rotation to break axis-aligned grid repetition
+  const rotAngle = mul(fract(mul(sin(add(mul(cellXZ.x, 43.7), mul(cellXZ.y, 89.3))), 9381.7)), 6.283);
+  const cosR = cos(rotAngle);
+  const sinR = sin(rotAngle);
+
+  // Per-zone tiling scales (tighter near road, larger far away)
+  const tileUV0 = fract(mul(worldXZ, 0.18));  // shoulder: tight detail
+  const tileUV1 = fract(mul(worldXZ, 0.14));  // urban: medium
+  const tileUV2 = fract(mul(worldXZ, 0.10));  // open: looser
+  const tileUV3 = fract(mul(worldXZ, 0.07));  // far: sparse, large tiles
+
+  // Rotate UV around (0.5, 0.5) center per cell
+  const doRotUV = (uvIn: typeof tileUV0) => {
+    const cx = add(uvIn.x, -0.5);
+    const cy = add(uvIn.y, -0.5);
+    return vec2(add(add(mul(cx, cosR), mul(mul(cy, sinR), -1)), 0.5),
+                add(add(mul(cx, sinR), mul(cy, cosR)), 0.5));
+  };
+  const ruv0 = doRotUV(tileUV0);
+  const ruv1 = doRotUV(tileUV1);
+  const ruv2 = doRotUV(tileUV2);
+  const ruv3 = doRotUV(tileUV3);
+
   const tw = float(0.125);  // 1/8 atlas width per tile
 
-  // Sample atlas tiles with variant selection
-  const c0 = texture(_groundAtlasTexture, vec2(add(mul(tileUV.x, tw), mul(variant, tw)), tileUV.y));           // shoulder
-  const c1 = texture(_groundAtlasTexture, vec2(add(mul(tileUV.x, tw), add(mul(tw, 2.0), mul(variant, tw))), tileUV.y)); // urban
-  const c2 = texture(_groundAtlasTexture, vec2(add(mul(tileUV.x, tw), add(mul(tw, 4.0), mul(variant, tw))), tileUV.y)); // open
-  const c3 = texture(_groundAtlasTexture, vec2(add(mul(tileUV.x, tw), add(mul(tw, 6.0), mul(variant, tw))), tileUV.y)); // far
+  // Sample atlas tiles — per-zone UVs, soft A/B variant blending
+  const c0a = texture(_groundAtlasTexture, vec2(add(mul(ruv0.x, tw), mul(tw, 0)), ruv0.y));
+  const c0b = texture(_groundAtlasTexture, vec2(add(mul(ruv0.x, tw), mul(tw, 1)), ruv0.y));
+  const c0 = mix(c0a, c0b, variant);
+  const c1a = texture(_groundAtlasTexture, vec2(add(mul(ruv1.x, tw), mul(tw, 2)), ruv1.y));
+  const c1b = texture(_groundAtlasTexture, vec2(add(mul(ruv1.x, tw), mul(tw, 3)), ruv1.y));
+  const c1 = mix(c1a, c1b, variant);
+  const c2a = texture(_groundAtlasTexture, vec2(add(mul(ruv2.x, tw), mul(tw, 4)), ruv2.y));
+  const c2b = texture(_groundAtlasTexture, vec2(add(mul(ruv2.x, tw), mul(tw, 5)), ruv2.y));
+  const c2 = mix(c2a, c2b, variant);
+  const c3a = texture(_groundAtlasTexture, vec2(add(mul(ruv3.x, tw), mul(tw, 6)), ruv3.y));
+  const c3b = texture(_groundAtlasTexture, vec2(add(mul(ruv3.x, tw), mul(tw, 7)), ruv3.y));
+  const c3 = mix(c3a, c3b, variant);
 
   // Blend zones
   const atlasColor = mix(mix(mix(c0, c1, t01), c2, t12), c3, t23);
 
+  // Per-cell subtle color variation (±5% luminance jitter)
+  const cellLum = add(0.95, mul(fract(mul(sin(add(mul(cellXZ.x, 71.3), mul(cellXZ.y, 173.9))), 28571.3)), 0.10));
+  const tintedAtlas = mul(atlasColor.xyz, cellLum);
+
   // Mix with fallback ground color (atlas alpha controls blend)
-  groundMat.colorNode = mix(vec3(uGroundColor), atlasColor.xyz, atlasColor.a);
+  groundMat.colorNode = mix(vec3(uGroundColor), tintedAtlas, atlasColor.a);
 
   // Vertex displacement: gentle rolling terrain via layered sine noise
   // Operates in the XZ plane of the undisplaced geometry (before rotation)
