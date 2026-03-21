@@ -63,6 +63,7 @@ let _groundAtlasTexture: THREE.Texture = (() => {
 const GROUND_ATLAS: Record<string, string> = {
   'Gaza City':       '/ground/ground_atlas_gaza.png',
   'Shanghai':        '/ground/ground_atlas_shanghai.png',
+  'Kiev':            '/ground/ground_atlas_kiev.png',
 };
 
 // ── Scenery Theme (controls visual identity of track-side props) ──
@@ -946,16 +947,23 @@ export async function initScene(container: HTMLElement) {
   const hill2 = sin(mul(gx, 0.022).add(3.7)).mul(sin(mul(gz, 0.018).add(1.2))).mul(1.0);
   const hill3 = cos(mul(gx, 0.045).add(7.1)).mul(sin(mul(gz, 0.035).add(5.3))).mul(0.5);
   const terrain = add(add(hill1, hill2), hill3);
-  // Damp displacement near road using DFT: flat near road, rolling hills far away
-  const dispDamp = smoothstep(0.08, 0.30, dist);
-  const dampedTerrain = mul(terrain, dispDamp);
+  // Fix B: Widen displacement dead zone — flat ground extends further from road
+  // (was 0.08→0.30, now 0.15→0.35 — hills start ~58 units from road center)
+  const dispDamp = smoothstep(0.15, 0.35, dist);
+  // Fix C: Negative dip in the shoulder→open transition zone pulls ground below road
+  // This bell-shaped curve peaks (~-0.3) at dist≈0.10 and fades to 0 by dist≈0.25
+  const transitionDip = mul(mul(smoothstep(0.0, 0.10, dist), smoothstep(0.25, 0.10, dist)), -0.3);
+  const dampedTerrain = add(mul(terrain, dispDamp), transitionDip);
   // Displace along Z (which becomes Y after -90° X rotation)
   groundMat.positionNode = add(positionLocal, vec3(0, 0, dampedTerrain));
 
   groundMesh = new THREE.Mesh(groundGeo, groundMat);
   groundMesh.rotation.x = -Math.PI / 2;
-  groundMesh.position.y = 0;
+  // Fix A: Lower ground plane below road surface to prevent co-planar Z-fighting
+  groundMesh.position.y = -0.15;
   groundMesh.receiveShadow = true;
+  // Fix D: Render ground behind road/shoulder meshes for depth-tie safety
+  groundMesh.renderOrder = -1;
   scene.add(groundMesh);
 
   // ── Sky dome (TSL NodeMaterial — animated 5-zone gradient + stars + wisps) ──
