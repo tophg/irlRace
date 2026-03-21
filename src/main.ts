@@ -899,7 +899,7 @@ bus.on('finish', (e) => {
     G.vehicleCamera.startOrbit(G.playerVehicle.group.position.clone());
   }
   setTimeout(() => {
-    callShowResults();
+    if (G.gameState === GameState.RESULTS) callShowResults();
   }, 3000);
 });
 
