@@ -569,6 +569,13 @@ function gameLoop(timestamp: number) {
           }
           mesh.rotation.y = snap.heading;
 
+          // Feed remote position into race engine for unified totalDistance tracking
+          if (s === GameState.RACING && G.raceEngine && G.trackData) {
+            _rPos.set(snap.x, mesh.position.y, snap.z);
+            const remoteNearest = getClosestSplinePoint(G.trackData.spline, _rPos, G.trackData.bvh);
+            G.raceEngine.updateRacer(id, mesh.position, remoteNearest.t, snap.heading);
+          }
+
           if (s === GameState.RACING) {
             const prev = G.remotePrevPos.get(id);
             if (prev) {
