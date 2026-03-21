@@ -13,7 +13,6 @@ import { G, PHYSICS_DT, MAX_FRAME_DT, LB_UPDATE_INTERVAL } from './game-context'
 import { getInput } from './input';
 import { getDirLight, updateSkyTime } from './scene';
 import { getClosestSplinePoint, updateSceneryWind } from './track';
-import { updateBuildingCulling } from './track-scenery';
 import { resolvePlayerName } from './results-screen';
 import { updateDebugOverlay } from './ui-screens';
 import { rollbackManager, packInput } from './rollback-netcode';
@@ -111,28 +110,55 @@ export function updateLeaderboard() {
 
   const rankings = G.raceEngine.getRankings();
   const escHtml = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  G.lbEl.innerHTML = rankings.map((r, i) => {
-    const name = escHtml(r.id === 'local' ? 'YOU' : resolvePlayerName(r.id, G));
+
+  // Diff-based DOM update: create/reuse row elements, only mutate changed content
+  while (G.lbEl.children.length > rankings.length + (G.netPeer ? 1 : 0)) {
+    G.lbEl.lastChild?.remove();
+  }
+  for (let i = 0; i < rankings.length; i++) {
+    const r = rankings[i];
+    let row = G.lbEl.children[i] as HTMLElement | undefined;
+    if (!row) {
+      row = document.createElement('div');
+      row.innerHTML = '<span class="lb-pos"></span><span class="lb-name"></span><span class="lb-progress"></span>';
+      G.lbEl.appendChild(row);
+    }
     const isSelf = r.id === 'local';
+    const wantClass = `lb-row${isSelf ? ' self' : ''}${r.dnf ? ' dnf' : ''}`;
+    if (row.className !== wantClass) row.className = wantClass;
+
+    const posText = r.dnf ? '\u2014' : `${i + 1}`;
+    const posEl = row.children[0] as HTMLElement;
+    if (posEl.textContent !== posText) posEl.textContent = posText;
+
+    const name = escHtml(r.id === 'local' ? 'YOU' : resolvePlayerName(r.id, G));
     let rttDot = '';
     if (G.netPeer && !isSelf && !r.id.startsWith('ai_')) {
       const peerRtt = G.netPeer.getPeerRtt(r.id);
       const dotClass = peerRtt < 80 ? 'ping-good' : peerRtt < 150 ? 'ping-mid' : 'ping-bad';
       rttDot = `<span class="ping-dot ${dotClass}" style="margin-left:4px;"></span>`;
     }
-    return `
-      <div class="lb-row${isSelf ? ' self' : ''}${r.dnf ? ' dnf' : ''}">
-        <span class="lb-pos">${r.dnf ? '\u2014' : i + 1}</span>
-        <span class="lb-name">${name}${rttDot}${r.dnf ? ' DNF' : ''}</span>
-        <span class="lb-progress">${r.finished ? 'FIN' : `L${r.lapIndex + 1}`}</span>
-      </div>
-    `;
-  }).join('');
+    const nameHtml = `${name}${rttDot}${r.dnf ? ' DNF' : ''}`;
+    const nameEl = row.children[1] as HTMLElement;
+    if (nameEl.innerHTML !== nameHtml) nameEl.innerHTML = nameHtml;
+
+    const progText = r.finished ? 'FIN' : `L${r.lapIndex + 1}`;
+    const progEl = row.children[2] as HTMLElement;
+    if (progEl.textContent !== progText) progEl.textContent = progText;
+  }
 
   if (G.netPeer) {
     const rtt = G.netPeer.getRtt();
     const color = rtt < 80 ? '#4caf50' : rtt < 150 ? COLORS.YELLOW : COLORS.RED;
-    G.lbEl.innerHTML += `<div style="text-align:right;font-size:11px;color:${color};margin-top:4px;">${rtt}ms</div>`;
+    let rttEl = G.lbEl.children[rankings.length] as HTMLElement | undefined;
+    if (!rttEl) {
+      rttEl = document.createElement('div');
+      rttEl.style.cssText = 'text-align:right;font-size:11px;margin-top:4px;';
+      G.lbEl.appendChild(rttEl);
+    }
+    rttEl.style.color = color;
+    const rttText = `${rtt}ms`;
+    if (rttEl.textContent !== rttText) rttEl.textContent = rttText;
   }
 }
 
@@ -163,6 +189,10 @@ export function resetGameLoopState() {
   _driftAwarded = false;
   _hangTimeAwarded = false;
   _nitroDriftCooldown = 0;
+  // Bug audit: clear Round 3 caches between races
+  _remoteRayCache.clear();
+  _replayFrameSkip = 0;
+  _cachedGodrays = null;
   // Audit fix #13: clear DRS ring buffer to avoid evaluating on stale frame times
   G._drsWriteIdx = 0;
   G._drsFrameTimes.fill(0);
@@ -189,6 +219,8 @@ function stopReplay() {
 // REAR-VIEW MIRROR
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+let _cachedGodrays: THREE.Object3D | null = null;
+
 function updateRearMirror(renderer: THREE.WebGPURenderer, scene: THREE.Scene, frameDt: number) {
   if (!G.mirrorCamera || !G.playerVehicle || G.gameState !== GameState.RACING) return;
   if (G.mirrorBorder) G.mirrorBorder.style.display = 'block';
@@ -204,7 +236,8 @@ function updateRearMirror(renderer: THREE.WebGPURenderer, scene: THREE.Scene, fr
 
   const precip = getPrecipMesh();
   if (precip) precip.visible = false;
-  const godrays = scene.getObjectByName('godrays');
+  if (!_cachedGodrays) _cachedGodrays = scene.getObjectByName('godrays') ?? null;
+  const godrays = _cachedGodrays;
   if (godrays) godrays.visible = false;
 
   const w = 320, h = 120;
@@ -295,7 +328,6 @@ function gameLoop(timestamp: number) {
   // Animate sky + tree wind sway
   updateSkyTime(timestamp);
   if (G.trackData) updateSceneryWind(G.trackData.sceneryGroup, timestamp);
-  updateBuildingCulling(camera.position);
 
   const s = G.gameState;
 

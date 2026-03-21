@@ -24,6 +24,9 @@ import {
 } from './gpu-particles';
 import type { OpponentInfo } from './ai-racer';
 
+// Module-level reusable Map for remote position backup (avoids 60 allocs/sec)
+const _remotePosBefore = new Map<string, { x: number; y: number; z: number }>();
+
 // ── Injected dependencies (set by initPhysicsStep) ──
 interface PhysicsStepDeps {
   uiOverlay: HTMLElement;
@@ -102,12 +105,11 @@ export function stepPhysics(dt: number, s: GameState) {
     velocities.push(ai.vehicle);
   }
 
-  // Bug #12: Save remote mesh positions before collision resolution
-  // so we can restore them after (collision push-apart would fight network interpolation).
-  const remotePositionsBefore = new Map<string, { x: number; y: number; z: number }>();
+  // Bug #12 + audit: reuse module-level Map (avoids 60 allocs/sec)
+  _remotePosBefore.clear();
 
   for (const [id, mesh] of G.remoteMeshes) {
-    remotePositionsBefore.set(id, { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z });
+    _remotePosBefore.set(id, { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z });
     colliders.push({
       id,
       position: mesh.position,
@@ -180,7 +182,7 @@ export function stepPhysics(dt: number, s: GameState) {
   // Bug #12: Restore remote mesh positions after collision resolution.
   // Collision push-apart on remote cars would fight the next network interpolation frame.
   // Only local + AI cars should be physically pushed by collision resolution.
-  for (const [id, saved] of remotePositionsBefore) {
+  for (const [id, saved] of _remotePosBefore) {
     const mesh = G.remoteMeshes.get(id);
     if (mesh) {
       mesh.position.set(saved.x, saved.y, saved.z);
