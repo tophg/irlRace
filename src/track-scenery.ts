@@ -1037,20 +1037,18 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         if (hTiles > 1 && hTiles % 2 === 0) hTiles++; // force odd
         const midVTiles = Math.max(1, Math.round(midH / TILE_H));
 
-        // Build per-column zones: symmetric window/wall-pier pattern
-        // Even columns (0,2,4...) = wall pier, odd columns (1,3...) = window
-        // Each column picks a different atlas variant for visual variety
+        // Symmetric column pattern: even cols = wall piers, odd cols = windows
+        // Within window columns: each tile picks a DIFFERENT atlas column for variety
+        // Wall piers stay consistent (same style column) for structural look
+        const pierCol = windowTile % ATLAS_COLS; // building's style column for piers
         for (let col = 0; col < hTiles; col++) {
           const isWindowCol = (col % 2 === 1);
           const uStart = col / hTiles;
           const uEnd = (col + 1) / hTiles;
 
-          // Ground zone for this column — random column from appropriate row
+          // Ground zone for this column
           {
-            const groundHash = ((col * 41 + windowTile * 59 + Math.round(faceW) * 23) & 0xFF);
-            const groundCol = groundHash % ATLAS_COLS;
-            const groundRow = isWindowCol ? Math.floor(faceGroundTile / ATLAS_COLS) : Math.floor(wallPierTile / ATLAS_COLS);
-            const zUV = tileUV(groundRow * ATLAS_COLS + groundCol);
+            const zUV = tileUV(isWindowCol ? faceGroundTile : (Math.floor(wallPierTile / ATLAS_COLS) * ATLAS_COLS + pierCol));
             const zTW = zUV.uMax - zUV.uMin;
             const zTH = zUV.vMax - zUV.vMin;
             const baseIdx = positions.length / 3;
@@ -1075,16 +1073,16 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           // Mid zone for this column (repeating vertically)
           if (midFrac > 0) {
             for (let tileR = 0; tileR < midVTiles; tileR++) {
-              // Per-TILE randomization: each tile picks its own atlas column + row
-              const tileHash = ((col * 31 + tileR * 53 + windowTile * 73 + Math.round(faceW) * 17) & 0xFF);
-              const tileCol = tileHash % ATLAS_COLS; // random column from all 8
               let tileMidTile: number;
               if (isWindowCol) {
-                const tileWindowRow = ((tileHash >> 3) % 3 === 0) ? 1 : 0; // ~33% open
-                tileMidTile = tileWindowRow * ATLAS_COLS + tileCol;
+                // WINDOW COLUMN: each tile picks random atlas column + open/closed
+                const tileHash = ((col * 31 + tileR * 53 + windowTile * 73 + Math.round(faceW) * 17) & 0xFF);
+                const winCol = tileHash % ATLAS_COLS; // random from all 8 window styles
+                const winRow = ((tileHash >> 3) % 3 === 0) ? 1 : 0; // ~33% open, ~67% closed
+                tileMidTile = winRow * ATLAS_COLS + winCol;
               } else {
-                const tileWallRow = ((tileHash >> 3) % 5 === 0) ? 3 : 2; // ~20% detail
-                tileMidTile = tileWallRow * ATLAS_COLS + tileCol;
+                // WALL PIER: consistent style column, same row
+                tileMidTile = wallPierTile;
               }
               const zUV = tileUV(tileMidTile);
               const zTW = zUV.uMax - zUV.uMin;
