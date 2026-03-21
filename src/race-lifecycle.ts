@@ -45,6 +45,7 @@ import { getWeatherForSeed, initWeather, applyWetRoad, destroyWeather, getCurren
 import { showLoading, hideLoading, updateLoadingProgress } from './ui-screens';
 import { destroyLeaderboard, cleanupGameLoopDOM } from './game-loop';
 import { destroySpectateHUD } from './spectator';
+import { raceTracker } from './resource-tracker';
 
 /** F1-style staggered starting grid — slot 0 = pole (player / host) */
 const GRID_SLOTS: ReadonlyArray<{ t: number; lane: number }> = [
@@ -106,6 +107,9 @@ function disposeMesh(obj: THREE.Object3D) {
     }
   });
 }
+
+// Export for use in other modules
+export { disposeMesh, disposeMaterial };
 
 // Bug #6 fix: AbortController for startRace() cancellation
 let _raceAbort: AbortController | null = null;
@@ -216,6 +220,9 @@ export function clearRaceObjects() {
   G.spectateTargetId = null;
   G.prevMyRank = 0;
   destroySpectateHUD();
+
+  // Safety-net: dispose any tracked GPU resources that individual cleanup missed
+  raceTracker.disposeAll(scene);
 }
 
 // ── Spawn AI ──
@@ -396,6 +403,14 @@ export async function startRace() {
     const trackData = G.trackData!;
 
     if (w !== 'clear') applyWetRoad(trackData.roadMesh);
+    // Track all major scene objects for safety-net disposal
+    raceTracker.track(trackData.roadMesh);
+    raceTracker.track(trackData.barrierLeft);
+    raceTracker.track(trackData.barrierRight);
+    raceTracker.track(trackData.shoulderMesh);
+    raceTracker.track(trackData.kerbGroup);
+    raceTracker.track(trackData.sceneryGroup);
+    raceTracker.track(trackData.rampGroup);
     scene.add(trackData.roadMesh);
     scene.add(trackData.barrierLeft);
     scene.add(trackData.barrierRight);
@@ -405,6 +420,7 @@ export async function startRace() {
     scene.add(trackData.rampGroup);
 
     G.checkpointMarkers = buildCheckpointMarkers(trackData.checkpoints);
+    raceTracker.track(G.checkpointMarkers);
     scene.add(G.checkpointMarkers);
 
     G.raceEngine = new RaceEngine(trackData.checkpoints, G.totalLaps, trackData.totalLength);
