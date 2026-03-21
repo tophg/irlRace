@@ -78,40 +78,30 @@ async function generateEmissiveTile(tileBuffer, row) {
 
   // Glow color and intensity per row
   const glowConfigs = {
-    0: { r: 255, g: 204, b: 102, threshold: 60, intensity: 1.00 }, // Row 0: windows — full warm glow
-    2: { r: 255, g: 200, b: 100, threshold: 90, intensity: 0.25 }, // Row 2: ground floor — faint storefront glow
+    0: { r: 255, g: 204, b: 102, absThreshold: 220, intensity: 1.00 }, // Row 0: windows — only very bright highlights
+    2: { r: 255, g: 200, b: 100, absThreshold: 230, intensity: 0.25 }, // Row 2: ground floor — only brightest spots
   };
   const config = glowConfigs[row];
 
   // Step 1: Compute luminance for each pixel
   const lumMap = new Float32Array(w * h);
-  let maxLum = 0, minLum = 255;
   for (let i = 0; i < w * h; i++) {
     const idx = i * 4;
-    const lum = luminance(data[idx], data[idx + 1], data[idx + 2]);
-    lumMap[i] = lum;
-    if (lum > maxLum) maxLum = lum;
-    if (lum < minLum) minLum = lum;
+    lumMap[i] = luminance(data[idx], data[idx + 1], data[idx + 2]);
   }
 
-  // Step 2: For lit windows (row 2), use adaptive thresholding
-  // The glass area tends to be brighter (lit from inside) than the surrounding stone/brick
-  // For other rows, use a similar but gentler approach
-  const lumRange = maxLum - minLum;
-  const adaptiveThreshold = minLum + lumRange * (config.threshold / 255);
-
-  // Step 3: Create glow mask with soft edges
+  // Step 2: Use absolute luminance threshold
+  // Only genuinely bright pixels (glass reflections, light patches) trigger glow
+  // This prevents uniform gray/beige concrete from being entirely emissive
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
       const lum = lumMap[i];
       
-      // Basic luminance gate
       let glowFactor = 0;
-      if (lum > adaptiveThreshold) {
-        // Soft transition: ramp from 0 to 1 over threshold range
-        const rampWidth = lumRange * 0.15;
-        glowFactor = Math.min(1, (lum - adaptiveThreshold) / Math.max(1, rampWidth));
+      if (lum > config.absThreshold) {
+        // Soft ramp over 30 luminance units
+        glowFactor = Math.min(1, (lum - config.absThreshold) / 30);
       }
 
       // Spatial weighting: windows tend to be in center of tile, not edges

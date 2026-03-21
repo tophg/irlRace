@@ -267,7 +267,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       barrierColor: 0x555560,
       buildingPalette: [0x3a3a4a, 0x44445a, 0x2a2a3a, 0x505060, 0x383845, 0x4a4a5a],
       buildingHeightRange: [6, 22],
-      windowLitChance: 0.55, windowColor: 0xffdd88,
+      windowLitChance: 0.25, windowColor: 0xffdd88,
       treeTrunkColor: 0x443322, treeCanopyColor: 0x2a4a2a,
       treeCanopyStyle: 'sphere', treeCount: 40,
       billboardStyle: 'minimal',
