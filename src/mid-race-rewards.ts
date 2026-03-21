@@ -90,22 +90,36 @@ function showToast(def: RewardDef, finalNitro: number, finalCredits: number, fin
   }
 
   const toast = document.createElement('div');
-  toast.className = `reward-toast${isJackpot ? ' reward-jackpot' : ''}`;
+
+  // Build class list with tier escalation
+  let cls = 'reward-toast';
+  if (isJackpot) cls += ' reward-jackpot';
+  if (def.category === 'milestone') cls += ' reward-milestone';
+  // Combo tier styling (×2=tier-2 ... ×5=tier-5)
+  if (_comboMultiplier >= 2) cls += ` reward-tier-${Math.min(Math.floor(_comboMultiplier), 5)}`;
+  toast.className = cls;
   toast.style.setProperty('--reward-hue', String(isJackpot ? 45 : def.hue));
 
+  // Build staggered amounts — each gets a sequential class for animation-delay
+  let amtIdx = 0;
   let amounts = '';
-  if (finalNitro > 0) amounts += `<span class="reward-amt reward-amt-nitro">⛽+${finalNitro}</span>`;
-  if (finalCredits > 0) amounts += `<span class="reward-amt reward-amt-credits">💰+${finalCredits}</span>`;
-  if (finalXP > 0) amounts += `<span class="reward-amt reward-amt-xp">+${finalXP} XP</span>`;
+  if (finalNitro > 0) { amounts += `<span class="reward-amt reward-amt-nitro reward-amt-${amtIdx}">⛽+${finalNitro}</span>`; amtIdx++; }
+  if (finalCredits > 0) { amounts += `<span class="reward-amt reward-amt-credits reward-amt-${amtIdx}">💰+${finalCredits}</span>`; amtIdx++; }
+  if (finalXP > 0) { amounts += `<span class="reward-amt reward-amt-xp reward-amt-${amtIdx}">+${finalXP} XP</span>`; amtIdx++; }
 
+  // Combo badge with tier color
+  let comboBadgeCls = 'reward-combo-badge';
+  if (_comboMultiplier >= 5) comboBadgeCls += ' reward-combo-max';
+  else if (_comboMultiplier >= 4) comboBadgeCls += ' reward-combo-gold';
+  else if (_comboMultiplier >= 3) comboBadgeCls += ' reward-combo-hot';
   const comboHtml = _comboMultiplier > 1
-    ? `<span class="reward-combo-badge">×${_comboMultiplier}</span>`
+    ? `<span class="${comboBadgeCls}">×${_comboMultiplier}</span>`
     : '';
 
   toast.innerHTML = `
     <span class="reward-icon">${isJackpot ? '💥' : def.icon}</span>
     <span class="reward-label">${isJackpot ? 'JACKPOT!' : def.label}</span>
-    ${amounts}
+    <span class="reward-amounts">${amounts}</span>
     ${comboHtml}
   `;
 
@@ -115,10 +129,11 @@ function showToast(def: RewardDef, finalNitro: number, finalCredits: number, fin
   requestAnimationFrame(() => toast.classList.add('reward-toast--in'));
 
   // Remove after lifespan
+  const lifespan = isJackpot ? 2200 : (def.category === 'milestone' ? 2000 : TOAST_LIFESPAN);
   setTimeout(() => {
     toast.classList.add('reward-toast--out');
     setTimeout(() => toast.remove(), 300);
-  }, TOAST_LIFESPAN);
+  }, lifespan);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -155,50 +170,130 @@ function updateComboBarVisual() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// ASCENDING PITCH SFX (Web Audio)
+// AUDIO ENGINE (layered oscillators + ADSR + reverb)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 let _audioCtx: AudioContext | null = null;
+let _reverbNode: ConvolverNode | null = null;
+let _reverbGain: GainNode | null = null;
 
 function getAudioCtx(): AudioContext {
   if (!_audioCtx) _audioCtx = new AudioContext();
   return _audioCtx;
 }
 
-function playChirp(freq: number, duration: number, gain = 0.15) {
+/** Generate a short procedural reverb impulse response (0.3s decay). */
+function createReverbImpulse(ctx: AudioContext): AudioBuffer {
+  const rate = ctx.sampleRate;
+  const len = Math.floor(rate * 0.3);
+  const buf = ctx.createBuffer(1, len, rate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+  }
+  return buf;
+}
+
+function ensureReverb(ctx: AudioContext): GainNode {
+  if (_reverbGain) return _reverbGain;
+  _reverbNode = ctx.createConvolver();
+  _reverbNode.buffer = createReverbImpulse(ctx);
+  _reverbGain = ctx.createGain();
+  _reverbGain.gain.value = 0.25; // 25% wet mix
+  _reverbNode.connect(_reverbGain).connect(ctx.destination);
+  return _reverbGain;
+}
+
+/** Play a single oscillator with ADSR envelope. */
+function playTone(
+  freq: number, duration: number, gain: number,
+  waveform: OscillatorType = 'sine', useReverb = true,
+) {
   try {
     const ctx = getAudioCtx();
     if (ctx.state === 'suspended') ctx.resume();
+    const t = ctx.currentTime;
+
     const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = 'sine';
+    osc.type = waveform;
     osc.frequency.value = freq;
-    g.gain.setValueAtTime(gain, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
-    osc.connect(g).connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + duration);
+
+    const g = ctx.createGain();
+    // ADSR: attack 5ms → peak → decay 30ms → sustain 70% → release
+    g.gain.setValueAtTime(0.001, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.005);          // attack
+    g.gain.linearRampToValueAtTime(gain * 0.7, t + 0.035);    // decay → sustain
+    g.gain.exponentialRampToValueAtTime(0.001, t + duration);  // release
+
+    osc.connect(g);
+    // Dry path
+    g.connect(ctx.destination);
+    // Wet reverb path
+    if (useReverb) {
+      const rev = ensureReverb(ctx);
+      g.connect(_reverbNode!);
+    }
+
+    osc.start(t);
+    osc.stop(t + duration + 0.05);
   } catch { /* audio may be blocked */ }
 }
 
-function playRewardSFX(comboCount: number) {
-  // Ascending semitone: C4 base, +1 semitone per combo
-  const base = 261.6; // C4
-  const freq = base * Math.pow(2, Math.min(comboCount, 12) / 12);
-  playChirp(freq, 0.08);
+/** Play a layered two-oscillator chord tone. */
+function playLayeredTone(
+  freq: number, duration: number, gain: number,
+  harmonyInterval = 7, // semitones above (7 = perfect 5th)
+  harmonyWave: OscillatorType = 'triangle',
+) {
+  playTone(freq, duration, gain, 'sine');
+  playTone(freq * Math.pow(2, harmonyInterval / 12), duration, gain * 0.3, harmonyWave);
+}
+
+/** Per-category sound profiles. */
+function playRewardSFX(comboCount: number, category: 'tactical' | 'skill' | 'milestone') {
+  const semitoneShift = Math.min(comboCount, 12);
+
+  switch (category) {
+    case 'tactical': {
+      // Sharp alert ping — E5 base, sine + triangle 5th
+      const base = 659.3 * Math.pow(2, semitoneShift / 12);
+      playLayeredTone(base, 0.06, 0.12, 7, 'triangle');
+      break;
+    }
+    case 'skill': {
+      // Musical rewarding chord — C5 base, sine + sine 5th
+      const base = 523.3 * Math.pow(2, semitoneShift / 12);
+      playLayeredTone(base, 0.1, 0.14, 7, 'sine');
+      break;
+    }
+    case 'milestone': {
+      // Achievement chime — 3-note ascending (root → 3rd → 5th)
+      const base = 392.0; // G4
+      playTone(base, 0.18, 0.14, 'sine');
+      setTimeout(() => playTone(base * Math.pow(2, 4 / 12), 0.15, 0.12, 'sine'), 70);
+      setTimeout(() => playTone(base * Math.pow(2, 7 / 12), 0.2, 0.13, 'triangle'), 140);
+      break;
+    }
+  }
 }
 
 function playJackpotSFX() {
-  // Major chord: root + major 3rd
-  const base = 261.6 * Math.pow(2, Math.min(_comboLength, 12) / 12);
-  playChirp(base, 0.15, 0.2);
-  setTimeout(() => playChirp(base * Math.pow(2, 4 / 12), 0.15, 0.18), 50);
+  // Ascending major triad arpeggio: C5 → E5 → G5 → C6
+  const base = 523.3;
+  playTone(base, 0.12, 0.16, 'sine');
+  setTimeout(() => playTone(base * Math.pow(2, 4 / 12), 0.12, 0.14, 'sine'), 70);
+  setTimeout(() => playTone(base * Math.pow(2, 7 / 12), 0.15, 0.15, 'triangle'), 140);
+  setTimeout(() => playTone(base * 2, 0.25, 0.13, 'sine'), 210);
 }
 
 function playComboLostSFX() {
-  // Descending minor 3rd
-  playChirp(330, 0.12, 0.12);
-  setTimeout(() => playChirp(277, 0.15, 0.1), 80);
+  // Metallic descending minor 3rd — sawtooth + sine
+  playTone(330, 0.12, 0.10, 'sawtooth');
+  playTone(330, 0.12, 0.06, 'sine');
+  setTimeout(() => {
+    playTone(277, 0.18, 0.09, 'sawtooth');
+    playTone(277, 0.18, 0.05, 'sine');
+  }, 80);
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -310,7 +405,9 @@ export function awardReward(type: RewardType, vehicle?: Vehicle): void {
   if (isJackpot) {
     playJackpotSFX();
   } else if (def.comboable) {
-    playRewardSFX(_comboLength);
+    playRewardSFX(_comboLength, def.category);
+  } else if (def.category === 'milestone') {
+    playRewardSFX(0, 'milestone');
   }
 
   // 3. Haptic

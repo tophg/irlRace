@@ -25,6 +25,7 @@
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.19.3",
     "@vercel/analytics": "^2.0.1",
+    "canvas": "^3.2.1",
     "peerjs": "^1.5.4",
     "solid-js": "^1.9.11",
     "three": "^0.183.2"
