@@ -734,6 +734,7 @@ export function disposeDestructionAssets() {
   _poolMeshes.length = 0;
   _fragPool.length = 0;
   _poolReady = false;
+  _poolPreWarmed = false; // Audit fix #16: reset so next race swaps in correct car fragments
   activeFragCount = 0;
 
   if (_ringMesh) {

@@ -186,14 +186,13 @@ export function initWeather(scene: THREE.Scene, weather: WeatherType) {
   precipMesh.frustumCulled = false;
   scene.add(precipMesh);
 
-  // Splash pool (rain types only)
+  // Splash pool (rain types only) — share one geometry + material across all pool meshes
   const isRain = weather === 'light_rain' || weather === 'heavy_rain';
   if (isRain && !isMobileWeather) {
+    const sharedSplashGeo = new THREE.CircleGeometry(0.15, 6);
+    const sharedSplashMat = new THREE.MeshBasicMaterial({ color: 0xaaccff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
     for (let i = 0; i < SPLASH_POOL; i++) {
-      const radius = 0.1 + Math.random() * 0.15; // size variation
-      const splashGeo = new THREE.CircleGeometry(radius, 6);
-      const splashMat = new THREE.MeshBasicMaterial({ color: 0xaaccff, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
-      const m = new THREE.Mesh(splashGeo, splashMat);
+      const m = new THREE.Mesh(sharedSplashGeo, sharedSplashMat.clone()); // clone mat so opacity is per-splash
       m.rotation.x = -Math.PI / 2;
       m.visible = false;
       scene.add(m);

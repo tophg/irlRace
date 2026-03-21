@@ -357,9 +357,18 @@ export function processRaceRewards(result: RaceResult): RewardBreakdown {
   // Add challenge rewards to breakdown for results-screen display
   breakdown.totalXP += challengeRewards.xp;
   breakdown.totalCredits += challengeRewards.cr;
-  // Audit fix #2: Do NOT add challengeRewards to current.xp/credits here —
-  // breakdown.totalXP (which now includes challenge rewards) was already
-  // applied to current.xp at line 297. Adding again would double-count.
+  // Audit fix #15: challenge rewards must be explicitly credited to the player.
+  // current.xp/credits were updated at line 298 BEFORE challenge rewards were
+  // computed, so those rewards were never persisted. Add them now.
+  current.xp += challengeRewards.xp;
+  current.credits += challengeRewards.cr;
+  // Re-check level in case challenge XP pushed past a threshold
+  const postChallengeLevel = levelFromXp(current.xp);
+  if (postChallengeLevel > current.level) {
+    current.level = postChallengeLevel;
+    breakdown.leveledUp = true;
+    breakdown.newLevel = current.level;
+  }
 
   saveProgress();
   return breakdown;
