@@ -19,9 +19,14 @@ import {
 
 // ── Per-race state ──
 let _wrongWayBeepTimer = 0;
+let _pendingRank = 0;         // candidate rank waiting for confirmation
+let _pendingRankFrames = 0;   // consecutive frames the candidate rank has held
+const RANK_HYSTERESIS = 3;    // require 3 stable frames (~50ms at 60fps)
 
 export function resetRaceEventsState() {
   _wrongWayBeepTimer = 0;
+  _pendingRank = 0;
+  _pendingRankFrames = 0;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -111,14 +116,28 @@ export function updateCheckpointsAndHUD(
     G.raceStats.positionSampleCount++;
   }
 
-  if (G.prevMyRank > 0 && myRank !== G.prevMyRank && myRank > 0) {
-    const gained = myRank < G.prevMyRank;
-    if (gained) G.raceStats.overtakeCount += (G.prevMyRank - myRank);
-    bus.emit('position_change', {
-      racerId: 'local', oldRank: G.prevMyRank, newRank: myRank, gained,
-    });
+  if (G.prevMyRank > 0 && myRank > 0 && myRank !== G.prevMyRank) {
+    // Hysteresis: only emit position change after rank holds for N frames
+    if (myRank === _pendingRank) {
+      _pendingRankFrames++;
+    } else {
+      _pendingRank = myRank;
+      _pendingRankFrames = 1;
+    }
+    if (_pendingRankFrames >= RANK_HYSTERESIS) {
+      const gained = myRank < G.prevMyRank;
+      if (gained) G.raceStats.overtakeCount += (G.prevMyRank - myRank);
+      bus.emit('position_change', {
+        racerId: 'local', oldRank: G.prevMyRank, newRank: myRank, gained,
+      });
+      G.prevMyRank = myRank;
+      _pendingRankFrames = 0;
+    }
+  } else {
+    _pendingRank = myRank;
+    _pendingRankFrames = 0;
+    G.prevMyRank = myRank;
   }
-  G.prevMyRank = myRank;
 
   const wrongWay = G.raceEngine.isWrongWay(
     G.playerVehicle.heading,
