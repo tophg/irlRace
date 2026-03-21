@@ -210,7 +210,9 @@ export class NetPeer {
     view.setUint8(0, PacketType.STATE);
     view.setFloat32(1, state.x, true);
     view.setFloat32(5, state.z, true);
-    const normHeading = ((state.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    const normHeading = Number.isFinite(state.heading)
+      ? ((state.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
+      : 0;
     view.setUint16(9, Math.round(normHeading * 10000), true);
     view.setFloat32(11, state.speed, true);
     view.setUint8(15, Math.round(state.dmgFront ?? 100));
@@ -274,7 +276,9 @@ export class NetPeer {
     const offset = 2 + idBytes.length;
     view.setFloat32(offset, state.x, true);
     view.setFloat32(offset + 4, state.z, true);
-    const normHeading = ((state.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    const normHeading = Number.isFinite(state.heading)
+      ? ((state.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
+      : 0;
     view.setUint16(offset + 8, Math.round(normHeading * 10000), true);
     view.setFloat32(offset + 10, state.speed, true);
     view.setUint8(offset + 14, Math.round(state.dmgFront ?? 100));
@@ -291,7 +295,7 @@ export class NetPeer {
 
   /** Send a game event. */
   broadcastEvent(type: EventType, data: any = {}) {
-    const json = JSON.stringify({ type, ...data });
+    const json = JSON.stringify(data);
     const jsonBytes = _encoder.encode(json);
     const buf = new ArrayBuffer(2 + jsonBytes.length);
     new DataView(buf).setUint8(0, PacketType.EVENT);
