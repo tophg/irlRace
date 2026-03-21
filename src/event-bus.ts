@@ -49,6 +49,9 @@ export interface GameEvents {
 
   /** Speed update (for engine audio) */
   speed: { racerId: string; speed: number; rpm: number };
+
+  /** Mid-race reward awarded */
+  mid_race_reward: { type: string; nitro: number; credits: number; xp: number; combo: number; jackpot: boolean };
 }
 
 // ── Generic typed event bus ──

@@ -127,7 +127,6 @@ let lapOverlayTimeout: number | null = null;
 
 export function showLapOverlay(
   overlay: HTMLElement, lapNum: number, lapTimeMs: number, isBestLap: boolean,
-  nitroReward = 0, isCleanLap = false,
 ) {
   overlay.querySelector('.lap-overlay')?.remove();
   if (lapOverlayTimeout) clearTimeout(lapOverlayTimeout);
@@ -135,19 +134,10 @@ export function showLapOverlay(
   const el = document.createElement('div');
   el.className = `lap-overlay${isBestLap ? ' best-lap' : ''}`;
 
-  let nitroHTML = '';
-  if (nitroReward > 0) {
-    nitroHTML = `<div class="lap-overlay-nitro">⛽ +${nitroReward}% NITRO</div>`;
-    if (isCleanLap) {
-      nitroHTML += `<div class="lap-overlay-clean">✨ CLEAN LAP BONUS</div>`;
-    }
-  }
-
   el.innerHTML = `
     <div class="lap-overlay-title">LAP ${lapNum} COMPLETE</div>
     <div class="lap-overlay-time">${RaceEngine.formatTime(lapTimeMs)}</div>
     ${isBestLap ? '<div class="lap-overlay-best">BEST LAP</div>' : ''}
-    ${nitroHTML}
   `;
   overlay.appendChild(el);
   haptic(isBestLap ? [40, 30, 40] : 30);
@@ -156,7 +146,7 @@ export function showLapOverlay(
     el.classList.add('fade-out');
     setTimeout(() => el.remove(), 500);
     lapOverlayTimeout = null;
-  }, 2500);
+  }, 2000);
 }
 export function destroyHUD() {
   if (disposeSolid) {

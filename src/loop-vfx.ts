@@ -8,6 +8,10 @@ import * as THREE from 'three/webgpu';
 import { GameState } from './types';
 import { G } from './game-context';
 import { getScene } from './scene';
+import { awardReward } from './mid-race-rewards';
+
+/** Convenience: awards a near-miss through the reward module. */
+function awardNearMiss() { awardReward('near_miss'); }
 
 // VFX imports
 import {
@@ -520,7 +524,7 @@ export function updateNearMissDetection(
           const cross = dx * cosH - dz * sinH;
           triggerNearMiss(cross > 0 ? 'right' : 'left');
           triggerNearMissWhoosh(cross > 0 ? 'right' : 'left', camera.position, G.playerVehicle.heading);
-          G.playerVehicle.addNitro(5);
+          awardNearMiss();
           G.raceStats.nearMissCount++;
         }
       }

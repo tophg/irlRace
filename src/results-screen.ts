@@ -10,6 +10,7 @@ import { playRewardsAnimation } from './rewards-animation';
 import { spawnVictoryConfetti, setConfettiContinuous } from './vfx';
 import { showTouchControls } from './input';
 import { showToast } from './mp-lobby';
+import { getMidRaceCredits, getMidRaceXP } from './mid-race-rewards';
 
 // ── AI driver names for results ──
 const AI_DRIVER_NAMES = [
@@ -284,6 +285,7 @@ export async function showResults(
         <div class="lap-breakdown-row"><span>Collisions</span><span>${G.raceStats.collisionCount}</span></div>
         ${G.raceStats.speedDemonTime >= 5 ? `<div class="lap-breakdown-row best"><span>⚡ Speed Demon</span><span>${G.raceStats.speedDemonTime.toFixed(1)}s</span></div>` : ''}
         ${G.raceStats.perfectStart ? '<div class="lap-breakdown-row best"><span>🚀 Perfect Start</span><span>YES</span></div>' : ''}
+        ${getMidRaceCredits() > 0 || getMidRaceXP() > 0 ? `<div class="lap-breakdown-row best" style="border-top:1px solid rgba(255,255,255,0.15);padding-top:4px;"><span>🎯 Mid-Race Bonuses</span><span>+${getMidRaceCredits()} CR / +${getMidRaceXP()} XP</span></div>` : ''}
       </div>
       ${buildRewardHTML(earlyRewards)}
       ${earlyRewards.streakMultiplier > 1 ? `<div style="text-align:center;margin:6px 0;color:${COLORS.GOLD};font-weight:700;">🔥 Win Streak: ${getProgress().winStreak} — ×${earlyRewards.streakMultiplier.toFixed(1)} bonus</div>` : ''}

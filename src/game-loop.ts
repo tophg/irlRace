@@ -55,6 +55,7 @@ import {
   playNitroRelease, setMusicTimeScale, setSfxTimeScale,
 } from './audio';
 import { updateNitroHUD, updateHeatHUD } from './hud';
+import { updateRewards, resetRewards, destroyRewards } from './mid-race-rewards';
 
 import { stepPhysics, initPhysicsStep } from './physics-step';
 import { stopReplayPlayback as stopReplayUI } from './replay-ui';
@@ -146,6 +147,7 @@ export function resetGameLoopState() {
   G._nearMissCooldowns.clear();
   resetVFXState();
   resetRaceEventsState();
+  resetRewards();
 }
 
 /** Remove DOM elements created by the game loop between races. */
@@ -153,6 +155,7 @@ export function cleanupGameLoopDOM() {
   cleanupVFXDOM();
   cleanupDraftingDOM();
   cleanupDamageFlashDOM();
+  destroyRewards();
 }
 
 /** Start the rAF loop. Should be called once after initGameLoop(). */
@@ -472,6 +475,9 @@ function gameLoop(timestamp: number) {
 
     // Near-miss detection
     updateNearMissDetection(camera, timestamp, frameDt, s);
+
+    // Mid-race rewards (combo timer, nitro-extend)
+    if (s === GameState.RACING) updateRewards(gameDt);
 
     // Misc VFX (lens flares, lightning, confetti, speed lines)
     updateMiscVFX(camera, timestamp, frameDt);

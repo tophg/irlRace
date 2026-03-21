@@ -38,6 +38,7 @@ import { initMultiplayerHandler, enterMultiplayerLobby } from './multiplayer-han
 
 // ── Event Bus ──
 import { bus } from './event-bus';
+import { awardReward, breakCombo } from './mid-race-rewards';
 
 // ── Extracted Game Loop ──
 import { initGameLoop, startGameLoop, destroyLeaderboard } from './game-loop';
@@ -890,16 +891,13 @@ bus.on('lap', (e) => {
   playLapFanfare();
   G.netPeer?.broadcastEvent(EventType.LAP_COMPLETE, { lap: e.lapIndex });
 
-  // ── Nitro lap reward ──
-  const NITRO_LAP_REWARD = 20;     // 1/5 of a full 100-unit tank
-  const NITRO_CLEAN_BONUS = 33;    // 1/3 tank bonus for zero collisions this lap
+  // ── Lap rewards via mid-race-rewards module ──
   const lapCollisions = G.raceStats.collisionCount - _lapCollisionSnapshot;
   _lapCollisionSnapshot = G.raceStats.collisionCount;
-  const isClean = lapCollisions === 0;
-  const nitroAmount = NITRO_LAP_REWARD + (isClean ? NITRO_CLEAN_BONUS : 0);
-  if (G.playerVehicle) G.playerVehicle.addNitro(nitroAmount);
+  awardReward('lap_refuel');
+  if (lapCollisions === 0) awardReward('clean_lap');
 
-  showLapOverlay(uiOverlay, e.lapIndex, e.lapTime, e.isBest, nitroAmount, isClean);
+  showLapOverlay(uiOverlay, e.lapIndex, e.lapTime, e.isBest);
 });
 
 bus.on('finish', (e) => {
@@ -915,10 +913,15 @@ bus.on('finish', (e) => {
   }, 3000);
 });
 
+bus.on('collision', (e) => {
+  if (e.aId === 'local' || e.bId === 'local') breakCombo();
+});
+
 bus.on('position_change', (e) => {
   showPositionCallout(e.gained, e.newRank);
   playPositionSFX(e.gained);
   notifyPositionChanged();
+  if (e.gained) awardReward('position_gained');
 });
 
 startGameLoop();
