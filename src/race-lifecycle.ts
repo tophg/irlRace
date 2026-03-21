@@ -580,30 +580,19 @@ export async function startRace() {
     setCameraControlsActive(true); // Bug #23: enable chase camera scroll/tilt controls
     initAudio();
 
-    console.log('[DEBUG-LOAD] pre-render');
     renderer.render(scene, camera);
-    console.log('[DEBUG-LOAD] post-render');
 
     await new Promise(resolve => requestAnimationFrame(resolve));
-    console.log('[DEBUG-LOAD] rAF-1');
     await new Promise(resolve => requestAnimationFrame(resolve));
-    console.log('[DEBUG-LOAD] rAF-2');
 
     // Wait for all async scenery loads (tree GLBs, grandstand) to complete
     // before showing the scene — prevents props popping in during flyover.
     // Note: with GLB memory cache, repeat races complete this step instantly.
     const sceneryLoads = trackData.sceneryGroup.userData._asyncLoads as Promise<void>[] | undefined;
-    console.log('[DEBUG-LOAD] sceneryLoads count:', sceneryLoads?.length ?? 0);
     if (sceneryLoads?.length) {
       updateLoadingProgress(98, 'FINISHING SCENERY');
-      // Add individual tracking for each scenery load
-      for (let i = 0; i < sceneryLoads.length; i++) {
-        sceneryLoads[i].then(() => console.log(`[DEBUG-LOAD] scenery ${i} resolved`))
-                        .catch(e => console.warn(`[DEBUG-LOAD] scenery ${i} rejected:`, e));
-      }
       await Promise.all(sceneryLoads);
     }
-    console.log('[DEBUG-LOAD] scenery done → hideLoading');
 
     hideLoading();
 
