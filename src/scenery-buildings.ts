@@ -127,6 +127,19 @@ const sampleSpacing = Math.max(15, 30 / density);
 const totalSamples = Math.floor(totalLength / sampleSpacing);
 const MAX_PLACEMENTS = isMobile ? 60 : 400;
 
+// Pre-sample spline points for road-overlap rejection
+// Buildings on tight curves can land on a different road section
+const ROAD_CHECK_SAMPLES = 100;
+const roadCheckPts: { x: number; z: number }[] = [];
+for (let i = 0; i < ROAD_CHECK_SAMPLES; i++) {
+  const pt = spline.getPointAt(i / ROAD_CHECK_SAMPLES);
+  roadCheckPts.push({ x: pt.x, z: pt.z });
+}
+const MIN_ROAD_DIST_SQ = 18 * 18; // road half-width(7) + barrier(0.4) + building half-width(~5) + margin(~5.6)
+
+// Minimum distance between building centers to prevent overlap
+const MIN_BUILDING_DIST_SQ = 12 * 12;
+
 for (let si = 0; si < totalSamples && placements.length < MAX_PLACEMENTS; si++) {
   const t = si / totalSamples;
   const p = spline.getPointAt(t);
@@ -148,7 +161,24 @@ for (let si = 0; si < totalSamples && placements.length < MAX_PLACEMENTS; si++) 
         if (ldx * ldx + ldz * ldz < LANDMARK_EXCLUSION_SQ) { nearLandmark = true; break; }
       }
       if (nearLandmark) continue;
-      // Pick a style variant column (0-3) deterministically from position
+
+      // Skip buildings too close to any road section (prevents on-road placement)
+      let onRoad = false;
+      for (const rp of roadCheckPts) {
+        const rdx = px - rp.x; const rdz = pz - rp.z;
+        if (rdx * rdx + rdz * rdz < MIN_ROAD_DIST_SQ) { onRoad = true; break; }
+      }
+      if (onRoad) continue;
+
+      // Skip buildings overlapping existing placements
+      let overlaps = false;
+      for (const existing of placements) {
+        const edx = px - existing.x; const edz = pz - existing.z;
+        if (edx * edx + edz * edz < MIN_BUILDING_DIST_SQ) { overlaps = true; break; }
+      }
+      if (overlaps) continue;
+
+      // Pick a style variant column (0-7) deterministically from position
       const variant = ((Math.abs(Math.round(px * 73 + pz * 137))) & 0xFF) % VARIANT_COUNT;
 
       // Height from variant-specific range, clamped to environment's buildingHeightRange
@@ -668,6 +698,35 @@ if (placements.length > 0) {
       if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true;
       group.add(instancedMesh);
     }
+  }
+
+  // ── Foundation pads: flat boxes beneath each building to bridge terrain gap ──
+  // Extends from building base (pl.y) down to ground plane (Y=-0.5)
+  if (placements.length > 0) {
+    const padGeo = new THREE.BoxGeometry(1, 1, 1);
+    const padMat = new THREE.MeshStandardMaterial({
+      color: 0x3a3a38, roughness: 0.95, metalness: 0,
+    });
+    const padIM = new THREE.InstancedMesh(padGeo, padMat, placements.length);
+    padIM.receiveShadow = true;
+    for (let j = 0; j < placements.length; j++) {
+      const pl = placements[j];
+      const padH = Math.max(0.1, pl.y + 0.5); // height from ground plane (-0.5) to building base
+      const padW = pl.w + 4; // 2-unit overhang each side
+      const padD = pl.d + 4;
+      dummy.position.set(pl.x, pl.y - padH / 2, pl.z);
+      dummy.scale.set(padW, padH, padD);
+      dummy.rotation.set(0, pl.rotY, 0);
+      dummy.updateMatrix();
+      padIM.setMatrixAt(j, dummy.matrix);
+      // Match ground color with slight variation
+      const lum = 0.22 + (((pl.x * 31 + pl.z * 97) & 0xFF) / 255) * 0.06;
+      _c.setRGB(lum, lum, lum * 0.95);
+      padIM.setColorAt(j, _c);
+    }
+    padIM.instanceMatrix.needsUpdate = true;
+    if (padIM.instanceColor) padIM.instanceColor.needsUpdate = true;
+    group.add(padIM);
   }
 
   _buildingInstances = _instances;

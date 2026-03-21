@@ -317,7 +317,7 @@ export function hideLoading() {
 
 
 // Environment flavor text
-const ENV_FLAVOR: Record<string, string> = {
+export const ENV_FLAVOR: Record<string, string> = {
   'Random': 'Let fate decide your track',
   'Washington D.C.': 'Monuments, marble, government district nightlife',
   'Havana': 'Tropical heat, golden hour, palm shadows',
@@ -340,7 +340,7 @@ const ENV_FLAVOR: Record<string, string> = {
   'Nuuk': 'Arctic fjord capital, northern lights over ice',
 };
 
-const ENV_EMOJI: Record<string, string> = {
+export const ENV_EMOJI: Record<string, string> = {
   'Random': '🎲',
   'Washington D.C.': '🏛️',
   'Havana': '🌴',
@@ -362,6 +362,25 @@ const ENV_EMOJI: Record<string, string> = {
   'Lille': '🏰',
   'Nuuk': '🧊',
 };
+
+/** Build environment card grid HTML (reused by singleplayer setup and MP lobby). */
+export function buildEnvGridHTML(): string {
+  return [
+    `<button class="env-card env-card--active" data-env="random" style="--env-accent: #00e5ff">
+      <span class="env-card-emoji">${ENV_EMOJI['Random']}</span>
+      <span class="env-card-name">Random</span>
+      <span class="env-card-desc">${ENV_FLAVOR['Random']}</span>
+    </button>`,
+    ...ENVIRONMENTS.map(e => {
+      const skyHex = '#' + (e.skyTop & 0xFFFFFF).toString(16).padStart(6, '0');
+      return `<button class="env-card" data-env="${e.name}" style="--env-accent: ${skyHex}">
+        <span class="env-card-emoji">${ENV_EMOJI[e.name] || '🏁'}</span>
+        <span class="env-card-name">${e.name}</span>
+        <span class="env-card-desc">${ENV_FLAVOR[e.name] || ''}</span>
+      </button>`;
+    }),
+  ].join('');
+}
 
 // Preview state (Canvas 2D gradient)
 let _previewCanvas: HTMLCanvasElement | null = null;
