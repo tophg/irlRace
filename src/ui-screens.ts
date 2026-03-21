@@ -344,6 +344,8 @@ export const ENV_FLAVOR: Record<string, string> = {
   'Lima': 'Coastal desert capital under perpetual grey marine fog',
   'Iqaluit': 'Arctic Inuit capital, tundra permafrost and colorful prefabs',
   'Ushuaia': 'End of the World, Patagonian mountains meet Antarctic wind',
+  'Vorkuta': 'Abandoned Soviet gulag city, crumbling blocks in frozen wasteland',
+  'Reykjavík': 'Volcanic black lava, colorful corrugated iron, geothermal steam',
 };
 
 export const ENV_EMOJI: Record<string, string> = {
@@ -373,6 +375,8 @@ export const ENV_EMOJI: Record<string, string> = {
   'Lima': '🌫️',
   'Iqaluit': '🇨🇦',
   'Ushuaia': '🇦🇷',
+  'Vorkuta': '☠️',
+  'Reykjavík': '🇮🇸',
 };
 
 /** Build environment card grid HTML (reused by singleplayer setup and MP lobby). */
