@@ -34,6 +34,12 @@ let _ctx: ReplayContext | null = null;
 let _replayKeyHandler: ((e: KeyboardEvent) => void) | null = null;
 let _replayHudUpdater: (() => void) | null = null;
 
+// Document-level handler refs for cleanup (prevent listener leaks)
+let _docMouseMove: ((e: MouseEvent) => void) | null = null;
+let _docMouseUp: (() => void) | null = null;
+let _canvasMouseDown: ((e: MouseEvent) => void) | null = null;
+let _canvasWheel: ((e: WheelEvent) => void) | null = null;
+
 type CameraMode = 'chase' | 'orbit' | 'trackside' | 'helicopter' | 'free' | 'auto';
 
 /**
@@ -219,8 +225,12 @@ export function startReplayPlayback(ctx: ReplayContext) {
     updateHUD();
   };
   scrubBar.addEventListener('mousedown', (e) => { scrubbing = true; handleScrub(e); });
-  document.addEventListener('mousemove', (e) => { if (scrubbing) handleScrub(e); });
-  document.addEventListener('mouseup', () => { scrubbing = false; });
+  const onDocMouseMove = (e: MouseEvent) => { if (scrubbing) handleScrub(e); if (freeDragging && G.replayPlayer?.cameraMode === 'free') G.replayPlayer.rotateFreeCam(-e.movementX * 0.005, -e.movementY * 0.005); };
+  const onDocMouseUp = () => { scrubbing = false; freeDragging = false; };
+  document.addEventListener('mousemove', onDocMouseMove);
+  document.addEventListener('mouseup', onDocMouseUp);
+  _docMouseMove = onDocMouseMove;
+  _docMouseUp = onDocMouseUp;
   scrubBar.addEventListener('touchstart', (e) => { e.preventDefault(); scrubbing = true; handleTouchScrub(e); }, { passive: false });
   scrubBar.addEventListener('touchmove', (e) => { if (scrubbing) { e.preventDefault(); handleTouchScrub(e); } }, { passive: false });
   scrubBar.addEventListener('touchend', () => { scrubbing = false; });
@@ -259,21 +269,20 @@ export function startReplayPlayback(ctx: ReplayContext) {
   // ── Free camera mouse orbit ──
   let freeDragging = false;
   const canvasEl = ctx.renderer.domElement;
-  const onFreeDrag = (e: MouseEvent) => {
-    if (!freeDragging || G.replayPlayer?.cameraMode !== 'free') return;
-    G.replayPlayer.rotateFreeCam(-e.movementX * 0.005, -e.movementY * 0.005);
-  };
-  canvasEl.addEventListener('mousedown', (e) => {
+  const onCanvasMouseDown = (e: MouseEvent) => {
     if (G.replayPlayer?.cameraMode === 'free' && e.button === 0) freeDragging = true;
-  });
-  document.addEventListener('mouseup', () => { freeDragging = false; });
-  document.addEventListener('mousemove', onFreeDrag);
-  canvasEl.addEventListener('wheel', (e) => {
+  };
+  canvasEl.addEventListener('mousedown', onCanvasMouseDown);
+  _canvasMouseDown = onCanvasMouseDown;
+  // mousemove + mouseup are already combined into the document-level handlers above
+  const onCanvasWheel = (e: WheelEvent) => {
     if (G.replayPlayer?.cameraMode === 'free') {
       G.replayPlayer.zoomFreeCam(e.deltaY * 0.05);
       e.preventDefault();
     }
-  }, { passive: false });
+  };
+  canvasEl.addEventListener('wheel', onCanvasWheel, { passive: false });
+  _canvasWheel = onCanvasWheel;
 
   // ── Keyboard shortcuts ──
   const replayKeyHandler = (e: KeyboardEvent) => {
@@ -331,6 +340,14 @@ export function stopReplayPlayback() {
     if (_replayKeyHandler) document.removeEventListener('keydown', _replayKeyHandler);
     _replayKeyHandler = null;
     hud.remove();
+  }
+  // Clean up document-level listeners (prevent listener leak on each replay watch)
+  if (_docMouseMove) { document.removeEventListener('mousemove', _docMouseMove); _docMouseMove = null; }
+  if (_docMouseUp) { document.removeEventListener('mouseup', _docMouseUp); _docMouseUp = null; }
+  // Clean up canvas-level listeners
+  if (_ctx.renderer?.domElement) {
+    if (_canvasMouseDown) { _ctx.renderer.domElement.removeEventListener('mousedown', _canvasMouseDown); _canvasMouseDown = null; }
+    if (_canvasWheel) { _ctx.renderer.domElement.removeEventListener('wheel', _canvasWheel); _canvasWheel = null; }
   }
   _replayHudUpdater = null;
   const style = document.getElementById('replay-styles');
