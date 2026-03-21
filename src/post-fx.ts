@@ -161,7 +161,7 @@ export function setBoostActive(active: boolean) {
 }
 
 /** Get the pipeline for rendering. */
-export function getPostFXPipeline(): THREE.RenderPipeline | null {
+function getPostFXPipeline(): THREE.RenderPipeline | null {
   return pipeline;
 }
 
@@ -180,14 +180,14 @@ export function setExplosionMode(active: boolean) {
 }
 
 /** Update explosion post-FX decay (call from updatePostFX or separately). */
-export function updateExplosionPostFX(dt: number) {
+function updateExplosionPostFX(dt: number) {
   if (!explosionMode) return;
   // Hold elevated but slowly ease down from peak
   uImpactIntensity.value = Math.max(0.4, uImpactIntensity.value - 0.08 * dt);
   uBoostIntensity.value = Math.max(0.3, uBoostIntensity.value - 0.06 * dt);
 }
 
-export function destroyPostFX() {
+function destroyPostFX() {
   pipeline = null;
   explosionMode = false;
   _smoothSlowMo = 0;

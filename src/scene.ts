@@ -501,9 +501,9 @@ export function getEnvironmentByName(name: string): EnvironmentPreset {
   return ENVIRONMENTS.find(e => e.name === name) ?? ENVIRONMENTS[0];
 }
 
-export function getRenderer() { return renderer; }
+function getRenderer() { return renderer; }
 export function getScene() { return scene; }
-export function getCamera() { return camera; }
+function getCamera() { return camera; }
 export function getDirLight() { return dirLight; }
 
 // Reusable temp Colors for applyEnvironment derivations
@@ -515,7 +515,7 @@ let _currentPreset: EnvironmentPreset = ENVIRONMENTS[0];
 /** Get the currently active scenery theme. */
 export function getCurrentTheme(): SceneryTheme { return _currentPreset.scenery; }
 /** Get the currently active environment preset. */
-export function getCurrentPreset(): EnvironmentPreset { return _currentPreset; }
+function getCurrentPreset(): EnvironmentPreset { return _currentPreset; }
 
 /**
  * Darken sky and lighting for rain/storm weather.

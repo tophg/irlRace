@@ -344,11 +344,11 @@ export function disableTiltSteering() {
   }
 }
 
-export function isTiltAvailable(): boolean {
+function isTiltAvailable(): boolean {
   return 'DeviceOrientationEvent' in window;
 }
 
-export function isTiltEnabled(): boolean {
+function isTiltEnabled(): boolean {
   return tiltEnabled;
 }
 

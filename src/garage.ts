@@ -948,7 +948,7 @@ export function destroyGarage() {
   }
 }
 
-export function getSelectedCar(): CarDef {
+function getSelectedCar(): CarDef {
   return CAR_ROSTER[currentIndex];
 }
 

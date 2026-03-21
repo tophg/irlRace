@@ -84,12 +84,12 @@ window.addEventListener('touchmove', (e) => {
 window.addEventListener('touchend', () => { _twoFingerActive = false; }, { passive: true });
 
 /** Set chase distance programmatically. */
-export function setChaseDistance(d: number) {
+function setChaseDistance(d: number) {
   CHASE_DISTANCE = Math.max(0, Math.min(20, d));
 }
 
 /** Set chase tilt (height ratio) programmatically. */
-export function setChaseTilt(ratio: number) {
+function setChaseTilt(ratio: number) {
   CHASE_HEIGHT_RATIO = Math.max(0.5, Math.min(8, ratio));
 }
 

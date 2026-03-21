@@ -678,7 +678,7 @@ export function updateDestructionFragments(dt: number): boolean {
 }
 
 /** Get the wreck position (for camera orbit target). */
-export function getWreckPosition(): THREE.Vector3 | null {
+function getWreckPosition(): THREE.Vector3 | null {
   return wreckPosition;
 }
 

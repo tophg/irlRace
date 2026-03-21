@@ -332,7 +332,7 @@ export function spawnDamageZoneSmoke(pos: THREE.Vector3, severity: number, dt: n
 
 // ── Tire Blowout VFX ──
 
-export function spawnTireBlowout(pos: THREE.Vector3) {
+function spawnTireBlowout(pos: THREE.Vector3) {
   if (!smokeScene) return;
 
   // Dark rubber chunks

@@ -502,7 +502,7 @@ export function spawnGPUFlame(pos: THREE.Vector3, intensity: number, dt = 0.016)
 }
 
 /** Spawn scrape sparks along a barrier contact line. */
-export function spawnGPUScrapeSparks(pos: THREE.Vector3, speed: number, heading: number) {
+function spawnGPUScrapeSparks(pos: THREE.Vector3, speed: number, heading: number) {
   const count = Math.min(Math.floor(Math.abs(speed) * 0.15), 6);
   const sinH = Math.sin(heading);
   const cosH = Math.cos(heading);

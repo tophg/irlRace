@@ -117,7 +117,7 @@ export function playSpraySfx() {
 }
 
 /** Dispose the AudioContext on garage teardown. */
-export function destroyGarageSfx() {
+function destroyGarageSfx() {
   if (garageSfxCtx) {
     garageSfxCtx.close().catch(() => {});
     garageSfxCtx = null;

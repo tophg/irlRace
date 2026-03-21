@@ -118,7 +118,7 @@ export function lockLandscape() {
 }
 
 /** Toggle browser fullscreen mode (hides address bar on Android). */
-export function toggleFullscreen() {
+function toggleFullscreen() {
   if (document.fullscreenElement) {
     document.exitFullscreen();
   } else {

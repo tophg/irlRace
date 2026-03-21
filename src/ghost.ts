@@ -205,7 +205,7 @@ export function updateGhostPlayback() {
 }
 
 /** Get the ghost's best lap time formatted string. */
-export function getGhostBestTime(seed: number): string | null {
+function getGhostBestTime(seed: number): string | null {
   const data = loadGhostForSeed(seed);
   if (!data) return null;
   const s = data.lapTime / 1000;

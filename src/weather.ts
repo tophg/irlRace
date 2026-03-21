@@ -108,11 +108,11 @@ export function getWeatherPhysics(): WeatherPhysics {
 }
 
 // Keep legacy getters for backward compat
-export function getWeatherGripMultiplier(): number {
+function getWeatherGripMultiplier(): number {
   return WEATHER_PHYSICS[currentWeather].gripScale;
 }
 
-export function getWeatherDriftMultiplier(): number {
+function getWeatherDriftMultiplier(): number {
   return WEATHER_PHYSICS[currentWeather].driftScale;
 }
 

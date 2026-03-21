@@ -29,7 +29,7 @@ export function updateBuildingCulling(camPos: THREE.Vector3) {
 }
 
 /** Clean up culling references on race exit. */
-export function destroyBuildingCulling() {
+function destroyBuildingCulling() {
   resetBuildingCullingState();
 }
 

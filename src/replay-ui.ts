@@ -358,6 +358,6 @@ export function stopReplayPlayback() {
 /**
  * Get the HUD update function (for external frame-loop calls).
  */
-export function getReplayHUDUpdater(): (() => void) | null {
+function getReplayHUDUpdater(): (() => void) | null {
   return _replayHudUpdater;
 }

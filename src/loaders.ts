@@ -160,7 +160,7 @@ export function loadCarModelWithProgress(
   });
 }
 
-export function clearModelCache() {
+function clearModelCache() {
   modelCache.clear();
 }
 const glbCache = new Map<string, THREE.Group>();
