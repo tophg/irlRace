@@ -48,8 +48,7 @@ export function playTitleMusic() {
   const s = getSettings();
   const m = getTitleMusic();
   m.volume = s.masterVolume * 0.6;
-  // Start 35s into the track for a more impactful intro; loops from beginning after
-  if (m.currentTime === 0 || m.paused) m.currentTime = 35;
+  if (m.currentTime === 0 || m.paused) m.currentTime = 0;
   m.play().catch(() => console.warn('Browser blocked autoplay build-up'));
   if (gameMusicAudio && !gameMusicAudio.paused) gameMusicAudio.pause();
 }
