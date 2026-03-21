@@ -1,6 +1,6 @@
 /* ── IRL Race — Service Worker (Cache-First) ── */
 
-const CACHE_NAME = 'irl-race-v6-20260320';
+const CACHE_NAME = 'irl-race-__BUILD_HASH__';
 
 // Assets to pre-cache on install
 const PRECACHE_URLS = [
