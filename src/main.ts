@@ -21,6 +21,7 @@ import { loadProgress } from './progression';
 import { initInput, showTouchControls } from './input';
 import { loadSettings, getSettings, showSettings } from './settings';
 import { startReplayPlayback as startReplayUI } from './replay-ui';
+import { titleTracker } from './resource-tracker';
 
 // ── Shared state ──
 import { G } from './game-context';
@@ -182,6 +183,7 @@ function createTitleScene() {
   try {
     const envMap = pmremGen.fromScene(new RoomEnvironment()).texture;
     titleScene.environment = envMap;
+    titleTracker.trackTexture(envMap);
   } catch { /* fallback */ }
   pmremGen.dispose();
 
@@ -244,6 +246,7 @@ function createTitleScene() {
   const ground = new THREE.Mesh(groundGeo, groundMat);
   ground.rotation.x = -Math.PI / 2;
   ground.position.y = 0;
+  titleTracker.track(ground);
   titleScene.add(ground);
 
   // ── Neon floor strip (thin glowing line racing toward car) ──
@@ -257,6 +260,7 @@ function createTitleScene() {
   });
   titleNeonStrip = new THREE.Mesh(stripGeo, stripMat);
   titleNeonStrip.position.set(0, 0.003, 3);
+  titleTracker.track(titleNeonStrip);
   titleScene.add(titleNeonStrip);
 
   // ── Volumetric fog plane ──
@@ -271,6 +275,7 @@ function createTitleScene() {
   titleFogPlane = new THREE.Mesh(fogGeo, fogMat);
   titleFogPlane.rotation.x = -Math.PI / 2;
   titleFogPlane.position.y = 0.15;
+  titleTracker.track(titleFogPlane);
   titleScene.add(titleFogPlane);
 
   // ── Load Phantom (title screen car) ──
@@ -293,6 +298,7 @@ function createTitleScene() {
     }
     titleScene!.add(model);
     titleCarModel = model;
+    titleTracker.track(model);
   }).catch((err) => {
     console.warn('[TitleScreen] Failed to load car:', err);
   });
@@ -465,27 +471,13 @@ function destroyTitleScene() {
     _titleResizeHandler = null;
   }
 
-  // Dispose all GPU resources (Bug #3 fix: prevent GPU memory leak)
+  // Dispose all GPU resources via tracker (replaces manual traverse)
   if (titleScene) {
-    // Dispose environment map
+    // Dispose environment map explicitly (not tracked as scene child)
     if (titleScene.environment) {
-      titleScene.environment.dispose();
       titleScene.environment = null;
     }
-    // Traverse and dispose all geometry + materials
-    titleScene.traverse((obj) => {
-      const mesh = obj as THREE.Mesh;
-      if (mesh.isMesh) {
-        mesh.geometry?.dispose();
-        const mat = mesh.material;
-        if (Array.isArray(mat)) {
-          mat.forEach(m => { (m as THREE.MeshStandardMaterial).map?.dispose(); m.dispose(); });
-        } else if (mat) {
-          (mat as THREE.MeshStandardMaterial).map?.dispose();
-          (mat as THREE.Material).dispose();
-        }
-      }
-    });
+    titleTracker.disposeAll(titleScene);
   }
 
   if (titleCarModel && titleScene) {
