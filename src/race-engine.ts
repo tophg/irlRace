@@ -190,6 +190,10 @@ export class RaceEngine {
    */
   private _cachedRankings: RacerProgress[] = [];
   private _rankingsDirty = true;
+  /** Previous-frame rank order, used as tiebreaker in dead-zone. */
+  private _prevOrder = new Map<string, number>();
+  /** Minimum totalDistance gap required to swap rankings (prevents oscillation). */
+  private static RANK_DEAD_ZONE = 5; // ~1 car length in world units
 
   /** Mark rankings as needing re-sort (called internally after any update). */
   invalidateRankings() { this._rankingsDirty = true; }
@@ -209,10 +213,23 @@ export class RaceEngine {
         if (!a.finished && b.finished) return 1;
         if (a.finished && b.finished) return a.finishTime - b.finishTime;
 
-        // Simple: whoever has traveled further is ahead
-        return b.totalDistance - a.totalDistance;
+        // Simple: whoever has traveled further is ahead —
+        // BUT apply a dead-zone: if the gap is < RANK_DEAD_ZONE,
+        // preserve the previous relative order to prevent oscillation.
+        const gap = b.totalDistance - a.totalDistance;
+        if (Math.abs(gap) < RaceEngine.RANK_DEAD_ZONE) {
+          // Within dead-zone: keep previous order (lower prevRank = stays ahead)
+          const prevA = this._prevOrder.get(a.id) ?? 999;
+          const prevB = this._prevOrder.get(b.id) ?? 999;
+          return prevA - prevB;
+        }
+        return gap;
       });
       this._rankingsDirty = false;
+      // Save current order for next frame's dead-zone tiebreaker
+      for (let i = 0; i < this._cachedRankings.length; i++) {
+        this._prevOrder.set(this._cachedRankings[i].id, i);
+      }
     }
     return this._cachedRankings;
   }

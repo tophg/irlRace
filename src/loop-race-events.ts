@@ -21,7 +21,7 @@ import {
 let _wrongWayBeepTimer = 0;
 let _pendingRank = 0;         // candidate rank waiting for confirmation
 let _pendingRankFrames = 0;   // consecutive frames the candidate rank has held
-const RANK_HYSTERESIS = 10;   // require 10 stable frames (~170ms at 60fps)
+const RANK_HYSTERESIS = 30;   // require 30 stable frames (~500ms at 60fps) to confirm rank change
 let _confirmedRank = 1;       // last hysteresis-confirmed rank (for HUD display)
 
 export function resetRaceEventsState() {
