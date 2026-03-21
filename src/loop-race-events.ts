@@ -118,7 +118,7 @@ export function updateCheckpointsAndHUD(
     G.raceStats.positionSampleCount++;
   }
 
-  if (G.prevMyRank > 0 && myRank > 0 && myRank !== G.prevMyRank) {
+  if (_confirmedRank > 0 && myRank > 0 && myRank !== _confirmedRank) {
     // Hysteresis: only emit position change after rank holds for N frames
     if (myRank === _pendingRank) {
       _pendingRankFrames++;
@@ -127,19 +127,19 @@ export function updateCheckpointsAndHUD(
       _pendingRankFrames = 1;
     }
     if (_pendingRankFrames >= RANK_HYSTERESIS) {
-      const gained = myRank < G.prevMyRank;
-      if (gained) G.raceStats.overtakeCount += (G.prevMyRank - myRank);
+      const gained = myRank < _confirmedRank;
+      if (gained) G.raceStats.overtakeCount += (_confirmedRank - myRank);
       bus.emit('position_change', {
-        racerId: 'local', oldRank: G.prevMyRank, newRank: myRank, gained,
+        racerId: 'local', oldRank: _confirmedRank, newRank: myRank, gained,
       });
-      G.prevMyRank = myRank;
       _confirmedRank = myRank;
       _pendingRankFrames = 0;
     }
   } else {
     _pendingRank = myRank;
     _pendingRankFrames = 0;
-    G.prevMyRank = myRank;
+    // On first frame or when rank matches confirmed, keep confirmed in sync
+    if (_confirmedRank <= 0 && myRank > 0) _confirmedRank = myRank;
   }
 
   const wrongWay = G.raceEngine.isWrongWay(

@@ -113,7 +113,6 @@ export const G = {
   spectateHudEl: null as HTMLElement | null,
 
   // ── UI State ──
-  prevMyRank: 0,
   sessionWins: new Map<string, number>(),
   postWinnerTimer: null as number | null,
   debugVisible: false,

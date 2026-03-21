@@ -218,7 +218,6 @@ export function clearRaceObjects() {
   G.driftSfxCooldown = 0;
   G.lbLastUpdate = 0;
   G.spectateTargetId = null;
-  G.prevMyRank = 0;
   destroySpectateHUD();
 
   // Safety-net: dispose any tracked GPU resources that individual cleanup missed
