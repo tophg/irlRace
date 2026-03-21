@@ -1635,6 +1635,30 @@ canvas { display: block; }
   100% { transform: scale(3); opacity: 0; }
 }
 
+/* ── Nitro reward lines ── */
+.lap-overlay-nitro {
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--col-cyan);
+  text-shadow: 0 0 10px rgba(0,229,255,0.5);
+  margin-top: 6px;
+  letter-spacing: 2px;
+  animation: nitro-reward-pop 0.4s ease-out 0.3s both;
+}
+.lap-overlay-clean {
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--col-yellow);
+  text-shadow: 0 0 8px rgba(255,215,0,0.5);
+  margin-top: 2px;
+  letter-spacing: 2px;
+  animation: nitro-reward-pop 0.4s ease-out 0.5s both;
+}
+@keyframes nitro-reward-pop {
+  0% { opacity: 0; transform: translateY(8px) scale(0.8); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* ── Speed Lines Overlay (nitro/high speed) ── */
 .speed-lines-overlay {
   position: fixed; inset: 0; z-index: 60;
