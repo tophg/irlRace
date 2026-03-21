@@ -95,15 +95,17 @@ export function buildTrackFromControlPoints(
     checkpoints.push({ position, tangent, index: i, t });
   }
 
+  // Bake distance field BEFORE scenery so getTerrainHeight() has DFT data
+  // for accurate building Y placement (DFT damping + transition dip)
+  const distanceField = bakeDistanceField(finalSpline);
+  updateGroundDistanceField(distanceField);
+
   const sceneryGroup = generateScenery(finalSpline, rng, getCurrentTheme(), roadMesh);
   const bvh = new SplineBVH(finalSpline, 800);
 
   // Build ramps from user definitions (or empty if none provided)
   const rampDefs: RampDef[] = ramps ?? [];
   const rampGroup = buildRampGroup(finalSpline, rampDefs);
-
-  // Bake distance field for ground zone blending
-  const distanceField = bakeDistanceField(finalSpline);
 
   return { spline: finalSpline, roadMesh, barrierLeft, barrierRight, shoulderMesh, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures, rampGroup, rampDefs, distanceField };
 }
@@ -151,20 +153,24 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
     checkpoints.push({ position, tangent, index: i, t });
   }
 
-  // ── 9. Scenery ──
+  // ── 9. Bake DFT BEFORE scenery so getTerrainHeight() has damping data ──
+  const distanceField = bakeDistanceField(finalSpline);
+  updateGroundDistanceField(distanceField);
+
+  // ── 10. Scenery ──
   const sceneryGroup = generateScenery(finalSpline, rng, getCurrentTheme(), roadMesh);
 
-  // ── 10. Build BVH for O(log N) nearest-point queries ──
+  // ── 11. Build BVH for O(log N) nearest-point queries ──
   const bvh = new SplineBVH(finalSpline, 800);
 
   // ── 7b. Place ramps on long straights ──
   const rampDefs = placeRampsOnStraights(curvatures, speedProfile, totalLength, rng);
   const rampGroup = buildRampGroup(finalSpline, rampDefs);
 
-  // ── 11. Quality score ──
+  // ── 12. Quality score ──
   const qualityScore = scoreTrack(curvatures, totalLength, speedProfile);
 
-  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, shoulderMesh, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures, rampGroup, rampDefs, distanceField: bakeDistanceField(finalSpline) };
+  const data: TrackData = { spline: finalSpline, roadMesh, barrierLeft, barrierRight, shoulderMesh, kerbGroup, checkpoints, sceneryGroup, totalLength, bvh, speedProfile, curvatures, rampGroup, rampDefs, distanceField };
   return { data, qualityScore };
 }
 
@@ -938,7 +944,7 @@ function buildKerbs(spline: THREE.CatmullRomCurve3, curvatures: number[]): THREE
  */
 // SCENERY — extracted to track-scenery.ts
 import { generateScenery, updateSceneryWind } from './track-scenery';
-import { getCurrentTheme } from './scene';
+import { getCurrentTheme, updateGroundDistanceField } from './scene';
 import { COLORS } from './colors';
 export { generateScenery, updateSceneryWind };
 
