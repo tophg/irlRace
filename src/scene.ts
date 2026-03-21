@@ -981,24 +981,25 @@ export async function initScene(container: HTMLElement) {
   const hill2 = sin(mul(gx, 0.022).add(3.7)).mul(sin(mul(gz, 0.018).add(1.2))).mul(1.0);
   const hill3 = cos(mul(gx, 0.045).add(7.1)).mul(sin(mul(gz, 0.035).add(5.3))).mul(0.5);
   const terrain = add(add(hill1, hill2), hill3);
-  // Round 2 fix: dead zone widened further (0.20→0.40) — hills start ~78 units from road center
-  const dispDamp = smoothstep(0.20, 0.40, dist);
-  // Round 2 fix: deeper transition dip (-0.5) over wider range to guarantee ground stays below road
-  const transitionDip = mul(mul(smoothstep(0.0, 0.12, dist), smoothstep(0.30, 0.12, dist)), -0.5);
+  // Round 3: dead zone pushed far out — hills don't start until ~117 units from road center
+  const dispDamp = smoothstep(0.30, 0.55, dist);
+  // Round 3: deep trench (-2.0) around the road. At dist≈0.15 the ground is forced
+  // 2.0 units below the base plane, guaranteeing it stays well under the road surface
+  // even on flat sections. The bell shape fades back to 0 by dist≈0.40.
+  const transitionDip = mul(mul(smoothstep(0.0, 0.15, dist), smoothstep(0.40, 0.15, dist)), -2.0);
   const dampedTerrain = add(mul(terrain, dispDamp), transitionDip);
   // Displace along Z (which becomes Y after -90° X rotation)
   groundMat.positionNode = add(positionLocal, vec3(0, 0, dampedTerrain));
 
-  // Round 2 fix: polygonOffset biases ground fragments behind road in depth buffer
-  // This is the definitive GPU-level fix for Z-fighting between co-planar surfaces
+  // polygonOffset: GPU depth-bias to resolve any remaining Z-fighting
   groundMat.polygonOffset = true;
-  groundMat.polygonOffsetFactor = 2;
-  groundMat.polygonOffsetUnits = 2;
+  groundMat.polygonOffsetFactor = 4;
+  groundMat.polygonOffsetUnits = 4;
 
   groundMesh = new THREE.Mesh(groundGeo, groundMat);
   groundMesh.rotation.x = -Math.PI / 2;
-  // Round 2 fix: deeper Y offset (-0.3) to create clear separation from road (Y≈0.01)
-  groundMesh.position.y = -0.3;
+  // Round 3: ground base at Y=-0.5 — full half-meter below road surface
+  groundMesh.position.y = -0.5;
   groundMesh.receiveShadow = true;
   groundMesh.renderOrder = -1;
   scene.add(groundMesh);
