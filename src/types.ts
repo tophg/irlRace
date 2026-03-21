@@ -167,6 +167,7 @@ export interface RacerProgress {
   position: THREE.Vector3;
   rawT: number;         // raw spline parameter t (0–1) for position on track
   prevT: number;        // previous frame's raw spline t (for wraparound detection)
+  totalDistance: number; // cumulative spline distance from race start (monotonic, never wraps)
   dnf?: boolean;
   lapTimes: number[];
   lastLapStart: number;

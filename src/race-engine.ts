@@ -35,6 +35,7 @@ export class RaceEngine {
       position: new THREE.Vector3(),
       rawT: initialT,
       prevT: initialT,
+      totalDistance: 0,
       lapTimes: [],
       lastLapStart: 0,
     });
@@ -97,6 +98,17 @@ export class RaceEngine {
       // Wrap-around crossing for checkpoint 0 at t≈0 (prevT near 1.0, currT near 0.0)
       else if (cpT < 0.05 && prevT > 0.9 && currT < 0.1) {
         triggered = true;
+      }
+    }
+
+    // ── Accumulate total spline distance (monotonic, never wraps) ──
+    if (rawT !== undefined && racer.prevT !== undefined) {
+      let deltaT = rawT - racer.prevT;
+      // Handle wrap-around: if prevT was near 1.0 and rawT is near 0.0
+      if (deltaT < -0.5) deltaT += 1.0;
+      // Ignore backwards movement (wrong-way driving)
+      if (deltaT > 0) {
+        racer.totalDistance += deltaT * this.totalLength;
       }
     }
 
@@ -164,11 +176,12 @@ export class RaceEngine {
   }
 
   /**
-   * Get sorted rankings using total distance from start line.
-   * Higher distance = further ahead in the race.
+   * Get sorted rankings using cumulative spline distance.
+   * Higher totalDistance = further ahead in the race.
+   * This is the single source of truth for position — no wrap-around
+   * guards, no checkpoint-gated progress. Just monotonic distance.
    */
   getRankings(): RacerProgress[] {
-    // Return a sorted copy — never mutate the internal list in-place
     return [...this._racersList].sort((a, b) => {
       // DNF always last
       if (a.dnf && !b.dnf) return 1;
@@ -179,37 +192,9 @@ export class RaceEngine {
       if (!a.finished && b.finished) return 1;
       if (a.finished && b.finished) return a.finishTime - b.finishTime;
 
-      // Distance-based ranking: total distance from start line
-      const progA = this.continuousProgress(a);
-      const progB = this.continuousProgress(b);
-      return progB - progA;
+      // Simple: whoever has traveled further is ahead
+      return b.totalDistance - a.totalDistance;
     });
-  }
-
-  /**
-   * Compute continuous progress as total distance traveled from the start line.
-   * Formula: effectiveLap * totalLength + rawT * totalLength
-   *
-   * Critical fix: rawT wraps from ~1.0 → ~0.0 when crossing the start line,
-   * but lapIndex only increments after checkpoint 0 actually triggers (which
-   * has a detection delay). During that window, naive progress drops by ~1 lap.
-   * We detect this wrap-around: if checkpointIndex === 0 (all interior CPs passed,
-   * waiting for start/finish) AND rawT is in the first 15% of the track, the racer
-   * has effectively started the next lap for ranking purposes.
-   */
-  private continuousProgress(r: RacerProgress): number {
-    let effectiveLap = r.lapIndex;
-
-    // Detect wrap-around: racer passed all checkpoints (cpIndex reset to 0)
-    // and rawT has crossed from end of track to start — they're effectively
-    // on the next lap but the lapIndex hasn't incremented yet.
-    // Threshold 0.35 covers the window between rawT wrapping and checkpoint 0
-    // actually triggering, even at low framerates or high speeds.
-    if (r.checkpointIndex === 0 && r.rawT < 0.35 && r.lapIndex < this.totalLaps) {
-      effectiveLap += 1;
-    }
-
-    return effectiveLap * this.totalLength + r.rawT * this.totalLength;
   }
 
   /** Get a racer's progress. */
