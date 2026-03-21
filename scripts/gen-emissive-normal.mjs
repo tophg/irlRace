@@ -1,0 +1,249 @@
+/**
+ * Generate emissive mask and normal map from hi-res diffuse tile images.
+ * 
+ * EMISSIVE MASK:
+ *   - Rows 0-3 are window tiles. The shader checks emissiveColor.r > 0.3
+ *     and only enables emissive glow + interior mapping when that's true.
+ *   - Row 2 (lit windows) → bright warm glow (luminance-based window detection)
+ *   - Rows 0, 1 (curtains, blinds) → faint warm glow (slightly visible light edges)
+ *   - Row 3 (dark windows) → very faint cool glow (ambient reflections)
+ *   - Rows 4-7 (wall/ground/cornice/roof) → pure black (no glow)
+ * 
+ * NORMAL MAP:
+ *   - Convert each tile to grayscale (height map)
+ *   - Apply 3×3 Sobel operator to compute surface gradients
+ *   - Encode as tangent-space normal: N = normalize(-dX, -dY, strength)
+ *   - Remap [-1,1] → [0,255]: R = (nx+1)*127.5, G = (ny+1)*127.5, B = (nz+1)*127.5
+ *   - Flat surface = (128, 128, 255) which is the purple/blue default
+ * 
+ * Usage: node gen_emissive_normal.mjs <tiles_dir> <output_emissive> <output_normal> [tileSize=512]
+ */
+import { readdir } from 'fs/promises';
+import { join } from 'path';
+import sharp from 'sharp';
+
+const [,, tilesDir, outEmissive, outNormal, tileSizeStr = '512'] = process.argv;
+if (!tilesDir || !outEmissive || !outNormal) {
+  console.error('Usage: node gen_emissive_normal.mjs <tiles_dir> <output_emissive> <output_normal> [tileSize]');
+  process.exit(1);
+}
+
+const TILE_SIZE = parseInt(tileSizeStr, 10);
+const GRID = 8;
+const ATLAS_SIZE = TILE_SIZE * GRID;
+
+console.log(`Generating ${ATLAS_SIZE}×${ATLAS_SIZE} emissive mask and normal map from ${tilesDir}`);
+
+// Read all tile images
+const files = await readdir(tilesDir);
+const tileFiles = files.filter(f => /^r\d+_c\d+\.png$/.test(f)).sort();
+console.log(`Found ${tileFiles.length} tiles`);
+
+// ── Helper: Luminance from RGB ──
+function luminance(r, g, b) {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+// ── Helper: Generate emissive tile from diffuse ──
+// Uses luminance thresholding to detect bright/lit regions (glass areas)
+// and paints them with warm window glow color
+async function generateEmissiveTile(tileBuffer, row) {
+  // Get raw RGBA pixel data
+  const { data, info } = await sharp(tileBuffer)
+    .resize(TILE_SIZE, TILE_SIZE, { fit: 'fill' })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  
+  const w = info.width, h = info.height;
+  const outBuf = Buffer.alloc(w * h * 3); // RGB output
+
+  if (row >= 4) {
+    // Rows 4-7: pure black (wall/ground/cornice/roof) — no emissive
+    return outBuf;
+  }
+
+  // Row-specific glow behavior:
+  // Row 0 (curtains): faint warm glow where curtain fabric is backlit
+  // Row 1 (blinds): moderate warm glow through slats
+  // Row 2 (lit windows): strong warm glow — interior light visible
+  // Row 3 (dark windows): very faint cool/neutral — ambient sky reflections
+
+  // Glow color and intensity per row
+  const glowConfigs = [
+    { r: 255, g: 200, b: 100, threshold: 90, intensity: 0.35 },  // Row 0: faint warm
+    { r: 255, g: 204, b: 102, threshold: 80, intensity: 0.50 },  // Row 1: moderate warm
+    { r: 255, g: 204, b: 102, threshold: 60, intensity: 1.00 },  // Row 2: full warm glow
+    { r: 180, g: 200, b: 220, threshold: 100, intensity: 0.15 }, // Row 3: very faint cool
+  ];
+  const config = glowConfigs[row];
+
+  // Step 1: Compute luminance for each pixel
+  const lumMap = new Float32Array(w * h);
+  let maxLum = 0, minLum = 255;
+  for (let i = 0; i < w * h; i++) {
+    const idx = i * 4;
+    const lum = luminance(data[idx], data[idx + 1], data[idx + 2]);
+    lumMap[i] = lum;
+    if (lum > maxLum) maxLum = lum;
+    if (lum < minLum) minLum = lum;
+  }
+
+  // Step 2: For lit windows (row 2), use adaptive thresholding
+  // The glass area tends to be brighter (lit from inside) than the surrounding stone/brick
+  // For other rows, use a similar but gentler approach
+  const lumRange = maxLum - minLum;
+  const adaptiveThreshold = minLum + lumRange * (config.threshold / 255);
+
+  // Step 3: Create glow mask with soft edges
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const lum = lumMap[i];
+      
+      // Basic luminance gate
+      let glowFactor = 0;
+      if (lum > adaptiveThreshold) {
+        // Soft transition: ramp from 0 to 1 over threshold range
+        const rampWidth = lumRange * 0.15;
+        glowFactor = Math.min(1, (lum - adaptiveThreshold) / Math.max(1, rampWidth));
+      }
+
+      // Spatial weighting: windows tend to be in center of tile, not edges
+      // This prevents stone texture highlights at edges from being marked as emissive
+      const cx = (x / w - 0.5) * 2; // -1 to 1
+      const cy = (y / h - 0.5) * 2;
+      const edgeDist = Math.max(Math.abs(cx), Math.abs(cy));
+      const spatialWeight = edgeDist < 0.75 ? 1.0 : 
+                            edgeDist < 0.92 ? 1.0 - (edgeDist - 0.75) / 0.17 : 0.0;
+      
+      glowFactor *= spatialWeight * config.intensity;
+      
+      const outIdx = i * 3;
+      outBuf[outIdx]     = Math.round(config.r * glowFactor);
+      outBuf[outIdx + 1] = Math.round(config.g * glowFactor);
+      outBuf[outIdx + 2] = Math.round(config.b * glowFactor);
+    }
+  }
+
+  return outBuf;
+}
+
+// ── Helper: Generate normal map tile from diffuse using 3×3 Sobel ──
+async function generateNormalTile(tileBuffer) {
+  // Get grayscale data (used as height map)
+  const grayData = await sharp(tileBuffer)
+    .resize(TILE_SIZE, TILE_SIZE, { fit: 'fill' })
+    .greyscale()
+    .raw()
+    .toBuffer();
+  
+  const w = TILE_SIZE, h = TILE_SIZE;
+  const normalBuf = Buffer.alloc(w * h * 3); // RGB output
+  
+  // Sobel strength: controls depth of normal map effect
+  // Higher = flatter appearance, lower = more pronounced bumps
+  // The existing normal map looks moderately detailed, ~1.5-2.0 range
+  const strength = 1.5;
+  
+  // Helper to sample height map with clamping
+  const sample = (x, y) => {
+    x = Math.max(0, Math.min(w - 1, x));
+    y = Math.max(0, Math.min(h - 1, y));
+    return grayData[y * w + x] / 255.0;
+  };
+  
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      // 3×3 Sobel kernel for X gradient:
+      // [-1  0  1]
+      // [-2  0  2]
+      // [-1  0  1]
+      const dX = (
+        -1 * sample(x-1, y-1) + 1 * sample(x+1, y-1) +
+        -2 * sample(x-1, y  ) + 2 * sample(x+1, y  ) +
+        -1 * sample(x-1, y+1) + 1 * sample(x+1, y+1)
+      );
+      
+      // 3×3 Sobel kernel for Y gradient:
+      // [-1 -2 -1]
+      // [ 0  0  0]
+      // [ 1  2  1]
+      const dY = (
+        -1 * sample(x-1, y-1) + -2 * sample(x, y-1) + -1 * sample(x+1, y-1) +
+         1 * sample(x-1, y+1) +  2 * sample(x, y+1) +  1 * sample(x+1, y+1)
+      );
+      
+      // Construct tangent-space normal vector
+      // N = normalize(-dX, -dY, 1/strength)
+      const nx = -dX;
+      const ny = -dY;
+      const nz = 1.0 / strength;
+      const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      
+      // Remap from [-1,1] to [0,255]
+      const outIdx = (y * w + x) * 3;
+      normalBuf[outIdx]     = Math.round(((nx / len) * 0.5 + 0.5) * 255); // R = X
+      normalBuf[outIdx + 1] = Math.round(((ny / len) * 0.5 + 0.5) * 255); // G = Y
+      normalBuf[outIdx + 2] = Math.round(((nz / len) * 0.5 + 0.5) * 255); // B = Z
+    }
+  }
+  
+  return normalBuf;
+}
+
+// ── Process all tiles ──
+const emissiveComposites = [];
+const normalComposites = [];
+
+for (const file of tileFiles) {
+  const match = file.match(/r(\d+)_c(\d+)\.png/);
+  if (!match) continue;
+  const row = parseInt(match[1], 10);
+  const col = parseInt(match[2], 10);
+  const x = col * TILE_SIZE;
+  const y = row * TILE_SIZE;
+
+  const filePath = join(tilesDir, file);
+  const tileBuffer = await sharp(filePath).png().toBuffer();
+
+  // Generate emissive tile
+  const emissiveRaw = await generateEmissiveTile(tileBuffer, row);
+  const emissivePng = await sharp(emissiveRaw, { raw: { width: TILE_SIZE, height: TILE_SIZE, channels: 3 } })
+    .png()
+    .toBuffer();
+  emissiveComposites.push({ input: emissivePng, left: x, top: y });
+
+  // Generate normal map tile
+  const normalRaw = await generateNormalTile(tileBuffer);
+  const normalPng = await sharp(normalRaw, { raw: { width: TILE_SIZE, height: TILE_SIZE, channels: 3 } })
+    .png()
+    .toBuffer();
+  normalComposites.push({ input: normalPng, left: x, top: y });
+
+  const rowType = ['curtains', 'blinds', 'lit', 'dark', 'wall', 'ground', 'cornice', 'roof'][row];
+  console.log(`  ${file} → (${x}, ${y}) [${rowType}]`);
+}
+
+// ── Assemble emissive atlas ──
+console.log('\\nAssembling emissive mask atlas...');
+const emissiveBase = await sharp({
+  create: { width: ATLAS_SIZE, height: ATLAS_SIZE, channels: 3, background: { r: 0, g: 0, b: 0 } }
+}).png().toBuffer();
+
+await sharp(emissiveBase)
+  .composite(emissiveComposites)
+  .toFile(outEmissive);
+console.log(`✅ Emissive mask saved: ${outEmissive} (${ATLAS_SIZE}×${ATLAS_SIZE})`);
+
+// ── Assemble normal map atlas ──
+console.log('Assembling normal map atlas...');
+// Base = flat normal (128, 128, 255)
+const normalBase = await sharp({
+  create: { width: ATLAS_SIZE, height: ATLAS_SIZE, channels: 3, background: { r: 128, g: 128, b: 255 } }
+}).png().toBuffer();
+
+await sharp(normalBase)
+  .composite(normalComposites)
+  .toFile(outNormal);
+console.log(`✅ Normal map saved: ${outNormal} (${ATLAS_SIZE}×${ATLAS_SIZE})`);

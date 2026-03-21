@@ -39,7 +39,7 @@ const rowCount = isMobile ? 1 : Math.min(3, Math.max(1, T.buildingRowCount ?? 2)
 const gapChance = isMobile ? Math.max(T.buildingGapChance ?? 0.15, 0.3) : (T.buildingGapChance ?? 0.15);
 
 // ── AI-generated facade atlas (8×4 = 32 tiles, high-resolution PNGs) ──
-const ATLAS_COLS = 8, ATLAS_ROWS = 8;
+const ATLAS_COLS = 8, ATLAS_ROWS = 5;
 
 // Each environment has its own AI-generated atlas with photorealistic textures
 const STYLE_ATLAS: Record<string, string> = {
@@ -61,15 +61,12 @@ atlasTexture.wrapS = THREE.RepeatWrapping;
 atlasTexture.wrapT = THREE.RepeatWrapping;
 atlasTexture.colorSpace = THREE.SRGBColorSpace;
 atlasTexture.anisotropy = 16; // max anisotropy for sharper facades at oblique angles
-// Atlas layout (8×8 grid, square tiles):
-//   Row 0: Window (closed)    — curtains, blinds, shutters
-//   Row 1: Window (open/lit)  — warm interior, plants
-//   Row 2: Wall pier (plain)  — windowless wall surfaces
-//   Row 3: Wall pier (detail) — AC units, pipes, vents
-//   Row 4: Ground storefront  — shops, doors, awnings (front face)
-//   Row 5: Ground wall        — plain wall at street level (side face)
-//   Row 6: Cornice / trim     — decorative ledges, moldings
-//   Row 7: Roof / cap        — parapet caps, roof edges
+// Atlas layout (8×5 grid):
+//   Row 0: Window (single style per column)
+//   Row 1: Wall pier (windowless wall surfaces)
+//   Row 2: Ground storefront / doors (front & side)
+//   Row 3: Cornice / trim — decorative ledges, moldings
+//   Row 4: Roof / cap — parapet caps, roof edges
 const VARIANT_COUNT = 8;
 
 // Per-tile height clamps (now per-variant column for consistency)
@@ -114,7 +111,7 @@ if (T.landmarks?.length) {
 }
 
 // Collect placements
-interface BoxPlacement { x: number; z: number; w: number; h: number; d: number; rotY: number; tile: number; }
+interface BoxPlacement { x: number; y: number; z: number; w: number; h: number; d: number; rotY: number; tile: number; }
 
 const totalLength = spline.getLength();
 const sampleSpacing = Math.max(15, 30 / density);
@@ -152,7 +149,7 @@ for (let si = 0; si < totalSamples && placements.length < MAX_PLACEMENTS; si++) 
       const d = 8 + rng() * 10;
 
       const rotY = Math.atan2(tan.x, tan.z) + (side > 0 ? Math.PI : 0) + (rng() - 0.5) * 0.1;
-      placements.push({ x: px, z: pz, w, h, d, rotY, tile: variant });
+      placements.push({ x: px, y: p.y, z: pz, w, h, d, rotY, tile: variant });
     }
   }
 }
@@ -283,7 +280,7 @@ if (placements.length > 0) {
 
         // Ground zone for this column
         {
-          const zUV = tileUV(isWindowCol ? faceGroundTile : (4 * ATLAS_COLS + V));
+          const zUV = tileUV(isWindowCol ? faceGroundTile : (1 * ATLAS_COLS + V));
           const zTW = zUV.uMax - zUV.uMin;
           const zTH = zUV.vMax - zUV.vMin;
           const baseIdx = positions.length / 3;
@@ -308,14 +305,12 @@ if (placements.length > 0) {
         // Mid zone for this column (repeating vertically)
         if (midFrac > 0) {
           for (let tileR = 0; tileR < midVTiles; tileR++) {
-            // Per-tile: pick window state (rows 0-3) or wall pier (row 4)
+            // Per-tile: window (row 0) or wall pier (row 1)
             let tileMid: number;
             if (isWindowCol) {
-              const tileHash = ((col * 31 + tileR * 53 + V * 73 + Math.round(faceW) * 17) & 0xFF);
-              const winRow = tileHash % 4; // randomly pick from 4 window states
-              tileMid = winRow * ATLAS_COLS + V;
+              tileMid = 0 * ATLAS_COLS + V; // single window row
             } else {
-              tileMid = 4 * ATLAS_COLS + V; // wall pier, always row 4
+              tileMid = 1 * ATLAS_COLS + V; // wall pier, row 1
             }
             const zUV = tileUV(tileMid);
             const zTW = zUV.uMax - zUV.uMin;
@@ -573,15 +568,14 @@ if (placements.length > 0) {
     // Parse height bucket from key for hashing
     const hBucketNum = Math.floor(avgH / HEIGHT_BUCKET_SIZE);
 
-    // Tile mapping: V3 atlas layout (one column per building)
-    // Rows 0-3: window states (curtains/blinds/lit/dark)
-    // Row 4: wall pier, Row 5: ground, Row 6: cornice, Row 7: roof
-    const windowTile     = 0 * ATLAS_COLS + variant; // Row 0 (base window — actual row picked per-tile)
-    const wallPierTile   = 4 * ATLAS_COLS + variant; // Row 4 (wall pier)
-    const groundTile     = 5 * ATLAS_COLS + variant; // Row 5 (ground/storefront)
-    const sideGroundTile = 4 * ATLAS_COLS + variant; // Side ground = wall pier (row 4)
-    const roofCapTile    = 7 * ATLAS_COLS + variant; // Row 7 (roof cap)
-    const singleTile     = 4 * ATLAS_COLS + variant; // Single-story = wall surface
+    // Tile mapping: 5-row atlas layout (one column per building)
+    // Row 0: window, Row 1: wall pier, Row 2: ground, Row 3: cornice, Row 4: roof
+    const windowTile     = 0 * ATLAS_COLS + variant; // Row 0 (window)
+    const wallPierTile   = 1 * ATLAS_COLS + variant; // Row 1 (wall pier)
+    const groundTile     = 2 * ATLAS_COLS + variant; // Row 2 (ground/storefront)
+    const sideGroundTile = 1 * ATLAS_COLS + variant; // Side ground = wall pier (row 1)
+    const roofCapTile    = 4 * ATLAS_COLS + variant; // Row 4 (roof cap)
+    const singleTile     = 1 * ATLAS_COLS + variant; // Single-story = wall surface
 
     // Pass physical dimensions — addComposedFace computes tile repeats internally
     const geo0 = buildComposedBox(groundTile, sideGroundTile, windowTile, wallPierTile, roofCapTile, singleTile, false, avgW, avgH, avgD);
@@ -606,7 +600,7 @@ if (placements.length > 0) {
 
       for (let j = 0; j < bucket.length; j++) {
         const pl = bucket[j];
-        dummy.position.set(pl.x, pl.h / 2, pl.z);
+        dummy.position.set(pl.x, pl.y + pl.h / 2, pl.z);
         dummy.scale.set(pl.w, pl.h, pl.d);
 
         // Per-environment silhouette variation
@@ -627,7 +621,7 @@ if (placements.length > 0) {
         const lum = 0.9 + (((pl.x * 31 + pl.z * 97) & 0xFF) / 255) * 0.2;
         _c.setRGB(lum, lum, lum);
         instancedMesh.setColorAt(j, _c);
-        _instances.push(new THREE.Vector3(pl.x, 0, pl.z));
+        _instances.push(new THREE.Vector3(pl.x, pl.y, pl.z));
       }
       instancedMesh.instanceMatrix.needsUpdate = true;
       if (instancedMesh.instanceColor) instancedMesh.instanceColor.needsUpdate = true;
@@ -669,7 +663,7 @@ if (placements.length > 0) {
     const roofCapIM = new THREE.InstancedMesh(roofGeo, roofCapMat, placements.length);
     for (let j = 0; j < placements.length; j++) {
       const pl = placements[j];
-      dummy.position.set(pl.x, pl.h, pl.z);
+      dummy.position.set(pl.x, pl.y + pl.h, pl.z);
       dummy.scale.set(pl.w * 1.1, pl.h * 0.25, pl.d * 1.1); // overhang + proportional height
       dummy.rotation.set(0, pl.rotY, 0);
       dummy.updateMatrix();
@@ -698,7 +692,7 @@ if (placements.length > 0) {
         const setbackH = pl.h * 0.4;   // 40% of base height
         const setbackW = pl.w * 0.6;   // 60% narrower
         const setbackD = pl.d * 0.6;
-        dummy.position.set(pl.x, pl.h + setbackH / 2, pl.z);
+        dummy.position.set(pl.x, pl.y + pl.h + setbackH / 2, pl.z);
         dummy.scale.set(setbackW, setbackH, setbackD);
         dummy.rotation.set(0, pl.rotY, 0);
         dummy.updateMatrix();
@@ -745,7 +739,7 @@ if (placements.length > 0) {
       const awningD = 2.5;
       dummy.position.set(
         pl.x + Math.sin(pl.rotY) * (pl.d / 2 + 1),
-        1.5,
+        pl.y + 1.5,
         pl.z + Math.cos(pl.rotY) * (pl.d / 2 + 1),
       );
       dummy.scale.set(awningW, awningD, 1);
@@ -785,7 +779,7 @@ if (placements.length > 0) {
         // Offset from center of roof
         const offX = ((((pl.x * 71) & 0xFF) / 255) - 0.5) * pl.w * 0.4;
         const offZ = ((((pl.z * 43) & 0xFF) / 255) - 0.5) * pl.d * 0.4;
-        dummy.position.set(pl.x + offX, pl.h + propH / 2, pl.z + offZ);
+        dummy.position.set(pl.x + offX, pl.y + pl.h + propH / 2, pl.z + offZ);
         dummy.scale.set(propW, propH, propD);
         dummy.rotation.set(0, pl.rotY + (((pl.x * 13) & 0xFF) / 255) * 0.5, 0);
         dummy.updateMatrix();

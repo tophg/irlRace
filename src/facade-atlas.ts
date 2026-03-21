@@ -5,9 +5,10 @@
  *
  * Atlas layout (8 cols × 4 rows = 32 tiles):
  *   Row 0: Window variants (lit, dark, blinds, curtain, AC, balcony, arched, modern)
- *   Row 1: Wall surface variants (stucco, plaster, siding, stone, brick-red, brick-brown, concrete, glass)
+ *   Row 1: Wall pier variants (stucco, plaster, siding, stone, brick-red, brick-brown, concrete, glass)
  *   Row 2: Ground floor variants (retail-A, retail-B, door-wood, door-glass, shopfront, lobby, garage, alley)
  *   Row 3: Trim/cap variants (cornice-ornate, cornice-modern, ledge, sill, parapet, roof-edge, rooftop, roof-dark)
+ *   Row 4: Roof cap variants (flat gravel, tar, metal, tile, green roof, concrete slab, skylight, dark)
  *
  * Alpha channel encodes emissive mask: 1.0 = window glass (can glow), 0.0 = opaque wall.
  */
@@ -16,9 +17,9 @@ import type { SceneryTheme } from './scene';
 
 export const FACADE_ATLAS_SIZE = 2048;
 export const FACADE_COLS = 8;
-export const FACADE_ROWS = 4;
+export const FACADE_ROWS = 5;
 export const FACADE_TILE_W = FACADE_ATLAS_SIZE / FACADE_COLS;  // 256
-export const FACADE_TILE_H = FACADE_ATLAS_SIZE / FACADE_ROWS;  // 512
+export const FACADE_TILE_H = Math.floor(FACADE_ATLAS_SIZE / FACADE_ROWS);  // 409
 
 /** Style palette derived from the scenery theme. */
 interface FacadePalette {
@@ -232,7 +233,7 @@ function drawWindow(
 }
 
 /** Generate a procedural facade atlas canvas for the given environment style. */
-export function generateFacadeAtlas(theme: SceneryTheme): HTMLCanvasElement {
+function generateFacadeAtlas(theme: SceneryTheme): HTMLCanvasElement {
   const style = theme.buildingStyle ?? 'modern';
   const pal = paletteForStyle(style, theme);
 
@@ -261,7 +262,7 @@ export function generateFacadeAtlas(theme: SceneryTheme): HTMLCanvasElement {
     glassRects.push({ x: r.gx, y: r.gy, w: r.gw, h: r.gh });
   }
 
-  // ── Row 1: Wall surface variants ──
+  // ── Row 1: Wall pier variants (same as old Row 1) ──
   const wallStyles = [
     () => drawNoise(ctx, 0, 0, 0, 0, pal.wallBase, 0.2, rng),     // stucco
     () => drawNoise(ctx, 0, 0, 0, 0, pal.wallAlt, 0.15, rng),     // plaster
@@ -487,7 +488,7 @@ export function generateFacadeAtlas(theme: SceneryTheme): HTMLCanvasElement {
     }
   }
 
-  // ── Row 3: Trim/cap variants ──
+  // ── Row 3: Trim/cornice variants ──
   for (let col = 0; col < FACADE_COLS; col++) {
     const tx = col * FACADE_TILE_W;
     const ty = 3 * FACADE_TILE_H;
@@ -546,6 +547,58 @@ export function generateFacadeAtlas(theme: SceneryTheme): HTMLCanvasElement {
         break;
       case 7: // Roof dark (tar)
         drawNoise(ctx, tx, ty, FACADE_TILE_W, FACADE_TILE_H, '#1a1a20', 0.1, rng);
+        break;
+    }
+  }
+
+  // ── Row 4: Roof cap variants ──
+  for (let col = 0; col < FACADE_COLS; col++) {
+    const tx = col * FACADE_TILE_W;
+    const ty = 4 * FACADE_TILE_H;
+
+    switch (col) {
+      case 0: // Flat gravel
+        drawNoise(ctx, tx, ty, FACADE_TILE_W, FACADE_TILE_H, pal.roofTop, 0.3, rng);
+        break;
+      case 1: // Tar surface
+        drawNoise(ctx, tx, ty, FACADE_TILE_W, FACADE_TILE_H, '#1a1a20', 0.1, rng);
+        break;
+      case 2: // Sheet metal
+        ctx.fillStyle = '#5a5a62';
+        ctx.fillRect(tx, ty, FACADE_TILE_W, FACADE_TILE_H);
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 1;
+        for (let sy = 0; sy < FACADE_TILE_H; sy += 20) {
+          ctx.beginPath();
+          ctx.moveTo(tx, ty + sy);
+          ctx.lineTo(tx + FACADE_TILE_W, ty + sy);
+          ctx.stroke();
+        }
+        break;
+      case 3: // Clay tile
+        drawNoise(ctx, tx, ty, FACADE_TILE_W, FACADE_TILE_H, '#8a5a3a', 0.2, rng);
+        for (let sy = 0; sy < FACADE_TILE_H; sy += 14) {
+          ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(tx, ty + sy);
+          ctx.lineTo(tx + FACADE_TILE_W, ty + sy);
+          ctx.stroke();
+        }
+        break;
+      case 4: // Green roof (vegetation)
+        drawNoise(ctx, tx, ty, FACADE_TILE_W, FACADE_TILE_H, '#3a5a3a', 0.25, rng);
+        break;
+      case 5: // Concrete slab
+        drawNoise(ctx, tx, ty, FACADE_TILE_W, FACADE_TILE_H, '#808488', 0.08, rng);
+        break;
+      case 6: // Skylight
+        drawNoise(ctx, tx, ty, FACADE_TILE_W, FACADE_TILE_H, pal.roofTop, 0.15, rng);
+        ctx.fillStyle = 'rgba(100,140,180,0.3)';
+        ctx.fillRect(tx + FACADE_TILE_W * 0.2, ty + FACADE_TILE_H * 0.2, FACADE_TILE_W * 0.6, FACADE_TILE_H * 0.6);
+        break;
+      case 7: // Dark flat
+        drawNoise(ctx, tx, ty, FACADE_TILE_W, FACADE_TILE_H, '#222228', 0.08, rng);
         break;
     }
   }
