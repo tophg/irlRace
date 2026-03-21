@@ -986,8 +986,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       // faceW/faceH are physical dimensions in meters
       // Physical tile size — smaller tiles = less stretch from rounding.
       // Atlas is 8×8 (square tiles), so square physical tiles map 1:1.
-      const TILE_W = 3;  // fixed tile physical width (meters)
-      const TILE_H = 3;  // fixed tile physical height (meters)
+      const TILE_W = 5;  // fixed tile physical width (meters)
+      const TILE_H = 5;  // fixed tile physical height (meters)
       const addComposedFace = (
         origin: [number, number, number],
         axisU: [number, number, number],
@@ -1370,7 +1370,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
         for (let j = 0; j < bucket.length; j++) {
           const pl = bucket[j];
-          dummy.position.set(pl.x, pl.h / 2 - 2, pl.z);
+          dummy.position.set(pl.x, pl.h / 2, pl.z);
           dummy.scale.set(pl.w, pl.h, pl.d);
 
           // Per-environment silhouette variation
@@ -1433,7 +1433,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const roofCapIM = new THREE.InstancedMesh(roofGeo, roofCapMat, placements.length);
       for (let j = 0; j < placements.length; j++) {
         const pl = placements[j];
-        dummy.position.set(pl.x, pl.h - 2, pl.z);
+        dummy.position.set(pl.x, pl.h, pl.z);
         dummy.scale.set(pl.w * 1.1, pl.h * 0.25, pl.d * 1.1); // overhang + proportional height
         dummy.rotation.set(0, pl.rotY, 0);
         dummy.updateMatrix();
@@ -1462,7 +1462,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           const setbackH = pl.h * 0.4;   // 40% of base height
           const setbackW = pl.w * 0.6;   // 60% narrower
           const setbackD = pl.d * 0.6;
-          dummy.position.set(pl.x, pl.h - 2 + setbackH / 2, pl.z);
+          dummy.position.set(pl.x, pl.h + setbackH / 2, pl.z);
           dummy.scale.set(setbackW, setbackH, setbackD);
           dummy.rotation.set(0, pl.rotY, 0);
           dummy.updateMatrix();
@@ -1549,7 +1549,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           // Offset from center of roof
           const offX = ((((pl.x * 71) & 0xFF) / 255) - 0.5) * pl.w * 0.4;
           const offZ = ((((pl.z * 43) & 0xFF) / 255) - 0.5) * pl.d * 0.4;
-          dummy.position.set(pl.x + offX, pl.h - 2 + propH / 2, pl.z + offZ);
+          dummy.position.set(pl.x + offX, pl.h + propH / 2, pl.z + offZ);
           dummy.scale.set(propW, propH, propD);
           dummy.rotation.set(0, pl.rotY + (((pl.x * 13) & 0xFF) / 255) * 0.5, 0);
           dummy.updateMatrix();
@@ -1634,7 +1634,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         const scaledBox = new THREE.Box3().setFromObject(model);
         const pos = new THREE.Vector3(
           lmP.x + lmRight.x * lmOffset * lmSide,
-          -scaledBox.min.y - 2, // sit on ground plane matching building base (y=-2)
+          -scaledBox.min.y, // sit on ground
           lmP.z + lmRight.z * lmOffset * lmSide,
         );
         model.position.copy(pos);
