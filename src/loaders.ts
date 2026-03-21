@@ -27,7 +27,13 @@ export async function loadCarModel(filename: string): Promise<THREE.Group> {
   const cached = modelCache.get(filename);
   if (cached) return deepCloneGroup(cached);
 
-  const gltf = await gltfLoader.loadAsync(`/models/${filename}`);
+  let gltf;
+  try {
+    gltf = await gltfLoader.loadAsync(`/models/${filename}`);
+  } catch (err) {
+    console.warn(`[loaders] Failed to load car model: ${filename}`, err);
+    throw err; // rethrow — callers must handle car load failures
+  }
   const wrapper = processCarModel(gltf.scene, filename);
 
   modelCache.set(filename, wrapper);
@@ -178,6 +184,10 @@ export async function loadGLB(url: string): Promise<THREE.Group> {
     glbCache.set(url, gltf.scene);
     glbInflight.delete(url);
     return gltf.scene;
+  }).catch(err => {
+    console.warn(`[loaders] Failed to load GLB: ${url}`, err);
+    glbInflight.delete(url);
+    return new THREE.Group(); // fallback — prevents crash from missing scenery
   });
   glbInflight.set(url, promise);
   const scene = await promise;

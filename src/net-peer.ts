@@ -9,6 +9,19 @@ const MAX_PLAYERS = 6;
 const _encoder = new TextEncoder();
 const _decoder = new TextDecoder();
 
+// ── Send failure tracking (prevents silent message loss) ──
+let _sendFailCount = 0;
+function _safeSend(conn: DataConnection, data: ArrayBuffer | Uint8Array) {
+  try {
+    conn.send(data);
+  } catch (err) {
+    _sendFailCount++;
+    if (_sendFailCount <= 5 || _sendFailCount % 100 === 0) {
+      console.warn(`[net] send failed (total: ${_sendFailCount})`, err);
+    }
+  }
+}
+
 export interface StateSnapshot {
   x: number;
   z: number;
@@ -207,7 +220,7 @@ export class NetPeer {
 
     for (const remote of this.connections.values()) {
       if (!remote.conn) continue; // buffer-only placeholder (Bug #2 fix)
-      try { remote.conn.send(buf); } catch {}
+      _safeSend(remote.conn, buf);
     }
   }
 
@@ -221,7 +234,7 @@ export class NetPeer {
     view.setInt16(6, steerI16, true);
 
     for (const remote of this.connections.values()) {
-      try { remote.conn.send(buf); } catch {}
+      _safeSend(remote.conn, buf);
     }
   }
 
@@ -240,7 +253,7 @@ export class NetPeer {
 
     for (const [id, remote] of this.connections) {
       if (id !== fromId) {
-        try { remote.conn.send(buf); } catch {}
+        _safeSend(remote.conn, buf);
       }
     }
   }
@@ -270,7 +283,7 @@ export class NetPeer {
 
     for (const [id, remote] of this.connections) {
       if (id !== fromId) {
-        try { remote.conn.send(buf); } catch {}
+        _safeSend(remote.conn, buf);
       }
     }
   }
@@ -285,7 +298,7 @@ export class NetPeer {
     new Uint8Array(buf, 2).set(jsonBytes);
 
     for (const remote of this.connections.values()) {
-      try { remote.conn.send(buf); } catch {}
+      _safeSend(remote.conn, buf);
     }
   }
 
@@ -302,7 +315,7 @@ export class NetPeer {
 
     for (const [id, remote] of this.connections) {
       if (id !== fromId) {
-        try { remote.conn.send(buf); } catch {}
+        _safeSend(remote.conn, buf);
       }
     }
   }
@@ -365,7 +378,7 @@ export class NetPeer {
           if (this.isHost) {
             this.relayEvent(fromId, eventType, jsonBytes);
           }
-        } catch {}
+        } catch (err) { console.warn('[net] Malformed event packet', err); }
         break;
       }
 
@@ -379,7 +392,7 @@ export class NetPeer {
         try {
           const eventData = JSON.parse(json);
           this.onEvent(actualFromId, eventType, eventData);
-        } catch {}
+        } catch (err) { console.warn('[net] Malformed relay packet', err); }
         break;
       }
 
@@ -435,7 +448,7 @@ export class NetPeer {
         pongView.setUint8(0, PacketType.PONG);
         pongView.setFloat64(1, view.getFloat64(1, true), true);
         const remote = this.connections.get(fromId);
-        if (remote) try { remote.conn.send(pongBuf); } catch {}
+        if (remote) _safeSend(remote.conn, pongBuf);
         break;
       }
 
@@ -612,7 +625,7 @@ export class NetPeer {
     new DataView(buf).setUint8(0, PacketType.EVENT);
     new DataView(buf).setUint8(1, EventType.KICK);
     new Uint8Array(buf, 2).set(jsonBytes);
-    try { remote.conn.send(buf); } catch {}
+    _safeSend(remote.conn, buf);
     setTimeout(() => {
       remote.conn?.close();
       this.connections.delete(id);
@@ -644,7 +657,7 @@ export class NetPeer {
       view.setUint8(0, PacketType.PING);
       view.setFloat64(1, performance.now(), true);
       for (const remote of this.connections.values()) {
-        try { remote.conn.send(buf); } catch {}
+        _safeSend(remote.conn, buf);
       }
     }, 3000);
   }
