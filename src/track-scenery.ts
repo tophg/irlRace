@@ -373,36 +373,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     }
   }
 
-  // ── Rocks & boulders (InstancedMesh) ──
-  // Skip on mobile
-  if (!isMobile && T.rockDensity > 0) {
-    const ROCK_COUNT = Math.round(40 * T.rockDensity);
-    const rockGeo = new THREE.DodecahedronGeometry(1, 0);
-    const rockMat = new THREE.MeshStandardMaterial({ color: T.rockColor, roughness: 0.95, metalness: 0 });
-    const rockIM = new THREE.InstancedMesh(rockGeo, rockMat, ROCK_COUNT);
-    for (let i = 0; i < ROCK_COUNT; i++) {
-      const t = rng();
-      const p = spline.getPointAt(t);
-      const tangent = spline.getTangentAt(t).normalize();
-      const rx = tangent.z, rz2 = -tangent.x;
-      const side = rng() > 0.5 ? 1 : -1;
-      const offset = ROAD_WIDTH / 2 + 8 + rng() * 35;
-      const x = p.x + rx * offset * side;
-      const z = p.z + rz2 * offset * side;
-      const scale = 0.3 + rng() * 1.2;
-      _m.makeScale(scale, scale * (0.5 + rng() * 0.5), scale);
-      _m.setPosition(x, getTerrainHeight(x, z) + scale * 0.3, z);
-      rockIM.setMatrixAt(i, _m);
-      // Per-instance color variation
-      const rc = new THREE.Color(T.rockColor);
-      const v = 0.7 + rng() * 0.5;
-      _c.setRGB(rc.r * v, rc.g * v, rc.b * v);
-      rockIM.setColorAt(i, _c);
-    }
-    rockIM.instanceMatrix.needsUpdate = true;
-    rockIM.instanceColor!.needsUpdate = true;
-    group.add(rockIM);
-  }
+  // ── Rocks & boulders — REMOVED (procedural clutter) ──
 
   // ── Bushes & shrubs (InstancedMesh — clustered near trees) ──
   // Skip on mobile
@@ -657,47 +628,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
   }
 
-  // ── Tire walls at tight corners (InstancedMesh) ──
-  // Find sharp corners and place tire stacks outside them
-  const TIRE_STACK_COUNT = isMobile ? 8 : 20;
-  const tireGeo = new THREE.TorusGeometry(0.35, 0.15, 6, 8);
-  const tireMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
-  const tireIM = new THREE.InstancedMesh(tireGeo, tireMat, TIRE_STACK_COUNT * 3);
-  let tireIdx = 0;
-
-  // Sample curvature and place at the sharpest corners
-  const cornerSpots: { t: number; side: number }[] = [];
-  for (let i = 0; i < 200 && cornerSpots.length < TIRE_STACK_COUNT; i++) {
-    const t = rng();
-    const kappa = estimateCurvature(spline, t);
-    if (Math.abs(kappa) > 0.035) {
-      const side = kappa > 0 ? 1 : -1; // outside of corner
-      cornerSpots.push({ t, side });
-    }
-  }
-
-  for (const spot of cornerSpots) {
-    const p = spline.getPointAt(spot.t);
-    const tangent = spline.getTangentAt(spot.t).normalize();
-    const rx = tangent.z, rz = -tangent.x;
-    const offset = ROAD_WIDTH / 2 + BARRIER_THICKNESS + 1;
-    const x = p.x + rx * offset * spot.side;
-    const z = p.z + rz * offset * spot.side;
-
-    // Stack 3 tires vertically
-    for (let s = 0; s < 3; s++) {
-      if (tireIdx >= TIRE_STACK_COUNT * 3) break;
-      _m.identity();
-      _m.makeRotationX(Math.PI / 2);
-      _m.setPosition(x, 0.15 + s * 0.3, z);
-      tireIM.setMatrixAt(tireIdx++, _m);
-    }
-  }
-  if (tireIdx > 0) {
-    tireIM.count = tireIdx;
-    tireIM.instanceMatrix.needsUpdate = true;
-    group.add(tireIM);
-  }
+  // ── Tire walls — REMOVED (procedural clutter) ──
 
   // ── Advertising boards at straight sections ──
   const AD_COUNT = isMobile ? 3 : 8;
@@ -756,43 +687,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   generateBuildings(spline, rng, T, group);
 
 
-  // ── Grandstand at start/finish (GLB model) ──
-  {
-    const startP = spline.getPointAt(0);
-    const startTan = spline.getTangentAt(0).normalize();
-    const right = new THREE.Vector3(startTan.z, 0, -startTan.x);
-    const grandstandOffset = ROAD_WIDTH / 2 + 6;
-
-    const grandstandGLB = T.grandstandModel ? `/buildings/${T.grandstandModel}` : '/buildings/spectator_stand.glb';
-    const grandstandTargetWidth = T.grandstandModel ? 20 : 8; // landmarks need more room
-
-    _asyncLoads.push(loadGLB(grandstandGLB).then((standModel) => {
-      const bbox = new THREE.Box3().setFromObject(standModel);
-      const size = bbox.getSize(new THREE.Vector3());
-      const targetWidth = grandstandTargetWidth;
-      const scaleFactor = targetWidth / Math.max(size.x, size.z, 1);
-      standModel.scale.setScalar(scaleFactor);
-
-      // Recompute after scaling
-      const scaledBox = new THREE.Box3().setFromObject(standModel);
-      standModel.position.set(
-        startP.x + right.x * grandstandOffset,
-        -scaledBox.min.y, // sit on ground
-        startP.z + right.z * grandstandOffset,
-      );
-      standModel.lookAt(startP);
-
-      standModel.traverse((child) => {
-        if ((child as THREE.Mesh).isMesh) {
-          (child as THREE.Mesh).castShadow = true;
-        }
-      });
-
-      group.add(standModel);
-    }).catch((err) => {
-      console.warn('Failed to load spectator stand model:', err);
-    }));
-  }
+  // ── Grandstand — REMOVED (procedural stand) ──
 
   // ── Environment-specific landmarks (e.g. DC monuments) ──
   // Landmarks are placed prominently near the road with a clearance zone

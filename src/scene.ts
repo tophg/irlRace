@@ -1020,8 +1020,8 @@ export async function initScene(container: HTMLElement) {
 
   groundMesh = new THREE.Mesh(groundGeo, groundMat);
   groundMesh.rotation.x = -Math.PI / 2;
-  // Round 3: ground base at Y=-0.5 — full half-meter below road surface
-  groundMesh.position.y = -0.7;
+  // Ground mesh at Y=0 — displacement + polygonOffset handles z-fighting
+  groundMesh.position.y = 0;
   groundMesh.receiveShadow = true;
   groundMesh.renderOrder = -1;
   scene.add(groundMesh);
@@ -1088,17 +1088,49 @@ export function updateGroundDistanceField(dft: THREE.DataTexture) {
   if (groundMesh) {
     (groundMesh.material as MeshStandardNodeMaterial).needsUpdate = true;
   }
+  // Store pixel data for CPU-side getTerrainHeight() lookups
+  if (dft.image?.data) {
+    _dftData = dft.image.data as Uint8Array;
+    _dftSize = dft.image.width;
+  }
 }
 
-/** CPU-side terrain height at world (x, z) — matches GPU vertex displacement.
- *  Note: does NOT apply DFT damping (GPU-only). Buildings are placed far from
- *  the road, so they should always be in the fully-displaced region. */
+/** CPU-side DFT pixel data for terrain height lookups. */
+let _dftData: Uint8Array | null = null;
+let _dftSize = 1;
+
+/** CPU-side terrain height at world (x, z) — fully matches GPU vertex displacement.
+ *  Replicates: base sine waves → DFT-based damping → transition trench.
+ *  Without DFT data (before track gen), returns raw sine waves. */
 export function getTerrainHeight(x: number, z: number): number {
   const h1 = Math.sin(x * 0.008) * Math.cos(z * 0.012) * 2.0;
   const h2 = Math.sin(x * 0.022 + 3.7) * Math.sin(z * 0.018 + 1.2) * 1.0;
   const h3 = Math.cos(x * 0.045 + 7.1) * Math.sin(z * 0.035 + 5.3) * 0.5;
-  // Ground mesh sits at y=-0.15 (z-fighting offset), so objects must match
-  return (h1 + h2 + h3) - 0.15;
+  const terrain = h1 + h2 + h3;
+
+  // If DFT hasn't been baked yet, return raw terrain (pre-track-gen placement)
+  if (!_dftData) return terrain;
+
+  // Sample DFT: world → UV → pixel → normalized distance
+  const u = x / 1200 + 0.5;
+  const v = z / 1200 + 0.5;
+  const px = Math.min(_dftSize - 1, Math.max(0, Math.floor(u * _dftSize)));
+  const py = Math.min(_dftSize - 1, Math.max(0, Math.floor(v * _dftSize)));
+  const dist = _dftData[py * _dftSize + px] / 255; // 0..1 (0=road, 1=100m+)
+
+  // Displacement damping (matches GPU: smoothstep(0.35, 0.60, dist))
+  const dispDamp = smoothstepCPU(0.35, 0.60, dist);
+
+  // Transition trench (matches GPU: smoothstep(0,0.15,d)*smoothstep(0.45,0.15,d)*-3)
+  const transitionDip = smoothstepCPU(0.0, 0.15, dist) * smoothstepCPU(0.45, 0.15, dist) * -3.0;
+
+  return terrain * dispDamp + transitionDip;
+}
+
+/** GLSL-compatible smoothstep for CPU-side terrain calculations. */
+function smoothstepCPU(edge0: number, edge1: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
 }
 
 /** Apply an environment preset to the scene. Call after initScene. */

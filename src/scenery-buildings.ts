@@ -808,7 +808,7 @@ if (placements.length > 0) {
       const padH = 0.2; // thin ground-level slab
       const padW = pl.w + 4; // 2-unit overhang each side
       const padD = pl.d + 4;
-      dummy.position.set(pl.x, groundY, pl.z);
+      dummy.position.set(pl.x, groundY + padH / 2, pl.z);
       dummy.scale.set(padW, padH, padD);
       dummy.rotation.set(0, pl.rotY, 0);
       dummy.updateMatrix();
