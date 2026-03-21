@@ -1070,17 +1070,29 @@ export function applyEnvironment(preset: EnvironmentPreset) {
   const atlasPath = GROUND_ATLAS[preset.name];
   if (atlasPath) {
     new THREE.TextureLoader().load(atlasPath, (tex) => {
-      // Copy loaded image into the existing texture object — TSL texture() nodes
-      // hold a reference to _groundAtlasTexture, so we must mutate it in-place.
-      _groundAtlasTexture.image = tex.image;
-      _groundAtlasTexture.format = tex.format;
-      _groundAtlasTexture.type = tex.type;
-      _groundAtlasTexture.wrapS = THREE.RepeatWrapping;
-      _groundAtlasTexture.wrapT = THREE.RepeatWrapping;
-      _groundAtlasTexture.magFilter = THREE.LinearFilter;
-      _groundAtlasTexture.minFilter = THREE.LinearMipmapLinearFilter;
-      _groundAtlasTexture.anisotropy = 4;
-      _groundAtlasTexture.needsUpdate = true;
+      // Convert loaded image (HTMLImageElement) to pixel data so we can
+      // keep _groundAtlasTexture as a DataTexture. WebGPU crashes if a
+      // DataTexture's image is swapped to an HTMLImageElement mid-flight.
+      const img = tex.image as HTMLImageElement;
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      // Replace DataTexture internals with matching-format pixel data
+      const dt = _groundAtlasTexture as THREE.DataTexture;
+      dt.image = { data: new Uint8Array(imageData.data.buffer), width: canvas.width, height: canvas.height };
+      dt.format = THREE.RGBAFormat;
+      dt.type = THREE.UnsignedByteType;
+      dt.wrapS = THREE.RepeatWrapping;
+      dt.wrapT = THREE.RepeatWrapping;
+      dt.magFilter = THREE.LinearFilter;
+      dt.minFilter = THREE.LinearMipmapLinearFilter;
+      dt.anisotropy = 4;
+      dt.generateMipmaps = true;
+      dt.needsUpdate = true;
       // Dispose the loader's temp texture (we only needed its image data)
       tex.dispose();
       // Force material rebuild
