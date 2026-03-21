@@ -148,7 +148,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xffeedd, dirIntensity: 1.8, dirPosition: [50, 80, 30],
     groundColor: 0x1a2a1a, exposure: 1.1,
     scenery: {
-      roadColor: 0x2a2a30, roadRoughness: 0.85,
+      roadColor: 0x2a2a30, roadRoughness: 0.65,
       barrierColor: 0x444450,
       buildingPalette: [0x1a1a2e, 0x22223a, 0x2a2a45, 0x181830],
       buildingHeightRange: [8, 25],
@@ -182,7 +182,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xffaa77, dirIntensity: 2.0, dirPosition: [-60, 25, 60],
     groundColor: 0x1a2820, exposure: 1.1,
     scenery: {
-      roadColor: 0x353540, roadRoughness: 0.75,
+      roadColor: 0x353540, roadRoughness: 0.6,
       barrierColor: 0x556677,
       buildingPalette: [0x556688, 0x668899, 0x445566, 0x778899, 0x2a3a30, 0x405540],
       buildingHeightRange: [3, 7],
@@ -218,7 +218,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xffcc88, dirIntensity: 1.7, dirPosition: [-50, 35, 60],
     groundColor: 0x3a3525, exposure: 1.05,
     scenery: {
-      roadColor: 0x4a4238, roadRoughness: 0.85,
+      roadColor: 0x4a4238, roadRoughness: 0.7,
       barrierColor: 0x7a7060,
       buildingPalette: [0x8a7a60, 0x9a8a70, 0x706050, 0xaa9a80],
       buildingHeightRange: [4, 14],
@@ -256,7 +256,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xeeddcc, dirIntensity: 1.5, dirPosition: [40, 30, 60],
     groundColor: 0x1a2a20, exposure: 1.05,
     scenery: {
-      roadColor: 0x2a2a35, roadRoughness: 0.8,
+      roadColor: 0x2a2a35, roadRoughness: 0.65,
       barrierColor: 0x555560,
       buildingPalette: [0x3a3a4a, 0x44445a, 0x2a2a3a, 0x505060, 0x383845, 0x4a4a5a],
       buildingHeightRange: [6, 22],
@@ -290,7 +290,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xffcc77, dirIntensity: 1.8, dirPosition: [-40, 40, 50],
     groundColor: 0x3a3020, exposure: 1.05,
     scenery: {
-      roadColor: 0x4a4030, roadRoughness: 0.9,
+      roadColor: 0x4a4030, roadRoughness: 0.75,
       barrierColor: 0x887766,
       buildingPalette: [0x9a8a60, 0xaa9a70, 0x807050, 0xbbaa80],
       buildingHeightRange: [5, 16],
@@ -328,7 +328,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xffbb77, dirIntensity: 1.6, dirPosition: [-50, 30, 55],
     groundColor: 0x3a3020, exposure: 1.0,
     scenery: {
-      roadColor: 0x454038, roadRoughness: 0.85,
+      roadColor: 0x454038, roadRoughness: 0.7,
       barrierColor: 0x7a6a55,
       buildingPalette: [0x8a7a55, 0x9a8a65, 0x706045, 0xaa9a75],
       buildingHeightRange: [4, 12],
@@ -366,7 +366,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xffaa77, dirIntensity: 1.9, dirPosition: [-60, 25, 50],
     groundColor: 0x2a3028, exposure: 1.1,
     scenery: {
-      roadColor: 0x3a3a40, roadRoughness: 0.8,
+      roadColor: 0x3a3a40, roadRoughness: 0.65,
       barrierColor: 0x667788,
       buildingPalette: [0x7a7a88, 0x8a8a98, 0x6a6a78, 0x9a9aa8],
       buildingHeightRange: [4, 18],
@@ -404,7 +404,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xffbb88, dirIntensity: 1.8, dirPosition: [-55, 30, 60],
     groundColor: 0x2a3525, exposure: 1.1,
     scenery: {
-      roadColor: 0x3a3a3a, roadRoughness: 0.75,
+      roadColor: 0x3a3a3a, roadRoughness: 0.6,
       barrierColor: 0x778888,
       buildingPalette: [0x8a8a7a, 0x9a9a8a, 0x7a7a6a, 0xaaaa9a],
       buildingHeightRange: [3, 12],
@@ -442,7 +442,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xffcc88, dirIntensity: 2.0, dirPosition: [-40, 45, 50],
     groundColor: 0x3a3520, exposure: 1.15,
     scenery: {
-      roadColor: 0x4a4538, roadRoughness: 0.9,
+      roadColor: 0x4a4538, roadRoughness: 0.75,
       barrierColor: 0x999988,
       buildingPalette: [0x9a9a88, 0xaaaa98, 0x8a8a78, 0xbbbbaa],
       buildingHeightRange: [3, 10],
@@ -480,7 +480,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xffbb88, dirIntensity: 1.6, dirPosition: [50, 35, -40],
     groundColor: 0x2a2a25, exposure: 1.05,
     scenery: {
-      roadColor: 0x3a3838, roadRoughness: 0.8,
+      roadColor: 0x3a3838, roadRoughness: 0.65,
       barrierColor: 0x666677,
       buildingPalette: [0x7a7a7a, 0x8a8a8a, 0x6a6a6a, 0x9a9a9a],
       buildingHeightRange: [5, 20],
@@ -518,7 +518,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xffcc77, dirIntensity: 1.9, dirPosition: [-30, 50, 40],
     groundColor: 0x3a2a18, exposure: 1.1,
     scenery: {
-      roadColor: 0x4a3a2a, roadRoughness: 0.9,
+      roadColor: 0x4a3a2a, roadRoughness: 0.75,
       barrierColor: 0x887755,
       buildingPalette: [0x8a6a45, 0x9a7a55, 0x7a5a35, 0xaa8a65],
       buildingHeightRange: [3, 10],
@@ -556,7 +556,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xffbb77, dirIntensity: 1.8, dirPosition: [-50, 30, 55],
     groundColor: 0x2a2820, exposure: 1.1,
     scenery: {
-      roadColor: 0x3a3530, roadRoughness: 0.85,
+      roadColor: 0x3a3530, roadRoughness: 0.7,
       barrierColor: 0x776655,
       buildingPalette: [0x8a7a55, 0x9a8a65, 0x706045, 0xaa9a75],
       buildingHeightRange: [4, 14],
@@ -594,7 +594,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xddeeff, dirIntensity: 1.3, dirPosition: [40, 35, 50],
     groundColor: 0x2a3a2a, exposure: 1.0,
     scenery: {
-      roadColor: 0x3a3a38, roadRoughness: 0.9,
+      roadColor: 0x3a3a38, roadRoughness: 0.75,
       barrierColor: 0x667766,
       buildingPalette: [0x7a8a7a, 0x8a9a8a, 0x6a7a6a, 0x9aaa9a],
       buildingHeightRange: [3, 10],
@@ -669,7 +669,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xffbb88, dirIntensity: 1.9, dirPosition: [-60, 28, 55],
     groundColor: 0x1a2a20, exposure: 1.1,
     scenery: {
-      roadColor: 0x3a3a40, roadRoughness: 0.7,
+      roadColor: 0x3a3a40, roadRoughness: 0.55,
       barrierColor: 0x667788,
       buildingPalette: [0x7a8a8a, 0x8a9a9a, 0x6a7a7a, 0x9aaaaa],
       buildingHeightRange: [4, 14],
@@ -741,7 +741,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xffeedd, dirIntensity: 1.6, dirPosition: [50, 60, 30],
     groundColor: 0x1a2a1a, exposure: 1.05,
     scenery: {
-      roadColor: 0x2a2a30, roadRoughness: 0.7,
+      roadColor: 0x2a2a30, roadRoughness: 0.55,
       barrierColor: 0x555560,
       buildingPalette: [0x3a2a20, 0x4a3a30, 0x554433, 0x665544],
       buildingHeightRange: [3, 8],
@@ -776,7 +776,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
     dirColor: 0xeeddcc, dirIntensity: 1.4, dirPosition: [40, 35, 50],
     groundColor: 0x1a1a18, exposure: 1.0,
     scenery: {
-      roadColor: 0x2a2a28, roadRoughness: 0.7,
+      roadColor: 0x2a2a28, roadRoughness: 0.55,
       barrierColor: 0x555555,
       buildingPalette: [0x5a3a2a, 0x6a4a3a, 0x7a5a4a, 0x8a6a5a],
       buildingHeightRange: [4, 12],
@@ -895,7 +895,7 @@ export async function initScene(container: HTMLElement) {
     const pmremGenerator = new THREE.PMREMGenerator(renderer);
     const envMap = pmremGenerator.fromScene(new RoomEnvironment()).texture;
     scene.environment = envMap;
-    scene.environmentIntensity = 0.6;
+    scene.environmentIntensity = 0.35;
     pmremGenerator.dispose();
   }
 
