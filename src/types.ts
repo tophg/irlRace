@@ -41,6 +41,8 @@ export const CAR_ROSTER: CarDef[] = [
   // ── ENTRY TIER ──
   // Obey — beginner-friendly, forgiving grip, smooth ride
   { id: 'obey',          name: 'Obey',          file: 'white_camry.glb',   maxSpeed: 65, acceleration: 30, handling: 2.6, braking: 48, driftFactor: 0.20, gripCoeff: 0.95, latFriction: 6.5, suspStiffness: 0.03, steerSpeed: 3.2,  driftThreshold: 0.15, mass: 1480, cgHeight: 0.11, frontBias: 0.53, heightOffset: 0.15 },
+  // Further — classic VW Beetle, light, nimble, low top speed but fun drift character
+  { id: 'further',       name: 'Further',       file: 'VW_Beetle.glb',      maxSpeed: 68, acceleration: 26, handling: 2.7, braking: 40, driftFactor: 0.35, gripCoeff: 0.82, latFriction: 4.8, suspStiffness: 0.06, steerSpeed: 3.0,  driftThreshold: 0.10, mass: 1200, cgHeight: 0.14, frontBias: 0.42, heightOffset: 0.05 },
 
 
   // ── MID TIER ──
@@ -50,8 +52,6 @@ export const CAR_ROSTER: CarDef[] = [
   { id: 'conform',       name: 'Conform',       file: 'Nissan_Maxima.glb',  maxSpeed: 73, acceleration: 33, handling: 1.9, braking: 44, driftFactor: 0.26, gripCoeff: 0.84, latFriction: 5.0, suspStiffness: 0.04, steerSpeed: 2.8,  driftThreshold: 0.11, mass: 1650, cgHeight: 0.14, frontBias: 0.55, heightOffset: 0.05 },
   // Consume — muscle car, high speed, torquey, likes to slide
   { id: 'consume',       name: 'Consume',       file: 'Black_Mustang_GT.glb', maxSpeed: 79, acceleration: 35, handling: 2.2, braking: 46, driftFactor: 0.38, gripCoeff: 0.82, latFriction: 4.5, suspStiffness: 0.05, steerSpeed: 2.7,  driftThreshold: 0.10, mass: 1600, cgHeight: 0.13, frontBias: 0.52, heightOffset: 0.0 },
-  // Further — classic VW Beetle, light, nimble, low top speed but fun drift character
-  { id: 'further',       name: 'Further',       file: 'VW_Beetle.glb',      maxSpeed: 68, acceleration: 26, handling: 2.7, braking: 40, driftFactor: 0.35, gripCoeff: 0.82, latFriction: 4.8, suspStiffness: 0.06, steerSpeed: 3.0,  driftThreshold: 0.10, mass: 1200, cgHeight: 0.14, frontBias: 0.42, heightOffset: 0.05 },
   // Flatline — understated sedan, balanced all-rounder, deceptively quick
   { id: 'flatline',      name: 'Flatline',      file: 'Sedan.glb',          maxSpeed: 74, acceleration: 30, handling: 2.3, braking: 44, driftFactor: 0.28, gripCoeff: 0.88, latFriction: 5.2, suspStiffness: 0.04, steerSpeed: 2.9,  driftThreshold: 0.12, mass: 1500, cgHeight: 0.12, frontBias: 0.54, heightOffset: 0.05 },
 
@@ -71,6 +71,8 @@ export const CAR_ROSTER: CarDef[] = [
   { id: 'mystery_van',   name: 'Mystery Van',   file: 'Mystery_Van.glb',    maxSpeed: 72, acceleration: 32, handling: 1.7, braking: 42, driftFactor: 0.20, gripCoeff: 0.94, latFriction: 5.8, suspStiffness: 0.04, steerSpeed: 2.4,  driftThreshold: 0.15, mass: 2200, cgHeight: 0.30, frontBias: 0.58, heightOffset: 0.35 },
   // Flaming Wainscot — exotic hot rod, wild drift machine, spectacular slides
   { id: 'wainscot',      name: 'Flaming Wainscot', file: 'Flaming_Wainscot.glb', maxSpeed: 82, acceleration: 36, handling: 2.5, braking: 49, driftFactor: 0.46, gripCoeff: 0.76, latFriction: 4.2, suspStiffness: 0.05, steerSpeed: 3.0,  driftThreshold: 0.08, mass: 1400, cgHeight: 0.10, frontBias: 0.46, heightOffset: 0.0 },
+  // Lifeline — modified hearse, long wheelbase, heavy, surprisingly fast
+  { id: 'lifeline',      name: 'Lifeline',      file: 'Hearse.glb',         maxSpeed: 76, acceleration: 33, handling: 1.9, braking: 44, driftFactor: 0.26, gripCoeff: 0.90, latFriction: 5.4, suspStiffness: 0.04, steerSpeed: 2.6,  driftThreshold: 0.13, mass: 2000, cgHeight: 0.22, frontBias: 0.55, heightOffset: 0.25 },
 
   // ── ELITE TIER ──
   // Kick Ass — top speed king, lightweight, fragile glass cannon
