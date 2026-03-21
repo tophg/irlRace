@@ -48,7 +48,7 @@ export function playTitleMusic() {
   const s = getSettings();
   const m = getTitleMusic();
   m.volume = s.masterVolume * 0.6;
-  if (m.currentTime === 0 || m.paused) m.currentTime = 0;
+  if (m.currentTime === 0 || m.paused) m.currentTime = 8;
   m.play().catch(() => console.warn('Browser blocked autoplay build-up'));
   if (gameMusicAudio && !gameMusicAudio.paused) gameMusicAudio.pause();
 }
