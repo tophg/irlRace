@@ -826,7 +826,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   atlasTexture.wrapS = THREE.RepeatWrapping;
   atlasTexture.wrapT = THREE.RepeatWrapping;
   atlasTexture.colorSpace = THREE.SRGBColorSpace;
-  atlasTexture.anisotropy = 8; // sharper at oblique angles
+  atlasTexture.anisotropy = 16; // max anisotropy for sharper facades at oblique angles
   // Atlas layout (8×8 grid, square tiles):
   //   Row 0: Window (closed)    — curtains, blinds, shutters
   //   Row 1: Window (open/lit)  — warm interior, plants
@@ -1303,9 +1303,11 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         `);
     };
 
-    // Anti-seam — limit mipmap interpolation to prevent tile bleeding
-    atlasTexture.minFilter = THREE.LinearMipmapNearestFilter;
-    normalTexture.minFilter = THREE.LinearMipmapNearestFilter;
+    // Use trilinear filtering for smooth quality + anisotropy for sharpness
+    atlasTexture.minFilter = THREE.LinearMipmapLinearFilter;
+    atlasTexture.magFilter = THREE.LinearFilter;
+    normalTexture.minFilter = THREE.LinearMipmapLinearFilter;
+    normalTexture.anisotropy = 16;
 
     const dummy = new THREE.Object3D();
     const _instances: THREE.Vector3[] = [];
