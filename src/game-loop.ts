@@ -55,7 +55,7 @@ import {
   playNitroRelease, setMusicTimeScale, setSfxTimeScale,
 } from './audio';
 import { updateNitroHUD, updateHeatHUD } from './hud';
-import { updateRewards, resetRewards, destroyRewards } from './mid-race-rewards';
+import { updateRewards, resetRewards, destroyRewards, awardReward } from './mid-race-rewards';
 
 import { stepPhysics, initPhysicsStep } from './physics-step';
 import { stopReplayPlayback as stopReplayUI } from './replay-ui';
@@ -82,6 +82,12 @@ let _deps: GameLoopDeps;
 let _perfectStartChecked = false;
 let _drsLastWallTime = 0;
 let _racingElapsed = 0;
+
+// ── Mid-race reward detection state ──
+let _driftAccum = 0;          // seconds of continuous drift (>0.3 rad)
+let _driftAwarded = false;    // already awarded this drift streak?
+let _hangTimeAwarded = false; // already awarded this airborne session?
+let _nitroDriftCooldown = 0;  // cooldown between nitro-drift awards
 
 // ── Leaderboard ──
 
@@ -148,6 +154,10 @@ export function resetGameLoopState() {
   resetVFXState();
   resetRaceEventsState();
   resetRewards();
+  _driftAccum = 0;
+  _driftAwarded = false;
+  _hangTimeAwarded = false;
+  _nitroDriftCooldown = 0;
 }
 
 /** Remove DOM elements created by the game loop between races. */
@@ -334,7 +344,10 @@ function gameLoop(timestamp: number) {
       // Perfect start detection
       if (s === GameState.RACING && !_perfectStartChecked) {
         _perfectStartChecked = true;
-        if (currentInput.up) G.raceStats.perfectStart = true;
+        if (currentInput.up) {
+          G.raceStats.perfectStart = true;
+          awardReward('perfect_start');
+        }
       }
 
       if (G.playerVehicle) {
@@ -477,7 +490,39 @@ function gameLoop(timestamp: number) {
     updateNearMissDetection(camera, timestamp, frameDt, s);
 
     // Mid-race rewards (combo timer, nitro-extend)
-    if (s === GameState.RACING) updateRewards(gameDt);
+    if (s === GameState.RACING) {
+      updateRewards(gameDt);
+
+      // ── Drift bonus: 3s+ continuous drift ──
+      if (Math.abs(G.playerVehicle.driftAngle) > 0.3) {
+        _driftAccum += gameDt;
+        if (_driftAccum >= 3.0 && !_driftAwarded) {
+          _driftAwarded = true;
+          awardReward('drift_bonus');
+        }
+      } else {
+        _driftAccum = 0;
+        _driftAwarded = false;
+      }
+
+      // ── Hang time: award after 1s+ airborne ──
+      if (G.playerVehicle.airborne && !_hangTimeAwarded) {
+        if (G.playerVehicle.airTime >= 1.0) {
+          _hangTimeAwarded = true;
+          awardReward('hang_time');
+        }
+      }
+      if (!G.playerVehicle.airborne) _hangTimeAwarded = false;
+
+      // ── Nitro drift: drifting while nitro active, 3s cooldown ──
+      _nitroDriftCooldown = Math.max(0, _nitroDriftCooldown - gameDt);
+      if (Math.abs(G.playerVehicle.driftAngle) > 0.3 &&
+          G.playerVehicle.isNitroActive &&
+          _nitroDriftCooldown <= 0) {
+        _nitroDriftCooldown = 3.0;
+        awardReward('nitro_drift');
+      }
+    }
 
     // Misc VFX (lens flares, lightning, confetti, speed lines)
     updateMiscVFX(camera, timestamp, frameDt);
