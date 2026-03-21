@@ -496,7 +496,7 @@ if (placements.length > 0) {
   } else {
     // ── Desktop: full pipeline with normal, emissive, AO, interior mapping ──
     // Load companion normal map atlas (same grid layout as diffuse)
-    const normalPath = atlasPath.replace(/\.(png|jpg)$/, '_normal.$1');
+    const normalPath = atlasPath.replace(/\.(png|jpg)$/, '_normal.png');
     const normalTexture = new THREE.TextureLoader().load(normalPath);
     normalTexture.wrapS = THREE.RepeatWrapping;
     normalTexture.wrapT = THREE.RepeatWrapping;

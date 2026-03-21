@@ -1,29 +1,51 @@
 #!/usr/bin/env node
 // Stitch 8 ground tiles horizontally into 2048×256 atlas
+// Usage: node scripts/stitch-ground.mjs <tiles_dir> <output_file>
+//
+// Input directory should contain 8 tile images named t0.png through t7.png
+// (or any 8 .png files — they're sorted alphabetically and placed left-to-right).
 // Layout: [ShoulderA][ShoulderB][UrbanA][UrbanB][OpenA][OpenB][FarA][FarB]
+
 import sharp from 'sharp';
+import { readdir } from 'fs/promises';
+import { join } from 'path';
 
-const TILE = 256;
-const tiles = [
-  '/tmp/gaza_ground_v3/t0a.png',  // Shoulder A
-  '/tmp/gaza_ground_v3/t0b.png',  // Shoulder B
-  '/tmp/gaza_ground_v3/t1a.png',  // Urban A
-  '/tmp/gaza_ground_v3/t1b.png',  // Urban B
-  '/tmp/gaza_ground_v3/t2a.png',  // Open A
-  '/tmp/gaza_ground_v3/t2b.png',  // Open B
-  '/tmp/gaza_ground_v3/t3a.png',  // Far A
-  '/tmp/gaza_ground_v3/t3b.png',  // Far B
-];
+const inputDir = process.argv[2];
+const outputFile = process.argv[3];
 
-const composites = [];
-for (let i = 0; i < tiles.length; i++) {
-  const buf = await sharp(tiles[i]).resize(TILE, TILE, { kernel: sharp.kernel.lanczos3 }).toBuffer();
-  composites.push({ input: buf, left: i * TILE, top: 0 });
+if (!inputDir || !outputFile) {
+  console.error('Usage: node scripts/stitch-ground.mjs <tiles_dir> <output_file>');
+  console.error('  e.g. node scripts/stitch-ground.mjs /tmp/ground_tiles/shanghai public/ground/ground_atlas_shanghai.png');
+  process.exit(1);
 }
 
-await sharp({ create: { width: TILE * 8, height: TILE, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 255 } } })
+const TILE = 256;
+const TILE_COUNT = 8;
+
+// Find tile images (sorted alphabetically)
+const files = await readdir(inputDir);
+const tileFiles = files.filter(f => /\.png$/i.test(f)).sort();
+
+if (tileFiles.length < TILE_COUNT) {
+  console.error(`Expected ${TILE_COUNT} .png files in ${inputDir}, found ${tileFiles.length}`);
+  process.exit(1);
+}
+
+console.log(`Stitching ${TILE_COUNT} tiles from ${inputDir} → ${outputFile}`);
+
+const composites = [];
+for (let i = 0; i < TILE_COUNT; i++) {
+  const filePath = join(inputDir, tileFiles[i]);
+  const buf = await sharp(filePath).resize(TILE, TILE, { kernel: sharp.kernel.lanczos3 }).toBuffer();
+  composites.push({ input: buf, left: i * TILE, top: 0 });
+  console.log(`  [${i}] ${tileFiles[i]}`);
+}
+
+await sharp({
+  create: { width: TILE * TILE_COUNT, height: TILE, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 255 } },
+})
   .composite(composites)
   .png({ compressionLevel: 6 })
-  .toFile('/Users/devnull/irlRace/public/ground/ground_atlas_gaza.png');
+  .toFile(outputFile);
 
-console.log('✅ ground_atlas_gaza.png (2048×256)');
+console.log(`✅ ${outputFile} (${TILE * TILE_COUNT}×${TILE})`);

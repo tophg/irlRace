@@ -19,6 +19,16 @@ Each environment needs **4 facade images** + **1 ground atlas**:
 > [!IMPORTANT]
 > **ALL textures must have power-of-2 dimensions** (256, 512, 1024, 2048, 4096). Non-POT textures crash WebGPU mipmap generation (frozen frame, audio continues).
 
+### File Extension Rules
+
+The diffuse atlas may be `.png` or `.jpg` (Gaza uses `.jpg`). The `STYLE_ATLAS` entry must match the actual file on disk. The code derives companion file paths as follows:
+
+- **Emissive**: always `.png` — `atlasPath.replace(/\.(png|jpg)$/, '_emissive.png')`
+- **Normal**: always `.png` — `atlasPath.replace(/\.(png|jpg)$/, '_normal.png')`
+- **Mobile**: always `.png` — `atlasPath.replace(/\.(png|jpg)$/, '_mobile.png')`
+
+All generated companion files (emissive, normal, mobile) are always `.png` regardless of the diffuse extension.
+
 ## Facade Atlas Layout (8 columns × 5 rows)
 
 Each **column** (0-7) = one architectural style. Each **row** = one element type.
@@ -46,7 +56,7 @@ All scripts live in `scripts/` (NOT `/tmp/`). They require the `sharp` npm packa
 |--------|---------|-------|
 | `scripts/stitch-atlas.mjs` | Stitch tiles → 4096×4096 diffuse atlas | `node scripts/stitch-atlas.mjs <tiles_dir> <output.png>` |
 | `scripts/gen-emissive-normal.mjs` | Generate emissive + normal from tiles | `node scripts/gen-emissive-normal.mjs <tiles_dir> <emissive.png> <normal.png>` |
-| `scripts/stitch-ground.mjs` | Stitch 8 ground tiles → 2048×256 | `node scripts/stitch-ground.mjs` (edit paths inside) |
+| `scripts/stitch-ground.mjs` | Stitch 8 ground tiles → 2048×256 | `node scripts/stitch-ground.mjs <tiles_dir> <output.png>` |
 
 > [!NOTE]
 > Re-stitching always rebuilds the **entire** atlas from all 40 tiles. There is no partial/single-column stitch — modify the tile file and re-run the full stitch.
@@ -69,7 +79,9 @@ All scripts live in `scripts/` (NOT `/tmp/`). They require the `sharp` npm packa
 ## Step-by-Step: Generate a New Environment
 
 ### 0. Tile Preservation (CRITICAL)
-Always generate and keep individual tiles in `/tmp/atlas_tiles/{env}/`:
+Generate and keep individual tiles in a **persistent** location (macOS clears `/tmp/` on reboot):
+- **Preferred**: `~/.irlrace_atlas_tiles/{env}/` (survives reboot, not in git)
+- **Fallback**: `/tmp/atlas_tiles/{env}/` (volatile — copy elsewhere if keeping)
 - Naming convention: `r{row}_c{col}.png` (e.g. `r0_c0.png` through `r4_c7.png`)
 - **Never delete individual tiles** after stitching — they are the source of truth
 - To modify a single tile, regenerate just that file and re-run the full stitch
@@ -96,6 +108,7 @@ cd /Users/devnull/irlRace
 node scripts/stitch-atlas.mjs /tmp/atlas_tiles/{env} /tmp/facade_atlas_{env}.png
 ```
 
+// turbo
 ### 4. Visual verification
 ```bash
 open /tmp/facade_atlas_{env}.png
@@ -198,12 +211,12 @@ Seamless tileable, top-down aerial view, flat lighting, no perspective.
 
 #### Stitch Ground Atlas
 
-Save generated tiles as `t0.png` through `t7.png`, then stitch. The stitch script (`scripts/stitch-ground.mjs`) composites 8 tiles horizontally. Update the tile paths inside the script before running.
+Save generated tiles as `t0.png` through `t7.png` (or any `.png` names — they're sorted alphabetically and placed left-to-right).
 
 // turbo
 ```bash
-cd /Users/devnull/irlRace && node scripts/stitch-ground.mjs
-# Output: public/ground/ground_atlas_{env}.png (2048×256)
+cd /Users/devnull/irlRace
+node scripts/stitch-ground.mjs /tmp/ground_tiles/{env} public/ground/ground_atlas_{env}.png
 ```
 
 Alternatively, use a quick inline stitch (replace paths as needed):
@@ -253,6 +266,9 @@ Add to `GROUND_ATLAS` in `scene.ts` (~line 56):
 },
 ```
 
+> [!WARNING]
+> The `buildingStyle` value in the preset **must** match a key in `STYLE_ATLAS`. A typo silently falls back to DC's atlas with no error. Double-check spelling.
+
 // turbo
 ### 11. Build and verify
 ```bash
@@ -295,7 +311,7 @@ Original tiles remain in `/tmp/atlas_tiles/{env}/` — fix individual tiles ther
 | Zermatt | `chalet` | `_zermatt` | Wood/stone Swiss chalet |
 | Weathered | `weathered` | `_weathered` | Decayed/abandoned aesthetic |
 | Warehouse | `warehouse` | `_warehouse` | Industrial brick/metal/concrete |
-| Gaza City | `levantine` | `_gaza` | Sandy limestone, arched windows |
+| Gaza City | `levantine` | `_gaza` | Sandy limestone, arched windows (diffuse is `.jpg`) |
 | Baghdad | `mesopotamian` | `_baghdad` | Mesopotamian brick/stone |
 | Damascus | `damascene` | `_damascus` | Ottoman-era stone/plaster |
 | Beirut | `levantine_med` | `_beirut` | Mediterranean levantine |
@@ -337,3 +353,4 @@ These environments exist in `scene.ts` but borrow another environment's atlas:
 | 404 on Vercel | Missing files or wrong extension | Check `.png` vs `.jpg` in `STYLE_ATLAS` |
 | Emissive on walls/ground | Glow applied to wrong rows | Verify script uses 5-row logic (row 0 + faint row 2 only) |
 | Emissive/normal wrong size | Script output doesn't match diffuse | Script must output 4096×4096 (was fixed) |
+| Silent fallback to DC | `buildingStyle` typo in preset | Check spelling matches `STYLE_ATLAS` key exactly |
