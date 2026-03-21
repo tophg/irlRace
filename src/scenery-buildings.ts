@@ -162,8 +162,8 @@ for (let si = 0; si < totalSamples && placements.length < MAX_PLACEMENTS; si++) 
       const d = 8 + rng() * 10;
 
       const rotY = Math.atan2(tan.x, tan.z) + (side > 0 ? Math.PI : 0) + (rng() - 0.5) * 0.1;
-      // Use spline elevation minus ground-sink so buildings sit flush with road surface
-      placements.push({ x: px, y: p.y - 1.0, z: pz, w, h, d, rotY, tile: variant });
+      // Use spline elevation so buildings sit flush with the road surface
+      placements.push({ x: px, y: p.y, z: pz, w, h, d, rotY, tile: variant });
     }
   }
 }
