@@ -338,6 +338,10 @@ export const ENV_FLAVOR: Record<string, string> = {
   'Montclair': 'Virginia suburbs, strip malls and colonial brick',
   'Lille': 'Flemish Baroque, red brick and ornate gables',
   'Nuuk': 'Arctic fjord capital, northern lights over ice',
+  'Cap-Haïtien': 'Creole colonial port, Caribbean heat and color',
+  'Machuelo Abajo': 'Mountain barrio roads, lush tropical green',
+  'Siberia': 'Frozen taiga, endless snow, industrial isolation',
+  'Lima': 'Coastal desert capital under perpetual grey marine fog',
 };
 
 export const ENV_EMOJI: Record<string, string> = {
@@ -361,6 +365,10 @@ export const ENV_EMOJI: Record<string, string> = {
   'Montclair': '🏘️',
   'Lille': '🏰',
   'Nuuk': '🧊',
+  'Cap-Haïtien': '🇭🇹',
+  'Machuelo Abajo': '🌿',
+  'Siberia': '🥶',
+  'Lima': '🌫️',
 };
 
 /** Build environment card grid HTML (reused by singleplayer setup and MP lobby). */
