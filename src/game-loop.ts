@@ -60,6 +60,7 @@ import { stepPhysics, initPhysicsStep } from './physics-step';
 import { stopReplayPlayback as stopReplayUI } from './replay-ui';
 
 import { updateTimeScale, applyTimeScale, getTimeScale } from './time-scale';
+import { COLORS } from './colors';
 
 // ── Dependency injection ──
 
@@ -118,7 +119,7 @@ export function updateLeaderboard() {
 
   if (G.netPeer) {
     const rtt = G.netPeer.getRtt();
-    const color = rtt < 80 ? '#4caf50' : rtt < 150 ? '#ffcc00' : '#ff4444';
+    const color = rtt < 80 ? '#4caf50' : rtt < 150 ? COLORS.YELLOW : COLORS.RED;
     G.lbEl.innerHTML += `<div style="text-align:right;font-size:11px;color:${color};margin-top:4px;">${rtt}ms</div>`;
   }
 }

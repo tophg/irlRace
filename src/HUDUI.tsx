@@ -1,6 +1,7 @@
 /* ── Hood Racer — Solid.js HUD ── */
 
 import { createSignal, createEffect, onMount, Show } from 'solid-js';
+import { COLORS } from './colors';
 
 
 // ── Shared Reactive State ──
@@ -36,10 +37,10 @@ export const RacingHUD = () => {
   const getHeatColor = () => {
     const h = heatPct();
     if (h > 90) return '#ff1100';
-    if (h > 70) return '#ff6600';
-    if (h > 50) return '#ffaa00';
+    if (h > 70) return COLORS.ACCENT;
+    if (h > 50) return COLORS.ORANGE;
     if (h > 30) return '#ffdd44';
-    return '#44aaff';
+    return COLORS.BLUE;
   };
 
   const getDamageClass = (hp: number) => {
@@ -162,7 +163,7 @@ export const RacingHUD = () => {
     ctx.beginPath();
     ctx.arc(cx, cy, 4, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#ff6600';
+    ctx.fillStyle = COLORS.ACCENT;
     ctx.beginPath();
     ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
     ctx.fill();

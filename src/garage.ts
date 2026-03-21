@@ -8,6 +8,7 @@ import { isCarUnlocked, getUnlockCost, unlockCar, getProgress, saveProgress } fr
 import { getSettings, saveSettings } from './settings';
 import { applyPaintToModel, restoreOriginalColors, shouldSkipForPaint } from './garage-paint';
 import { playClickSfx, playConfirmSfx, playUnlockSfx, playSpraySfx } from './garage-audio';
+import { COLORS } from './colors';
 
 let garageScene: THREE.Scene;
 let garageCamera: THREE.PerspectiveCamera;
@@ -554,7 +555,7 @@ function buildGarageUI(overlay: HTMLElement) {
   paintBuyBtn?.addEventListener('click', () => {
     const prog = getProgress();
     if (prog.credits < PAINT_COST) {
-      showPaintToast('Not enough credits!', '#ff4444');
+      showPaintToast('Not enough credits!', COLORS.RED);
       return;
     }
     prog.credits -= PAINT_COST;
@@ -564,7 +565,7 @@ function buildGarageUI(overlay: HTMLElement) {
     saveSettings(s);
     applyPaintToModel(currentModel, _previewHue);
     updatePaintBalance();
-    showPaintToast('Paint applied!', '#44ff88');
+    showPaintToast('Paint applied!', COLORS.GREEN);
     playSpraySfx();
     // Update credit display in stats
     const creditEl = document.querySelector('.stat-credits-value');
@@ -632,7 +633,7 @@ async function showCar(index: number) {
     const locked = !isCarUnlocked(car.id);
     const unlockCost = getUnlockCost(car.id);
     const lockLabel = locked ? `🔒 ${unlockCost} CR` : 'UNLOCKED';
-    const lockColor = locked ? '#ff4444' : tierInfo.color;
+    const lockColor = locked ? COLORS.RED : tierInfo.color;
     const prog = getProgress();
 
     statsEl.innerHTML = `

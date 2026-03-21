@@ -1,6 +1,7 @@
 /* ── IRL Race — Minimap (Canvas-Based Track Radar) ── */
 
 import * as THREE from 'three/webgpu';
+import { COLORS } from './colors';
 
 // ── Configuration ──
 const MAP_SIZE = 160;        // px (square canvas)
@@ -215,7 +216,7 @@ export function updateTrackRadar(
   ctx.arc(halfW, halfW, PLAYER_DOT + 3, 0, Math.PI * 2);
   ctx.fill();
   // Main dot
-  ctx.fillStyle = '#ff6600';
+  ctx.fillStyle = COLORS.ACCENT;
   ctx.beginPath();
   ctx.arc(halfW, halfW, PLAYER_DOT, 0, Math.PI * 2);
   ctx.fill();
@@ -227,7 +228,7 @@ export function updateTrackRadar(
 
   // ── Direction arrow (points up from center) ──
   const arrowLen = PLAYER_DOT + 6;
-  ctx.strokeStyle = '#ff6600';
+  ctx.strokeStyle = COLORS.ACCENT;
   ctx.lineWidth = 2;
   ctx.lineCap = 'round';
   ctx.beginPath();

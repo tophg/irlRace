@@ -38,7 +38,7 @@ const density = isMobile ? Math.min(T.buildingDensity ?? 1.0, 0.5) : (T.building
 const rowCount = isMobile ? 1 : Math.min(3, Math.max(1, T.buildingRowCount ?? 2));
 const gapChance = isMobile ? Math.max(T.buildingGapChance ?? 0.15, 0.3) : (T.buildingGapChance ?? 0.15);
 
-// ── AI-generated facade atlas (8×4 = 32 tiles, high-resolution PNGs) ──
+// ── AI-generated facade atlas (8×5 = 40 tiles, high-resolution PNGs) ──
 const ATLAS_COLS = 8, ATLAS_ROWS = 5;
 
 // Each environment has its own AI-generated atlas with photorealistic textures
@@ -161,12 +161,12 @@ if (placements.length > 0) {
   // Build a box with subdivided faces for facade tiling
   // Each face subdivision maps to the FULL tile sub-region, giving proper repetition
   // buildComposedBox: vertical facade composition
-  // Multi-story: ground (Row 0) → mid repeating (Row 1) → roof cap (Row 2)
-  // Single-story (repV ≤ 1): uses singleTile (Row 3) for entire face
+  // Multi-story: ground (Row 2) → mid repeating (Row 0/1) → transition (Row 3) → roof cap (Row 4)
+  // Single-story (repV ≤ 1): uses singleTile (Row 1) for entire face
   const buildComposedBox = (
     groundTile: number, sideGroundTile: number,
     windowTile: number, wallPierTile: number, roofCapTile: number,
-    singleTile: number, flipU: boolean,
+    transitionTile: number, singleTile: number, flipU: boolean,
     boxW: number, boxH: number, boxD: number,
   ) => {
     // Helper: get atlas UV rect for a tile index
@@ -254,13 +254,15 @@ if (placements.length > 0) {
 
       // Multi-story composition using fixed tile sizes
       const groundH = TILE_H;             // ground floor = one tile height
-      const roofH = TILE_H * 0.3;         // thin cornice cap
-      const midH = Math.max(TILE_H, faceH - groundH - roofH); // remainder
-      const totalH = groundH + midH + roofH;
+      const transH = TILE_H * 0.4;        // transition band (cornice/balcony/ductwork)
+      const roofH = TILE_H * 0.3;         // thin roof cap
+      const midH = Math.max(TILE_H, faceH - groundH - transH - roofH); // remainder
+      const totalH = groundH + midH + transH + roofH;
 
       const groundFrac = groundH / totalH;
+      const transFrac = transH / totalH;
       const roofFrac = roofH / totalH;
-      const midFrac = 1 - groundFrac - roofFrac;
+      const midFrac = 1 - groundFrac - transFrac - roofFrac;
 
       // Compute tile repeats from physical dimensions
       // Force odd column count so edges are always wall piers
@@ -337,7 +339,31 @@ if (placements.length > 0) {
         }
       }
 
-      // Roof cap: single tile across full width (non-tiling architectural detail)
+      // Transition band: single tile across full width (archetype-specific detail)
+      {
+        const zUV = tileUV(transitionTile);
+        const zTW = zUV.uMax - zUV.uMin;
+        const zTH = zUV.vMax - zUV.vMin;
+        const baseIdx = positions.length / 3;
+        for (let vr = 0; vr <= 1; vr++) {
+          for (let vc = 0; vc <= 1; vc++) {
+            const u = vc;
+            const v = groundFrac + midFrac + vr * transFrac;
+            positions.push(
+              origin[0] + axisU[0] * u + axisV[0] * v,
+              origin[1] + axisU[1] * u + axisV[1] * v,
+              origin[2] + axisU[2] * u + axisV[2] * v,
+            );
+            let tU = vc;
+            if (flipU) tU = 1 - tU;
+            uvs.push(zUV.uMin + tU * zTW, zUV.vMin + vr * zTH);
+          }
+        }
+        indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+        indices.push(baseIdx + 1, baseIdx + 3, baseIdx + 2);
+      }
+
+      // Roof cap: single tile across full width
       {
         const zUV = tileUV(roofCapTile);
         const zTW = zUV.uMax - zUV.uMin;
@@ -569,17 +595,18 @@ if (placements.length > 0) {
     const hBucketNum = Math.floor(avgH / HEIGHT_BUCKET_SIZE);
 
     // Tile mapping: 5-row atlas layout (one column per building)
-    // Row 0: window, Row 1: wall pier, Row 2: ground, Row 3: cornice, Row 4: roof
-    const windowTile     = 0 * ATLAS_COLS + variant; // Row 0 (window)
-    const wallPierTile   = 1 * ATLAS_COLS + variant; // Row 1 (wall pier)
-    const groundTile     = 2 * ATLAS_COLS + variant; // Row 2 (ground/storefront)
-    const sideGroundTile = 1 * ATLAS_COLS + variant; // Side ground = wall pier (row 1)
-    const roofCapTile    = 4 * ATLAS_COLS + variant; // Row 4 (roof cap)
-    const singleTile     = 1 * ATLAS_COLS + variant; // Single-story = wall surface
+    // Row 0: window, Row 1: wall pier, Row 2: ground, Row 3: transition, Row 4: roof
+    const windowTile      = 0 * ATLAS_COLS + variant; // Row 0 (window)
+    const wallPierTile    = 1 * ATLAS_COLS + variant; // Row 1 (wall pier)
+    const groundTile      = 2 * ATLAS_COLS + variant; // Row 2 (ground/storefront)
+    const sideGroundTile  = 1 * ATLAS_COLS + variant; // Side ground = wall pier (row 1)
+    const transitionTile  = 3 * ATLAS_COLS + variant; // Row 3 (transition band)
+    const roofCapTile     = 4 * ATLAS_COLS + variant; // Row 4 (roof cap)
+    const singleTile      = 1 * ATLAS_COLS + variant; // Single-story = wall surface
 
     // Pass physical dimensions — addComposedFace computes tile repeats internally
-    const geo0 = buildComposedBox(groundTile, sideGroundTile, windowTile, wallPierTile, roofCapTile, singleTile, false, avgW, avgH, avgD);
-    const geo1 = buildComposedBox(groundTile, sideGroundTile, windowTile, wallPierTile, roofCapTile, singleTile, true,  avgW, avgH, avgD);
+    const geo0 = buildComposedBox(groundTile, sideGroundTile, windowTile, wallPierTile, roofCapTile, transitionTile, singleTile, false, avgW, avgH, avgD);
+    const geo1 = buildComposedBox(groundTile, sideGroundTile, windowTile, wallPierTile, roofCapTile, transitionTile, singleTile, true,  avgW, avgH, avgD);
 
     // Split placements into 2 visual variants (flip mirror)
     const bucket0: BoxPlacement[] = [];

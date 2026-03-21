@@ -587,7 +587,7 @@ function createRoadTexture(rng: () => number): THREE.CanvasTexture {
   ctx.globalAlpha = 1.0;
 
   // Center dashed yellow line
-  ctx.strokeStyle = '#ffcc00';
+  ctx.strokeStyle = COLORS.YELLOW;
   ctx.lineWidth = 4;
   ctx.setLineDash([30, 25]);
   ctx.beginPath(); ctx.moveTo(S / 2, 0); ctx.lineTo(S / 2, S); ctx.stroke();
@@ -846,6 +846,7 @@ function buildKerbs(spline: THREE.CatmullRomCurve3, curvatures: number[]): THREE
 // SCENERY — extracted to track-scenery.ts
 import { generateScenery, updateSceneryWind } from './track-scenery';
 import { getCurrentTheme } from './scene';
+import { COLORS } from './colors';
 export { generateScenery, updateSceneryWind };
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

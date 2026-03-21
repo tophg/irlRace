@@ -2,6 +2,7 @@
 
 import * as THREE from 'three/webgpu';
 import type { RampDef } from './types';
+import { COLORS } from './colors';
 
 const ROAD_WIDTH = 14;
 
@@ -183,7 +184,7 @@ export function buildRampGroup(
   return group;
 }
 /** Create a canvas texture with configurable stripe color for ramp surface. */
-function createRampTexture(stripeColor = '#ffaa00', edgeColor = '#ff6600', baseColor = '#3e3e48'): THREE.CanvasTexture {
+function createRampTexture(stripeColor: string = COLORS.ORANGE, edgeColor: string = COLORS.ACCENT, baseColor: string = COLORS.DARK_SURFACE): THREE.CanvasTexture {
   const S = 256;
   const canvas = document.createElement('canvas');
   canvas.width = S; canvas.height = S;
@@ -253,9 +254,9 @@ const RAMP_ARCHETYPES: Record<RampType, RampArchetype> = {
     flatTopRange: [0.08, 0.12],
     side: 'full',
     meshColor: 0x666670,
-    stripeColor: '#ffaa00',
-    edgeColor: '#ff6600',
-    baseColor: '#3e3e48',
+    stripeColor: COLORS.ORANGE,
+    edgeColor: COLORS.ACCENT,
+    baseColor: COLORS.DARK_SURFACE,
   },
   // Speed bump — short, low, quick hop
   speed_bump: {
@@ -275,7 +276,7 @@ const RAMP_ARCHETYPES: Record<RampType, RampArchetype> = {
     flatTopRange: [0.08, 0.12],
     side: 'random', // randomly left or right
     meshColor: 0x5566aa,
-    stripeColor: '#44aaff',
+    stripeColor: COLORS.BLUE,
     edgeColor: '#2288dd',
     baseColor: '#35354a',
   },

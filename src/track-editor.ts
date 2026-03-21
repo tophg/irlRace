@@ -11,6 +11,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CustomTrackDef, TrackData, RampDef } from './types';
 import { buildTrackFromControlPoints } from './track';
 import { saveCustomTrack, loadCustomTracks, deleteCustomTrack, exportTrackJSON, importTrackJSON } from './track-storage';
+import { COLORS } from './colors';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // STATE
@@ -404,9 +405,9 @@ function btn(label: string, onClick: () => void, accent = false): HTMLButtonElem
   const b = document.createElement('button');
   b.textContent = label;
   b.style.cssText = `
-    padding:5px 10px;border-radius:4px;border:1px solid ${accent ? '#ff6600' : 'rgba(255,255,255,0.18)'};
+    padding:5px 10px;border-radius:4px;border:1px solid ${accent ? COLORS.ACCENT : 'rgba(255,255,255,0.18)'};
     background:${accent ? 'rgba(255,102,0,0.15)' : 'rgba(255,255,255,0.04)'};
-    color:${accent ? '#ff8833' : '#bbb'};cursor:pointer;font-size:11px;font-weight:600;
+    color:${accent ? COLORS.ACCENT_GLOW : '#bbb'};cursor:pointer;font-size:11px;font-weight:600;
     letter-spacing:0.5px;font-family:'Inter',sans-serif;transition:background 0.15s;
   `;
   b.addEventListener('mouseenter', () => { b.style.background = accent ? 'rgba(255,102,0,0.35)' : 'rgba(255,255,255,0.12)'; });
@@ -437,14 +438,14 @@ function updateToolBtns() {
   if (elevToolBtn) {
     const active = editorTool === 'elevation';
     elevToolBtn.style.background = active ? 'rgba(255,102,0,0.35)' : 'rgba(255,255,255,0.04)';
-    elevToolBtn.style.color = active ? '#ff8833' : '#bbb';
-    elevToolBtn.style.borderColor = active ? '#ff6600' : 'rgba(255,255,255,0.18)';
+    elevToolBtn.style.color = active ? COLORS.ACCENT_GLOW : '#bbb';
+    elevToolBtn.style.borderColor = active ? COLORS.ACCENT : 'rgba(255,255,255,0.18)';
   }
   if (rampToolBtn) {
     const active = editorTool === 'ramp';
     rampToolBtn.style.background = active ? 'rgba(255,102,0,0.35)' : 'rgba(255,255,255,0.04)';
-    rampToolBtn.style.color = active ? '#ff8833' : '#bbb';
-    rampToolBtn.style.borderColor = active ? '#ff6600' : 'rgba(255,255,255,0.18)';
+    rampToolBtn.style.color = active ? COLORS.ACCENT_GLOW : '#bbb';
+    rampToolBtn.style.borderColor = active ? COLORS.ACCENT : 'rgba(255,255,255,0.18)';
   }
 }
 
@@ -781,9 +782,9 @@ function draw() {
       const r = Math.round(80 + t * 175);
       const g = Math.round(180 - t * 160);
       const b = Math.round(80 - t * 60);
-      pointColor = isSel ? '#ff6600' : `rgb(${r},${g},${b})`;
+      pointColor = isSel ? COLORS.ACCENT : `rgb(${r},${g},${b})`;
     } else {
-      pointColor = isFirst ? '#ffcc00' : isDrag ? '#ff6600' : isHover ? '#ff8833' : '#44aaff';
+      pointColor = isFirst ? COLORS.YELLOW : isDrag ? COLORS.ACCENT : isHover ? COLORS.ACCENT_GLOW : COLORS.BLUE;
     }
     ctx.fillStyle = pointColor;
     ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
@@ -821,7 +822,7 @@ function draw() {
       ctx.save();
       ctx.translate(rx, ry);
       ctx.rotate(Math.PI / 4);
-      ctx.fillStyle = isDragging ? '#ff6600' : '#ff8800';
+      ctx.fillStyle = isDragging ? COLORS.ACCENT : '#ff8800';
       ctx.fillRect(-sz / 2, -sz / 2, sz, sz);
       ctx.strokeStyle = '#fff';
       ctx.lineWidth = 2;
@@ -849,7 +850,7 @@ function draw() {
   if (counter) {
     const valid = controlPoints.length >= 4;
     counter.textContent = `${controlPoints.length} pts${valid ? ' ✓' : ''}  |  Tab: ${viewMode}`;
-    counter.style.color = valid ? '#44ff88' : 'rgba(255,255,255,0.4)';
+    counter.style.color = valid ? COLORS.GREEN : 'rgba(255,255,255,0.4)';
   }
 }
 
@@ -921,7 +922,7 @@ function drawSplinePreview(ctx: CanvasRenderingContext2D) {
 
   if (controlPoints.length >= 4) {
     const [sx, sy] = worldToScreen(splinePoints[0].x, splinePoints[0].z);
-    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 12px Inter, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = COLORS.YELLOW; ctx.font = 'bold 12px Inter, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('🏁 START/FINISH', sx, sy - 18);
   }
 }
@@ -959,7 +960,7 @@ function drawElevationProfile(ctx: CanvasRenderingContext2D, w: number, h: numbe
     const py = STRIP_Y + STRIP_H * (1 - t);
     if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
   }
-  ctx.strokeStyle = '#44ff88'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.strokeStyle = COLORS.GREEN; ctx.lineWidth = 2; ctx.stroke();
 
   // Fill under curve
   ctx.lineTo(STRIP_X + STRIP_W, zeroLineY);
@@ -974,7 +975,7 @@ function drawElevationProfile(ctx: CanvasRenderingContext2D, w: number, h: numbe
     const t = (p.y - ELEV_MIN) / (ELEV_MAX - ELEV_MIN);
     const py = STRIP_Y + STRIP_H * (1 - t);
     ctx.beginPath(); ctx.arc(px, py, i === selectedIdx ? 5 : 3, 0, Math.PI * 2);
-    ctx.fillStyle = i === selectedIdx ? '#ff6600' : '#44ff88';
+    ctx.fillStyle = i === selectedIdx ? COLORS.ACCENT : COLORS.GREEN;
     ctx.fill();
   }
 }
@@ -1171,7 +1172,7 @@ function rebuildGizmos() {
     const canvas = document.createElement('canvas');
     canvas.width = 128; canvas.height = 64;
     const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = isFirst ? '#ffcc00' : '#44aaff';
+    ctx.fillStyle = isFirst ? COLORS.YELLOW : COLORS.BLUE;
     ctx.font = 'bold 28px Inter, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     const label = editorTool === 'elevation' ? `${p.y.toFixed(1)}m` : (isFirst ? 'S' : `${i}`);
