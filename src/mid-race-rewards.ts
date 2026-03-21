@@ -123,8 +123,9 @@ function showToast(def: RewardDef, finalNitro: number, finalCredits: number, fin
   if (_comboMultiplier >= 5) comboBadgeCls += ' reward-combo-max';
   else if (_comboMultiplier >= 4) comboBadgeCls += ' reward-combo-gold';
   else if (_comboMultiplier >= 3) comboBadgeCls += ' reward-combo-hot';
-  const comboHtml = _comboMultiplier > 1
-    ? `<span class="${comboBadgeCls}">×${_comboMultiplier}</span>`
+  const displayCombo = Math.floor(_comboMultiplier);
+  const comboHtml = displayCombo > 1
+    ? `<span class="${comboBadgeCls}">×${displayCombo}</span>`
     : '';
 
   // Build amount containers (values filled by counter-roll animation)
@@ -143,11 +144,30 @@ function showToast(def: RewardDef, finalNitro: number, finalCredits: number, fin
 
   container.appendChild(toast);
 
-  // Trigger enter animation + glow pulse
+  // Trigger enter animation + glow pulse + particle effects
+  // Audit fix #9: getBoundingClientRect inside rAF so toast has been painted
+  const savedComboMult = _comboMultiplier; // capture current combo state
   requestAnimationFrame(() => {
     toast.classList.add('reward-toast--in');
     toast.classList.add('reward-toast--glow');
     setTimeout(() => toast.classList.remove('reward-toast--glow'), 400);
+
+    // ── Particle effects based on reward tier (moved here from below) ──
+    const toastRect = toast.getBoundingClientRect();
+    const cx = toastRect.left + toastRect.width / 2;
+    const cy = toastRect.top + toastRect.height / 2;
+
+    if (isJackpot) {
+      emitJackpotRain();
+      SHAKE.jackpot();
+    } else if (def.category === 'milestone') {
+      emitCurrencyBurst(cx, cy, def.hue);
+    } else if (savedComboMult >= 3) {
+      emitComboShockwave(def.hue);
+      if (savedComboMult >= 4) SHAKE.comboHigh();
+    } else {
+      emitCurrencyBurst(cx, cy, def.hue);
+    }
   });
 
   // Start animated counter rolls on each amount span
@@ -158,27 +178,6 @@ function showToast(def: RewardDef, finalNitro: number, finalCredits: number, fin
     const suffix = span.dataset.suffix || '';
     toastCounterRoll(span, target, prefix, suffix);
   });
-
-  // ── Particle effects based on reward tier ──
-  const toastRect = toast.getBoundingClientRect();
-  const cx = toastRect.left + toastRect.width / 2;
-  const cy = toastRect.top + toastRect.height / 2;
-
-  if (isJackpot) {
-    // Jackpot: golden rain + screen shake (variable ratio payoff ceremony)
-    emitJackpotRain();
-    SHAKE.jackpot();
-  } else if (def.category === 'milestone') {
-    // Milestone: larger burst
-    emitCurrencyBurst(cx, cy, def.hue);
-  } else if (_comboMultiplier >= 3) {
-    // High combo: shockwave ring (escalation anticipation)
-    emitComboShockwave(def.hue);
-    if (_comboMultiplier >= 4) SHAKE.comboHigh();
-  } else {
-    // Standard reward: small burst
-    emitCurrencyBurst(cx, cy, def.hue);
-  }
 
   // Remove after lifespan
   const lifespan = isJackpot ? 2200 : (def.category === 'milestone' ? 2000 : TOAST_LIFESPAN);
@@ -521,7 +520,7 @@ export function breakCombo(): void {
   const container = ensureToastContainer();
   const toast = document.createElement('div');
   toast.className = 'reward-toast reward-combo-lost';
-  toast.innerHTML = `
+    toast.innerHTML = `
     <span class="reward-icon">💥</span>
     <span class="reward-label">×${Math.floor(lostMultiplier)} COMBO LOST</span>
     ${bankXP > 0 ? `<span class="reward-amt reward-amt-xp" style="opacity:0.7">Banked +${bankXP} XP</span>` : ''}

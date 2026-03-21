@@ -138,6 +138,9 @@ export function updatePostFX(speedRatio: number, isNitroActive = false, dt = 1 /
   uImpactIntensity.value *= Math.pow(0.88, dt * 60);
   if (uImpactIntensity.value < 0.01) uImpactIntensity.value = 0;
 
+  // Audit fix #10: apply explosion post-FX decay when in explosion mode
+  updateExplosionPostFX(dt);
+
   // Subtle chromatic aberration during boost (adds cinematic feel)
   if (isNitroActive && uImpactIntensity.value < 0.15) {
     uImpactIntensity.value = 0.15;
@@ -187,7 +190,8 @@ function updateExplosionPostFX(dt: number) {
   uBoostIntensity.value = Math.max(0.3, uBoostIntensity.value - 0.06 * dt);
 }
 
-function destroyPostFX() {
+// Audit fix #11: exported for race teardown cleanup
+export function destroyPostFX() {
   pipeline = null;
   explosionMode = false;
   _smoothSlowMo = 0;
@@ -262,9 +266,11 @@ export function updateAfterimage() {
 
       // Draw current frame with slight blue tint via compositing
       _afterCtx.globalCompositeOperation = 'source-over';
+      // Audit fix #6: use 9-arg drawImage for correct DPI handling
       _afterCtx.globalAlpha = 0.3;
       _afterCtx.drawImage(
         _sourceCanvas,
+        0, 0, _sourceCanvas.width, _sourceCanvas.height,
         0, 0, _afterCanvas.width, _afterCanvas.height,
       );
       _afterCtx.globalAlpha = 1.0;

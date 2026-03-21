@@ -213,9 +213,9 @@ export function updateExplosionVFX(
     });
   });
 
-  // Delayed secondary explosions
-  _explosionTimers.push(window.setTimeout(() => spawnGPUSecondaryExplosion(expPos), 300));
-  _explosionTimers.push(window.setTimeout(() => spawnGPUSecondaryExplosion(expPos), 800));
+  // Delayed secondary explosions (audit fix #5: add generation guard)
+  _explosionTimers.push(window.setTimeout(() => { if (gen !== _explosionRaceGen) return; spawnGPUSecondaryExplosion(expPos); }, 300));
+  _explosionTimers.push(window.setTimeout(() => { if (gen !== _explosionRaceGen) return; spawnGPUSecondaryExplosion(expPos); }, 800));
 
   if (isRacing) {
     G.raceEngine!.markDnf('local');
@@ -440,6 +440,10 @@ export function updateNitroVFX(
   // Nitro FOV punch
   if (isNitroNow) {
     camera.fov = Math.min(camera.fov + 5, 83);
+    camera.updateProjectionMatrix();
+  } else if (camera.fov > 75) {
+    // Audit fix #15: smoothly return FOV when nitro ends
+    camera.fov = Math.max(camera.fov - 3, 75);
     camera.updateProjectionMatrix();
   }
 

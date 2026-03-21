@@ -162,6 +162,7 @@ export async function initGPUParticles(
 // Dirty range tracking — only upload changed region instead of full 8192-particle buffer
 let _dirtyStart = Infinity;
 let _dirtyEnd = -1;
+let _dirtyWrapped = false;
 
 function writeParticle(
   px: number, py: number, pz: number,
@@ -181,7 +182,8 @@ function writeParticle(
   cpuType[idx] = type;
   cpuSize[idx] = size;
 
-  // Track dirty range
+  // Track dirty range (detect wraparound)
+  if (_dirtyEnd >= 0 && idx < _dirtyEnd - MAX_PARTICLES / 2) _dirtyWrapped = true;
   if (idx < _dirtyStart) _dirtyStart = idx;
   if (idx > _dirtyEnd) _dirtyEnd = idx;
 
@@ -203,24 +205,31 @@ export function flushToGPU() {
   const buffers4 = [colorBuffer];
   const buffers1 = [lifeBuffer, maxLifeBuffer, typeBuffer, sizeBuffer];
 
+  // Audit fix #1: If dirty range wrapped around (e.g. 8190,8191,0,1),
+  // upload the full buffer to avoid stale partial ranges.
+  const fullUpload = _dirtyWrapped;
+  const rangeStart = fullUpload ? 0 : _dirtyStart;
+  const rangeCount = fullUpload ? MAX_PARTICLES : (_dirtyEnd - _dirtyStart + 1);
+
   for (const buf of buffers3) {
     buf.clearUpdateRanges();
-    buf.addUpdateRange(_dirtyStart * 3, (_dirtyEnd - _dirtyStart + 1) * 3);
+    buf.addUpdateRange(rangeStart * 3, rangeCount * 3);
     buf.needsUpdate = true;
   }
   for (const buf of buffers4) {
     buf.clearUpdateRanges();
-    buf.addUpdateRange(_dirtyStart * 4, (_dirtyEnd - _dirtyStart + 1) * 4);
+    buf.addUpdateRange(rangeStart * 4, rangeCount * 4);
     buf.needsUpdate = true;
   }
   for (const buf of buffers1) {
     buf.clearUpdateRanges();
-    buf.addUpdateRange(_dirtyStart, _dirtyEnd - _dirtyStart + 1);
+    buf.addUpdateRange(rangeStart, rangeCount);
     buf.needsUpdate = true;
   }
 
   _dirtyStart = Infinity;
   _dirtyEnd = -1;
+  _dirtyWrapped = false;
 
   // Update spawn time so the compute shader idle-skip in updateGPUParticles
   // knows there are fresh particles to simulate.
@@ -502,7 +511,7 @@ export function spawnGPUFlame(pos: THREE.Vector3, intensity: number, dt = 0.016)
 }
 
 /** Spawn scrape sparks along a barrier contact line. */
-function spawnGPUScrapeSparks(pos: THREE.Vector3, speed: number, heading: number) {
+export function spawnGPUScrapeSparks(pos: THREE.Vector3, speed: number, heading: number) {
   const count = Math.min(Math.floor(Math.abs(speed) * 0.15), 6);
   const sinH = Math.sin(heading);
   const cosH = Math.cos(heading);

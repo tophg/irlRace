@@ -11,16 +11,28 @@ import { levelProgress, xpToNextLevel, getProgress } from './progression';
 import { emitLevelBurst, emitXPStream, emitAchievementConfetti, emitCurrencyBurst } from './reward-particles';
 import { SHAKE } from './screen-shake';
 
-// ── Web Audio SFX (procedural, no asset files) ──
+// Audit fix #3: use shared AudioContext (Safari max 6 limit)
+// Set via setRewardsAnimAudioContext() from audio.ts init
 let _audioCtx: AudioContext | null = null;
-function ctx(): AudioContext {
-  if (!_audioCtx) _audioCtx = new AudioContext();
+function ctx(): AudioContext | null {
   return _audioCtx;
+}
+
+/** Provide the shared AudioContext — call from audio.ts initAudio(). */
+export function setRewardsAnimAudioContext(c: AudioContext) {
+  _audioCtx = c;
+}
+
+/** Audit fix #17: cleanup function for race teardown. */
+export function destroyRewardsAnimation() {
+  // Don't close — shared context is owned by audio.ts
+  _audioCtx = null;
 }
 
 function playCounterTick() {
   try {
     const c = ctx();
+    if (!c) return;
     const o = c.createOscillator();
     const g = c.createGain();
     o.type = 'sine';
@@ -36,6 +48,7 @@ function playCounterTick() {
 function playBonusChime() {
   try {
     const c = ctx();
+    if (!c) return;
     const now = c.currentTime;
     for (const [freq, delay] of [[800, 0], [1200, 0.06]] as const) {
       const o = c.createOscillator();
@@ -54,6 +67,7 @@ function playBonusChime() {
 function playBarFillSweep() {
   try {
     const c = ctx();
+    if (!c) return;
     const o = c.createOscillator();
     const g = c.createGain();
     o.type = 'sine';
@@ -71,6 +85,7 @@ function playBarFillSweep() {
 function playLevelUpFanfare() {
   try {
     const c = ctx();
+    if (!c) return;
     const now = c.currentTime;
     const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
     notes.forEach((freq, i) => {
@@ -91,6 +106,7 @@ function playLevelUpFanfare() {
 function playTotalPunch() {
   try {
     const c = ctx();
+    if (!c) return;
     const o = c.createOscillator();
     const g = c.createGain();
     o.type = 'square';

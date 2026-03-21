@@ -162,11 +162,17 @@ export function loadCalibrationOverrides() {
     const existingStr = localStorage.getItem(CALIBRATION_STORAGE_KEY);
     if (!existingStr) return;
     const overrides = JSON.parse(existingStr);
+    if (typeof overrides !== 'object' || overrides === null) return; // audit fix #16
     for (const modelId in overrides) {
+      const def = overrides[modelId];
+      // Audit fix #16: basic type validation to prevent corrupted data from crashing
+      if (!def || typeof def !== 'object') continue;
+      if (!Array.isArray(def.headlightL) || def.headlightL.length !== 3) continue;
+      if (typeof def.spotIntensity !== 'number') continue;
       if (CAR_LIGHT_MAP[modelId]) {
-        Object.assign(CAR_LIGHT_MAP[modelId], overrides[modelId]);
+        Object.assign(CAR_LIGHT_MAP[modelId], def);
       } else {
-        CAR_LIGHT_MAP[modelId] = overrides[modelId];
+        CAR_LIGHT_MAP[modelId] = def;
       }
     }
   } catch (e) {

@@ -4,6 +4,7 @@ import { getSettings } from './settings';
 import { initNitroAudio, cleanupNitroAudio } from './audio-nitro';
 import { setThunderAudioContext } from './weather';
 import { setRewardAudioContext } from './mid-race-rewards';
+import { setRewardsAnimAudioContext } from './rewards-animation';
 export { playNitroActivate, startNitroBurn, stopNitroBurn, updateNitroBurnIntensity, updateDepletionWarning, stopDepletionWarning, playNitroRelease } from './audio-nitro';
 
 let audioCtx: AudioContext | null = null;
@@ -152,6 +153,8 @@ export function initAudio() {
 
   // Wire up mid-race reward SFX through the shared context (audit fix #4)
   setRewardAudioContext(audioCtx);
+  // Wire up post-race rewards animation audio (audit fix #3)
+  setRewardsAnimAudioContext(audioCtx);
 
   engineMaster = audioCtx.createGain();
   engineMaster.gain.value = 0;

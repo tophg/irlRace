@@ -58,6 +58,7 @@ let _ctx: CanvasRenderingContext2D | null = null;
 let _rafId = 0;
 let _running = false;
 let _lastTime = 0;
+let _resizeObs: ResizeObserver | null = null;
 
 function ensureCanvas(): CanvasRenderingContext2D {
   if (_ctx && _canvas && _canvas.parentNode) return _ctx;
@@ -72,14 +73,15 @@ function ensureCanvas(): CanvasRenderingContext2D {
   document.getElementById('ui-overlay')?.appendChild(_canvas);
   _ctx = _canvas.getContext('2d')!;
 
-  // Handle resize
-  const ro = new ResizeObserver(() => {
+  // Handle resize (store ref for cleanup — audit fix #2)
+  if (_resizeObs) _resizeObs.disconnect();
+  _resizeObs = new ResizeObserver(() => {
     if (_canvas) {
       _canvas.width = window.innerWidth;
       _canvas.height = window.innerHeight;
     }
   });
-  ro.observe(document.documentElement);
+  _resizeObs.observe(document.documentElement);
 
   return _ctx;
 }
@@ -389,7 +391,9 @@ export function destroyParticles() {
   if (_rafId) cancelAnimationFrame(_rafId);
   _running = false;
   _rafId = 0;
+  _lastTime = 0; // audit fix #13: prevent huge dt on restart
   for (const p of _pool) p.alive = false;
+  if (_resizeObs) { _resizeObs.disconnect(); _resizeObs = null; } // audit fix #2
   _canvas?.remove();
   _canvas = null;
   _ctx = null;

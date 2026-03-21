@@ -8,6 +8,7 @@
  */
 
 let _shakeTimer = 0;
+let _shakeDuration = 0; // audit fix #4: module-level to avoid stale closure
 let _shakeIntensity = 0;
 let _shakeRafId = 0;
 let _target: HTMLElement | null = null;
@@ -22,6 +23,7 @@ export function screenShake(intensity: number, durationMs: number, targetEl?: HT
   _target = targetEl || document.getElementById('ui-overlay')?.parentElement || document.body;
   _shakeIntensity = intensity;
   _shakeTimer = durationMs;
+  _shakeDuration = durationMs; // audit fix #4: stored at module level
 
   if (_shakeRafId) cancelAnimationFrame(_shakeRafId);
 
@@ -39,8 +41,8 @@ export function screenShake(intensity: number, durationMs: number, targetEl?: HT
       return;
     }
 
-    // Exponential decay
-    const progress = _shakeTimer / durationMs;
+    // Exponential decay — uses module-level _shakeDuration (audit fix #4)
+    const progress = _shakeTimer / _shakeDuration;
     const currentIntensity = _shakeIntensity * progress;
     const dx = (Math.random() * 2 - 1) * currentIntensity;
     const dy = (Math.random() * 2 - 1) * currentIntensity;
