@@ -897,7 +897,8 @@ export async function initScene(container: HTMLElement) {
   scene.add(dirLight.target);
 
   // ── Ground terrain (TSL NodeMaterial with vertex displacement) ──
-  const groundGeo = new THREE.PlaneGeometry(1200, 1200, 128, 128);
+  // Round 2 fix: 256×256 subdivisions (was 128) — finer displacement at road edges
+  const groundGeo = new THREE.PlaneGeometry(1200, 1200, 256, 256);
   const _groundTex = createGroundTexture();
   const groundMat = new MeshStandardNodeMaterial({
     roughness: 0.85, metalness: 0.05,
@@ -980,22 +981,25 @@ export async function initScene(container: HTMLElement) {
   const hill2 = sin(mul(gx, 0.022).add(3.7)).mul(sin(mul(gz, 0.018).add(1.2))).mul(1.0);
   const hill3 = cos(mul(gx, 0.045).add(7.1)).mul(sin(mul(gz, 0.035).add(5.3))).mul(0.5);
   const terrain = add(add(hill1, hill2), hill3);
-  // Fix B: Widen displacement dead zone — flat ground extends further from road
-  // (was 0.08→0.30, now 0.15→0.35 — hills start ~58 units from road center)
-  const dispDamp = smoothstep(0.15, 0.35, dist);
-  // Fix C: Negative dip in the shoulder→open transition zone pulls ground below road
-  // This bell-shaped curve peaks (~-0.3) at dist≈0.10 and fades to 0 by dist≈0.25
-  const transitionDip = mul(mul(smoothstep(0.0, 0.10, dist), smoothstep(0.25, 0.10, dist)), -0.3);
+  // Round 2 fix: dead zone widened further (0.20→0.40) — hills start ~78 units from road center
+  const dispDamp = smoothstep(0.20, 0.40, dist);
+  // Round 2 fix: deeper transition dip (-0.5) over wider range to guarantee ground stays below road
+  const transitionDip = mul(mul(smoothstep(0.0, 0.12, dist), smoothstep(0.30, 0.12, dist)), -0.5);
   const dampedTerrain = add(mul(terrain, dispDamp), transitionDip);
   // Displace along Z (which becomes Y after -90° X rotation)
   groundMat.positionNode = add(positionLocal, vec3(0, 0, dampedTerrain));
 
+  // Round 2 fix: polygonOffset biases ground fragments behind road in depth buffer
+  // This is the definitive GPU-level fix for Z-fighting between co-planar surfaces
+  groundMat.polygonOffset = true;
+  groundMat.polygonOffsetFactor = 2;
+  groundMat.polygonOffsetUnits = 2;
+
   groundMesh = new THREE.Mesh(groundGeo, groundMat);
   groundMesh.rotation.x = -Math.PI / 2;
-  // Fix A: Lower ground plane below road surface to prevent co-planar Z-fighting
-  groundMesh.position.y = -0.15;
+  // Round 2 fix: deeper Y offset (-0.3) to create clear separation from road (Y≈0.01)
+  groundMesh.position.y = -0.3;
   groundMesh.receiveShadow = true;
-  // Fix D: Render ground behind road/shoulder meshes for depth-tie safety
   groundMesh.renderOrder = -1;
   scene.add(groundMesh);
 
