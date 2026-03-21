@@ -26,8 +26,10 @@ import {
   initRainDroplets, initImpactFlash, initBoostShockwave, initNitroFlash,
   initHeatShimmer, initLensFlares, initLightning, setLightningEnabled,
   initNearMissStreaks, initNearMissWhoosh, initVictoryConfetti,
+  setConfettiContinuous,
   createUnderglow, createNameTag,
 } from './vfx';
+import { destroyParticles } from './reward-particles';
 import { initGPUParticles, destroyGPUParticles } from './gpu-particles';
 import { initTrackRadar, destroyTrackRadar } from './minimap';
 import { warmupDestruction, warmupFragmentMaterials, cleanupDestruction, disposeDestructionAssets } from './vehicle-destruction';
@@ -206,6 +208,11 @@ export function clearRaceObjects() {
   resetTimeScale();
   cleanupScreenEffects();
   setExplosionMode(false);
+  destroyParticles();             // Audit fix #18: remove reward-particles canvas from #ui-overlay
+  setConfettiContinuous(false);   // Audit fix #18: stop continuous confetti spawning
+
+  // Audit fix #18: clear stale CSS classes from #ui-overlay that affect visuals / pointer events
+  _deps.uiOverlay.classList.remove('wrong-way-flash', 'impact-vignette');
 
   stopAudio();
 

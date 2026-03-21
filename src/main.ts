@@ -584,8 +584,12 @@ function showTitleScreen() {
   // On return from a race, skip the splash gate and go straight to the menu.
   // The splash is only needed on first boot to unlock audio autoplay.
   if (_hasBooted) {
-    // Remove stale title screen div from previous session (prevents DOM stacking)
-    document.getElementById('title-screen')?.remove();
+    // Audit fix #18: Nuclear sweep — remove ALL stale #ui-overlay children.
+    // After a race, HUD elements, VFX canvases, reward overlays, and other DOM
+    // debris can survive individual cleanup calls. Since #ui-overlay > * gets
+    // pointer-events: auto, any stale child forms an invisible click barrier
+    // on top of the new title screen buttons. Wipe everything clean.
+    while (uiOverlay.firstChild) uiOverlay.removeChild(uiOverlay.firstChild);
     createTitleScene();
     titleLoop();
     playTitleMusic();
