@@ -941,12 +941,13 @@ export async function initScene(container: HTMLElement) {
   const tileUV2 = fract(mul(worldXZ, 0.10));  // open: looser
   const tileUV3 = fract(mul(worldXZ, 0.07));  // far: sparse, large tiles
 
-  // Rotate UV around (0.5, 0.5) center per cell
+  // Rotate UV around (0.5, 0.5) center per cell, then fract() to keep in [0,1]
+  // Bug #1 fix: without fract(), rotated UVs escape [0,1] and sample wrong atlas columns
   const doRotUV = (uvIn: typeof tileUV0) => {
     const cx = add(uvIn.x, -0.5);
     const cy = add(uvIn.y, -0.5);
-    return vec2(add(add(mul(cx, cosR), mul(mul(cy, sinR), -1)), 0.5),
-                add(add(mul(cx, sinR), mul(cy, cosR)), 0.5));
+    return fract(vec2(add(add(mul(cx, cosR), mul(mul(cy, sinR), -1)), 0.5),
+                add(add(mul(cx, sinR), mul(cy, cosR)), 0.5)));
   };
   const ruv0 = doRotUV(tileUV0);
   const ruv1 = doRotUV(tileUV1);
@@ -956,17 +957,18 @@ export async function initScene(container: HTMLElement) {
   const tw = float(0.125);  // 1/8 atlas width per tile
 
   // Sample atlas tiles — per-zone UVs, soft A/B variant blending
-  const c0a = texture(_groundAtlasTexture, vec2(add(mul(ruv0.x, tw), mul(tw, 0)), ruv0.y));
-  const c0b = texture(_groundAtlasTexture, vec2(add(mul(ruv0.x, tw), mul(tw, 1)), ruv0.y));
+  // Bug #2 fix: wrap Y with fract() to prevent vertical bleed on multi-row atlases
+  const c0a = texture(_groundAtlasTexture, vec2(add(mul(ruv0.x, tw), mul(tw, 0)), fract(ruv0.y)));
+  const c0b = texture(_groundAtlasTexture, vec2(add(mul(ruv0.x, tw), mul(tw, 1)), fract(ruv0.y)));
   const c0 = mix(c0a, c0b, variant);
-  const c1a = texture(_groundAtlasTexture, vec2(add(mul(ruv1.x, tw), mul(tw, 2)), ruv1.y));
-  const c1b = texture(_groundAtlasTexture, vec2(add(mul(ruv1.x, tw), mul(tw, 3)), ruv1.y));
+  const c1a = texture(_groundAtlasTexture, vec2(add(mul(ruv1.x, tw), mul(tw, 2)), fract(ruv1.y)));
+  const c1b = texture(_groundAtlasTexture, vec2(add(mul(ruv1.x, tw), mul(tw, 3)), fract(ruv1.y)));
   const c1 = mix(c1a, c1b, variant);
-  const c2a = texture(_groundAtlasTexture, vec2(add(mul(ruv2.x, tw), mul(tw, 4)), ruv2.y));
-  const c2b = texture(_groundAtlasTexture, vec2(add(mul(ruv2.x, tw), mul(tw, 5)), ruv2.y));
+  const c2a = texture(_groundAtlasTexture, vec2(add(mul(ruv2.x, tw), mul(tw, 4)), fract(ruv2.y)));
+  const c2b = texture(_groundAtlasTexture, vec2(add(mul(ruv2.x, tw), mul(tw, 5)), fract(ruv2.y)));
   const c2 = mix(c2a, c2b, variant);
-  const c3a = texture(_groundAtlasTexture, vec2(add(mul(ruv3.x, tw), mul(tw, 6)), ruv3.y));
-  const c3b = texture(_groundAtlasTexture, vec2(add(mul(ruv3.x, tw), mul(tw, 7)), ruv3.y));
+  const c3a = texture(_groundAtlasTexture, vec2(add(mul(ruv3.x, tw), mul(tw, 6)), fract(ruv3.y)));
+  const c3b = texture(_groundAtlasTexture, vec2(add(mul(ruv3.x, tw), mul(tw, 7)), fract(ruv3.y)));
   const c3 = mix(c3a, c3b, variant);
 
   // Blend zones
