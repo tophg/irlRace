@@ -12,20 +12,20 @@ Each environment needs **3 atlas images** in `public/buildings/`:
 | `facade_atlas_{env}_emissive.png` | Emissive mask (white = lit window glow, black = no glow) |
 | `facade_atlas_{env}_normal.png` | Normal map (surface depth/relief detail) |
 
-## Atlas Layout (8×8 grid)
+## Atlas Layout (8×5 grid)
 
 Each **column** (0-7) is one architectural style. All tiles in a column share the same wall material, window frames, and color scheme.
 
+> [!CAUTION]
+> The code (`scenery-buildings.ts`) uses a **5-row layout**. Do NOT generate 8-row atlases — they will cause window tiles to appear on rooftops and other surfaces.
+
 | Row | Type | Description |
 |-----|------|-------------|
-| 0 | Window A | Curtains/shutters closed |
-| 1 | Window B | Blinds/shutters half-open |
-| 2 | Window C | Open with warm interior light |
-| 3 | Window D | Dark/reflective, no interior light |
-| 4 | Wall pier | Windowless wall surface |
-| 5 | Ground floor | Storefront/door (NO TEXT/SIGNAGE) |
-| 6 | Cornice | Decorative horizontal trim |
-| 7 | Roof cap | Parapet/roof edge |
+| 0 | Window | Shuttered/frosted glass (NO visible interiors) |
+| 1 | Wall pier | Windowless wall surface |
+| 2 | Ground floor | Storefront/door (NO TEXT/SIGNAGE) |
+| 3 | Cornice | Decorative horizontal trim |
+| 4 | Roof cap | Parapet/roof edge |
 
 ## Environments
 
