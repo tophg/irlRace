@@ -517,7 +517,7 @@ if (placements.length > 0) {
     emissiveMaskTexture.wrapS = THREE.RepeatWrapping;
     emissiveMaskTexture.wrapT = THREE.RepeatWrapping;
     emissiveMaskTexture.colorSpace = THREE.LinearSRGBColorSpace;
-    emissiveMaskTexture.minFilter = THREE.LinearMipmapNearestFilter;
+    emissiveMaskTexture.minFilter = THREE.LinearMipmapLinearFilter;
 
     buildingMat = new THREE.MeshStandardMaterial({
       map: atlasTexture,
@@ -546,7 +546,7 @@ if (placements.length > 0) {
           #include <uv_vertex>
           vHeightFrac = (position.y + 0.5);
           vWPos = (modelMatrix * vec4(position, 1.0)).xyz;
-          vWNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+          vWNormal = normalize(normalMatrix * normal);
         `);
 
       // Fragment shader: AO + emissive gating + interior mapping
@@ -614,8 +614,9 @@ if (placements.length > 0) {
         `)
         .replace('#include <map_fragment>', `
           #ifdef USE_MAP
-            vec4 sampledDiffuseColor = texture2D(map, vMapUv);
             float camDist = length(vWPos - cameraPosition);
+            float mipBias = mix(-0.7, 0.0, smoothstep(30.0, 150.0, camDist));
+            vec4 sampledDiffuseColor = texture2D(map, vMapUv, mipBias);
             float interiorFade = 1.0 - smoothstep(40.0, 60.0, camDist);
             bool isWallFace = abs(vWNormal.y) < 0.3;
             bool isMidZone = vHeightFrac > 0.15 && vHeightFrac < 0.85;
@@ -636,7 +637,7 @@ if (placements.length > 0) {
             bool isEmWall = abs(vWNormal.y) < 0.3;
             bool isEmMid = vHeightFrac > 0.15 && vHeightFrac < 0.85;
             if (isEmWall && isEmMid && emissiveColor.r > 0.3) {
-              totalEmissiveRadiance *= vec3(1.0) * emFade;
+              totalEmissiveRadiance *= emFade;
             } else {
               totalEmissiveRadiance = vec3(0.0);
             }
