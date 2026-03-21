@@ -41,6 +41,8 @@ const ORBIT_RADIUS = 7.5;
 const ORBIT_HEIGHT = 2.8;
 const ORBIT_LOOK_Y = 0.8;
 
+let _lastGarageUpdateTime = 0; // for dt calculation
+
 /** On mobile landscape, shift the camera frustum downward so the car
  *  renders in the upper half of the screen, above the bottom UI panel. */
 function applyMobileViewOffset(cam: THREE.PerspectiveCamera) {
@@ -590,6 +592,7 @@ function buildGarageUI(overlay: HTMLElement) {
 }
 
 let showCarRequestId = 0;
+let _entranceRafId = 0; // rAF handle for in-progress entrance animation
 
 async function showCar(index: number) {
   const car = CAR_ROSTER[index];
@@ -675,6 +678,8 @@ async function showCar(index: number) {
     garageScene.remove(currentModel);
     currentModel = null;
   }
+  // Cancel any in-progress entrance animation from previous car
+  if (_entranceRafId) { cancelAnimationFrame(_entranceRafId); _entranceRafId = 0; }
 
   // Show placeholder silhouette immediately
   showPlaceholder();
@@ -711,8 +716,9 @@ async function showCar(index: number) {
       model.position.y = 2.5 - (2.5 - platformY) * ease;
       model.scale.setScalar(0.01 + 0.99 * ease);
       if (t < 1) {
-        requestAnimationFrame(animateEntrance);
+        _entranceRafId = requestAnimationFrame(animateEntrance);
       } else {
+        _entranceRafId = 0;
         model.position.y = platformY;
         model.scale.setScalar(1);
         // Brief ring flash on landing
@@ -721,7 +727,7 @@ async function showCar(index: number) {
         }
       }
     };
-    requestAnimationFrame(animateEntrance);
+    _entranceRafId = requestAnimationFrame(animateEntrance);
 
     // ── Clearcoat Paint Upgrade ──
     model.traverse((child: any) => {
@@ -821,8 +827,12 @@ export function updateGarage() {
   garageCamera.position.y = ORBIT_HEIGHT;
   garageCamera.lookAt(0, ORBIT_LOOK_Y, 0);
 
-  // Animate neon ring pulse + tier color lerp
-  ringTime += 0.016;
+  // Compute actual dt from last frame for frame-rate-independent animation
+  const dt = _lastGarageUpdateTime > 0 ? Math.min((now - _lastGarageUpdateTime) / 1000, 0.1) : 0.016;
+  _lastGarageUpdateTime = now;
+
+  // Animate neon ring pulse + tier color lerp (using actual dt)
+  ringTime += dt;
   if (ringMat) {
     ringMat.opacity = 0.6 + 0.4 * Math.sin(ringTime * 1.5);
     currentTierColor.lerp(targetTierColor, 0.05);

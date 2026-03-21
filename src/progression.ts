@@ -351,8 +351,10 @@ export function processRaceRewards(result: RaceResult): RewardBreakdown {
   // ── Daily/Weekly Challenge Progress ──
   refreshChallengesIfNeeded();
   const challengeRewards = updateChallengeProgress(result, breakdown);
+  // Add challenge rewards to breakdown for results-screen display
   breakdown.totalXP += challengeRewards.xp;
   breakdown.totalCredits += challengeRewards.cr;
+  // Note: updateChallengeProgress already stored progress; add rewards to current directly
   current.xp += challengeRewards.xp;
   current.credits += challengeRewards.cr;
 

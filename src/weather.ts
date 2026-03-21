@@ -81,9 +81,16 @@ let splashIdx = 0;
 interface SplashParticle { mesh: THREE.Mesh; life: number; }
 const activeSplashes: SplashParticle[] = [];
 
-// Thunder audio
+// Thunder audio — uses the shared AudioContext from audio.ts to avoid Safari's 6-context limit
 let _thunderTimer = 0;
-let _thunderCtx: AudioContext | null = null;
+let _sharedAudioCtx: AudioContext | null = null;
+let _sharedMasterGain: GainNode | null = null;
+
+/** Provide the shared AudioContext for thunder SFX (call from audio.ts initAudio). */
+export function setThunderAudioContext(ctx: AudioContext, masterGain: GainNode) {
+  _sharedAudioCtx = ctx;
+  _sharedMasterGain = masterGain;
+}
 
 export function getWeatherForSeed(seed: number): WeatherType {
   const r = ((seed * 2654435761) >>> 0) % 100;
@@ -262,11 +269,11 @@ export function updateWeather(dt: number, playerPos: THREE.Vector3) {
   }
 }
 
-// ── Thunder: procedural Web Audio rumble ──
+// ── Thunder: procedural Web Audio rumble (routed through shared AudioContext) ──
 function playThunder() {
+  if (!_sharedAudioCtx || !_sharedMasterGain) return;
   try {
-    if (!_thunderCtx) _thunderCtx = new AudioContext();
-    const ctx = _thunderCtx;
+    const ctx = _sharedAudioCtx;
     const now = ctx.currentTime;
     const duration = 1.5 + Math.random() * 1.5;
 
@@ -296,7 +303,7 @@ function playThunder() {
 
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(_sharedMasterGain);
     source.start(now);
     source.stop(now + duration);
   } catch {
@@ -379,9 +386,7 @@ export function destroyWeather() {
   _intensityRamp = 0;
   _thunderTimer = 0;
 
-  // Close thunder AudioContext to prevent mobile Safari context limit (Bug #6 fix)
-  if (_thunderCtx) {
-    _thunderCtx.close().catch(() => {});
-    _thunderCtx = null;
-  }
+  // Thunder shared context references are cleared (but not closed — audio.ts owns the lifecycle)
+  _sharedAudioCtx = null;
+  _sharedMasterGain = null;
 }

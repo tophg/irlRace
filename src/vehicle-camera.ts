@@ -21,8 +21,18 @@ const SPECTATE_FOV = 65;
 
 // ── Camera controls ──
 // Scroll = distance, Shift+scroll = tilt, right-click drag = tilt, 2-finger swipe = tilt
+// Gated behind _cameraControlsActive to prevent mutation during garage/menu/replay
+
+let _cameraControlsActive = false;
+
+/** Enable/disable camera scroll/tilt controls (call true when race starts, false on exit). */
+export function setCameraControlsActive(active: boolean) {
+  _cameraControlsActive = active;
+  if (!active) _rightDragging = false;
+}
 
 window.addEventListener('wheel', (e) => {
+  if (!_cameraControlsActive) return;
   if (e.shiftKey) {
     CHASE_HEIGHT_RATIO += e.deltaY * 0.01;
     CHASE_HEIGHT_RATIO = Math.max(0.5, Math.min(8, CHASE_HEIGHT_RATIO));
@@ -37,6 +47,7 @@ let _rightDragging = false;
 let _rightDragLastY = 0;
 
 window.addEventListener('mousedown', (e) => {
+  if (!_cameraControlsActive) return;
   if (e.button === 2) { _rightDragging = true; _rightDragLastY = e.clientY; }
 });
 window.addEventListener('mousemove', (e) => {
@@ -56,6 +67,7 @@ let _twoFingerLastY = 0;
 let _twoFingerActive = false;
 
 window.addEventListener('touchstart', (e) => {
+  if (!_cameraControlsActive) return;
   if (e.touches.length === 2) {
     _twoFingerActive = true;
     _twoFingerLastY = (e.touches[0].clientY + e.touches[1].clientY) / 2;

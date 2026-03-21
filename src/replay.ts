@@ -316,7 +316,7 @@ export class ReplayPlayer {
     }
 
     if (focusPos) {
-      this.updateCamera(activeMode, focusPos, focusHeading, this.playbackTime / 1000);
+      this.updateCamera(activeMode, focusPos, focusHeading, this.playbackTime / 1000, dt);
     }
 
     return true;
@@ -368,7 +368,7 @@ export class ReplayPlayer {
     };
   }
 
-  private updateCamera(mode: ReplayCameraMode, target: THREE.Vector3, heading: number, time: number) {
+  private updateCamera(mode: ReplayCameraMode, target: THREE.Vector3, heading: number, time: number, dt: number) {
     _target.copy(target);
     _target.y += 1.5;
 
@@ -421,9 +421,9 @@ export class ReplayPlayer {
       }
     }
 
-    // Frame-rate-independent smoothing (BUG-14 fix)
-    const posAlpha = 1 - Math.exp(-3.0 * (1 / 60)); // ~0.05 at 60fps
-    const lookAlpha = 1 - Math.exp(-5.0 * (1 / 60)); // ~0.08 at 60fps
+    // Frame-rate-independent exponential smoothing using actual dt
+    const posAlpha = 1 - Math.exp(-3.0 * dt);
+    const lookAlpha = 1 - Math.exp(-5.0 * dt);
     this.camera.position.lerp(_camPos, posAlpha);
     this.smoothLookAt.lerp(_target, lookAlpha);
     this.camera.lookAt(this.smoothLookAt);

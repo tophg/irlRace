@@ -2,6 +2,7 @@
 
 import { getSettings } from './settings';
 import { initNitroAudio, cleanupNitroAudio } from './audio-nitro';
+import { setThunderAudioContext } from './weather';
 export { playNitroActivate, startNitroBurn, stopNitroBurn, updateNitroBurnIntensity, updateDepletionWarning, stopDepletionWarning, playNitroRelease } from './audio-nitro';
 
 let audioCtx: AudioContext | null = null;
@@ -144,6 +145,9 @@ export function initAudio() {
 
   // Wire up nitro audio module
   initNitroAudio(audioCtx, masterGain);
+
+  // Wire up weather thunder through the shared context (prevents Safari 6-context limit)
+  setThunderAudioContext(audioCtx, masterGain);
 
   engineMaster = audioCtx.createGain();
   engineMaster.gain.value = 0;

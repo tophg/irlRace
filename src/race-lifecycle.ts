@@ -14,7 +14,7 @@ import { loadCarModel } from './loaders';
 import { generateTrack, buildCheckpointMarkers } from './track';
 import { destroyScenery } from './track-scenery';
 import { Vehicle } from './vehicle';
-import { VehicleCamera } from './vehicle-camera';
+import { VehicleCamera, setCameraControlsActive } from './vehicle-camera';
 import { RaceEngine } from './race-engine';
 import { createHUD, showHUD, destroyHUD } from './hud';
 import { runCountdown } from './countdown';
@@ -112,6 +112,7 @@ let _raceAbort: AbortController | null = null;
 
 export function clearRaceObjects() {
   _raceAbort?.abort(); // Bug #6: cancel any in-flight startRace() promises
+  setCameraControlsActive(false); // Bug #23: disable chase camera controls outside race
   const { scene } = _deps;
 
   G.netPeer?.stopBroadcasting();
@@ -556,6 +557,7 @@ export async function startRace() {
     `;
     uiOverlay.appendChild(G.mirrorBorder);
     if (window.matchMedia('(pointer: coarse)').matches) showTouchControls(true);
+    setCameraControlsActive(true); // Bug #23: enable chase camera scroll/tilt controls
     initAudio();
 
     renderer.render(scene, camera);
