@@ -979,7 +979,9 @@ export async function initScene(container: HTMLElement) {
   const tintedAtlas = mul(atlasColor.xyz, cellLum);
 
   // Mix with fallback ground color (atlas alpha controls blend)
-  groundMat.colorNode = mix(vec3(uGroundColor), tintedAtlas, atlasColor.a);
+  // groundMat.colorNode = mix(vec3(uGroundColor), tintedAtlas, atlasColor.a);
+  // DEBUG: visualize DFT dist as red→green→blue gradient
+  groundMat.colorNode = vec3(max(add(1.0, mul(dist, -3.0)), 0), max(add(mul(dist, 3.0), mul(max(add(dist, -0.33), 0), -3.0)), 0), max(add(mul(add(dist, -0.66), 3.0), 0), 0));
 
   // Vertex displacement: gentle rolling terrain via layered sine noise
   // Operates in the XZ plane of the undisplaced geometry (before rotation)
@@ -1070,6 +1072,11 @@ export function updateGroundDistanceField(dft: THREE.DataTexture) {
   _dftTexture.format = dft.format;
   _dftTexture.type = dft.type;
   _dftTexture.needsUpdate = true;
+  // Debug: log DFT dimensions and value range
+  const data = dft.image.data as Uint8Array;
+  let mn = 255, mx = 0;
+  for (let i = 0; i < data.length; i++) { if (data[i] < mn) mn = data[i]; if (data[i] > mx) mx = data[i]; }
+  console.log(`[DFT] ${dft.image.width}×${dft.image.height}, range: ${mn}..${mx}, total: ${data.length}`);
   // Force material rebuild with new DFT
   if (groundMesh) {
     (groundMesh.material as MeshStandardNodeMaterial).needsUpdate = true;
