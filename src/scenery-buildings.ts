@@ -787,10 +787,10 @@ if (placements.length > 0) {
     for (let j = 0; j < placements.length; j++) {
       const pl = placements[j];
       const groundY = getTerrainHeight(pl.x, pl.z);
-      const padH = Math.max(0.1, (groundY + pl.h / 2) - groundY + 0.5); // bridge terrain to building base
+      const padH = 0.5; // thin ground-level slab
       const padW = pl.w + 4; // 2-unit overhang each side
       const padD = pl.d + 4;
-      dummy.position.set(pl.x, groundY + padH / 2 - 0.5, pl.z);
+      dummy.position.set(pl.x, groundY - padH / 2, pl.z);
       dummy.scale.set(padW, padH, padD);
       dummy.rotation.set(0, pl.rotY, 0);
       dummy.updateMatrix();
