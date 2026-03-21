@@ -82,7 +82,7 @@ export function buildTrackFromControlPoints(
   const roadMesh = buildRoadMesh(finalSpline, curvatures, rng);
   const barrierLeft = buildBarrierMesh(finalSpline, -1, curvatures);
   const barrierRight = buildBarrierMesh(finalSpline, 1, curvatures);
-  const shoulderMesh = buildShoulders(finalSpline);
+  const shoulderMesh = buildShoulders(finalSpline, curvatures);
   const kerbGroup = buildKerbs(finalSpline, curvatures);
 
   // Checkpoints — scale count by track length (1 per ~100 world units, min 4, max 12)
@@ -138,7 +138,7 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
   const roadMesh = buildRoadMesh(finalSpline, curvatures, rng);
   const barrierLeft = buildBarrierMesh(finalSpline, -1, curvatures);
   const barrierRight = buildBarrierMesh(finalSpline, 1, curvatures);
-  const shoulderMesh = buildShoulders(finalSpline);
+  const shoulderMesh = buildShoulders(finalSpline, curvatures);
   const kerbGroup = buildKerbs(finalSpline, curvatures);
 
   // ── 8. Place checkpoints (distributed from t > 0 to t=1.0 for precise lap completion) ──
@@ -578,7 +578,9 @@ function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[], rng
     // ── P2-E: Auto-banking ──
     // Bank the road cross-section proportional to curvature
     const kappa = curvatures[i % curvatures.length] || 0;
-    const bankAngle = clamp(kappa * BANK_SCALE, -MAX_BANK_ANGLE, MAX_BANK_ANGLE);
+    // Fade banking to zero in start/finish zone so the starting line is flat
+    const startFade = Math.min(i / 12, (points.length - 1 - i) / 12, 1);
+    const bankAngle = clamp(kappa * BANK_SCALE * startFade, -MAX_BANK_ANGLE, MAX_BANK_ANGLE);
 
     // Rotate the "up" and "right" vectors about the tangent by bankAngle
     _meshBankQuat.setFromAxisAngle(tangent, -bankAngle);
@@ -780,7 +782,7 @@ function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number, curvatur
 // SHOULDER STRIPS (gravel between road and barriers)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function buildShoulders(spline: THREE.CatmullRomCurve3): THREE.Mesh {
+function buildShoulders(spline: THREE.CatmullRomCurve3, curvatures: number[]): THREE.Mesh {
   const rawPoints = spline.getSpacedPoints(SPLINE_SAMPLES);
   const points = rawPoints.slice(0, rawPoints.length - 1);
   const vertices: number[] = [];
@@ -796,19 +798,26 @@ function buildShoulders(spline: THREE.CatmullRomCurve3): THREE.Mesh {
     _meshRight.crossVectors(tangent, _meshUp).normalize();
     const p = points[i];
 
-    // Left shoulder: inner edge → outer edge
+    // Apply banking to shoulders to match road (prevents gaps at banked sections)
+    const kappa = curvatures[i % curvatures.length] || 0;
+    const startFade = Math.min(i / 12, (points.length - 1 - i) / 12, 1);
+    const bankAngle = clamp(kappa * BANK_SCALE * startFade, -MAX_BANK_ANGLE, MAX_BANK_ANGLE);
+    _meshBankQuat.setFromAxisAngle(tangent, -bankAngle);
+    _meshBankedRight.copy(_meshRight).applyQuaternion(_meshBankQuat);
+
+    // Left shoulder: inner edge → outer edge (banked to match road)
     vertices.push(
-      p.x - _meshRight.x * outerW, p.y - 0.02, p.z - _meshRight.z * outerW,
+      p.x - _meshBankedRight.x * outerW, p.y - 0.02 - _meshBankedRight.y * outerW, p.z - _meshBankedRight.z * outerW,
     );
     vertices.push(
-      p.x - _meshRight.x * innerW, p.y + 0.005, p.z - _meshRight.z * innerW,
+      p.x - _meshBankedRight.x * innerW, p.y + 0.005 - _meshBankedRight.y * innerW, p.z - _meshBankedRight.z * innerW,
     );
-    // Right shoulder: inner edge → outer edge
+    // Right shoulder: inner edge → outer edge (banked to match road)
     vertices.push(
-      p.x + _meshRight.x * innerW, p.y + 0.005, p.z + _meshRight.z * innerW,
+      p.x + _meshBankedRight.x * innerW, p.y + 0.005 + _meshBankedRight.y * innerW, p.z + _meshBankedRight.z * innerW,
     );
     vertices.push(
-      p.x + _meshRight.x * outerW, p.y - 0.02, p.z + _meshRight.z * outerW,
+      p.x + _meshBankedRight.x * outerW, p.y - 0.02 + _meshBankedRight.y * outerW, p.z + _meshBankedRight.z * outerW,
     );
 
     normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
