@@ -537,6 +537,7 @@ export class Vehicle {
 
     // ── Headlight decals (flat planes flush on front face, facing +Z) ──
     // DoubleSide so emissive glow is visible from 3rd-person camera behind car
+    const hlYOff = -0.15; // lower headlights to sit on bumper line
     const hlGeo = new THREE.PlaneGeometry(hlSize[0], hlSize[1]);
     const hlMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
@@ -548,28 +549,28 @@ export class Vehicle {
     });
 
     const hlL = new THREE.Mesh(hlGeo, hlMat);
-    hlL.position.set(hlLPos[0], hlLPos[1], hlLPos[2] + 0.01);
+    hlL.position.set(hlLPos[0], hlLPos[1] + hlYOff, hlLPos[2] + 0.01);
     hlL.userData.excludeFromFracture = true; // prevent fracture from splitting this
     this._bodyGroup.add(hlL);
 
     const hlR = new THREE.Mesh(hlGeo, hlMat.clone());
-    hlR.position.set(hlRPos[0], hlRPos[1], hlRPos[2] + 0.01);
+    hlR.position.set(hlRPos[0], hlRPos[1] + hlYOff, hlRPos[2] + 0.01);
     hlR.userData.excludeFromFracture = true;
     this._bodyGroup.add(hlR);
 
     // SpotLights for road illumination (boosted intensity for WebGPU)
     const hlSpotL = new THREE.SpotLight(0xffeedd, spotI * 2.5, spotD, Math.PI / 5, 0.8, 2);
-    hlSpotL.position.set(hlLPos[0], hlLPos[1], hlLPos[2]);
+    hlSpotL.position.set(hlLPos[0], hlLPos[1] + hlYOff, hlLPos[2]);
     const targetL = new THREE.Object3D();
-    targetL.position.set(hlLPos[0] * 0.5, hlLPos[1] - 1, hlLPos[2] + 12);
+    targetL.position.set(hlLPos[0] * 0.5, hlLPos[1] + hlYOff - 1, hlLPos[2] + 12);
     this._bodyGroup.add(targetL);
     hlSpotL.target = targetL;
     this._bodyGroup.add(hlSpotL);
 
     const hlSpotR = new THREE.SpotLight(0xffeedd, spotI * 2.5, spotD, Math.PI / 5, 0.8, 2);
-    hlSpotR.position.set(hlRPos[0], hlRPos[1], hlRPos[2]);
+    hlSpotR.position.set(hlRPos[0], hlRPos[1] + hlYOff, hlRPos[2]);
     const targetR = new THREE.Object3D();
-    targetR.position.set(hlRPos[0] * 0.5, hlRPos[1] - 1, hlRPos[2] + 12);
+    targetR.position.set(hlRPos[0] * 0.5, hlRPos[1] + hlYOff - 1, hlRPos[2] + 12);
     this._bodyGroup.add(targetR);
     hlSpotR.target = targetR;
     this._bodyGroup.add(hlSpotR);
@@ -580,7 +581,6 @@ export class Vehicle {
     const beamGeo = new THREE.ConeGeometry(beamRad, beamLen, 12, 1, true);
     beamGeo.translate(0, -beamLen / 2, 0); // pivot at apex (headlight)
     beamGeo.rotateX(-Math.PI / 2);         // point along +Z (forward)
-    beamGeo.rotateX(-0.14);                // tilt ~8° downward toward road
 
     const beamMat = new THREE.MeshBasicMaterial({
       color: 0xffeedd,
@@ -591,13 +591,13 @@ export class Vehicle {
     });
 
     const beamL = new THREE.Mesh(beamGeo, beamMat);
-    beamL.position.set(hlLPos[0], hlLPos[1], hlLPos[2]);
+    beamL.position.set(hlLPos[0], hlLPos[1] + hlYOff, hlLPos[2]);
     beamL.userData.excludeFromFracture = true;
     beamL.renderOrder = 999; // render after opaque geometry
     this._bodyGroup.add(beamL);
 
     const beamR = new THREE.Mesh(beamGeo, beamMat.clone());
-    beamR.position.set(hlRPos[0], hlRPos[1], hlRPos[2]);
+    beamR.position.set(hlRPos[0], hlRPos[1] + hlYOff, hlRPos[2]);
     beamR.userData.excludeFromFracture = true;
     beamR.renderOrder = 999;
     this._bodyGroup.add(beamR);
