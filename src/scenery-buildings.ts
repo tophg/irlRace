@@ -144,9 +144,13 @@ for (let si = 0; si < totalSamples && placements.length < MAX_PLACEMENTS; si++) 
       // Pick a style variant column (0-3) deterministically from position
       const variant = ((Math.abs(Math.round(px * 73 + pz * 137))) & 0xFF) % VARIANT_COUNT;
 
-      // Height from variant-specific range
+      // Height from variant-specific range, clamped to environment's buildingHeightRange
       const [hMin, hMax] = VARIANT_HEIGHT[variant];
-      const h = hMin + rng() * (hMax - hMin);
+      const envMin = T.buildingHeightRange?.[0] ?? hMin;
+      const envMax = T.buildingHeightRange?.[1] ?? hMax;
+      const clampedMin = Math.max(hMin, envMin);
+      const clampedMax = Math.min(hMax, envMax);
+      const h = clampedMin + rng() * (Math.max(0, clampedMax - clampedMin));
       const w = 8 + rng() * 10;
       const d = 8 + rng() * 10;
 
