@@ -101,11 +101,22 @@ const STYLE_ATLAS: Record<string, string> = {
   shanghai:     '/buildings/facade_atlas_shanghai.png',
 };
 
+// Forward-declare so KTX2 upgrade closures can reference the material
+let buildingMat: THREE.MeshStandardMaterial;
+
 const styleName = T.buildingStyle ?? 'modern';
 const atlasPathFull = STYLE_ATLAS[styleName] ?? '/buildings/facade_atlas_dc.png';
 // Mobile: load pre-downscaled 1024px atlas (saves ~48MB GPU per texture)
 const atlasPath = isMobile ? atlasPathFull.replace(/\.(png|jpg)$/, '_mobile.png') : atlasPathFull;
-const atlasTexture = loadAtlasTexture(atlasPath, THREE.SRGBColorSpace);
+const atlasTexture = loadAtlasTexture(atlasPath, THREE.SRGBColorSpace, (ktx2Tex) => {
+  ktx2Tex.wrapS = THREE.RepeatWrapping;
+  ktx2Tex.wrapT = THREE.RepeatWrapping;
+  ktx2Tex.anisotropy = isMobile ? 4 : 16;
+  if (buildingMat) {
+    buildingMat.map = ktx2Tex;
+    buildingMat.needsUpdate = true;
+  }
+});
 atlasTexture.wrapS = THREE.RepeatWrapping;
 atlasTexture.wrapT = THREE.RepeatWrapping;
 atlasTexture.anisotropy = isMobile ? 4 : 16;
@@ -521,7 +532,7 @@ if (placements.length > 0) {
   // Material with emissive window glow + normal map + AO shader
   const windowGlow = T.windowLitChance ?? 0.5;
 
-  let buildingMat: THREE.MeshStandardMaterial;
+  // buildingMat is declared above texture loading so KTX2 upgrade callbacks can reference it
 
   if (isMobile) {
     // ── Mobile: simple material — no normal map, no emissive, no shaders ──
@@ -537,13 +548,26 @@ if (placements.length > 0) {
     // ── Desktop: full pipeline with normal, emissive, AO, interior mapping ──
     // Load companion normal map atlas (same grid layout as diffuse)
     const normalPath = atlasPath.replace(/\.(png|jpg)$/, '_normal.png');
-    const normalTexture = loadAtlasTexture(normalPath, THREE.LinearSRGBColorSpace);
+    const normalTexture = loadAtlasTexture(normalPath, THREE.LinearSRGBColorSpace, (ktx2Tex) => {
+      ktx2Tex.wrapS = THREE.RepeatWrapping;
+      ktx2Tex.wrapT = THREE.RepeatWrapping;
+      ktx2Tex.minFilter = THREE.LinearMipmapLinearFilter;
+      ktx2Tex.anisotropy = 16;
+      buildingMat.normalMap = ktx2Tex;
+      buildingMat.needsUpdate = true;
+    });
     normalTexture.wrapS = THREE.RepeatWrapping;
     normalTexture.wrapT = THREE.RepeatWrapping;
 
     // Load companion emissive mask atlas (white=lit window, black=wall)
     const emissiveMaskPath = atlasPath.replace(/\.(png|jpg)$/, '_emissive.png');
-    const emissiveMaskTexture = loadAtlasTexture(emissiveMaskPath, THREE.LinearSRGBColorSpace);
+    const emissiveMaskTexture = loadAtlasTexture(emissiveMaskPath, THREE.LinearSRGBColorSpace, (ktx2Tex) => {
+      ktx2Tex.wrapS = THREE.RepeatWrapping;
+      ktx2Tex.wrapT = THREE.RepeatWrapping;
+      ktx2Tex.minFilter = THREE.LinearMipmapLinearFilter;
+      buildingMat.emissiveMap = ktx2Tex;
+      buildingMat.needsUpdate = true;
+    });
     emissiveMaskTexture.wrapS = THREE.RepeatWrapping;
     emissiveMaskTexture.wrapT = THREE.RepeatWrapping;
     emissiveMaskTexture.minFilter = THREE.LinearMipmapLinearFilter;
