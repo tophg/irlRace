@@ -21,7 +21,7 @@ let gameMusicAudio: HTMLAudioElement | null = null;
 
 function getTitleMusic() {
   if (!titleMusicAudio) {
-    titleMusicAudio = new Audio('/audio/title-theme.wav');
+    titleMusicAudio = new Audio('/audio/TooShort.m4a');
     titleMusicAudio.loop = true;
   }
   return titleMusicAudio;
@@ -29,7 +29,7 @@ function getTitleMusic() {
 
 function getGameMusic() {
   if (!gameMusicAudio) {
-    gameMusicAudio = new Audio('/audio/game-music.wav');
+    gameMusicAudio = new Audio('/audio/TooShort.m4a');
     gameMusicAudio.loop = true;
   }
   return gameMusicAudio;
