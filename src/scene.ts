@@ -888,7 +888,8 @@ export async function initScene(container: HTMLElement) {
   dirLight = new THREE.DirectionalLight(0xffeedd, 2.0);
   dirLight.position.set(50, 80, 30);
   dirLight.castShadow = true;
-  dirLight.shadow.mapSize.set(2048, 2048);
+  const shadowRes = window.matchMedia('(pointer: coarse)').matches ? 1024 : 2048;
+  dirLight.shadow.mapSize.set(shadowRes, shadowRes);
   dirLight.shadow.camera.near = 1;
   dirLight.shadow.camera.far = 200;
   dirLight.shadow.camera.left = -100;

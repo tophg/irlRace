@@ -70,24 +70,26 @@ try {
   initKTX2(renderer); // Enable KTX2 GPU texture decoding before any model loads
 
   // Background preload: sequentially fetch tree/building GLBs during idle time.
-  // Sequential (not parallel) to avoid starving first-race downloads of bandwidth.
-  // Delay 3s to yield to critical boot tasks (title music, UI, etc.)
-  setTimeout(async () => {
-    const urls: string[] = [];
-    for (const env of ENVIRONMENTS) {
-      env.scenery.treeModels?.forEach((t: string) => urls.push(`/trees/${t}`));
-      if (env.scenery.grandstandModel) urls.push(`/buildings/${env.scenery.grandstandModel}`);
-      env.scenery.landmarks?.forEach((l: string) => urls.push(`/buildings/${l}`));
-    }
-    // Deduplicate
-    const unique = [...new Set(urls)];
-    console.log(`[Preload] Sequentially queuing ${unique.length} assets`);
-    for (const url of unique) {
-      preloadGLB(url);
-      // Yield between downloads so race-critical loads get priority
-      await new Promise(r => setTimeout(r, 100));
-    }
-  }, 3000);
+  // SKIP on mobile — preloading all assets causes OOM on 4GB devices (iPhone 11, etc.)
+  const isMobileDevice = window.matchMedia('(pointer: coarse)').matches;
+  if (!isMobileDevice) {
+    setTimeout(async () => {
+      const urls: string[] = [];
+      for (const env of ENVIRONMENTS) {
+        env.scenery.treeModels?.forEach((t: string) => urls.push(`/trees/${t}`));
+        if (env.scenery.grandstandModel) urls.push(`/buildings/${env.scenery.grandstandModel}`);
+        env.scenery.landmarks?.forEach((l: string) => urls.push(`/buildings/${l}`));
+      }
+      // Deduplicate
+      const unique = [...new Set(urls)];
+      console.log(`[Preload] Sequentially queuing ${unique.length} assets`);
+      for (const url of unique) {
+        preloadGLB(url);
+        // Yield between downloads so race-critical loads get priority
+        await new Promise(r => setTimeout(r, 100));
+      }
+    }, 3000);
+  }
 } catch (e) {
   console.error('[Boot] Failed to initialize renderer:', e);
   uiOverlay.innerHTML = `
@@ -178,14 +180,17 @@ function createTitleScene() {
   titleStartTime = performance.now() / 1000;
   titleMenuRevealed = false;
 
-  // ── Environment map (matches garage.ts for WebGPU compat) ──
-  const pmremGen = new THREE.PMREMGenerator(renderer);
-  try {
-    const envMap = pmremGen.fromScene(new RoomEnvironment()).texture;
-    titleScene.environment = envMap;
-    titleTracker.trackTexture(envMap);
-  } catch { /* fallback */ }
-  pmremGen.dispose();
+  // ── Environment map (skip on mobile — too heavy for 4GB devices) ──
+  const isMobileTitleScene = window.matchMedia('(pointer: coarse)').matches;
+  if (!isMobileTitleScene) {
+    const pmremGen = new THREE.PMREMGenerator(renderer);
+    try {
+      const envMap = pmremGen.fromScene(new RoomEnvironment()).texture;
+      titleScene.environment = envMap;
+      titleTracker.trackTexture(envMap);
+    } catch { /* fallback */ }
+    pmremGen.dispose();
+  }
 
   titleCamera = new THREE.PerspectiveCamera(35, window.innerWidth / window.innerHeight, 0.1, 100);
   // Phase 1 start: low dramatic angle

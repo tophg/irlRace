@@ -79,17 +79,27 @@ export function enterMultiplayerLobby() {
             G.trackSeed = null;
           }
         },
+        onWeatherChange: (weather) => { G._selectedWeather = weather; },
+        onEnvironmentChange: (env) => { G._selectedEnvironment = env; },
+        onDifficultyChange: (difficulty) => { G.aiDifficulty = difficulty as 'easy' | 'medium' | 'hard'; },
         onKick: (id) => {
           G.netPeer?.kickPlayer(id);
         },
         onStart: () => {
           destroyLobby();
           G.raceReadyCount = 0;
-          G.trackSeed = Math.floor(Math.random() * 99999);
+          G.trackSeed = G.trackSeed ?? Math.floor(Math.random() * 99999);
           const players = [{ id: G.netPeer!.getLocalId(), name: G.localPlayerName, carId: G.selectedCar.id }];
           for (const rp of G.netPeer!.getRemotePlayers()) players.push({ id: rp.id, name: rp.name, carId: rp.carId });
           G.mpPlayersList = players;
-          G.netPeer!.broadcastEvent(EventType.COUNTDOWN_START, { laps: G.totalLaps, seed: G.trackSeed, players });
+          G.netPeer!.broadcastEvent(EventType.COUNTDOWN_START, {
+            laps: G.totalLaps,
+            seed: G.trackSeed,
+            players,
+            weather: G._selectedWeather,
+            environment: G._selectedEnvironment,
+            difficulty: G.aiDifficulty,
+          });
           _cb.startRace();
         },
         onBack: () => { G.netPeer?.destroy(); G.netPeer = null; destroyLobby(); _cb.showTitleScreen(); },
@@ -164,6 +174,9 @@ export function wireNetworkCallbacks() {
         destroyLobby();
         G.totalLaps = data.laps ?? 3;
         G.trackSeed = data.seed ?? Math.floor(Math.random() * 99999);
+        G._selectedWeather = data.weather ?? null;
+        G._selectedEnvironment = data.environment ?? null;
+        G.aiDifficulty = data.difficulty ?? 'medium';
         G.mpPlayersList = data.players ?? [];
         if (data.players) {
           for (const p of data.players) {

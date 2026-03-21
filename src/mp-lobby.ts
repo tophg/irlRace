@@ -1,5 +1,7 @@
 /* ── IRL Race — Multiplayer Lobby UI ── */
 
+import { buildEnvGridHTML } from './ui-screens';
+
 let lobbyEl: HTMLElement | null = null;
 let lobbyIsHost = false;
 let lobbyOnKick: ((id: string) => void) | null = null;
@@ -24,6 +26,9 @@ export function showLobby(
     onLapsChange?: (laps: number) => void;
     onSeedChange?: (seed: string) => void;
     onKick?: (id: string) => void;
+    onWeatherChange?: (weather: string) => void;
+    onEnvironmentChange?: (env: string) => void;
+    onDifficultyChange?: (difficulty: string) => void;
   }
 ) {
   destroyLobby();
@@ -54,34 +59,77 @@ export function showLobby(
       </div>
     `;
   } else if (opts.isHost) {
-    // Host: room code + player list + start button
+    // Host: full race setup + player list + chat
+    const envGridHtml = buildEnvGridHTML();
+    lobbyEl.classList.add('lobby-ui--host-setup');
     lobbyEl.innerHTML = `
-      <div class="lobby-title">HOSTING</div>
-      <div class="room-code">${escapeHtml(opts.roomCode)}</div>
-      <div style="color:var(--col-text-dim);font-size:14px;">Share this code with friends</div>
-      <div class="player-list" id="lobby-players"></div>
-      <div class="lobby-config">
-        <label class="lobby-cfg-row">
-          <span>Laps</span>
-          <select id="lobby-laps">
-            <option value="1">1</option>
-            <option value="3" selected>3</option>
-            <option value="5">5</option>
-            <option value="10">10</option>
-          </select>
-        </label>
-        <label class="lobby-cfg-row">
-          <span>Seed</span>
-          <input type="text" id="lobby-seed" class="lobby-input" placeholder="Random" maxlength="5"
-                 style="width:80px;font-size:14px;padding:4px 8px;letter-spacing:2px;" />
-        </label>
+      <div class="lobby-host-layout">
+        <!-- Left: players + chat -->
+        <div class="lobby-host-left">
+          <div class="lobby-title">HOSTING</div>
+          <div class="room-code">${escapeHtml(opts.roomCode)}</div>
+          <div style="color:var(--col-text-dim);font-size:13px;">Share this code with friends</div>
+          <div class="player-list" id="lobby-players"></div>
+          <div class="lobby-chat" id="lobby-chat">
+            <div class="chat-messages" id="chat-messages"></div>
+            <input class="chat-input" id="chat-input" placeholder="Type a message..." maxlength="50" />
+          </div>
+        </div>
+
+        <!-- Right: race setup -->
+        <div class="lobby-host-right">
+          <div class="race-config-section-label">⚡ RACE</div>
+
+          <div class="rc-row-pair">
+            <div class="rc-row">
+              <span class="rc-label">Laps</span>
+              <div class="rc-toggle-group" data-cfg="laps">
+                <button class="rc-toggle" data-val="1">1</button>
+                <button class="rc-toggle rc-toggle--active" data-val="3">3</button>
+                <button class="rc-toggle" data-val="5">5</button>
+                <button class="rc-toggle" data-val="10">10</button>
+              </div>
+            </div>
+            <div class="rc-row">
+              <span class="rc-label">Difficulty</span>
+              <div class="rc-toggle-group" data-cfg="difficulty">
+                <button class="rc-toggle" data-val="easy">Easy</button>
+                <button class="rc-toggle rc-toggle--active" data-val="medium">Medium</button>
+                <button class="rc-toggle" data-val="hard">Hard</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="rc-row">
+            <span class="rc-label">Weather</span>
+            <div class="rc-toggle-group rc-toggle-group--wrap" data-cfg="weather">
+              <button class="rc-toggle rc-toggle--active" data-val="random" title="Random">🎲</button>
+              <button class="rc-toggle" data-val="clear" title="Clear">☀️</button>
+              <button class="rc-toggle" data-val="light_rain" title="Light Rain">🌦️</button>
+              <button class="rc-toggle" data-val="heavy_rain" title="Heavy Rain">🌧️</button>
+              <button class="rc-toggle" data-val="snow" title="Snow">❄️</button>
+              <button class="rc-toggle" data-val="blizzard" title="Blizzard">🌨️</button>
+              <button class="rc-toggle" data-val="ice" title="Ice">🧊</button>
+            </div>
+          </div>
+
+          <div class="rc-row">
+            <span class="rc-label">Track Seed</span>
+            <input type="text" id="lobby-seed" placeholder="Random" maxlength="5" class="rc-input">
+          </div>
+
+          <div class="race-config-section-label" style="margin-top:8px;">🌍 ENVIRONMENT</div>
+          <div class="env-card-grid env-card-grid--compact" id="lobby-env-grid">
+            ${envGridHtml}
+          </div>
+        </div>
       </div>
-      <div class="lobby-chat" id="lobby-chat">
-        <div class="chat-messages" id="chat-messages"></div>
-        <input class="chat-input" id="chat-input" placeholder="Type a message..." maxlength="50" />
+
+      <!-- Actions -->
+      <div class="lobby-host-actions">
+        <button class="select-btn" id="lobby-start-btn" disabled style="opacity:0.4;">WAITING FOR PLAYERS</button>
+        <button class="menu-btn" id="lobby-back-btn" style="width:200px;">CANCEL</button>
       </div>
-      <button class="select-btn" id="lobby-start-btn" disabled style="opacity:0.4;">WAITING FOR PLAYERS</button>
-      <button class="menu-btn" id="lobby-back-btn" style="width:200px;">CANCEL</button>
     `;
   } else {
     // Guest: player list + ready button
@@ -170,12 +218,34 @@ export function showLobby(
     }
   });
 
-  // Host config: laps and seed
-  const lapsSelect = lobbyEl.querySelector('#lobby-laps') as HTMLSelectElement | null;
-  lapsSelect?.addEventListener('change', () => {
-    opts.onLapsChange?.(parseInt(lapsSelect.value));
+  // ── Host race setup wiring ──
+  // Toggle groups (laps, difficulty, weather)
+  lobbyEl.querySelectorAll('.rc-toggle-group').forEach(group => {
+    group.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('.rc-toggle') as HTMLElement;
+      if (!btn) return;
+      group.querySelectorAll('.rc-toggle').forEach(t => t.classList.remove('rc-toggle--active'));
+      btn.classList.add('rc-toggle--active');
+
+      const cfg = (group as HTMLElement).dataset.cfg;
+      const val = btn.dataset.val || '';
+      if (cfg === 'laps') opts.onLapsChange?.(parseInt(val) || 3);
+      if (cfg === 'weather') opts.onWeatherChange?.(val);
+      if (cfg === 'difficulty') opts.onDifficultyChange?.(val);
+    });
   });
 
+  // Environment card grid
+  const envGrid = lobbyEl.querySelector('#lobby-env-grid');
+  envGrid?.addEventListener('click', (e) => {
+    const card = (e.target as HTMLElement).closest('.env-card') as HTMLElement;
+    if (!card) return;
+    envGrid.querySelectorAll('.env-card').forEach(c => c.classList.remove('env-card--active'));
+    card.classList.add('env-card--active');
+    opts.onEnvironmentChange?.(card.dataset.env || 'random');
+  });
+
+  // Seed input
   const seedInput = lobbyEl.querySelector('#lobby-seed') as HTMLInputElement | null;
   seedInput?.addEventListener('input', () => {
     opts.onSeedChange?.(seedInput.value.trim());
