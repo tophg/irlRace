@@ -111,15 +111,9 @@ const styleName = T.buildingStyle ?? 'modern';
 const atlasPathFull = STYLE_ATLAS[styleName] ?? '/buildings/facade_atlas_dc.png';
 // Mobile: load pre-downscaled 1024px atlas (saves ~48MB GPU per texture)
 const atlasPath = isMobile ? atlasPathFull.replace(/\.(png|jpg)$/, '_mobile.png') : atlasPathFull;
-const atlasTexture = loadAtlasTexture(atlasPath, THREE.SRGBColorSpace, (ktx2Tex) => {
-  ktx2Tex.wrapS = THREE.RepeatWrapping;
-  ktx2Tex.wrapT = THREE.RepeatWrapping;
-  ktx2Tex.anisotropy = isMobile ? 4 : 16;
-  if (buildingMat) {
-    buildingMat.map = ktx2Tex;
-    buildingMat.needsUpdate = true;
-  }
-});
+// KTX2 upgrade disabled: CompressedTexture flipY is ignored in WebGPU,
+// causing atlas rows to render inverted. Use PNG/JPEG until encoding-level flip is solved.
+const atlasTexture = loadAtlasTexture(atlasPath, THREE.SRGBColorSpace);
 atlasTexture.wrapS = THREE.RepeatWrapping;
 atlasTexture.wrapT = THREE.RepeatWrapping;
 atlasTexture.anisotropy = isMobile ? 4 : 16;
@@ -551,26 +545,13 @@ if (placements.length > 0) {
     // ── Desktop: full pipeline with normal, emissive, AO, interior mapping ──
     // Load companion normal map atlas (same grid layout as diffuse)
     const normalPath = atlasPath.replace(/\.(png|jpg)$/, '_normal.png');
-    const normalTexture = loadAtlasTexture(normalPath, THREE.LinearSRGBColorSpace, (ktx2Tex) => {
-      ktx2Tex.wrapS = THREE.RepeatWrapping;
-      ktx2Tex.wrapT = THREE.RepeatWrapping;
-      ktx2Tex.minFilter = THREE.LinearMipmapLinearFilter;
-      ktx2Tex.anisotropy = 16;
-      buildingMat.normalMap = ktx2Tex;
-      buildingMat.needsUpdate = true;
-    });
+    const normalTexture = loadAtlasTexture(normalPath, THREE.LinearSRGBColorSpace);
     normalTexture.wrapS = THREE.RepeatWrapping;
     normalTexture.wrapT = THREE.RepeatWrapping;
 
     // Load companion emissive mask atlas (white=lit window, black=wall)
     const emissiveMaskPath = atlasPath.replace(/\.(png|jpg)$/, '_emissive.png');
-    const emissiveMaskTexture = loadAtlasTexture(emissiveMaskPath, THREE.LinearSRGBColorSpace, (ktx2Tex) => {
-      ktx2Tex.wrapS = THREE.RepeatWrapping;
-      ktx2Tex.wrapT = THREE.RepeatWrapping;
-      ktx2Tex.minFilter = THREE.LinearMipmapLinearFilter;
-      buildingMat.emissiveMap = ktx2Tex;
-      buildingMat.needsUpdate = true;
-    });
+    const emissiveMaskTexture = loadAtlasTexture(emissiveMaskPath, THREE.LinearSRGBColorSpace);
     emissiveMaskTexture.wrapS = THREE.RepeatWrapping;
     emissiveMaskTexture.wrapT = THREE.RepeatWrapping;
     emissiveMaskTexture.minFilter = THREE.LinearMipmapLinearFilter;
