@@ -237,8 +237,12 @@ if (placements.length > 0) {
     const uvs: number[] = [];
     const indices: number[] = [];
 
-    // Roof UV — stretch wall pier tile (Row 1) across flat top for concrete/stucco look
-    const roofTileUVs = tileUV(wallPierTile);
+    // Roof UV — collapsed to single-pixel sample from wall pier center for flat solid color
+    // (prevents architectural patterns from tiling onto visible rooftops)
+    const wallPierUV = tileUV(wallPierTile);
+    const roofMidU = (wallPierUV.uMin + wallPierUV.uMax) / 2;
+    const roofMidV = (wallPierUV.vMin + wallPierUV.vMax) / 2;
+    const roofTileUVs = { uMin: roofMidU, uMax: roofMidU, vMin: roofMidV, vMax: roofMidV };
     // Bottom face — single-point sample from roof cap (not visible)
     const bottomUVs = tileUV(roofCapTile);
 
