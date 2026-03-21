@@ -109,6 +109,7 @@ export class RaceEngine {
       // Ignore backwards movement (wrong-way driving)
       if (deltaT > 0) {
         racer.totalDistance += deltaT * this.totalLength;
+        this.invalidateRankings();
       }
     }
 
@@ -121,6 +122,9 @@ export class RaceEngine {
       RaceEngine._moveDir.set(Math.sin(heading), 0, Math.cos(heading));
       if (RaceEngine._moveDir.dot(nextCP.tangent) < -0.2) return null; // wrong direction
     }
+
+    // Rankings may have changed
+    this.invalidateRankings();
 
     // Checkpoint hit!
     const hitCpIndex = racer.checkpointIndex;
@@ -163,6 +167,7 @@ export class RaceEngine {
     if (!racer) return;
     racer.lapIndex = lapIndex;
     racer.checkpointIndex = checkpointIndex;
+    this.invalidateRankings();
   }
 
   /** Mark a racer as DNF (disconnected). */
@@ -172,6 +177,7 @@ export class RaceEngine {
       racer.dnf = true;
       racer.finished = true;
       racer.finishTime = Infinity;
+      this.invalidateRankings();
     }
   }
 
@@ -180,21 +186,35 @@ export class RaceEngine {
    * Higher totalDistance = further ahead in the race.
    * This is the single source of truth for position — no wrap-around
    * guards, no checkpoint-gated progress. Just monotonic distance.
+   * Uses a cached sort to avoid per-frame array allocation.
    */
+  private _cachedRankings: RacerProgress[] = [];
+  private _rankingsDirty = true;
+
+  /** Mark rankings as needing re-sort (called internally after any update). */
+  invalidateRankings() { this._rankingsDirty = true; }
+
   getRankings(): RacerProgress[] {
-    return [...this._racersList].sort((a, b) => {
-      // DNF always last
-      if (a.dnf && !b.dnf) return 1;
-      if (!a.dnf && b.dnf) return -1;
-      if (a.dnf && b.dnf) return 0;
+    if (this._rankingsDirty) {
+      // Rebuild from source list (avoids stale refs if racers were added/removed)
+      this._cachedRankings.length = 0;
+      for (const r of this._racersList) this._cachedRankings.push(r);
+      this._cachedRankings.sort((a, b) => {
+        // DNF always last
+        if (a.dnf && !b.dnf) return 1;
+        if (!a.dnf && b.dnf) return -1;
+        if (a.dnf && b.dnf) return 0;
 
-      if (a.finished && !b.finished) return -1;
-      if (!a.finished && b.finished) return 1;
-      if (a.finished && b.finished) return a.finishTime - b.finishTime;
+        if (a.finished && !b.finished) return -1;
+        if (!a.finished && b.finished) return 1;
+        if (a.finished && b.finished) return a.finishTime - b.finishTime;
 
-      // Simple: whoever has traveled further is ahead
-      return b.totalDistance - a.totalDistance;
-    });
+        // Simple: whoever has traveled further is ahead
+        return b.totalDistance - a.totalDistance;
+      });
+      this._rankingsDirty = false;
+    }
+    return this._cachedRankings;
   }
 
   /** Get a racer's progress. */

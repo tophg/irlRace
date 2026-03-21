@@ -112,6 +112,10 @@ export function stepPhysics(dt: number, s: GameState) {
 
   const collisionEvents = resolveCarCollisions(colliders, velocities);
 
+  // Build lookup map for O(1) access in collision event loop (avoids O(n) .find() per event)
+  const colliderMap = new Map<string, CarCollider>();
+  for (const c of colliders) colliderMap.set(c.id, c);
+
   for (const evt of collisionEvents) {
     if (evt.idA === 'local' && G.playerVehicle) {
       G._impactDir.set(evt.normalX, 0, evt.normalZ);
@@ -140,8 +144,8 @@ export function stepPhysics(dt: number, s: GameState) {
     }
 
     if (evt.impactForce > 5) {
-      const cA = colliders.find(c => c.id === evt.idA)!;
-      const cB = colliders.find(c => c.id === evt.idB)!;
+      const cA = colliderMap.get(evt.idA)!;
+      const cB = colliderMap.get(evt.idB)!;
       G._sparkPos.set(
         (cA.position.x + cB.position.x) / 2,
         (cA.position.y + cB.position.y) / 2 + 0.5,
