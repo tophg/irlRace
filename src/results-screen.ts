@@ -149,13 +149,23 @@ export interface ResultsCallbacks {
   destroySpectateHUD: () => void;
 }
 
+let _resultsShowing = false;
+
 /** Show the results overlay with rankings, stats, rewards, and action buttons. */
 export async function showResults(
   G: GameContext,
   uiOverlay: HTMLElement,
   callbacks: ResultsCallbacks,
 ) {
+  // Guard: prevent duplicate calls (async gap during rewards animation)
+  if (_resultsShowing) return;
+  _resultsShowing = true;
+
   G.gameState = GameState.RESULTS;
+
+  // Remove any stale results overlay from a previous race (safety)
+  uiOverlay.querySelector('.results-overlay')?.remove();
+
   // Victory confetti burst!
   if (G.playerVehicle) {
     spawnVictoryConfetti(G.playerVehicle.group.position);
@@ -313,31 +323,40 @@ export async function showResults(
     if (!perkId) return;
     if (spendSkillPoint(perkId)) {
       // Re-render entire perks section
-      const section = document.getElementById('perks-section');
+      const section = el.querySelector('#perks-section');
       if (section) section.outerHTML = buildPerksHTML();
     }
   });
 
-  document.getElementById('btn-prestige')?.addEventListener('click', () => {
+  el.querySelector('#btn-prestige')?.addEventListener('click', () => {
     if (prestige()) {
       // Re-render the reward HTML section
       const rewardSection = el.querySelector('.results-scroll .lap-breakdown:last-of-type');
       if (rewardSection) rewardSection.outerHTML = buildRewardHTML(earlyRewards);
-      document.getElementById('btn-prestige')?.remove();
+      el.querySelector('#btn-prestige')?.remove();
     }
   });
-  document.getElementById('btn-replay')?.addEventListener('click', () => {
-    el.remove();
+  // Helper: clean up results state and remove overlay
+  const dismiss = () => { _resultsShowing = false; el.remove(); };
+
+  // Scope button lookups to this specific overlay (avoids stale-ID conflicts)
+  const btnReplay = el.querySelector('#btn-replay') as HTMLElement | null;
+  const btnPlayAgain = el.querySelector('#btn-play-again') as HTMLElement | null;
+  const btnRematch = el.querySelector('#btn-rematch') as HTMLElement | null;
+  const btnMainMenu = el.querySelector('#btn-main-menu') as HTMLElement | null;
+
+  btnReplay?.addEventListener('click', () => {
+    dismiss();
     callbacks.destroyLeaderboard();
     callbacks.startReplayPlayback();
   });
-  document.getElementById('btn-play-again')?.addEventListener('click', () => {
-    el.remove();
+  btnPlayAgain?.addEventListener('click', () => {
+    dismiss();
     if (G.postWinnerTimer) { clearTimeout(G.postWinnerTimer); G.postWinnerTimer = null; }
     callbacks.startRace();
   });
-  document.getElementById('btn-rematch')?.addEventListener('click', () => {
-    el.remove();
+  btnRematch?.addEventListener('click', () => {
+    dismiss();
     if (G.postWinnerTimer) { clearTimeout(G.postWinnerTimer); G.postWinnerTimer = null; }
     if (isHost) {
       G.raceReadyCount = 0;
@@ -353,8 +372,8 @@ export async function showResults(
       showToast(uiOverlay, 'Rematch requested...');
     }
   });
-  document.getElementById('btn-main-menu')!.addEventListener('click', () => {
-    el.remove();
+  btnMainMenu?.addEventListener('click', () => {
+    dismiss();
     if (G.postWinnerTimer) { clearTimeout(G.postWinnerTimer); G.postWinnerTimer = null; }
     G.netPeer?.destroy();
     G.netPeer = null;
