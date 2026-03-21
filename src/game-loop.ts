@@ -12,13 +12,12 @@ import { GameState } from './types';
 import { G, PHYSICS_DT, MAX_FRAME_DT, LB_UPDATE_INTERVAL } from './game-context';
 import { getInput } from './input';
 import { getDirLight, updateSkyTime } from './scene';
-import { getClosestSplinePoint, updateSceneryWind, updateCheckpointHighlight } from './track';
+import { getClosestSplinePoint, updateSceneryWind } from './track';
 import { updateBuildingCulling } from './track-scenery';
 import { resolvePlayerName } from './results-screen';
 import { updateDebugOverlay } from './ui-screens';
 import { rollbackManager, packInput } from './rollback-netcode';
 import { updateGarage } from './garage';
-import { bus } from './event-bus';
 
 // VFX subsystem (extracted)
 import {
@@ -44,24 +43,23 @@ import {
 import { updateNameTag, spawnDamageSmoke, spawnTireSmoke } from './vfx';
 import { updateGPUParticles, flushToGPU } from './gpu-particles';
 import { updatePostFX } from './post-fx';
-import { updateTrackRadar } from './minimap';
 import { getPrecipMesh } from './weather';
+import {
+  updateRaceStats, updateMinimap, updateCheckpointsAndHUD,
+  resetRaceEventsState,
+} from './loop-race-events';
 import {
   updateEngineAudio, playDriftSFX,
   playNitroActivate, startNitroBurn, stopNitroBurn,
   updateNitroBurnIntensity, updateDepletionWarning, stopDepletionWarning,
-  playNitroRelease, playRumbleStrip, playFinishFanfare, setMusicTimeScale, setSfxTimeScale,
-  playWrongWayBeep,
+  playNitroRelease, setMusicTimeScale, setSfxTimeScale,
 } from './audio';
-import {
-  updateHUD, updateDamageHUD,
-  updateGapHUD, updateNitroHUD, updateHeatHUD,
-} from './hud';
-import { finalizeGhostLap, startGhostRecording } from './ghost';
+import { updateNitroHUD, updateHeatHUD } from './hud';
 
 import { stepPhysics, initPhysicsStep } from './physics-step';
 import { stopReplayPlayback as stopReplayUI } from './replay-ui';
-import { updateTimeScale, applyTimeScale, getTimeScale, triggerSlowMo, resetTimeScale } from './time-scale';
+
+import { updateTimeScale, applyTimeScale, getTimeScale } from './time-scale';
 
 // ── Dependency injection ──
 
@@ -81,7 +79,6 @@ let _deps: GameLoopDeps;
 // ── Per-race state ──
 let _perfectStartChecked = false;
 let _drsLastWallTime = 0;
-let _wrongWayBeepTimer = 0;
 let _racingElapsed = 0;
 
 // ── Leaderboard ──
@@ -142,12 +139,12 @@ export function initGameLoop(deps: GameLoopDeps) {
 
 /** Reset per-race state in the game loop. */
 export function resetGameLoopState() {
-  _wrongWayBeepTimer = 0;
   _racingElapsed = 0;
   _perfectStartChecked = false;
   _drsLastWallTime = 0;
   G._nearMissCooldowns.clear();
   resetVFXState();
+  resetRaceEventsState();
 }
 
 /** Remove DOM elements created by the game loop between races. */
@@ -469,17 +466,8 @@ function gameLoop(timestamp: number) {
     }
     G._wasNitroActive = isNitroNow;
 
-    // Minimap
-    if (G.playerVehicle) {
-      const aiDots = G.aiRacers.map(a => ({ pos: a.vehicle.group.position, id: a.id }));
-      updateTrackRadar(G.playerVehicle.group.position, G.playerVehicle.heading, aiDots);
-
-      if (G.checkpointMarkers) {
-        const localProgress = G.raceEngine?.getProgress('local');
-        const nextCp = localProgress ? localProgress.checkpointIndex : 0;
-        updateCheckpointHighlight(G.checkpointMarkers, nextCp, timestamp / 1000);
-      }
-    }
+    // Minimap + checkpoint highlights
+    updateMinimap(timestamp);
 
     // Near-miss detection
     updateNearMissDetection(camera, timestamp, frameDt, s);
@@ -488,13 +476,7 @@ function gameLoop(timestamp: number) {
     updateMiscVFX(camera, timestamp, frameDt);
 
     // Race stats
-    if (s === GameState.RACING) {
-      const driftAbs = Math.abs(G.playerVehicle.driftAngle);
-      const speedMph = Math.abs(G.playerVehicle.speed) * 2.5;
-      if (speedMph > G.raceStats.topSpeed) G.raceStats.topSpeed = speedMph;
-      if (speedMph > 180) G.raceStats.speedDemonTime += gameDt;
-      if (driftAbs > 0.15) G.raceStats.totalDriftTime += gameDt;
-    }
+    updateRaceStats(gameDt);
 
     // Audio
     const ts = getTimeScale();
@@ -514,104 +496,8 @@ function gameLoop(timestamp: number) {
     updateDamageAndParts(scene, frameDt);
     updateDetachedPartsPhysics(scene, frameDt);
 
-    // Checkpoint detection
-    if (s === GameState.RACING && G.raceEngine) {
-      const closestPt = getClosestSplinePoint(G.trackData.spline, G.playerVehicle.group.position, G.trackData.bvh);
-      const localT = closestPt.t;
-
-      // Rumble strip
-      const lateralDist = G.playerVehicle.group.position.distanceTo(closestPt.point);
-      if (lateralDist > 4.5 && G.playerVehicle.speed > 5) {
-        playRumbleStrip();
-      }
-
-      const event = G.raceEngine.updateRacer('local', G.playerVehicle.group.position, localT, G.playerVehicle.heading);
-      const progress = G.raceEngine.getProgress('local');
-
-      if (event === 'checkpoint') {
-        bus.emit('checkpoint', {
-          racerId: 'local',
-          index: progress?.checkpointIndex ?? 0,
-          lap: progress?.lapIndex ?? 0,
-        });
-      } else if (event === 'lap') {
-        const lastLapTime = progress?.lapTimes[progress.lapTimes.length - 1] ?? 0;
-        const bestLap = G.raceEngine.getBestLap('local');
-        if ((progress?.lapIndex ?? 0) === G.totalLaps - 1) {
-          // Last lap marker for HUD
-        }
-        finalizeGhostLap(lastLapTime, G.currentRaceSeed, G.selectedCar?.id ?? '');
-        startGhostRecording(G.playerVehicle.group.position, G.playerVehicle.heading);
-        bus.emit('lap', {
-          racerId: 'local',
-          lapIndex: progress?.lapIndex ?? 0,
-          lapTime: lastLapTime,
-          isBest: bestLap !== null && lastLapTime <= bestLap,
-        });
-      } else if (event === 'finish') {
-        playFinishFanfare();
-        triggerSlowMo('finish');
-        const finishTime = G.raceEngine.getProgress('local')?.finishTime ?? 0;
-        bus.emit('finish', { racerId: 'local', finishTime });
-      }
-
-      // HUD update
-      const rankings = G.raceEngine.getRankings();
-      const myRank = rankings.findIndex(r => r.id === 'local') + 1;
-
-      if (myRank > 0) {
-        G.raceStats.avgPosition += myRank;
-        G.raceStats.positionSampleCount++;
-      }
-
-      if (G.prevMyRank > 0 && myRank !== G.prevMyRank && myRank > 0) {
-        const gained = myRank < G.prevMyRank;
-        if (gained) G.raceStats.overtakeCount += (G.prevMyRank - myRank);
-        bus.emit('position_change', {
-          racerId: 'local', oldRank: G.prevMyRank, newRank: myRank, gained,
-        });
-      }
-      G.prevMyRank = myRank;
-      const wrongWay = G.raceEngine.isWrongWay(
-        G.playerVehicle.heading,
-        G.trackData.checkpoints[progress?.checkpointIndex ?? 0]?.tangent ?? G._defaultTangent,
-      );
-      uiOverlay.classList.toggle('wrong-way-flash', wrongWay);
-
-      // Wrong-way audio warning beep
-      if (wrongWay) {
-        _wrongWayBeepTimer -= frameDt;
-        if (_wrongWayBeepTimer <= 0) {
-          playWrongWayBeep();
-          _wrongWayBeepTimer = 0.5;
-        }
-      } else {
-        _wrongWayBeepTimer = 0;
-      }
-
-      updateHUD(
-        G.playerVehicle.speed,
-        progress?.lapIndex ?? 0,
-        G.totalLaps,
-        myRank,
-        rankings.length,
-        wrongWay,
-        G.raceEngine.getElapsedTime() * 1000,
-        G.playerVehicle.isNitroActive,
-        frameDt,
-      );
-
-
-
-      updateLeaderboard();
-
-      if (G.raceEngine) {
-        const gaps = G.raceEngine.getGaps('local');
-        updateGapHUD(gaps.ahead, gaps.behind);
-      }
-
-      if (G.playerVehicle) updateDamageHUD(G.playerVehicle.damage);
-    }
+    // Checkpoint detection, lap/finish events, HUD
+    updateCheckpointsAndHUD(uiOverlay, frameDt, updateLeaderboard);
 
     // Remote vehicles
     if (G.netPeer) {
