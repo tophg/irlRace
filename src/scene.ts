@@ -982,24 +982,24 @@ export async function initScene(container: HTMLElement) {
   const hill3 = cos(mul(gx, 0.045).add(7.1)).mul(sin(mul(gz, 0.035).add(5.3))).mul(0.5);
   const terrain = add(add(hill1, hill2), hill3);
   // Round 3: dead zone pushed far out — hills don't start until ~117 units from road center
-  const dispDamp = smoothstep(0.30, 0.55, dist);
+  const dispDamp = smoothstep(0.35, 0.60, dist);
   // Round 3: deep trench (-2.0) around the road. At dist≈0.15 the ground is forced
   // 2.0 units below the base plane, guaranteeing it stays well under the road surface
   // even on flat sections. The bell shape fades back to 0 by dist≈0.40.
-  const transitionDip = mul(mul(smoothstep(0.0, 0.15, dist), smoothstep(0.40, 0.15, dist)), -2.0);
+  const transitionDip = mul(mul(smoothstep(0.0, 0.15, dist), smoothstep(0.45, 0.15, dist)), -2.5);
   const dampedTerrain = add(mul(terrain, dispDamp), transitionDip);
   // Displace along Z (which becomes Y after -90° X rotation)
   groundMat.positionNode = add(positionLocal, vec3(0, 0, dampedTerrain));
 
   // polygonOffset: GPU depth-bias to resolve any remaining Z-fighting
   groundMat.polygonOffset = true;
-  groundMat.polygonOffsetFactor = 4;
-  groundMat.polygonOffsetUnits = 4;
+  groundMat.polygonOffsetFactor = 5;
+  groundMat.polygonOffsetUnits = 5;
 
   groundMesh = new THREE.Mesh(groundGeo, groundMat);
   groundMesh.rotation.x = -Math.PI / 2;
   // Round 3: ground base at Y=-0.5 — full half-meter below road surface
-  groundMesh.position.y = -0.5;
+  groundMesh.position.y = -0.6;
   groundMesh.receiveShadow = true;
   groundMesh.renderOrder = -1;
   scene.add(groundMesh);
