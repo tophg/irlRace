@@ -13,6 +13,8 @@ import { bus, type GameEvents } from './event-bus';
 // mutate progression directly (double-count fix).
 import { haptic } from './input';
 import type { Vehicle } from './vehicle';
+import { emitCurrencyBurst, emitComboShockwave, emitJackpotRain, emitBrokenGlass } from './reward-particles';
+import { SHAKE } from './screen-shake';
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // REWARD DEFINITIONS
@@ -82,6 +84,19 @@ function ensureToastContainer(): HTMLDivElement {
   return _toastContainer;
 }
 
+/** Animated counter roll for toast amounts (200ms — fast & punchy). */
+function toastCounterRoll(el: HTMLElement, target: number, prefix: string, suffix: string) {
+  const start = performance.now();
+  const dur = 200;
+  function frame(now: number) {
+    const t = Math.min((now - start) / dur, 1);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = `${prefix}${Math.round(target * eased)}${suffix}`;
+    if (t < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
 function showToast(def: RewardDef, finalNitro: number, finalCredits: number, finalXP: number, isJackpot: boolean) {
   const container = ensureToastContainer();
 
@@ -92,21 +107,16 @@ function showToast(def: RewardDef, finalNitro: number, finalCredits: number, fin
 
   const toast = document.createElement('div');
 
-  // Build class list with tier escalation
+  // 3-Tier toast hierarchy: Ping (tactical) → Chime (skill) → Fanfare (milestone/jackpot)
   let cls = 'reward-toast';
-  if (isJackpot) cls += ' reward-jackpot';
-  if (def.category === 'milestone') cls += ' reward-milestone';
+  if (isJackpot) cls += ' reward-jackpot reward-tier-fanfare';
+  else if (def.category === 'milestone') cls += ' reward-milestone reward-tier-fanfare';
+  else if (def.category === 'skill') cls += ' reward-tier-chime';
+  else cls += ' reward-tier-ping';
   // Combo tier styling (×2=tier-2 ... ×5=tier-5)
   if (_comboMultiplier >= 2) cls += ` reward-tier-${Math.min(Math.floor(_comboMultiplier), 5)}`;
   toast.className = cls;
   toast.style.setProperty('--reward-hue', String(isJackpot ? 45 : def.hue));
-
-  // Build staggered amounts — each gets a sequential class for animation-delay
-  let amtIdx = 0;
-  let amounts = '';
-  if (finalNitro > 0) { amounts += `<span class="reward-amt reward-amt-nitro reward-amt-${amtIdx}">⛽+${finalNitro}</span>`; amtIdx++; }
-  if (finalCredits > 0) { amounts += `<span class="reward-amt reward-amt-credits reward-amt-${amtIdx}">💰+${finalCredits}</span>`; amtIdx++; }
-  if (finalXP > 0) { amounts += `<span class="reward-amt reward-amt-xp reward-amt-${amtIdx}">+${finalXP} XP</span>`; amtIdx++; }
 
   // Combo badge with tier color
   let comboBadgeCls = 'reward-combo-badge';
@@ -117,17 +127,58 @@ function showToast(def: RewardDef, finalNitro: number, finalCredits: number, fin
     ? `<span class="${comboBadgeCls}">×${_comboMultiplier}</span>`
     : '';
 
+  // Build amount containers (values filled by counter-roll animation)
+  let amtIdx = 0;
+  let amountsHtml = '';
+  if (finalNitro > 0) { amountsHtml += `<span class="reward-amt reward-amt-nitro reward-amt-${amtIdx}" data-target="${finalNitro}" data-prefix="⛽+" data-suffix=""></span>`; amtIdx++; }
+  if (finalCredits > 0) { amountsHtml += `<span class="reward-amt reward-amt-credits reward-amt-${amtIdx}" data-target="${finalCredits}" data-prefix="💰+" data-suffix=""></span>`; amtIdx++; }
+  if (finalXP > 0) { amountsHtml += `<span class="reward-amt reward-amt-xp reward-amt-${amtIdx}" data-target="${finalXP}" data-prefix="+" data-suffix=" XP"></span>`; amtIdx++; }
+
   toast.innerHTML = `
     <span class="reward-icon">${isJackpot ? '💥' : def.icon}</span>
     <span class="reward-label">${isJackpot ? 'JACKPOT!' : def.label}</span>
-    <span class="reward-amounts">${amounts}</span>
+    <span class="reward-amounts">${amountsHtml}</span>
     ${comboHtml}
   `;
 
   container.appendChild(toast);
 
-  // Trigger enter animation
-  requestAnimationFrame(() => toast.classList.add('reward-toast--in'));
+  // Trigger enter animation + glow pulse
+  requestAnimationFrame(() => {
+    toast.classList.add('reward-toast--in');
+    toast.classList.add('reward-toast--glow');
+    setTimeout(() => toast.classList.remove('reward-toast--glow'), 400);
+  });
+
+  // Start animated counter rolls on each amount span
+  toast.querySelectorAll('.reward-amt[data-target]').forEach(el => {
+    const span = el as HTMLElement;
+    const target = parseInt(span.dataset.target || '0', 10);
+    const prefix = span.dataset.prefix || '';
+    const suffix = span.dataset.suffix || '';
+    toastCounterRoll(span, target, prefix, suffix);
+  });
+
+  // ── Particle effects based on reward tier ──
+  const toastRect = toast.getBoundingClientRect();
+  const cx = toastRect.left + toastRect.width / 2;
+  const cy = toastRect.top + toastRect.height / 2;
+
+  if (isJackpot) {
+    // Jackpot: golden rain + screen shake (variable ratio payoff ceremony)
+    emitJackpotRain();
+    SHAKE.jackpot();
+  } else if (def.category === 'milestone') {
+    // Milestone: larger burst
+    emitCurrencyBurst(cx, cy, def.hue);
+  } else if (_comboMultiplier >= 3) {
+    // High combo: shockwave ring (escalation anticipation)
+    emitComboShockwave(def.hue);
+    if (_comboMultiplier >= 4) SHAKE.comboHigh();
+  } else {
+    // Standard reward: small burst
+    emitCurrencyBurst(cx, cy, def.hue);
+  }
 
   // Remove after lifespan
   const lifespan = isJackpot ? 2200 : (def.category === 'milestone' ? 2000 : TOAST_LIFESPAN);
@@ -144,13 +195,18 @@ function showToast(def: RewardDef, finalNitro: number, finalCredits: number, fin
 let _comboBarEl: HTMLDivElement | null = null;
 let _comboBarFill: HTMLDivElement | null = null;
 
+let _comboBarLabel: HTMLDivElement | null = null;
+
 function ensureComboBar(): void {
   if (_comboBarEl && _comboBarEl.parentNode) return;
   _comboBarEl = document.createElement('div');
   _comboBarEl.className = 'reward-combo-bar';
   _comboBarFill = document.createElement('div');
   _comboBarFill.className = 'reward-combo-bar-fill';
+  _comboBarLabel = document.createElement('div');
+  _comboBarLabel.className = 'reward-combo-bar-label';
   _comboBarEl.appendChild(_comboBarFill);
+  _comboBarEl.appendChild(_comboBarLabel);
   document.getElementById('ui-overlay')?.appendChild(_comboBarEl);
 }
 
@@ -167,6 +223,18 @@ function updateComboBarVisual() {
     // Colour shifts with multiplier
     const hue = 120 - (_comboMultiplier - 1) * 25; // green → orange → red
     _comboBarFill.style.background = `hsl(${Math.max(0, hue)}, 80%, 55%)`;
+    // Glow intensifies with multiplier (dopamine anticipation visualization)
+    const glow = Math.min(12, (_comboMultiplier - 1) * 4);
+    _comboBarFill.style.boxShadow = `0 0 ${glow}px hsl(${Math.max(0, hue)}, 80%, 55%)`;
+  }
+  // Update multiplier label
+  if (_comboBarLabel) {
+    if (_comboMultiplier > 1) {
+      _comboBarLabel.textContent = `×${_comboMultiplier}`;
+      _comboBarLabel.style.opacity = '1';
+    } else {
+      _comboBarLabel.style.opacity = '0';
+    }
   }
 }
 
@@ -440,6 +508,8 @@ export function awardReward(type: RewardType, vehicle?: Vehicle): void {
 export function breakCombo(): void {
   if (_comboTimer <= 0) return; // nothing to break
 
+  const lostMultiplier = _comboMultiplier;
+
   // Bank XP: reward for chain length × variety
   // Audit fix #6: track in accumulator only — applied at race end, not mid-race
   const bankXP = Math.floor(_comboTypes.size * _comboLength * 2);
@@ -447,23 +517,36 @@ export function breakCombo(): void {
     _midRaceXP += bankXP;
   }
 
-  // Show "COMBO LOST" flash
+  // Show "×N COMBO LOST" — loss aversion: show what was lost (Kahneman)
   const container = ensureToastContainer();
   const toast = document.createElement('div');
   toast.className = 'reward-toast reward-combo-lost';
-  toast.innerHTML = `<span class="reward-icon">💥</span><span class="reward-label">COMBO LOST</span>`;
+  toast.innerHTML = `
+    <span class="reward-icon">💥</span>
+    <span class="reward-label">×${Math.floor(lostMultiplier)} COMBO LOST</span>
+    ${bankXP > 0 ? `<span class="reward-amt reward-amt-xp" style="opacity:0.7">Banked +${bankXP} XP</span>` : ''}
+  `;
   container.appendChild(toast);
   requestAnimationFrame(() => toast.classList.add('reward-toast--in'));
   setTimeout(() => {
     toast.classList.add('reward-toast--out');
     setTimeout(() => toast.remove(), 300);
-  }, 1200);
+  }, 1400);
+
+  // Broken glass particles (loss aversion amplification)
+  const barRect = _comboBarEl?.getBoundingClientRect();
+  if (barRect) {
+    emitBrokenGlass(barRect.left + barRect.width / 2, barRect.top + barRect.height / 2);
+  }
+
+  // Screen shake at ×3+ (proportional to loss magnitude)
+  if (lostMultiplier >= 3) SHAKE.comboBreak();
 
   // SFX + haptic
   playComboLostSFX();
   haptic([20, 15, 20]);
 
-  // Red edge flash
+  // Red edge flash (extended for loss aversion — 0.4s)
   flashEdgeGlow(0);
 
   // Reset combo state
@@ -485,10 +568,27 @@ export function updateRewards(dt: number): void {
     if (_comboTimer <= 0) {
       // Natural expiry → bank XP
       // Audit fix #6: track in accumulator only — applied at race end
+      const expiredMultiplier = _comboMultiplier;
       const bankXP = Math.floor(_comboTypes.size * _comboLength * 2);
       if (bankXP > 0) {
         _midRaceXP += bankXP;
       }
+
+      // Near-miss framing: if combo expired at ×3+, show "CLOSE!" ghost
+      // (Psychology: near-miss effect — "I almost had the jackpot")
+      if (expiredMultiplier >= 3) {
+        const container = ensureToastContainer();
+        const ghost = document.createElement('div');
+        ghost.className = 'reward-toast reward-near-miss';
+        ghost.innerHTML = `<span class="reward-icon">😤</span><span class="reward-label">×${Math.floor(expiredMultiplier)} CLOSE!</span>`;
+        container.appendChild(ghost);
+        requestAnimationFrame(() => ghost.classList.add('reward-toast--in'));
+        setTimeout(() => {
+          ghost.classList.add('reward-toast--out');
+          setTimeout(() => ghost.remove(), 300);
+        }, 900);
+      }
+
       _comboTimer = 0;
       _comboMultiplier = 1;
       _comboLength = 0;
@@ -530,6 +630,7 @@ export function destroyRewards(): void {
   _comboBarEl?.remove();
   _comboBarEl = null;
   _comboBarFill = null;
+  _comboBarLabel = null;
   _edgeGlowEl?.remove();
   _edgeGlowEl = null;
 }

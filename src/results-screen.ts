@@ -67,15 +67,25 @@ function buildChallengesHTML(): string {
   for (const ch of daily) {
     const [cur, tgt, done] = getChallengeProgress(ch);
     const pct = Math.min(100, Math.round((cur / tgt) * 100));
-    html += `<div class="lap-breakdown-row${done ? ' best' : ''}"><span>${ch.icon} ${ch.name}</span><span>${done ? '✅' : `${cur}/${tgt}`}</span></div>`;
-    if (!done) html += `<div style="background:rgba(255,255,255,0.1);border-radius:3px;height:3px;margin:1px 0;"><div style="background:var(--col-orange);border-radius:3px;height:100%;width:${pct}%;"></div></div>`;
+    const almostThere = !done && pct >= 75;
+    html += `<div class="lap-breakdown-row${done ? ' best' : ''}"><span>${ch.icon} ${ch.name}</span><span>${done ? '<span style="color:#4caf50;font-weight:700;">✅ CLAIMED!</span>' : `${cur}/${tgt}`}${almostThere ? ' <span style="color:#ffd700;font-size:10px;font-weight:700;">ALMOST THERE!</span>' : ''}</span></div>`;
+    if (!done) {
+      const barColor = almostThere ? '#ffd700' : 'var(--col-orange)';
+      const barGlow = almostThere ? 'box-shadow:0 0 6px rgba(255,215,0,0.5);' : '';
+      html += `<div style="background:rgba(255,255,255,0.1);border-radius:3px;height:3px;margin:1px 0;"><div style="background:${barColor};border-radius:3px;height:100%;width:${pct}%;transition:width 0.5s;${barGlow}"></div></div>`;
+    }
   }
   html += `<div class="lap-breakdown-title" style="margin-top:6px;">WEEKLY CHALLENGES</div>`;
   for (const ch of weekly) {
     const [cur, tgt, done] = getChallengeProgress(ch);
     const pct = Math.min(100, Math.round((cur / tgt) * 100));
-    html += `<div class="lap-breakdown-row${done ? ' best' : ''}"><span>${ch.icon} ${ch.name}</span><span>${done ? '✅' : `${cur}/${tgt}`}</span></div>`;
-    if (!done) html += `<div style="background:rgba(255,255,255,0.1);border-radius:3px;height:3px;margin:1px 0;"><div style="background:var(--col-cyan);border-radius:3px;height:100%;width:${pct}%;"></div></div>`;
+    const almostThere = !done && pct >= 75;
+    html += `<div class="lap-breakdown-row${done ? ' best' : ''}"><span>${ch.icon} ${ch.name}</span><span>${done ? '<span style="color:#4caf50;font-weight:700;">✅ CLAIMED!</span>' : `${cur}/${tgt}`}${almostThere ? ' <span style="color:#ffd700;font-size:10px;font-weight:700;">ALMOST THERE!</span>' : ''}</span></div>`;
+    if (!done) {
+      const barColor = almostThere ? '#ffd700' : 'var(--col-cyan)';
+      const barGlow = almostThere ? 'box-shadow:0 0 6px rgba(255,215,0,0.5);' : '';
+      html += `<div style="background:rgba(255,255,255,0.1);border-radius:3px;height:3px;margin:1px 0;"><div style="background:${barColor};border-radius:3px;height:100%;width:${pct}%;transition:width 0.5s;${barGlow}"></div></div>`;
+    }
   }
   html += `</div>`;
   return html;

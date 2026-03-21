@@ -1813,7 +1813,11 @@ canvas { display: block; }
 .reward-icon {
   font-size: 18px;
   animation: icon-spring 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  filter: drop-shadow(0 0 6px hsla(var(--reward-hue, 200), 80%, 55%, 0.6));
 }
+/* Tier-specific icon sizes */
+.reward-tier-fanfare .reward-icon { font-size: 24px; }
+.reward-tier-chime .reward-icon { font-size: 20px; }
 @keyframes icon-spring {
   0% { transform: scale(0); }
   60% { transform: scale(1.3); }
@@ -1957,25 +1961,77 @@ canvas { display: block; }
   100% { transform: translateX(0) scale(1); box-shadow: none; }
 }
 
-/* Combo timer bar (visible Zeigarnik drain) */
+/* ── Near-miss ghost (combo expired at ×3+) ── */
+.reward-near-miss {
+  border-color: rgba(255,200,0,0.3) !important;
+  background: rgba(30,25,5,0.5) !important;
+  opacity: 0.8;
+}
+.reward-near-miss .reward-label {
+  color: rgba(255,200,0,0.8);
+  font-style: italic;
+}
+
+/* ── 3-Tier Toast Hierarchy ── */
+/* Ping: compact tactical */
+.reward-tier-ping {
+  padding: 5px 12px;
+  font-size: 12px;
+}
+/* Chime: standard skill */
+.reward-tier-chime {
+  padding: 7px 16px;
+  font-size: 13px;
+}
+/* Fanfare: milestone/jackpot — larger, more visual weight */
+.reward-tier-fanfare {
+  padding: 10px 20px;
+  font-size: 15px;
+  border-width: 2px;
+}
+
+/* Glow pulse on toast entry */
+.reward-toast--glow {
+  animation: toast-glow-pulse 0.4s ease-out;
+}
+@keyframes toast-glow-pulse {
+  0% { filter: brightness(1.6); box-shadow: 0 0 20px hsla(var(--reward-hue, 200), 80%, 55%, 0.4); }
+  100% { filter: brightness(1); box-shadow: none; }
+}
+
+/* Combo timer bar (visible Zeigarnik drain — enlarged for dopamine anticipation) */
 .reward-combo-bar {
   position: fixed;
   right: 16px;
   top: calc(50% + 100px);
   width: 160px;
-  height: 4px;
-  background: rgba(255,255,255,0.08);
-  border-radius: 3px;
+  height: 8px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 4px;
   z-index: 199;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.3s;
+  overflow: hidden;
 }
 .reward-combo-bar-fill {
   height: 100%;
-  border-radius: 3px;
+  border-radius: 4px;
   transition: width 0.1s linear;
   box-shadow: 0 0 6px currentColor;
+}
+.reward-combo-bar-label {
+  position: absolute;
+  right: -32px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 0 8px currentColor;
+  opacity: 0;
+  transition: opacity 0.2s;
 }
 
 /* Edge glow vignette */
@@ -1987,7 +2043,7 @@ canvas { display: block; }
   opacity: 0;
 }
 .reward-edge-glow--flash {
-  animation: edge-glow-flash 0.2s ease-out;
+  animation: edge-glow-flash 0.4s ease-out;
 }
 @keyframes edge-glow-flash {
   0% { opacity: 1; }
@@ -3139,8 +3195,27 @@ canvas { display: block; }
   font-size: clamp(48px, 10vw, 80px);
   font-weight: 900;
   letter-spacing: 4px;
-  text-shadow: 0 0 30px currentColor, 0 0 60px currentColor;
+  text-shadow:
+    0 0 30px currentColor,
+    0 0 60px currentColor,
+    0 0 100px currentColor;
   animation: rewards-scale-bounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+}
+/* Radial halo behind placement text (crowning moment) */
+.rewards-placement::before {
+  content: '';
+  position: absolute;
+  inset: -60px;
+  border-radius: 50%;
+  background: radial-gradient(circle, currentColor 0%, transparent 70%);
+  opacity: 0.15;
+  z-index: -1;
+  animation: halo-pulse 2s ease-in-out infinite;
+}
+@keyframes halo-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.1; }
+  50% { transform: scale(1.15); opacity: 0.2; }
 }
 @keyframes rewards-scale-bounce {
   0%   { transform: scale(0.3); opacity: 0; }
@@ -3156,6 +3231,22 @@ canvas { display: block; }
   border-radius: 6px;
   font-size: 14px; color: rgba(255,255,255,0.85);
   animation: rewards-slide-in 0.35s ease-out both;
+  position: relative;
+  overflow: hidden;
+}
+/* Shimmer sweep across row after slide-in */
+.rewards-row::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.08) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: row-shimmer 1s ease-out 0.4s forwards;
+  pointer-events: none;
+}
+@keyframes row-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 .rewards-row-bonus {
   background: rgba(255,200,0,0.08);
@@ -3206,6 +3297,16 @@ canvas { display: block; }
   border-radius: 4px;
   transition: width 0.8s ease-out;
   box-shadow: 0 0 8px rgba(255,200,0,0.4);
+  position: relative;
+  overflow: hidden;
+}
+/* Shimmer sweep on XP bar fill */
+.rewards-xp-bar-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%);
+  animation: shimmer 1.5s ease-in-out infinite;
 }
 
 .rewards-credits {
@@ -3234,9 +3335,15 @@ canvas { display: block; }
   font-weight: 900;
   color: #ffd700;
   text-align: center;
-  text-shadow: 0 0 20px rgba(255,215,0,0.6);
-  animation: rewards-scale-bounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  text-shadow: 0 0 20px rgba(255,215,0,0.6), 0 0 40px rgba(255,215,0,0.3);
+  animation: rewards-level-bounce 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
   margin-top: 8px;
+}
+@keyframes rewards-level-bounce {
+  0%   { transform: scale(0.3) rotate(-5deg); opacity: 0; }
+  50%  { transform: scale(1.2) rotate(2deg); opacity: 1; }
+  75%  { transform: scale(0.95) rotate(-1deg); }
+  100% { transform: scale(1) rotate(0); }
 }
 .rewards-level-num {
   font-size: 0.7em;
@@ -3250,4 +3357,33 @@ canvas { display: block; }
   font-size: 11px; color: rgba(255,255,255,0.25);
   letter-spacing: 2px; font-weight: 500;
   animation: rewards-fade-in 1s ease-out 1s both;
+}
+
+/* ── Achievement Trophy Style ── */
+.rewards-achievement {
+  border: 1px solid rgba(255,215,0,0.5) !important;
+  background: rgba(40,35,5,0.5) !important;
+  position: relative;
+  overflow: hidden;
+}
+.rewards-achievement::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,215,0,0.12) 50%, transparent 100%);
+  animation: border-shine 2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes border-shine {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(100%); }
+  100% { transform: translateX(100%); }
+}
+.rewards-achievement .rewards-row-label {
+  animation: trophy-bounce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes trophy-bounce {
+  0% { transform: scale(0.8); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
 }

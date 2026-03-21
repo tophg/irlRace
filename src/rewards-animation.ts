@@ -8,6 +8,8 @@
 import { COLORS } from './colors';
 import type { RewardBreakdown } from './progression';
 import { levelProgress, xpToNextLevel, getProgress } from './progression';
+import { emitLevelBurst, emitXPStream, emitAchievementConfetti, emitCurrencyBurst } from './reward-particles';
+import { SHAKE } from './screen-shake';
 
 // ── Web Audio SFX (procedural, no asset files) ──
 let _audioCtx: AudioContext | null = null;
@@ -221,6 +223,8 @@ export function playRewardsAnimation(
       banner.textContent = placementText(placement);
       container.appendChild(banner);
       playTotalPunch();
+      // Particle burst behind placement (crowning moment)
+      emitLevelBurst();
     }, 100);
 
     // ── Phase 2: Reward Rows (800ms, staggered 400ms apart) ──
@@ -266,7 +270,12 @@ export function playRewardsAnimation(
           }
         }
 
-        if (row.isBonus) playBonusChime();
+        if (row.isBonus) {
+          playBonusChime();
+          // Particle sparkle from bonus row toward total area
+          const rect = rowEl.getBoundingClientRect();
+          emitCurrencyBurst(rect.right - 20, rect.top + rect.height / 2, 45);
+        }
       }, 800 + i * 400);
     });
 
@@ -322,6 +331,10 @@ export function playRewardsAnimation(
         const newPct = Math.round(levelProgress() * 100);
         barFill.style.width = `${newPct}%`;
         playBarFillSweep();
+        // XP stream particles from total toward bar
+        const totalRect = totalRow.getBoundingClientRect();
+        const barRect = barBg.getBoundingClientRect();
+        emitXPStream(totalRect.left + totalRect.width / 2, totalRect.bottom, barRect.left + barRect.width * (newPct / 100), barRect.top + barRect.height / 2);
       }, 300);
     }, phase3Start);
 
@@ -357,6 +370,10 @@ export function playRewardsAnimation(
         lvlUp.innerHTML = `⬆ LEVEL UP!<br><span class="rewards-level-num">Level ${rewards.newLevel}</span>`;
         container.appendChild(lvlUp);
         playLevelUpFanfare();
+
+        // Particle ceremony + screen shake (crowning moment)
+        emitLevelBurst();
+        SHAKE.levelUp();
       }, phase5Start);
     }
 
@@ -366,12 +383,14 @@ export function playRewardsAnimation(
       rewards.newAchievements.forEach((ach, i) => {
         schedule(() => {
           const achEl = document.createElement('div');
-          achEl.className = 'rewards-row rewards-row-bonus';
+          achEl.className = 'rewards-row rewards-row-bonus rewards-achievement';
           achEl.style.color = COLORS.GOLD;
           achEl.style.fontWeight = '700';
           achEl.innerHTML = `<span class="rewards-row-label">${ach.icon} ${ach.name}</span><span class="rewards-row-value">+${ach.creditReward} CR</span>`;
           container.appendChild(achEl);
           playBonusChime();
+          // Achievement confetti (trophy moment)
+          emitAchievementConfetti();
         }, phase6Start + i * 400);
       });
     }
