@@ -50,7 +50,7 @@ const STYLE_ATLAS: Record<string, string> = {
   weathered:    '/buildings/facade_atlas_weathered.png',
   chalet:       '/buildings/facade_atlas_zermatt.png',
   warehouse:    '/buildings/facade_atlas_warehouse.png',
-  levantine:      '/buildings/facade_atlas_gaza.png',
+  levantine:      '/buildings/facade_atlas_gaza.jpg',
   mesopotamian:   '/buildings/facade_atlas_baghdad.png',
   damascene:      '/buildings/facade_atlas_damascus.png',
   levantine_med:  '/buildings/facade_atlas_beirut.png',
@@ -66,7 +66,7 @@ const STYLE_ATLAS: Record<string, string> = {
 const styleName = T.buildingStyle ?? 'modern';
 const atlasPathFull = STYLE_ATLAS[styleName] ?? '/buildings/facade_atlas_dc.png';
 // Mobile: load pre-downscaled 1024px atlas (saves ~48MB GPU per texture)
-const atlasPath = isMobile ? atlasPathFull.replace('.png', '_mobile.png') : atlasPathFull;
+const atlasPath = isMobile ? atlasPathFull.replace(/\.(png|jpg)$/, '_mobile.png') : atlasPathFull;
 const atlasTexture = new THREE.TextureLoader().load(atlasPath);
 atlasTexture.wrapS = THREE.RepeatWrapping;
 atlasTexture.wrapT = THREE.RepeatWrapping;
@@ -476,14 +476,14 @@ if (placements.length > 0) {
   } else {
     // ── Desktop: full pipeline with normal, emissive, AO, interior mapping ──
     // Load companion normal map atlas (same grid layout as diffuse)
-    const normalPath = atlasPath.replace('.png', '_normal.png');
+    const normalPath = atlasPath.replace(/\.(png|jpg)$/, '_normal.$1');
     const normalTexture = new THREE.TextureLoader().load(normalPath);
     normalTexture.wrapS = THREE.RepeatWrapping;
     normalTexture.wrapT = THREE.RepeatWrapping;
     normalTexture.colorSpace = THREE.LinearSRGBColorSpace;
 
     // Load companion emissive mask atlas (white=lit window, black=wall)
-    const emissiveMaskPath = atlasPath.replace('.png', '_emissive.png');
+    const emissiveMaskPath = atlasPath.replace(/\.(png|jpg)$/, '_emissive.png');
     const emissiveMaskTexture = new THREE.TextureLoader().load(emissiveMaskPath);
     emissiveMaskTexture.wrapS = THREE.RepeatWrapping;
     emissiveMaskTexture.wrapT = THREE.RepeatWrapping;
