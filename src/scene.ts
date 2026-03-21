@@ -979,9 +979,7 @@ export async function initScene(container: HTMLElement) {
   const tintedAtlas = mul(atlasColor.xyz, cellLum);
 
   // Mix with fallback ground color (atlas alpha controls blend)
-  // groundMat.colorNode = mix(vec3(uGroundColor), tintedAtlas, atlasColor.a);
-  // DEBUG: visualize DFT dist as red→green→blue gradient
-  groundMat.colorNode = vec3(max(add(1.0, mul(dist, -3.0)), 0), max(add(mul(dist, 3.0), mul(max(add(dist, -0.33), 0), -3.0)), 0), max(add(mul(add(dist, -0.66), 3.0), 0), 0));
+  groundMat.colorNode = mix(vec3(uGroundColor), tintedAtlas, atlasColor.a);
 
   // Vertex displacement: gentle rolling terrain via layered sine noise
   // Operates in the XZ plane of the undisplaced geometry (before rotation)
@@ -1133,6 +1131,7 @@ export function applyEnvironment(preset: EnvironmentPreset) {
   // Load ground atlas texture for this environment (if available)
   const atlasPath = GROUND_ATLAS[preset.name];
   if (atlasPath) {
+    console.log(`[ATLAS] Loading: ${atlasPath}`);
     new THREE.TextureLoader().load(atlasPath, (tex) => {
       // Convert loaded image (HTMLImageElement) to pixel data so we can
       // keep _groundAtlasTexture as a DataTexture. WebGPU crashes if a
@@ -1144,6 +1143,14 @@ export function applyEnvironment(preset: EnvironmentPreset) {
       const ctx = canvas.getContext('2d')!;
       ctx.drawImage(img, 0, 0);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      // Debug: check alpha range
+      let minA = 255, maxA = 0;
+      for (let i = 3; i < imageData.data.length; i += 4) {
+        if (imageData.data[i] < minA) minA = imageData.data[i];
+        if (imageData.data[i] > maxA) maxA = imageData.data[i];
+      }
+      console.log(`[ATLAS] Loaded ${canvas.width}×${canvas.height}, alpha range: ${minA}..${maxA}`);
 
       // Replace DataTexture internals with matching-format pixel data
       const dt = _groundAtlasTexture as THREE.DataTexture;
