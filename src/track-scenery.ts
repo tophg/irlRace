@@ -1045,9 +1045,12 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           const uStart = col / hTiles;
           const uEnd = (col + 1) / hTiles;
 
-          // Ground zone for this column
+          // Ground zone for this column — random column from appropriate row
           {
-            const zUV = tileUV(isWindowCol ? faceGroundTile : wallPierTile);
+            const groundHash = ((col * 41 + windowTile * 59 + Math.round(faceW) * 23) & 0xFF);
+            const groundCol = groundHash % ATLAS_COLS;
+            const groundRow = isWindowCol ? Math.floor(faceGroundTile / ATLAS_COLS) : Math.floor(wallPierTile / ATLAS_COLS);
+            const zUV = tileUV(groundRow * ATLAS_COLS + groundCol);
             const zTW = zUV.uMax - zUV.uMin;
             const zTH = zUV.vMax - zUV.vMin;
             const baseIdx = positions.length / 3;
@@ -1071,17 +1074,17 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
           // Mid zone for this column (repeating vertically)
           if (midFrac > 0) {
-            const baseCol = windowTile % ATLAS_COLS;
             for (let tileR = 0; tileR < midVTiles; tileR++) {
-              // Per-TILE randomization: each window independently open or closed
+              // Per-TILE randomization: each tile picks its own atlas column + row
               const tileHash = ((col * 31 + tileR * 53 + windowTile * 73 + Math.round(faceW) * 17) & 0xFF);
+              const tileCol = tileHash % ATLAS_COLS; // random column from all 8
               let tileMidTile: number;
               if (isWindowCol) {
-                const tileWindowRow = (tileHash % 3 === 0) ? 1 : 0; // ~33% open, ~67% closed
-                tileMidTile = tileWindowRow * ATLAS_COLS + baseCol;
+                const tileWindowRow = ((tileHash >> 3) % 3 === 0) ? 1 : 0; // ~33% open
+                tileMidTile = tileWindowRow * ATLAS_COLS + tileCol;
               } else {
-                const tileWallRow = (tileHash % 5 === 0) ? 3 : 2; // ~20% detail, ~80% plain
-                tileMidTile = tileWallRow * ATLAS_COLS + baseCol;
+                const tileWallRow = ((tileHash >> 3) % 5 === 0) ? 3 : 2; // ~20% detail
+                tileMidTile = tileWallRow * ATLAS_COLS + tileCol;
               }
               const zUV = tileUV(tileMidTile);
               const zTW = zUV.uMax - zUV.uMin;
