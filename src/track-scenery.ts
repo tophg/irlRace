@@ -630,58 +630,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
   // ── Tire walls — REMOVED (procedural clutter) ──
 
-  // ── Advertising boards at straight sections ──
-  const AD_COUNT = isMobile ? 3 : 8;
-  const adGeo = new THREE.PlaneGeometry(6, 2);
-
-  for (let i = 0; i < AD_COUNT; i++) {
-    const t = (i + 0.5) / AD_COUNT;
-    const p = spline.getPointAt(t);
-    const tangent = spline.getTangentAt(t).normalize();
-    const rx = tangent.z, rz = -tangent.x;
-    const side = i % 2 === 0 ? 1 : -1;
-    const offset = ROAD_WIDTH / 2 + BARRIER_THICKNESS + 2;
-    const x = p.x + rx * offset * side;
-    const z = p.z + rz * offset * side;
-
-    // Create a colored advertising board
-    const canvas = document.createElement('canvas');
-    canvas.width = 256; canvas.height = 86;
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, 256, 86);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 30px sans-serif';
-    ctx.textAlign = 'center';
-    const slogans = ['OBEY', 'CONSUME', 'SUBMIT', 'CONFORM', 'STAY ASLEEP', 'NO THOUGHT', 'MARRY AND\nREPRODUCE', 'BUY', 'WATCH TV', 'DO NOT\nQUESTION', 'OBEY', 'CONSUME'];
-    const msg = slogans[i % slogans.length];
-    if (msg.includes('\n')) {
-      const lines = msg.split('\n');
-      ctx.font = 'bold 24px sans-serif';
-      ctx.fillText(lines[0], 128, 40);
-      ctx.fillText(lines[1], 128, 68);
-    } else {
-      ctx.fillText(msg, 128, 55);
-    }
-    // Border
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(4, 4, 248, 78);
-
-    const adTex = new THREE.CanvasTexture(canvas);
-    const adMat = new THREE.MeshStandardMaterial({
-      map: adTex,
-      emissive: new THREE.Color('#333333'),
-      emissiveIntensity: 0.5,
-    });
-
-    const board = new THREE.Mesh(adGeo.clone(), adMat);
-    board.position.set(x, 2.5, z);
-    // Face approaching drivers: orient to road tangent direction
-    const facing = p.clone().add(tangent.clone().multiplyScalar(-10));
-    board.lookAt(facing);
-    group.add(board);
-  }
+  // ── Advertising boards — REMOVED (procedural signs/banners) ──
 
   // ── Buildings (extracted to scenery-buildings.ts) ──
   generateBuildings(spline, rng, T, group);
