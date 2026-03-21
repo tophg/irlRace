@@ -737,7 +737,7 @@ function getBarrierMaterial(style: string, barrierColor: number): THREE.MeshStan
     metalness: isMetal ? 0.6 : 0.0,
     envMapIntensity: isMetal ? 0.5 : 0.2,
     side: THREE.DoubleSide,
-    color: barrierColor,
+    color: 0xffffff,
   });
 
   // Load texture asynchronously; material renders with barrierColor until ready
@@ -770,7 +770,7 @@ function buildBarrierMesh(
   const baseHalfW = ROAD_WIDTH / 2 + BARRIER_THICKNESS;
   const topHalfW = ROAD_WIDTH / 2 + BARRIER_THICKNESS * 0.6; // slight inward taper
   const totalLength = spline.getLength();
-  const tileRepeatLength = 8; // world units per texture repeat
+  const tileRepeatLength = 4; // world units per texture repeat
 
   for (let i = 0; i < points.length; i++) {
     const t = i / (points.length - 1);
