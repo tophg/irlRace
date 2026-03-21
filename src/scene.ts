@@ -9,7 +9,7 @@ import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import {
   mix, smoothstep, normalWorld, uniform, vec3, vec2, vec4, float,
-  sin, cos, mul, add, fract, max,
+  sin, cos, mul, add, fract, max, min,
   step, positionLocal, positionWorld, dot, floor, texture,
 } from 'three/tsl';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -925,70 +925,68 @@ export async function initScene(container: HTMLElement) {
   const groundMat = new MeshStandardNodeMaterial({
     roughness: 0.85, metalness: 0.05,
   });
-  // ── Ground colorNode: distance-based 4-zone atlas blending ──
-  // Blends 4 terrain zones (shoulder/urban/open/far) by sampling
-  // a baked distance-from-spline texture. Falls back to flat
-  // uGroundColor when the 1x1 default atlas is loaded.
+  // ── Ground colorNode: optimized 2-zone atlas sampling ──
+  // Only samples the 2 adjacent zones for this pixel's DFT distance.
+  // Texture reads: 4 (2 zones × A/B variant) regardless of zone count.
+  // Change NUM_ZONES when expanding the atlas with more rows.
 
   const worldXZ = positionWorld.xz;
+  const NUM_ZONES = 4; // 4 zones × 2 variants = 8 atlas columns
+  const tw = float(1.0 / (NUM_ZONES * 2));  // atlas column width
 
-  // Sample distance field with custom UVs
+  // Sample distance field
   const dfUV = vec2(add(mul(worldXZ.x, 1.0 / 1200), 0.5), add(mul(worldXZ.y, 1.0 / 1200), 0.5));
   const dist = texture(_dftTexture, dfUV).x;
 
-  // Zone thresholds
-  const t01 = smoothstep(0.05, 0.12, dist);  // shoulder → urban
-  const t12 = smoothstep(0.15, 0.25, dist);  // urban → open
-  const t23 = smoothstep(0.45, 0.65, dist);  // open → far
+  // Compute which 2 zones this pixel falls between
+  const zoneF = mul(dist, float(NUM_ZONES));                // e.g., 0.42 * 4 = 1.68
+  const zoneA = floor(zoneF);                                // zone 1
+  const zoneB = min(add(zoneA, 1.0), float(NUM_ZONES - 1));  // zone 2 (clamped)
+  const zoneMix = fract(zoneF);                              // 0.68
 
-  // Position-based hash for variant blending (soft 0→1 instead of hard step)
+  // Column offsets for A/B pairs in each zone
+  const colA = mul(zoneA, 2.0);  // zone 1 → col 2
+  const colB = mul(zoneB, 2.0);  // zone 2 → col 4
+
+  // Position-based hash for variant blending (soft 0→1)
   const cellXZ = floor(mul(worldXZ, 0.08));  // ~12.5m cells
   const hashVal = fract(mul(sin(add(mul(cellXZ.x, 127.1), mul(cellXZ.y, 311.7))), 43758.5453));
-  const variant = smoothstep(0.3, 0.7, hashVal);  // soft blend between A/B tiles
+  const variant = smoothstep(0.3, 0.7, hashVal);
 
-  // Per-cell UV rotation to break axis-aligned grid repetition
+  // Per-cell UV rotation to break axis-aligned grid
   const rotAngle = mul(fract(mul(sin(add(mul(cellXZ.x, 43.7), mul(cellXZ.y, 89.3))), 9381.7)), 6.283);
   const cosR = cos(rotAngle);
   const sinR = sin(rotAngle);
 
-  // Per-zone tiling scales (tighter near road, larger far away)
-  const tileUV0 = fract(mul(worldXZ, 0.18));  // shoulder: tight detail
-  const tileUV1 = fract(mul(worldXZ, 0.14));  // urban: medium
-  const tileUV2 = fract(mul(worldXZ, 0.10));  // open: looser
-  const tileUV3 = fract(mul(worldXZ, 0.07));  // far: sparse, large tiles
+  // Per-zone tiling scale (tighter near road, sparser far)
+  // scale = 0.20 - zoneIndex * 0.035  →  zone0=0.20, zone1=0.165, zone2=0.13, zone3=0.095
+  const scaleA = add(0.20, mul(zoneA, -0.035));
+  const scaleB = add(0.20, mul(zoneB, -0.035));
+  const tileUV_A = fract(mul(worldXZ, scaleA));
+  const tileUV_B = fract(mul(worldXZ, scaleB));
 
-  // Rotate UV around (0.5, 0.5) center per cell, then fract() to keep in [0,1]
-  // Bug #1 fix: without fract(), rotated UVs escape [0,1] and sample wrong atlas columns
-  const doRotUV = (uvIn: typeof tileUV0) => {
+  // Rotate UV around (0.5, 0.5) center per cell
+  const doRotUV = (uvIn: typeof tileUV_A) => {
     const cx = add(uvIn.x, -0.5);
     const cy = add(uvIn.y, -0.5);
     return fract(vec2(add(add(mul(cx, cosR), mul(mul(cy, sinR), -1)), 0.5),
                 add(add(mul(cx, sinR), mul(cy, cosR)), 0.5)));
   };
-  const ruv0 = doRotUV(tileUV0);
-  const ruv1 = doRotUV(tileUV1);
-  const ruv2 = doRotUV(tileUV2);
-  const ruv3 = doRotUV(tileUV3);
+  const ruvA = doRotUV(tileUV_A);
+  const ruvB = doRotUV(tileUV_B);
 
-  const tw = float(0.125);  // 1/8 atlas width per tile
+  // Sample zone A (2 reads: variant A and B)
+  const cA_a = texture(_groundAtlasTexture, vec2(add(mul(ruvA.x, tw), mul(tw, colA)), fract(ruvA.y)));
+  const cA_b = texture(_groundAtlasTexture, vec2(add(mul(ruvA.x, tw), mul(tw, add(colA, 1))), fract(ruvA.y)));
+  const cA = mix(cA_a, cA_b, variant);
 
-  // Sample atlas tiles — per-zone UVs, soft A/B variant blending
-  // Bug #2 fix: wrap Y with fract() to prevent vertical bleed on multi-row atlases
-  const c0a = texture(_groundAtlasTexture, vec2(add(mul(ruv0.x, tw), mul(tw, 0)), fract(ruv0.y)));
-  const c0b = texture(_groundAtlasTexture, vec2(add(mul(ruv0.x, tw), mul(tw, 1)), fract(ruv0.y)));
-  const c0 = mix(c0a, c0b, variant);
-  const c1a = texture(_groundAtlasTexture, vec2(add(mul(ruv1.x, tw), mul(tw, 2)), fract(ruv1.y)));
-  const c1b = texture(_groundAtlasTexture, vec2(add(mul(ruv1.x, tw), mul(tw, 3)), fract(ruv1.y)));
-  const c1 = mix(c1a, c1b, variant);
-  const c2a = texture(_groundAtlasTexture, vec2(add(mul(ruv2.x, tw), mul(tw, 4)), fract(ruv2.y)));
-  const c2b = texture(_groundAtlasTexture, vec2(add(mul(ruv2.x, tw), mul(tw, 5)), fract(ruv2.y)));
-  const c2 = mix(c2a, c2b, variant);
-  const c3a = texture(_groundAtlasTexture, vec2(add(mul(ruv3.x, tw), mul(tw, 6)), fract(ruv3.y)));
-  const c3b = texture(_groundAtlasTexture, vec2(add(mul(ruv3.x, tw), mul(tw, 7)), fract(ruv3.y)));
-  const c3 = mix(c3a, c3b, variant);
+  // Sample zone B (2 reads: variant A and B)
+  const cB_a = texture(_groundAtlasTexture, vec2(add(mul(ruvB.x, tw), mul(tw, colB)), fract(ruvB.y)));
+  const cB_b = texture(_groundAtlasTexture, vec2(add(mul(ruvB.x, tw), mul(tw, add(colB, 1))), fract(ruvB.y)));
+  const cB = mix(cB_a, cB_b, variant);
 
-  // Blend zones
-  const atlasColor = mix(mix(mix(c0, c1, t01), c2, t12), c3, t23);
+  // Blend the 2 adjacent zones
+  const atlasColor = mix(cA, cB, zoneMix);
 
   // Per-cell subtle color variation (±5% luminance jitter)
   const cellLum = add(0.95, mul(fract(mul(sin(add(mul(cellXZ.x, 71.3), mul(cellXZ.y, 173.9))), 28571.3)), 0.10));
@@ -1086,11 +1084,6 @@ export function updateGroundDistanceField(dft: THREE.DataTexture) {
   _dftTexture.format = dft.format;
   _dftTexture.type = dft.type;
   _dftTexture.needsUpdate = true;
-  // Debug: log DFT dimensions and value range
-  const data = dft.image.data as Uint8Array;
-  let mn = 255, mx = 0;
-  for (let i = 0; i < data.length; i++) { if (data[i] < mn) mn = data[i]; if (data[i] > mx) mx = data[i]; }
-  console.log(`[DFT] ${dft.image.width}×${dft.image.height}, range: ${mn}..${mx}, total: ${data.length}`);
   // Force material rebuild with new DFT
   if (groundMesh) {
     (groundMesh.material as MeshStandardNodeMaterial).needsUpdate = true;
@@ -1148,7 +1141,6 @@ export function applyEnvironment(preset: EnvironmentPreset) {
   // Load ground atlas texture for this environment (if available)
   const atlasPath = GROUND_ATLAS[preset.name];
   if (atlasPath) {
-    console.log(`[ATLAS] Loading: ${atlasPath}`);
     new THREE.TextureLoader().load(atlasPath, (tex) => {
       // Convert loaded image (HTMLImageElement) to pixel data so we can
       // keep _groundAtlasTexture as a DataTexture. WebGPU crashes if a
@@ -1160,14 +1152,6 @@ export function applyEnvironment(preset: EnvironmentPreset) {
       const ctx = canvas.getContext('2d')!;
       ctx.drawImage(img, 0, 0);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-      // Debug: check alpha range
-      let minA = 255, maxA = 0;
-      for (let i = 3; i < imageData.data.length; i += 4) {
-        if (imageData.data[i] < minA) minA = imageData.data[i];
-        if (imageData.data[i] > maxA) maxA = imageData.data[i];
-      }
-      console.log(`[ATLAS] Loaded ${canvas.width}×${canvas.height}, alpha range: ${minA}..${maxA}`);
 
       // Replace DataTexture internals with matching-format pixel data
       const dt = _groundAtlasTexture as THREE.DataTexture;

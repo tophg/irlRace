@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { MeshStandardNodeMaterial } from 'three/webgpu';
 import {
-  mix, smoothstep, vec2, float, sin, cos, mul, add, fract,
+  mix, smoothstep, vec2, float, sin, cos, mul, add, fract, min,
   floor, texture, positionWorld, step,
 } from 'three/tsl';
 import { type SceneryTheme, getTerrainHeight, _groundAtlasTexture, _dftTexture } from './scene';
@@ -753,43 +753,51 @@ if (placements.length > 0) {
     // TSL material that samples the same ground atlas as the terrain shader
     const padMat = new MeshStandardNodeMaterial({ roughness: 0.95, metalness: 0 });
     const wXZ = positionWorld.xz;
+    const P_NUM_ZONES = 4;
+    const pTw = float(1.0 / (P_NUM_ZONES * 2));
+
     // DFT sampling for zone selection
     const dUV = vec2(add(mul(wXZ.x, 1.0 / 1200), 0.5), add(mul(wXZ.y, 1.0 / 1200), 0.5));
     const dDist = texture(_dftTexture, dUV).x;
-    const pT01 = smoothstep(0.05, 0.12, dDist);
-    const pT12 = smoothstep(0.15, 0.25, dDist);
-    const pT23 = smoothstep(0.45, 0.65, dDist);
-    // Simple tiling UV with per-cell rotation to match ground shader
-    const pTileUV = fract(mul(wXZ, 0.12));
-    const pTw = float(0.125);
-    // Variant hash (same as ground shader)
+
+    // Compute which 2 zones this pixel falls between
+    const pZoneF = mul(dDist, float(P_NUM_ZONES));
+    const pZoneA = floor(pZoneF);
+    const pZoneB = min(add(pZoneA, 1.0), float(P_NUM_ZONES - 1));
+    const pZoneMix = fract(pZoneF);
+    const pColA = mul(pZoneA, 2.0);
+    const pColB = mul(pZoneB, 2.0);
+
+    // Variant hash (matches ground shader)
     const pCell = floor(mul(wXZ, 0.08));
     const pHash = fract(mul(sin(add(mul(pCell.x, 127.1), mul(pCell.y, 311.7))), 43758.5453));
     const pVar = smoothstep(0.3, 0.7, pHash);
-    // Bug #3 fix: per-cell rotation matching ground shader to eliminate pad/ground seam
+
+    // Per-zone tiling scale + cell rotation (matches ground shader)
+    const pScaleA = add(0.20, mul(pZoneA, -0.035));
+    const pScaleB = add(0.20, mul(pZoneB, -0.035));
+    const pUV_A = fract(mul(wXZ, pScaleA));
+    const pUV_B = fract(mul(wXZ, pScaleB));
     const pRotAngle = mul(fract(mul(sin(add(mul(pCell.x, 43.7), mul(pCell.y, 89.3))), 9381.7)), 6.283);
     const pCosR = cos(pRotAngle);
     const pSinR = sin(pRotAngle);
-    const pcx = add(pTileUV.x, -0.5);
-    const pcy = add(pTileUV.y, -0.5);
-    const pRotUV = fract(vec2(
-      add(add(mul(pcx, pCosR), mul(mul(pcy, pSinR), -1)), 0.5),
-      add(add(mul(pcx, pSinR), mul(pcy, pCosR)), 0.5),
-    ));
-    // Sample all 4 zones with A/B variant blending using rotated UVs
-    const pA0 = texture(_groundAtlasTexture, vec2(add(mul(pRotUV.x, pTw), mul(pTw, 0)), fract(pRotUV.y)));
-    const pB0 = texture(_groundAtlasTexture, vec2(add(mul(pRotUV.x, pTw), mul(pTw, 1)), fract(pRotUV.y)));
-    const pA1 = texture(_groundAtlasTexture, vec2(add(mul(pRotUV.x, pTw), mul(pTw, 2)), fract(pRotUV.y)));
-    const pB1 = texture(_groundAtlasTexture, vec2(add(mul(pRotUV.x, pTw), mul(pTw, 3)), fract(pRotUV.y)));
-    const pA2 = texture(_groundAtlasTexture, vec2(add(mul(pRotUV.x, pTw), mul(pTw, 4)), fract(pRotUV.y)));
-    const pB2 = texture(_groundAtlasTexture, vec2(add(mul(pRotUV.x, pTw), mul(pTw, 5)), fract(pRotUV.y)));
-    const pA3 = texture(_groundAtlasTexture, vec2(add(mul(pRotUV.x, pTw), mul(pTw, 6)), fract(pRotUV.y)));
-    const pB3 = texture(_groundAtlasTexture, vec2(add(mul(pRotUV.x, pTw), mul(pTw, 7)), fract(pRotUV.y)));
-    const pC0 = mix(pA0, pB0, pVar);
-    const pC1 = mix(pA1, pB1, pVar);
-    const pC2 = mix(pA2, pB2, pVar);
-    const pC3 = mix(pA3, pB3, pVar);
-    const pAtlas = mix(mix(mix(pC0, pC1, pT01), pC2, pT12), pC3, pT23);
+    const pDoRot = (uvIn: typeof pUV_A) => {
+      const cx = add(uvIn.x, -0.5);
+      const cy = add(uvIn.y, -0.5);
+      return fract(vec2(add(add(mul(cx, pCosR), mul(mul(cy, pSinR), -1)), 0.5),
+                  add(add(mul(cx, pSinR), mul(cy, pCosR)), 0.5)));
+    };
+    const prA = pDoRot(pUV_A);
+    const prB = pDoRot(pUV_B);
+
+    // Sample 2 adjacent zones only (4 texture reads)
+    const pcA_a = texture(_groundAtlasTexture, vec2(add(mul(prA.x, pTw), mul(pTw, pColA)), fract(prA.y)));
+    const pcA_b = texture(_groundAtlasTexture, vec2(add(mul(prA.x, pTw), mul(pTw, add(pColA, 1))), fract(prA.y)));
+    const pcA = mix(pcA_a, pcA_b, pVar);
+    const pcB_a = texture(_groundAtlasTexture, vec2(add(mul(prB.x, pTw), mul(pTw, pColB)), fract(prB.y)));
+    const pcB_b = texture(_groundAtlasTexture, vec2(add(mul(prB.x, pTw), mul(pTw, add(pColB, 1))), fract(prB.y)));
+    const pcB = mix(pcB_a, pcB_b, pVar);
+    const pAtlas = mix(pcA, pcB, pZoneMix);
     padMat.colorNode = pAtlas.xyz;
 
     const padIM = new THREE.InstancedMesh(padGeo, padMat, placements.length);
