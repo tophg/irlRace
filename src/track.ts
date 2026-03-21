@@ -363,10 +363,10 @@ function applyElevation(pts2D: THREE.Vector2[], rng: () => number): THREE.Vector
 /** Force the start/finish zone to Y=0 for flat grid + proper checkerboard rendering. */
 function flattenStartZone(pts: THREE.Vector3[]) {
   const n = pts.length;
-  if (n < 12) return;
-  // Force first 4 and last 4 control points to Y=0 (they neighbor the start on a closed spline)
-  const flatCount = 4;
-  const blendCount = 4; // additional points that blend from 0 to their original elevation
+  if (n < 20) return;
+  // Force first 6 and last 6 control points to Y=0 (wider flat zone at start/finish)
+  const flatCount = 6;
+  const blendCount = 6; // additional points that blend from 0 to their original elevation
   for (let i = 0; i < flatCount; i++) {
     pts[i].y = 0;
     pts[n - 1 - i].y = 0;
