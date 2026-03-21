@@ -5,14 +5,14 @@ import sharp from 'sharp';
 
 const TILE = 256;
 const tiles = [
-  '/tmp/gaza_ground_v2/t0a.png',  // Shoulder A
-  '/tmp/gaza_ground_v2/t0b.png',  // Shoulder B
-  '/tmp/gaza_ground_v2/t1a.png',  // Urban A
-  '/tmp/gaza_ground_v2/t1b.png',  // Urban B
-  '/tmp/gaza_ground_v2/t2a.png',  // Open A
-  '/tmp/gaza_ground_v2/t2b.png',  // Open B
-  '/tmp/gaza_ground_v2/t3a.png',  // Far A
-  '/tmp/gaza_ground_v2/t3b.png',  // Far B
+  '/tmp/gaza_ground_v3/t0a.png',  // Shoulder A
+  '/tmp/gaza_ground_v3/t0b.png',  // Shoulder B
+  '/tmp/gaza_ground_v3/t1a.png',  // Urban A
+  '/tmp/gaza_ground_v3/t1b.png',  // Urban B
+  '/tmp/gaza_ground_v3/t2a.png',  // Open A
+  '/tmp/gaza_ground_v3/t2b.png',  // Open B
+  '/tmp/gaza_ground_v3/t3a.png',  // Far A
+  '/tmp/gaza_ground_v3/t3b.png',  // Far B
 ];
 
 const composites = [];

@@ -66,6 +66,14 @@ Seamless tileable, top-down aerial view, flat lighting, no perspective.
 - Generated images are **640×640** — they get resized to 256×256 during stitch
 - All prompts must include "NO horizon, NO sky, NO perspective" to avoid non-top-down results
 
+### Critical: Tile Quality Rules (learned from iteration)
+
+1. **NO distinct features** — avoid tumbleweeds, large concrete slabs, prominent brick clusters, or any element that creates a recognizable "landmark". These expose tiling repetition immediately.
+2. **Uniform, nondescript content** — every point on the tile should look roughly the same. Fine cracks, evenly scattered gravel, uniform sand — never a single dominant feature.
+3. **Generic over specific** — a tile with 100 tiny scattered pebbles tiles better than one with 3 large rocks.
+4. **Prompt keywords that work**: "uniform distribution", "completely generic and nondescript", "no focal points", "no unique features", "must tile without visible repetition"
+5. **Prompt keywords to AVOID**: "scattered large", "prominent", "distinct", specific named objects like "tumbleweed" or "brick cluster" that the model will render as focal points
+
 ## Step 2: Resize Tiles
 
 ```bash
@@ -74,6 +82,12 @@ for tile in t0a t0b t1a t1b t2a t2b t3a t3b; do
   sips -z 256 256 "$BRAIN/${tile}.png" --out /tmp/ground_tiles/${tile}.png
 done
 ```
+
+> [!CAUTION]
+> **ALL textures must have power-of-2 dimensions** (256, 512, 1024, 2048, 4096).
+> Non-power-of-2 (NPOT) textures crash WebGPU mipmap generation, causing GPU context loss
+> (frozen frame, audio continues). This includes facade atlases, normal maps, and ground atlases.
+> Facade atlases must be 4096×4096. Ground atlases must be 2048×256.
 
 ## Step 3: Stitch Atlas
 
