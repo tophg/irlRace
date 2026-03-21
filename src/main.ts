@@ -620,6 +620,9 @@ function showTitleScreen() {
       });
     }
     renderFullTitleScreen();
+    // Must apply --revealed AFTER the DOM is created by renderFullTitleScreen(),
+    // otherwise the menu stays at opacity:0 (CSS default for .title-content).
+    revealTitleMenu();
     return;
   }
 
