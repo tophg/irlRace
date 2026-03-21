@@ -65,8 +65,14 @@ All scripts live in `scripts/` (NOT `/tmp/`). They require the `sharp` npm packa
 
 ### General Rules
 - **NO TEXT, NO LABELS, NO SIGNAGE** — anywhere, on any tile
+- **CLEAR SUNNY DAY lighting** — all tiles must be generated as if photographed on a bright clear day with optimal visibility. The game shader handles nighttime, weather, and mood tinting at runtime. Never bake dark, moody, or night lighting into textures — it destroys detail and limits reuse.
+- **GENERIC, UNIFORM textures** — tiles are repeated across large surfaces and must not expose tiling repetition. All elements should be nondescript and interchangeable:
+  - **Windows**: closed, no reflections of the outside environment, no visible interiors, no unique curtain/blind arrangements
+  - **Ground/pavement**: no prominent cracks, unique stains, or focal points — prefer fine-grained uniform patterns (100 tiny pebbles tile better than 3 large rocks)
+  - **Storefronts**: no identifiable signage, logos, or distinctive architectural details
+  - **Surfaces**: uniform color distribution — avoid bright spots, dark splotches, or gradients that create visible seams when repeated
 - Each column = one consistent style (same frames, materials, colors)
-- Every tile prompt MUST include: "NO TEXT. Photorealistic, flat front elevation, even lighting."
+- Every tile prompt MUST include: "NO TEXT. Photorealistic, flat front elevation, bright clear daylight."
 - Feed previous column tiles as reference via `ImagePaths` for style consistency
 
 ### Window Tiles (Row 0) — Critical Quality Rules
