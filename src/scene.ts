@@ -40,12 +40,17 @@ const uSkyTime = uniform(0.0);                              // animated time for
 const uGroundColor = uniform(new THREE.Color(0x222228));    // ground terrain color
 
 // Ground atlas textures (updated per-environment and per-track)
-const _defaultDFT = new THREE.DataTexture(new Uint8Array([255]), 1, 1, THREE.RedFormat);
-_defaultDFT.needsUpdate = true;
-const uDistanceField = uniform(_defaultDFT);   // baked spline distance field
-const _defaultAtlas = new THREE.DataTexture(new Uint8Array([80, 80, 80, 255]), 1, 1, THREE.RGBAFormat);
-_defaultAtlas.needsUpdate = true;
-const uGroundAtlas = uniform(_defaultAtlas);     // per-environment ground tile atlas
+// Use mutable THREE.Texture references; the shader's TextureNodes hold refs to these.
+let _dftTexture: THREE.Texture = (() => {
+  const t = new THREE.DataTexture(new Uint8Array([255]), 1, 1, THREE.RedFormat);
+  t.needsUpdate = true;
+  return t;
+})();
+let _groundAtlasTexture: THREE.Texture = (() => {
+  const t = new THREE.DataTexture(new Uint8Array([80, 80, 80, 255]), 1, 1, THREE.RGBAFormat);
+  t.needsUpdate = true;
+  return t;
+})();
 
 // Ground atlas paths per environment name
 const GROUND_ATLAS: Record<string, string> = {
@@ -900,14 +905,15 @@ export async function initScene(container: HTMLElement) {
     roughness: 0.85, metalness: 0.05,
   });
   // ── Ground colorNode: distance-based 4-zone atlas blending ──
-  // When a ground atlas is loaded, blends 4 zones (shoulder/urban/open/far)
-  // by sampling a baked distance-from-spline texture.
-  // Falls back to flat uGroundColor when no atlas is available.
+  // Blends 4 terrain zones (shoulder/urban/open/far) by sampling
+  // a baked distance-from-spline texture. Falls back to flat
+  // uGroundColor when the 1x1 default atlas is loaded.
+
   const worldXZ = positionWorld.xz;
 
-  // Sample distance field: 0 = on track, 1 = 100m+ away
-  const dfUV = add(mul(worldXZ, 1.0 / 1200), 0.5);
-  const dist = texture(uDistanceField, dfUV).x;
+  // Sample distance field with custom UVs
+  const dfUV = vec2(add(mul(worldXZ.x, 1.0 / 1200), 0.5), add(mul(worldXZ.y, 1.0 / 1200), 0.5));
+  const dist = texture(_dftTexture, dfUV).x;
 
   // Zone thresholds
   const t01 = smoothstep(0.05, 0.12, dist);  // shoulder → urban
@@ -924,16 +930,16 @@ export async function initScene(container: HTMLElement) {
   const tw = float(0.125);  // 1/8 atlas width per tile
 
   // Sample atlas tiles with variant selection
-  const c0 = texture(uGroundAtlas, vec2(add(mul(tileUV.x, tw), mul(variant, tw)), tileUV.y));           // shoulder
-  const c1 = texture(uGroundAtlas, vec2(add(mul(tileUV.x, tw), add(mul(tw, 2.0), mul(variant, tw))), tileUV.y)); // urban
-  const c2 = texture(uGroundAtlas, vec2(add(mul(tileUV.x, tw), add(mul(tw, 4.0), mul(variant, tw))), tileUV.y)); // open
-  const c3 = texture(uGroundAtlas, vec2(add(mul(tileUV.x, tw), add(mul(tw, 6.0), mul(variant, tw))), tileUV.y)); // far
+  const c0 = texture(_groundAtlasTexture, vec2(add(mul(tileUV.x, tw), mul(variant, tw)), tileUV.y));           // shoulder
+  const c1 = texture(_groundAtlasTexture, vec2(add(mul(tileUV.x, tw), add(mul(tw, 2.0), mul(variant, tw))), tileUV.y)); // urban
+  const c2 = texture(_groundAtlasTexture, vec2(add(mul(tileUV.x, tw), add(mul(tw, 4.0), mul(variant, tw))), tileUV.y)); // open
+  const c3 = texture(_groundAtlasTexture, vec2(add(mul(tileUV.x, tw), add(mul(tw, 6.0), mul(variant, tw))), tileUV.y)); // far
 
   // Blend zones
   const atlasColor = mix(mix(mix(c0, c1, t01), c2, t12), c3, t23);
 
-  // Mix atlas result with fallback ground color (atlas alpha controls blend)
-  groundMat.colorNode = mix(vec4(uGroundColor, 1.0), atlasColor, atlasColor.w).xyz;
+  // Mix with fallback ground color (atlas alpha controls blend)
+  groundMat.colorNode = mix(vec3(uGroundColor), atlasColor.xyz, atlasColor.a);
 
   // Vertex displacement: gentle rolling terrain via layered sine noise
   // Operates in the XZ plane of the undisplaced geometry (before rotation)
@@ -1000,6 +1006,16 @@ export async function initScene(container: HTMLElement) {
   return { renderer, scene, camera };
 }
 
+/** Update the baked distance field texture for ground zone blending.
+ *  Call after track generation with the DFT from TrackData. */
+export function updateGroundDistanceField(dft: THREE.DataTexture) {
+  _dftTexture = dft;
+  // Force material rebuild with new DFT
+  if (groundMesh) {
+    (groundMesh.material as MeshStandardNodeMaterial).needsUpdate = true;
+  }
+}
+
 /** Apply an environment preset to the scene. Call after initScene. */
 export function applyEnvironment(preset: EnvironmentPreset) {
   _currentPreset = preset;
@@ -1036,6 +1052,23 @@ export function applyEnvironment(preset: EnvironmentPreset) {
   dirLight.position.set(...preset.dirPosition);
 
   uGroundColor.value.setHex(preset.groundColor);
+
+  // Load ground atlas texture for this environment (if available)
+  const atlasPath = GROUND_ATLAS[preset.name];
+  if (atlasPath) {
+    new THREE.TextureLoader().load(atlasPath, (tex) => {
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.magFilter = THREE.LinearFilter;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.anisotropy = 4;
+      _groundAtlasTexture = tex;
+      // Force material rebuild with new texture
+      if (groundMesh) {
+        (groundMesh.material as MeshStandardNodeMaterial).needsUpdate = true;
+      }
+    });
+  }
 
   renderer.toneMappingExposure = preset.exposure;
 

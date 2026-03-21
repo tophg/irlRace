@@ -9,7 +9,7 @@
 import * as THREE from 'three/webgpu';
 import { GameState, CAR_ROSTER, EventType, type TrackData } from './types';
 import { G, resetRaceStats } from './game-context';
-import { getScene, applyEnvironment, getEnvironmentForSeed, getEnvironmentByName, applyWeatherSkyDarkening, isWebGPUBackend } from './scene';
+import { getScene, applyEnvironment, getEnvironmentForSeed, getEnvironmentByName, applyWeatherSkyDarkening, isWebGPUBackend, updateGroundDistanceField } from './scene';
 import { loadCarModel } from './loaders';
 import { generateTrack, buildCheckpointMarkers } from './track';
 import { destroyScenery } from './track-scenery';
@@ -401,6 +401,11 @@ export async function startRace() {
     }
     checkAbort(); // Bug #6: bail if cancelled during track gen
     const trackData = G.trackData!;
+
+    // Bind distance field for ground zone blending
+    if (trackData.distanceField) {
+      updateGroundDistanceField(trackData.distanceField);
+    }
 
     if (w !== 'clear') applyWetRoad(trackData.roadMesh);
     // Track all major scene objects for safety-net disposal
