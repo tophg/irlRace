@@ -42,37 +42,27 @@ const uGroundColor = uniform(new THREE.Color(0x222228));    // ground terrain co
 // Ground atlas textures (updated per-environment and per-track)
 // Use mutable THREE.Texture references; the shader's TextureNodes hold refs to these.
 let _dftTexture: THREE.Texture = (() => {
-  const t = new THREE.DataTexture(new Uint8Array([255]), 1, 1, THREE.RedFormat);
+  // Pre-size at 256×256 so the GPU backing texture never needs resizing.
+  // Default fill 0 = "on track" (shoulder zone shows as fallback).
+  const DFT_SIZE = 256;
+  const t = new THREE.DataTexture(new Uint8Array(DFT_SIZE * DFT_SIZE).fill(0), DFT_SIZE, DFT_SIZE, THREE.RedFormat);
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearFilter;
   t.needsUpdate = true;
   return t;
 })();
 let _groundAtlasTexture: THREE.Texture = (() => {
-  const t = new THREE.DataTexture(new Uint8Array([80, 80, 80, 255]), 1, 1, THREE.RGBAFormat);
+  // Pre-size at 4×4 with alpha=0 so the shader falls back to uGroundColor
+  // via mix(groundColor, atlas, atlas.a). Alpha=0 → 100% groundColor.
+  const t = new THREE.DataTexture(new Uint8Array(4 * 4 * 4).fill(0), 4, 4, THREE.RGBAFormat);
   t.needsUpdate = true;
   return t;
 })();
 
 // Ground atlas paths per environment name
 const GROUND_ATLAS: Record<string, string> = {
-  'Washington D.C.': '/ground/ground_atlas_dc.png',
-  'Havana':          '/ground/ground_atlas_havana.png',
   'Gaza City':       '/ground/ground_atlas_gaza.png',
-  'Kiev':            '/ground/ground_atlas_kiev.png',
-  'Baghdad':         '/ground/ground_atlas_baghdad.png',
-  'Damascus':        '/ground/ground_atlas_damascus.png',
-  'Beirut':          '/ground/ground_atlas_beirut.png',
-  'Tripoli':         '/ground/ground_atlas_tripoli.png',
-  'Mogadishu':       '/ground/ground_atlas_mogadishu.png',
-  'Tehran':          '/ground/ground_atlas_tehran.png',
-  'Khartoum':        '/ground/ground_atlas_khartoum.png',
-  'Chennai':         '/ground/ground_atlas_chennai.png',
-  'Sukhumi':         '/ground/ground_atlas_sukhumi.png',
   'Shanghai':        '/ground/ground_atlas_shanghai.png',
-  'Sochi':           '/ground/ground_atlas_sochi.png',
-  'Tokyo':           '/ground/ground_atlas_tokyo.png',
-  'Montclair':       '/ground/ground_atlas_montclair.png',
-  'Lille':           '/ground/ground_atlas_lille.png',
-  'Nuuk':            '/ground/ground_atlas_nuuk.png',
 };
 
 // ── Scenery Theme (controls visual identity of track-side props) ──
@@ -956,12 +946,15 @@ export async function initScene(container: HTMLElement) {
   const hill2 = sin(mul(gx, 0.022).add(3.7)).mul(sin(mul(gz, 0.018).add(1.2))).mul(1.0);
   const hill3 = cos(mul(gx, 0.045).add(7.1)).mul(sin(mul(gz, 0.035).add(5.3))).mul(0.5);
   const terrain = add(add(hill1, hill2), hill3);
+  // Damp displacement near road using DFT: flat near road, rolling hills far away
+  const dispDamp = smoothstep(0.08, 0.30, dist);
+  const dampedTerrain = mul(terrain, dispDamp);
   // Displace along Z (which becomes Y after -90° X rotation)
-  groundMat.positionNode = add(positionLocal, vec3(0, 0, terrain));
+  groundMat.positionNode = add(positionLocal, vec3(0, 0, dampedTerrain));
 
   groundMesh = new THREE.Mesh(groundGeo, groundMat);
   groundMesh.rotation.x = -Math.PI / 2;
-  groundMesh.position.y = -5;
+  groundMesh.position.y = 0;
   groundMesh.receiveShadow = true;
   scene.add(groundMesh);
 
@@ -1027,6 +1020,16 @@ export function updateGroundDistanceField(dft: THREE.DataTexture) {
   if (groundMesh) {
     (groundMesh.material as MeshStandardNodeMaterial).needsUpdate = true;
   }
+}
+
+/** CPU-side terrain height at world (x, z) — matches GPU vertex displacement.
+ *  Note: does NOT apply DFT damping (GPU-only). Buildings are placed far from
+ *  the road, so they should always be in the fully-displaced region. */
+export function getTerrainHeight(x: number, z: number): number {
+  const h1 = Math.sin(x * 0.008) * Math.cos(z * 0.012) * 2.0;
+  const h2 = Math.sin(x * 0.022 + 3.7) * Math.sin(z * 0.018 + 1.2) * 1.0;
+  const h3 = Math.cos(x * 0.045 + 7.1) * Math.sin(z * 0.035 + 5.3) * 0.5;
+  return h1 + h2 + h3; // ground mesh at y=0, displacement is relative
 }
 
 /** Apply an environment preset to the scene. Call after initScene. */
@@ -1100,6 +1103,12 @@ export function applyEnvironment(preset: EnvironmentPreset) {
         (groundMesh.material as MeshStandardNodeMaterial).needsUpdate = true;
       }
     });
+  } else {
+    // No atlas for this environment — reset to transparent so groundColor shows
+    const dt = _groundAtlasTexture as THREE.DataTexture;
+    dt.image = { data: new Uint8Array(4 * 4 * 4).fill(0), width: 4, height: 4 };
+    dt.needsUpdate = true;
+    if (groundMesh) (groundMesh.material as MeshStandardNodeMaterial).needsUpdate = true;
   }
 
   renderer.toneMappingExposure = preset.exposure;

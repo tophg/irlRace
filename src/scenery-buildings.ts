@@ -5,7 +5,7 @@
  */
 
 import * as THREE from 'three/webgpu';
-import type { SceneryTheme } from './scene';
+import { type SceneryTheme, getTerrainHeight } from './scene';
 
 // ── Building culling state (shared with track-scenery.ts) ──
 export let _buildingInstances: THREE.Vector3[] = [];
@@ -709,7 +709,8 @@ if (placements.length > 0) {
 
       for (let j = 0; j < bucket.length; j++) {
         const pl = bucket[j];
-        dummy.position.set(pl.x, pl.y + pl.h / 2, pl.z);
+        const groundY = getTerrainHeight(pl.x, pl.z);
+        dummy.position.set(pl.x, groundY + pl.h / 2, pl.z);
         dummy.scale.set(pl.w, pl.h, pl.d);
 
         // Per-environment silhouette variation

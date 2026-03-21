@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { ROAD_WIDTH, BARRIER_THICKNESS, estimateCurvature, BANK_SCALE, MAX_BANK_ANGLE } from './track';
 import { loadGLB } from './loaders';
-import type { SceneryTheme } from './scene';
+import { type SceneryTheme, getTerrainHeight } from './scene';
 import { generateBuildings, _buildingInstances, _buildingInstancedMeshes, resetBuildingCullingState } from './scenery-buildings';
 
 // ── Typed data storage (replaces `as any` monkey-patching) ──
@@ -60,47 +60,10 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   const _asyncLoads: Promise<void>[] = [];
   const isMobile = window.matchMedia('(pointer: coarse)').matches;
 
-  // ── Ground plane (large flat grass surface) ──
-  {
-    const groundGeo = new THREE.PlaneGeometry(isMobile ? 400 : 800, isMobile ? 400 : 800);
-    // Procedural grass texture
-    const groundCanvas = document.createElement('canvas');
-    groundCanvas.width = 256;
-    groundCanvas.height = 256;
-    const gctx = groundCanvas.getContext('2d')!;
-    // Base color by ground texture type
-    const groundColors: Record<string, [string, string, string]> = {
-      grass: ['#2a5a1a', '#2e6420', '#245216'],
-      sand: ['#8a7755', '#917f5d', '#7d6b4a'],
-      snow: ['#bbccdd', '#c0d0e0', '#aabbcc'],
-      concrete: ['#3a3a40', '#404048', '#333338'],
-      dirt: ['#4a3a28', '#503e2c', '#3e3020'],
-    };
-    const [base, v1, v2] = groundColors[T.groundTexture] ?? groundColors.grass;
-    gctx.fillStyle = base;
-    gctx.fillRect(0, 0, 256, 256);
-    for (let i = 0; i < 200; i++) {
-      const px = rng() * 256;
-      const py = rng() * 256;
-      gctx.fillStyle = rng() > 0.5 ? v1 : v2;
-      gctx.fillRect(px, py, 3 + rng() * 8, 3 + rng() * 8);
-    }
-    const groundTex = new THREE.CanvasTexture(groundCanvas);
-    groundTex.wrapS = THREE.RepeatWrapping;
-    groundTex.wrapT = THREE.RepeatWrapping;
-    groundTex.repeat.set(40, 40);
-
-    const groundMat = new THREE.MeshStandardMaterial({
-      map: groundTex,
-      roughness: 0.95,
-      metalness: 0,
-    });
-    const groundMesh = new THREE.Mesh(groundGeo, groundMat);
-    groundMesh.rotation.x = -Math.PI / 2; // lay flat
-    groundMesh.position.y = -2; // well below road surface to prevent clipping
-    groundMesh.receiveShadow = true;
-    group.add(groundMesh);
-  }
+  // Legacy ground plane removed — unified into scene.ts TSL ground.
+  // Burn the same rng() calls the old procedural grass texture consumed
+  // to preserve deterministic seed state for trees/buildings/scenery below.
+  for (let i = 0; i < 200; i++) { rng(); rng(); rng(); rng(); }
 
   // Pre-compute all tree positions
   interface TreeItem { x: number; y: number; z: number; trunkH: number; crownR: number; green: number; rotY: number; model: string; }
@@ -170,7 +133,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         const clone = entry.scene.clone(true);
         const s = (TREE_SCALE[t.model] ?? 2.5) * (0.8 + rng() * 0.4); // add ±20% variation
         clone.scale.setScalar(s);
-        clone.position.set(t.x, t.y - entry.bottom * s, t.z);
+        clone.position.set(t.x, getTerrainHeight(t.x, t.z) - entry.bottom * s, t.z);
         clone.rotation.y = t.rotY;
 
         clone.traverse((child) => {
@@ -193,7 +156,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     for (let i = 0; i < trees.length; i++) {
       const t = trees[i];
       _m.makeScale(1, t.trunkH / 3.5, 1);
-      _m.setPosition(t.x, t.y + t.trunkH / 2, t.z);
+      _m.setPosition(t.x, getTerrainHeight(t.x, t.z) + t.trunkH / 2, t.z);
       trunkIM.setMatrixAt(i, _m);
     }
     trunkIM.instanceMatrix.needsUpdate = true;
@@ -263,7 +226,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     for (let i = 0; i < trees.length; i++) {
       const t = trees[i];
       _m.makeScale(t.crownR / 2.0, t.crownR / 2.0, t.crownR / 2.0);
-      _m.setPosition(t.x, t.y + t.trunkH + t.crownR * 0.6, t.z);
+      _m.setPosition(t.x, getTerrainHeight(t.x, t.z) + t.trunkH + t.crownR * 0.6, t.z);
       crownIM.setMatrixAt(i, _m);
       const tc = new THREE.Color(T.treeCanopyColor);
       const g = tc.g + (t.green / 255) * 0.15;
@@ -320,18 +283,17 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const x = p.x + rx * offset * side;
     const z = p.z + rz * offset * side;
 
-    _m.identity();
-    _m.setPosition(x, 3, z);
+    _m.setPosition(x, getTerrainHeight(x, z) + 3, z);
     poleIM.setMatrixAt(i, _m);
 
-    _m.setPosition(x, 6, z);
+    _m.setPosition(x, getTerrainHeight(x, z) + 6, z);
     fixIM.setMatrixAt(i, _m);
 
     // Add real PointLights to every 10th lamp for visible road illumination pools
     // Skip on mobile — too many lights crash the GPU
     if (!isMobile && i % 10 === 0) {
       const light = new THREE.PointLight(T.streetLightColor, 1.5, 14, 2);
-      light.position.set(x, 5.8, z);
+      light.position.set(x, getTerrainHeight(x, z) + 5.8, z);
       group.add(light);
     }
   }
@@ -385,18 +347,18 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const z = p.z + rz * offset * side;
 
       // Two posts per fence segment
-      _m.identity(); _m.setPosition(x - tangent.x * 4, 1.5, z - tangent.z * 4);
+      _m.identity(); _m.setPosition(x - tangent.x * 4, getTerrainHeight(x, z) + 1.5, z - tangent.z * 4);
       if (fencePostIdx < FENCE_COUNT * 2) fencePostIM.setMatrixAt(fencePostIdx++, _m);
-      _m.setPosition(x + tangent.x * 4, 1.5, z + tangent.z * 4);
+      _m.setPosition(x + tangent.x * 4, getTerrainHeight(x, z) + 1.5, z + tangent.z * 4);
       if (fencePostIdx < FENCE_COUNT * 2) fencePostIM.setMatrixAt(fencePostIdx++, _m);
 
       // Panel between posts
       const panel = new THREE.Matrix4();
-      panel.setPosition(x, 1.5, z);
+      panel.setPosition(x, getTerrainHeight(x, z) + 1.5, z);
       // Rotate to face perpendicular to road
       const angle = Math.atan2(tangent.x, tangent.z);
       panel.makeRotationY(angle);
-      panel.setPosition(x, 1.5, z);
+      panel.setPosition(x, getTerrainHeight(x, z) + 1.5, z);
       if (fencePanelIdx < FENCE_COUNT) fencePanelIM.setMatrixAt(fencePanelIdx++, panel);
     }
     if (fencePostIdx > 0) {
@@ -429,7 +391,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const z = p.z + rz2 * offset * side;
       const scale = 0.3 + rng() * 1.2;
       _m.makeScale(scale, scale * (0.5 + rng() * 0.5), scale);
-      _m.setPosition(x, scale * 0.3 - 2, z);
+      _m.setPosition(x, getTerrainHeight(x, z) + scale * 0.3, z);
       rockIM.setMatrixAt(i, _m);
       // Per-instance color variation
       const rc = new THREE.Color(T.rockColor);
@@ -461,7 +423,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       const z = p.z + rz2 * offset * side;
       const scale = 0.4 + rng() * 0.8;
       _m.makeScale(scale * (1 + rng() * 0.5), scale, scale * (1 + rng() * 0.5));
-      _m.setPosition(x, scale * 0.4 - 1.5, z);
+      _m.setPosition(x, getTerrainHeight(x, z) + scale * 0.4, z);
       bushIM.setMatrixAt(bushIdx, _m);
       const bc = new THREE.Color(T.treeCanopyColor);
       _c.setRGB(bc.r * (0.8 + rng() * 0.4), bc.g * (0.8 + rng() * 0.4), bc.b * (0.8 + rng() * 0.4));
