@@ -1234,10 +1234,10 @@ export async function initScene(container: HTMLElement) {
     dirLight.shadow.mapSize.set(shadowRes, shadowRes);
     dirLight.shadow.camera.near = 1;
     dirLight.shadow.camera.far = 200;
-    dirLight.shadow.camera.left = -100;
-    dirLight.shadow.camera.right = 100;
-    dirLight.shadow.camera.top = 100;
-    dirLight.shadow.camera.bottom = -100;
+    dirLight.shadow.camera.left = -40;
+    dirLight.shadow.camera.right = 40;
+    dirLight.shadow.camera.top = 40;
+    dirLight.shadow.camera.bottom = -40;
   }
   scene.add(dirLight);
   scene.add(dirLight.target);

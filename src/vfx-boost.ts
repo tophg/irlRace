@@ -15,8 +15,6 @@ let boostGlowL: THREE.Mesh | null = null;
 let boostGlowR: THREE.Mesh | null = null;
 let boostGroundL: THREE.Mesh | null = null;
 let boostGroundR: THREE.Mesh | null = null;
-let boostLightL: THREE.SpotLight | null = null;
-let boostLightR: THREE.SpotLight | null = null;
 let boostFlameScene: THREE.Scene | null = null;
 
 export function initBoostFlame(scene: THREE.Scene): THREE.Mesh {
@@ -239,16 +237,8 @@ export function initBoostFlame(scene: THREE.Scene): THREE.Mesh {
   scene.add(boostGroundL);
   scene.add(boostGroundR);
 
-  // ── SpotLights aimed 45° downward for directional road illumination ──
-  boostLightL = new THREE.SpotLight(0x3388ff, 0, 8, Math.PI / 5, 0.5, 2);
-  boostLightR = new THREE.SpotLight(0x3388ff, 0, 8, Math.PI / 5, 0.5, 2);
-  // Point spots downward — target will be repositioned each frame
-  boostLightL.target.position.set(0, -1, 0);
-  boostLightR.target.position.set(0, -1, 0);
-  scene.add(boostLightL);
-  scene.add(boostLightL.target);
-  scene.add(boostLightR);
-  scene.add(boostLightR.target);
+  // SpotLights removed — per-fragment GPU cost across entire scene;
+  // ground glow circles already provide visual illumination.
 
   return boostFlameL; // backward compat — returns a mesh
 }
@@ -291,8 +281,6 @@ export function updateBoostFlame(
   if (boostGlowR) boostGlowR.visible = vis;
   if (boostGroundL) boostGroundL.visible = vis;
   if (boostGroundR) boostGroundR.visible = vis;
-  if (boostLightL) boostLightL.intensity = vis ? 5 : 0;
-  if (boostLightR) boostLightR.intensity = vis ? 5 : 0;
   if (!active) return;
 
   const sinH = Math.sin(heading);
@@ -367,24 +355,7 @@ export function updateBoostFlame(
     groundMatR.color.setRGB(gr, gg, gb);
   }
 
-  // ── SpotLights — aimed downward, color shifts with heat ──
-  const heatT = Math.min(engineHeat / 100, 1);
-  const lr = 0.2 + heatT * 0.8;
-  const lg = 0.5 - heatT * 0.3;
-  const lb = 1.0 - heatT * 0.8;
-  if (boostLightL) {
-    boostLightL.position.set(lx, ly + 0.3, lz);
-    boostLightL.target.position.set(lx, carPos.y - 0.5, lz);
-    boostLightL.color.setRGB(lr, lg, lb);
-    boostLightL.intensity = (5 + engineHeat * 0.05) * coreFlicker;
   }
-  if (boostLightR) {
-    boostLightR.position.set(rx, ry + 0.3, rz);
-    boostLightR.target.position.set(rx, carPos.y - 0.5, rz);
-    boostLightR.color.setRGB(lr, lg, lb);
-    boostLightR.intensity = (5 + engineHeat * 0.05) * coreFlicker;
-  }
-}
 
 // ── Nitrous Exhaust Trail (enhanced: 50 particles, color gradient, dual emission) ──
 
@@ -655,10 +626,6 @@ export function destroyBoostVFX() {
   boostFlameL = null; boostFlameR = null;
   boostGlowL = null; boostGlowR = null;
   boostGroundL = null; boostGroundR = null;
-  for (const light of [boostLightL, boostLightR]) {
-    if (light) { light.target?.parent?.remove(light.target); light.parent?.remove(light); }
-  }
-  boostLightL = null; boostLightR = null;
   boostFlameScene = null;
 
   for (const sw of [shockwaveInner, shockwaveOuter]) {

@@ -81,6 +81,11 @@ let _deps: GameLoopDeps;
 // ── Per-race state ──
 let _perfectStartChecked = false;
 let _drsLastWallTime = 0;
+
+// Round 3: cached remote vehicle raycast Y per peer
+const _remoteRayCache = new Map<string, { x: number; z: number; y: number }>();
+// Round 3: replay recording frame counter (record every 2nd frame)
+let _replayFrameSkip = 0;
 let _racingElapsed = 0;
 
 // ── Mid-race reward detection state ──
@@ -397,7 +402,9 @@ function gameLoop(timestamp: number) {
     updateHeatHUD(G.playerVehicle.engineHeat, G.playerVehicle.engineDead);
 
     // Record replay frames
-    if (G.replayRecorder) {
+    // Round 3: record replay every 2nd frame (interpolation handles gaps)
+    _replayFrameSkip = (_replayFrameSkip + 1) % 2;
+    if (G.replayRecorder && _replayFrameSkip === 0) {
       const pv = G.playerVehicle;
       G.replayRecorder.record('local', pv.group.position, pv.heading, pv.speed,
         pv.steer, pv.currentWheelSpin, pv.driftAngle, pv.bodyPitchX, pv.bodyRollZ,
@@ -566,17 +573,26 @@ function gameLoop(timestamp: number) {
       for (const [id, mesh] of G.remoteMeshes) {
         const snap = G.netPeer.getInterpolatedState(id);
         if (snap) {
-          G._remoteRayOrigin.set(snap.x, mesh.position.y + 15, snap.z);
-          G._remoteRaycaster.set(G._remoteRayOrigin, G._remoteRayDir);
-          G._remoteRaycaster.far = 30;
-          const remoteHits = G._remoteRaycaster.intersectObject(G.trackData!.roadMesh, false);
-          if (remoteHits.length > 0) {
-            mesh.position.set(snap.x, remoteHits[0].point.y, snap.z);
-          } else {
-            _rPos.set(snap.x, 0, snap.z);
-            const nearest = getClosestSplinePoint(G.trackData!.spline, _rPos, G.trackData!.bvh);
-            mesh.position.set(snap.x, nearest.point.y, snap.z);
+          // Round 3: cache remote raycast Y, skip re-ray when XZ delta < 0.5m
+          const cached = _remoteRayCache.get(id);
+          let remoteY = cached?.y ?? mesh.position.y;
+          const dxR = snap.x - (cached?.x ?? -9999);
+          const dzR = snap.z - (cached?.z ?? -9999);
+          if (!cached || dxR * dxR + dzR * dzR > 0.25) {
+            G._remoteRayOrigin.set(snap.x, mesh.position.y + 15, snap.z);
+            G._remoteRaycaster.set(G._remoteRayOrigin, G._remoteRayDir);
+            G._remoteRaycaster.far = 30;
+            const remoteHits = G._remoteRaycaster.intersectObject(G.trackData!.roadMesh, false);
+            if (remoteHits.length > 0) {
+              remoteY = remoteHits[0].point.y;
+            } else {
+              _rPos.set(snap.x, 0, snap.z);
+              const nearest = getClosestSplinePoint(G.trackData!.spline, _rPos, G.trackData!.bvh);
+              remoteY = nearest.point.y;
+            }
+            _remoteRayCache.set(id, { x: snap.x, z: snap.z, y: remoteY });
           }
+          mesh.position.set(snap.x, remoteY, snap.z);
           mesh.rotation.y = snap.heading;
 
           // Feed remote position into race engine for unified totalDistance tracking
