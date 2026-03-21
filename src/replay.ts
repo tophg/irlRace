@@ -364,7 +364,8 @@ export class ReplayPlayer {
       engineHeat: a.engineHeat !== undefined && b.engineHeat !== undefined
         ? a.engineHeat + (b.engineHeat - a.engineHeat) * t : undefined,
       engineDead: t < 0.5 ? a.engineDead : b.engineDead,
-      engineJustExploded: a.engineJustExploded || b.engineJustExploded,
+      // Audit fix #15: use transition detection, not `a || b` (which fires every interpolated frame)
+      engineJustExploded: (t < 0.5 ? a.engineJustExploded : b.engineJustExploded) && !(t < 0.5 ? false : a.engineJustExploded),
     };
   }
 

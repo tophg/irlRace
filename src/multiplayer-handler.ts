@@ -13,6 +13,7 @@ import {
 } from './mp-lobby';
 import { showEmoteBubble } from './ui-screens';
 import { rollbackManager, unpackInput } from './rollback-netcode';
+import { resetResultsShowing } from './results-screen';
 
 /** Actions that require calling back into the main orchestrator */
 export interface MultiplayerCallbacks {
@@ -201,6 +202,7 @@ export function wireNetworkCallbacks() {
         G.totalLaps = data.laps ?? G.totalLaps;
         if (data.players) G.mpPlayersList = data.players;
         _cb.destroyLeaderboard();
+        resetResultsShowing(); // Audit fix #3: reset guard before starting new race
         _uiOverlay.querySelector('.results-overlay')?.remove();
         _cb.startRace();
         break;
@@ -253,6 +255,7 @@ export function wireNetworkCallbacks() {
 
       case EventType.REMATCH_ACCEPT:
         if (G.netPeer!.getIsHost() && G.gameState === GameState.RESULTS) {
+          resetResultsShowing(); // Audit fix #3: reset guard before starting new race
           _uiOverlay.querySelector('.results-overlay')?.remove();
           if (G.postWinnerTimer) { clearTimeout(G.postWinnerTimer); G.postWinnerTimer = null; }
           G.raceReadyCount = 0;

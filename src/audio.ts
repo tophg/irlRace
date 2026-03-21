@@ -3,6 +3,7 @@
 import { getSettings } from './settings';
 import { initNitroAudio, cleanupNitroAudio } from './audio-nitro';
 import { setThunderAudioContext } from './weather';
+import { setRewardAudioContext } from './mid-race-rewards';
 export { playNitroActivate, startNitroBurn, stopNitroBurn, updateNitroBurnIntensity, updateDepletionWarning, stopDepletionWarning, playNitroRelease } from './audio-nitro';
 
 let audioCtx: AudioContext | null = null;
@@ -148,6 +149,9 @@ export function initAudio() {
 
   // Wire up weather thunder through the shared context (prevents Safari 6-context limit)
   setThunderAudioContext(audioCtx, masterGain);
+
+  // Wire up mid-race reward SFX through the shared context (audit fix #4)
+  setRewardAudioContext(audioCtx);
 
   engineMaster = audioCtx.createGain();
   engineMaster.gain.value = 0;

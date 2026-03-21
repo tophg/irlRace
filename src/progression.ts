@@ -82,6 +82,7 @@ const UNLOCK_COSTS: Record<string, number> = {
   revelator: 3500,
   submit: 4500,
   marry: 5000,
+  phantom: 5000,  // Audit fix #14: was missing, defaulted to 9999
 };
 
 // ── Achievement definitions ──
@@ -356,9 +357,9 @@ export function processRaceRewards(result: RaceResult): RewardBreakdown {
   // Add challenge rewards to breakdown for results-screen display
   breakdown.totalXP += challengeRewards.xp;
   breakdown.totalCredits += challengeRewards.cr;
-  // Apply challenge reward XP/credits to player (separate from race rewards at line 295-296)
-  current.xp += challengeRewards.xp;
-  current.credits += challengeRewards.cr;
+  // Audit fix #2: Do NOT add challengeRewards to current.xp/credits here —
+  // breakdown.totalXP (which now includes challenge rewards) was already
+  // applied to current.xp at line 297. Adding again would double-count.
 
   saveProgress();
   return breakdown;
@@ -469,9 +470,10 @@ const CHALLENGE_POOL: Omit<ChallengeDefinition, 'type'>[] = [
 
 /** Simple deterministic hash for seed-based rotation. */
 function simpleHash(seed: number): number {
-  let h = seed;
-  h = ((h >> 16) ^ h) * 0x45d9f3b;
-  h = ((h >> 16) ^ h) * 0x45d9f3b;
+  // Audit fix #5: use Math.imul for 32-bit integer multiply (prevents JS float overflow)
+  let h = seed | 0;
+  h = Math.imul((h >> 16) ^ h, 0x45d9f3b);
+  h = Math.imul((h >> 16) ^ h, 0x45d9f3b);
   h = (h >> 16) ^ h;
   return Math.abs(h);
 }

@@ -631,6 +631,23 @@ function buildRoadMesh(spline: THREE.CatmullRomCurve3, curvatures: number[], rng
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
   geo.setIndex(indices);
 
+  // Audit fix #7: blend normals at loop closure seam to avoid hard lighting edge
+  {
+    const nArr = geo.getAttribute('normal').array as Float32Array;
+    const last = (points.length - 1) * 2;
+    for (let v = 0; v < 2; v++) {
+      const fi = v * 3;          // first vertex normal offset
+      const li = (last + v) * 3; // last vertex normal offset
+      const ax = (nArr[fi]     + nArr[li])     * 0.5;
+      const ay = (nArr[fi + 1] + nArr[li + 1]) * 0.5;
+      const az = (nArr[fi + 2] + nArr[li + 2]) * 0.5;
+      const len = Math.sqrt(ax * ax + ay * ay + az * az) || 1;
+      nArr[fi]     = nArr[li]     = ax / len;
+      nArr[fi + 1] = nArr[li + 1] = ay / len;
+      nArr[fi + 2] = nArr[li + 2] = az / len;
+    }
+  }
+
   const roadTex = createRoadTexture(rng);
   const mat = new THREE.MeshStandardMaterial({
     map: roadTex,

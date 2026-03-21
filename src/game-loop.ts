@@ -158,6 +158,9 @@ export function resetGameLoopState() {
   _driftAwarded = false;
   _hangTimeAwarded = false;
   _nitroDriftCooldown = 0;
+  // Audit fix #13: clear DRS ring buffer to avoid evaluating on stale frame times
+  G._drsWriteIdx = 0;
+  G._drsFrameTimes.fill(0);
 }
 
 /** Remove DOM elements created by the game loop between races. */

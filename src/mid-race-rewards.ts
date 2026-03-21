@@ -9,7 +9,8 @@
 
 import { G } from './game-context';
 import { bus, type GameEvents } from './event-bus';
-import { getProgress, saveProgress } from './progression';
+// Audit fix #1: removed getProgress/saveProgress — mid-race rewards no longer
+// mutate progression directly (double-count fix).
 import { haptic } from './input';
 import type { Vehicle } from './vehicle';
 
@@ -173,12 +174,18 @@ function updateComboBarVisual() {
 // AUDIO ENGINE (layered oscillators + ADSR + reverb)
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+// Audit fix #4: Share AudioContext from audio.ts instead of creating a private one
+// (Safari enforces a max of 6 concurrent AudioContexts).
 let _audioCtx: AudioContext | null = null;
 let _reverbNode: ConvolverNode | null = null;
 let _reverbGain: GainNode | null = null;
 
-function getAudioCtx(): AudioContext {
-  if (!_audioCtx) _audioCtx = new AudioContext();
+/** Provide the shared AudioContext (call from audio.ts initAudio). */
+export function setRewardAudioContext(ctx: AudioContext) {
+  _audioCtx = ctx;
+}
+
+function getAudioCtx(): AudioContext | null {
   return _audioCtx;
 }
 
@@ -211,6 +218,7 @@ function playTone(
 ) {
   try {
     const ctx = getAudioCtx();
+    if (!ctx) return;
     if (ctx.state === 'suspended') ctx.resume();
     const t = ctx.currentTime;
 
@@ -386,13 +394,9 @@ export function awardReward(type: RewardType, vehicle?: Vehicle): void {
   // ── Apply rewards ──
   v.addNitro(finalNitro);
 
-  if (finalCredits > 0 || finalXP > 0) {
-    const progress = getProgress();
-    progress.credits += finalCredits;
-    progress.xp += finalXP;
-    saveProgress();
-  }
-
+  // Audit fix #1: Do NOT mutate progress.credits/xp directly here.
+  // They are tracked in accumulators and applied once at race end
+  // via processRaceRewards() to avoid double-counting.
   _midRaceCredits += finalCredits;
   _midRaceXP += finalXP;
 
@@ -437,11 +441,9 @@ export function breakCombo(): void {
   if (_comboTimer <= 0) return; // nothing to break
 
   // Bank XP: reward for chain length × variety
+  // Audit fix #6: track in accumulator only — applied at race end, not mid-race
   const bankXP = Math.floor(_comboTypes.size * _comboLength * 2);
   if (bankXP > 0) {
-    const progress = getProgress();
-    progress.xp += bankXP;
-    saveProgress();
     _midRaceXP += bankXP;
   }
 
@@ -482,11 +484,9 @@ export function updateRewards(dt: number): void {
     _comboTimer -= dt;
     if (_comboTimer <= 0) {
       // Natural expiry → bank XP
+      // Audit fix #6: track in accumulator only — applied at race end
       const bankXP = Math.floor(_comboTypes.size * _comboLength * 2);
       if (bankXP > 0) {
-        const progress = getProgress();
-        progress.xp += bankXP;
-        saveProgress();
         _midRaceXP += bankXP;
       }
       _comboTimer = 0;

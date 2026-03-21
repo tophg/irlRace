@@ -9,7 +9,7 @@ import * as THREE from 'three/webgpu';
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu';
 import {
   mix, smoothstep, normalWorld, uniform, vec3, vec2, vec4, float,
-  sin, cos, mul, add, fract, max, min,
+  sin, cos, mul, add, fract, max, min, pow,
   step, positionLocal, positionWorld, dot, floor, texture,
 } from 'three/tsl';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -638,7 +638,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       buildingHeightRange: [10, 35],
       windowLitChance: 0.75, windowColor: 0x55aaff,
       treeTrunkColor: 0x111111, treeCanopyColor: 0x001122,
-      treeCanopyStyle: 'none', treeCount: 5,
+      treeCanopyStyle: 'none', treeCount: 15, // Audit fix #12: was 5
       billboardStyle: 'neon',
       streetLightColor: 0xcc88ff, streetLightDensity: 1.2,
       groundTexture: 'concrete',
@@ -712,7 +712,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       buildingHeightRange: [12, 35],
       windowLitChance: 0.8, windowColor: 0x44aaff,
       treeTrunkColor: 0x111111, treeCanopyColor: 0x001122,
-      treeCanopyStyle: 'none', treeCount: 0,
+      treeCanopyStyle: 'none', treeCount: 12, // Audit fix #12: was 0
       billboardStyle: 'neon',
       streetLightColor: 0xcc44ff, streetLightDensity: 1.5,
       groundTexture: 'concrete',
@@ -1258,13 +1258,18 @@ export async function initScene(container: HTMLElement) {
 
   // Sample distance field
   const dfUV = vec2(add(mul(worldXZ.x, 1.0 / 1200), 0.5), add(mul(worldXZ.y, 1.0 / 1200), 0.5));
-  const dist = texture(_dftTexture, dfUV).x;
+  const rawDist = texture(_dftTexture, dfUV).x;
+
+  // Apply a pow curve to compress near-track zones and give more ground coverage
+  // to far-terrain tiles (e.g., Gaza sand dunes in zone 3).
+  // pow(0.6) zone boundaries: zone0=0-10m, zone1=10-32m, zone2=32-63m, zone3=63m+
+  const dist = pow(rawDist, float(0.6));
 
   // Compute which 2 zones this pixel falls between
-  const zoneF = mul(dist, float(NUM_ZONES));                // e.g., 0.42 * 4 = 1.68
-  const zoneA = floor(zoneF);                                // zone 1
-  const zoneB = min(add(zoneA, 1.0), float(NUM_ZONES - 1));  // zone 2 (clamped)
-  const zoneMix = fract(zoneF);                              // 0.68
+  const zoneF = mul(dist, float(NUM_ZONES));                // e.g., 0.65 * 4 = 2.6
+  const zoneA = floor(zoneF);                                // zone 2
+  const zoneB = min(add(zoneA, 1.0), float(NUM_ZONES - 1));  // zone 3 (clamped)
+  const zoneMix = fract(zoneF);                              // 0.6
 
   // Column offsets for A/B pairs in each zone
   const colA = mul(zoneA, 2.0);  // zone 1 → col 2

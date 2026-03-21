@@ -151,6 +151,11 @@ export interface ResultsCallbacks {
 
 let _resultsShowing = false;
 
+/** Reset the re-entry guard (call from rematch flows and race cleanup). */
+export function resetResultsShowing() {
+  _resultsShowing = false;
+}
+
 /** Show the results overlay with rankings, stats, rewards, and action buttons. */
 export async function showResults(
   G: GameContext,

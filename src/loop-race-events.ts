@@ -94,6 +94,8 @@ export function updateCheckpointsAndHUD(
   } else if (event === 'lap') {
     const lastLapTime = progress?.lapTimes[progress.lapTimes.length - 1] ?? 0;
     const bestLap = G.raceEngine.getBestLap('local');
+    // Audit fix #11: finalize BEFORE starting new recording
+    // (startGhostRecording clears currentSnapshots that finalizeGhostLap needs)
     finalizeGhostLap(lastLapTime, G.currentRaceSeed, G.selectedCar?.id ?? '');
     startGhostRecording(G.playerVehicle.group.position, G.playerVehicle.heading);
     bus.emit('lap', {

@@ -38,6 +38,7 @@ import { setExplosionMode, initPostFX, initAfterimage } from './post-fx';
 import { loadGhostForSeed, startGhostPlayback, startGhostRecording, destroyGhost } from './ghost';
 import { initRapierWorld, addBarrierCollider, addCarBody, destroyRapierWorld } from './rapier-world';
 import { rollbackManager } from './rollback-netcode';
+import { resetResultsShowing } from './results-screen';
 import { showTouchControls, resetInput } from './input';
 import { getSettings } from './settings';
 import { ReplayRecorder } from './replay';
@@ -117,6 +118,7 @@ let _raceAbort: AbortController | null = null;
 export function clearRaceObjects() {
   _raceAbort?.abort(); // Bug #6: cancel any in-flight startRace() promises
   setCameraControlsActive(false); // Bug #23: disable chase camera controls outside race
+  resetResultsShowing(); // Audit fix #10: clear re-entry guard for next race
   const { scene } = _deps;
 
   G.netPeer?.stopBroadcasting();
