@@ -1,7 +1,8 @@
 /* ── IRL Race — Game Loop (extracted from main.ts) ──
  *
- * Contains: gameLoop, flashDamage, showDraftingIndicator,
- * updateLeaderboard, destroyLeaderboard.
+ * Contains: gameLoop, updateLeaderboard, destroyLeaderboard.
+ * VFX, damage, weather, near-miss, and render-pass code has been
+ * extracted to loop-vfx.ts.
  *
  * Call initGameLoop(deps) once at boot, then startGameLoop() to begin rAF.
  */
@@ -10,7 +11,7 @@ import * as THREE from 'three/webgpu';
 import { GameState } from './types';
 import { G, PHYSICS_DT, MAX_FRAME_DT, LB_UPDATE_INTERVAL } from './game-context';
 import { getInput } from './input';
-import { getScene, getDirLight, updateSkyTime } from './scene';
+import { getDirLight, updateSkyTime } from './scene';
 import { getClosestSplinePoint, updateSceneryWind, updateCheckpointHighlight } from './track';
 import { updateBuildingCulling } from './track-scenery';
 import { resolvePlayerName } from './results-screen';
@@ -19,40 +20,32 @@ import { rollbackManager, packInput } from './rollback-netcode';
 import { updateGarage } from './garage';
 import { bus } from './event-bus';
 
-// VFX imports
+// VFX subsystem (extracted)
 import {
-  spawnTireSmoke, updateVFX,
-  updateSpeedLines,
-  updateBoostFlame,
-  updateNameTag,
-  spawnDamageSmoke, updateSkidMarks, updateSkidGlowTime,
-  spawnFlameParticle, spawnDamageZoneSmoke,
-  updateRainDroplets,
-  updateImpactFlash,
-  updateUnderglow,
-  triggerBoostShockwave, updateBoostShockwave,
-  triggerBoostBurst, triggerBackfireSequence,
-  updateHeatShimmer,
-  updateLensFlares,
-  updateLightning,
-  triggerNearMiss, updateNearMissStreaks,
-  triggerNearMissWhoosh, updateNearMissWhoosh,
-  updateVictoryConfetti,
-  spawnDebris,
-} from './vfx';
-import {
-  updateGPUParticles,
-  spawnGPUExplosion, spawnGPUFireballWave, spawnGPUEmberRain,
-  spawnGPUSecondaryExplosion, spawnGPUDamageSmoke, spawnGPUFlame,
-  spawnGPUGlassShards, spawnGPUShoulderDust,
-  spawnGPUNitroTrail, spawnGPURimSparks, spawnGPUBackfire,
-  spawnGPUSlipstream, flushToGPU,
-} from './gpu-particles';
+  flashDamage,
+  updateSlipstream,
+  updateExplosionVFX,
+  updateLandingVFX,
+  updateHoodSmoke,
+  updateTireAndSkidVFX,
+  updateDamageZoneSmoke,
+  updateParticles,
+  updateWeatherEffects,
+  updateNitroVFX,
+  updateNearMissDetection,
+  updateMiscVFX,
+  updateDamageAndParts,
+  updateDetachedPartsPhysics,
+  updateRenderPass,
+  updateDestructionFragments,
+  resetVFXState,
+  cleanupVFXDOM, cleanupDraftingDOM, cleanupDamageFlashDOM,
+} from './loop-vfx';
+import { updateNameTag, spawnDamageSmoke, spawnTireSmoke } from './vfx';
+import { updateGPUParticles, flushToGPU } from './gpu-particles';
+import { updatePostFX } from './post-fx';
 import { updateTrackRadar } from './minimap';
-import { updateDestructionFragments, triggerVehicleDestruction, isDestructionActive } from './vehicle-destruction';
-import { updateWeather, getCurrentWeather, getPrecipMesh, getWeatherPhysics } from './weather';
-import { updatePostFX, setImpactIntensity, setBoostActive, setExplosionMode, updateAfterimage } from './post-fx';
-import { showExplosionFlash, showDamageFlash, showLetterbox, hideLetterbox, showEngineDestroyedText } from './screen-effects';
+import { getPrecipMesh } from './weather';
 import {
   updateEngineAudio, playDriftSFX,
   playNitroActivate, startNitroBurn, stopNitroBurn,
@@ -64,7 +57,7 @@ import {
   updateHUD, updateDamageHUD,
   updateGapHUD, updateNitroHUD, updateHeatHUD,
 } from './hud';
-import { sampleGhostFrame, updateGhostPlayback, finalizeGhostLap, startGhostRecording } from './ghost';
+import { finalizeGhostLap, startGhostRecording } from './ghost';
 
 import { stepPhysics, initPhysicsStep } from './physics-step';
 import { stopReplayPlayback as stopReplayUI } from './replay-ui';
@@ -85,90 +78,11 @@ export interface GameLoopDeps {
 
 let _deps: GameLoopDeps;
 
-// ── Reusable temps (moved from main.ts) ──
-const _rPos = new THREE.Vector3();
-const _hoodExplosionPos = new THREE.Vector3();
-const _nitroTrailOffset = new THREE.Vector3();
-const _swayQuat = new THREE.Quaternion();
-const _swayAxis = new THREE.Vector3(0, 0, 1); // roll axis (camera forward)
-let _racingElapsed = 0;
+// ── Per-race state ──
 let _perfectStartChecked = false;
 let _drsLastWallTime = 0;
-
-// Race generation counter — incremented on reset, checked by deferred callbacks
-let _explosionRaceGen = 0;
-
-// First-boost-per-race tracker
-let _firstBoostFired = false;
-
-// Speed lines overlay (nitro)
-let _speedLinesEl: HTMLDivElement | null = null;
-function _ensureSpeedLines(): HTMLDivElement {
-  if (!_speedLinesEl) {
-    _speedLinesEl = document.createElement('div');
-    _speedLinesEl.className = 'speed-lines-overlay';
-    document.body.appendChild(_speedLinesEl);
-  }
-  return _speedLinesEl;
-}
-
-// Wrong-way audio cooldown
 let _wrongWayBeepTimer = 0;
-
-// Explosion cinematic timer IDs (cleared on race restart to prevent stale callbacks)
-let _explosionTimers: number[] = [];
-
-// ── Damage flash overlay ──
-let _damageFlashEl: HTMLDivElement | null = null;
-let _damageFlashTimer = 0;
-
-export function flashDamage(intensity: number) {
-  if (!_damageFlashEl) {
-    _damageFlashEl = document.createElement('div');
-    _damageFlashEl.style.cssText = `
-      position:fixed; top:0; left:0; width:100%; height:100%;
-      pointer-events:none; z-index:9999; opacity:0;
-      transition: opacity 0.3s ease-out;
-    `;
-    document.body.appendChild(_damageFlashEl);
-  }
-  const alpha = Math.min(intensity, 0.7);
-  _damageFlashEl.style.background = `radial-gradient(ellipse at center, transparent 40%, rgba(255,20,0,${alpha}) 100%)`;
-  _damageFlashEl.style.opacity = '1';
-  clearTimeout(_damageFlashTimer);
-  _damageFlashTimer = window.setTimeout(() => {
-    if (_damageFlashEl) _damageFlashEl.style.opacity = '0';
-  }, 80);
-}
-
-// ── Drafting indicator ──
-let _draftingEl: HTMLDivElement | null = null;
-let _draftingTimer = 0;
-
-function showDraftingIndicator() {
-  if (!_draftingEl) {
-    _draftingEl = document.createElement('div');
-    _draftingEl.className = 'drafting-indicator';
-    _draftingEl.textContent = 'DRAFTING';
-    _deps.uiOverlay.appendChild(_draftingEl);
-  }
-  _draftingEl.style.opacity = '1';
-  clearTimeout(_draftingTimer);
-  _draftingTimer = window.setTimeout(() => {
-    if (_draftingEl) _draftingEl.style.opacity = '0';
-  }, 300);
-}
-
-/** Remove damage flash + drafting indicator DOM nodes between races. */
-export function cleanupGameLoopDOM() {
-  // Cancel any in-flight explosion timers (Bug #3 fix)
-  for (const id of _explosionTimers) clearTimeout(id);
-  _explosionTimers = [];
-  clearTimeout(_damageFlashTimer);
-  if (_damageFlashEl) { _damageFlashEl.remove(); _damageFlashEl = null; }
-  clearTimeout(_draftingTimer);
-  if (_draftingEl) { _draftingEl.remove(); _draftingEl = null; }
-}
+let _racingElapsed = 0;
 
 // ── Leaderboard ──
 
@@ -228,14 +142,19 @@ export function initGameLoop(deps: GameLoopDeps) {
 
 /** Reset per-race state in the game loop. */
 export function resetGameLoopState() {
-  _firstBoostFired = false;
-  _wrongWayBeepTimer = 0; // Bug #7 fix
+  _wrongWayBeepTimer = 0;
   _racingElapsed = 0;
   _perfectStartChecked = false;
-  _explosionRaceGen++; // Bug #3 fix: invalidate any in-flight explosion callbacks
-  _drsLastWallTime = 0; // Bug #10 fix: reset DRS wall-clock baseline
-  G._nearMissCooldowns.clear(); // Bug #5 fix
-  if (_speedLinesEl) { _speedLinesEl.remove(); _speedLinesEl = null; }
+  _drsLastWallTime = 0;
+  G._nearMissCooldowns.clear();
+  resetVFXState();
+}
+
+/** Remove DOM elements created by the game loop between races. */
+export function cleanupGameLoopDOM() {
+  cleanupVFXDOM();
+  cleanupDraftingDOM();
+  cleanupDamageFlashDOM();
 }
 
 /** Start the rAF loop. Should be called once after initGameLoop(). */
@@ -248,10 +167,9 @@ function stopReplay() {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// EXTRACTED SUBSYSTEMS
+// REAR-VIEW MIRROR
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/** Render the rear-view mirror inset (scissored render pass). */
 function updateRearMirror(renderer: THREE.WebGPURenderer, scene: THREE.Scene, frameDt: number) {
   if (!G.mirrorCamera || !G.playerVehicle || G.gameState !== GameState.RACING) return;
   if (G.mirrorBorder) G.mirrorBorder.style.display = 'block';
@@ -292,13 +210,15 @@ function updateRearMirror(renderer: THREE.WebGPURenderer, scene: THREE.Scene, fr
   if (godrays) godrays.visible = true;
 }
 
-/** Dynamic Resolution Scaling — evaluate every 30 frames, schedule resize for next frame. */
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// DRS (Dynamic Resolution Scaling)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 function updateDRS(renderer: THREE.WebGPURenderer, _frameDt: number) {
-  // Bug #10 fix: measure wall-clock time, not gameDt (which includes physics sub-steps)
   const now = performance.now();
   const wallDt = _drsLastWallTime > 0 ? (now - _drsLastWallTime) / 1000 : 0;
   _drsLastWallTime = now;
-  if (wallDt <= 0 || wallDt > 0.5) return; // skip first frame / tab-out spikes
+  if (wallDt <= 0 || wallDt > 0.5) return;
   G._drsFrameTimes[G._drsWriteIdx % 30] = wallDt;
   G._drsWriteIdx++;
   if (G._drsWriteIdx >= 30) {
@@ -320,194 +240,19 @@ function updateDRS(renderer: THREE.WebGPURenderer, _frameDt: number) {
   }
 }
 
-/** Update damage smoke, flames, detached parts physics. */
-function updateDamageAndParts(scene: THREE.Scene, frameDt: number) {
-  if (G.gameState !== GameState.RACING || !G.playerVehicle) return;
-
-  const dmg = G.playerVehicle.damage;
-  const worstHp = Math.min(dmg.front.hp, dmg.rear.hp, dmg.left.hp, dmg.right.hp);
-  if (worstHp < 50) spawnDamageSmoke(G.playerVehicle.group.position, 1 - worstHp / 50, frameDt);
-
-  const sinH = Math.sin(G.playerVehicle.heading);
-  const cosH = Math.cos(G.playerVehicle.heading);
-  const pp = G.playerVehicle.group.position;
-  const zoneOffsets: [string, number, number, number][] = [
-    ['front', 0, 1.0, -2.0],
-    ['rear', 0, 0.8, 1.8],
-    ['left', -1.0, 0.7, 0],
-    ['right', 1.0, 0.7, 0],
-  ];
-  for (const [zone, lx, ly, lz] of zoneOffsets) {
-    const hp = dmg[zone as keyof typeof dmg].hp;
-    if (hp < 20) {
-      G._flamePos.set(
-        pp.x + cosH * lx + sinH * lz,
-        pp.y + ly,
-        pp.z - sinH * lx + cosH * lz,
-      );
-      spawnFlameParticle(G._flamePos, 1 - hp / 20, frameDt);
-    }
-  }
-
-  // Detached parts
-  for (const zone of ['front', 'rear', 'left', 'right'] as const) {
-    if (G.playerVehicle.detachedZones.has(zone) && !G.detachedParts.some(dp => dp.zone === zone && dp.owner === 'local')) {
-      const partMesh = G.playerVehicle.createDetachedPart(zone);
-      if (partMesh) {
-        scene.add(partMesh);
-        G.detachedParts.push({
-          mesh: partMesh,
-          vx: G.playerVehicle.velX + (Math.random() - 0.5) * 8,
-          vy: 3 + Math.random() * 5,
-          vz: G.playerVehicle.velZ + (Math.random() - 0.5) * 8,
-          ax: (Math.random() - 0.5) * 10,
-          ay: (Math.random() - 0.5) * 10,
-          az: (Math.random() - 0.5) * 10,
-          life: 4.0,
-          zone,
-          owner: 'local',
-        });
-        spawnGPUExplosion(partMesh.position, 30);
-      }
-    }
-  }
-}
-
-/** Physics for flying detached body panels. */
-function updateDetachedPartsPhysics(scene: THREE.Scene, frameDt: number) {
-  for (let i = G.detachedParts.length - 1; i >= 0; i--) {
-    const dp = G.detachedParts[i];
-    dp.life -= frameDt;
-    if (dp.life <= 0 || dp.mesh.position.y < -10) {
-      scene.remove(dp.mesh);
-      dp.mesh.geometry?.dispose();
-      (dp.mesh.material as THREE.Material)?.dispose();
-      G.detachedParts[i] = G.detachedParts[G.detachedParts.length - 1];
-      G.detachedParts.pop();
-      continue;
-    }
-    dp.mesh.position.x += dp.vx * frameDt;
-    dp.mesh.position.y += dp.vy * frameDt;
-    dp.mesh.position.z += dp.vz * frameDt;
-    dp.vy -= 15 * frameDt;
-    dp.mesh.rotation.x += dp.ax * frameDt;
-    dp.mesh.rotation.y += dp.ay * frameDt;
-    dp.mesh.rotation.z += dp.az * frameDt;
-
-    if (dp.mesh.position.y < 0.1) {
-      dp.mesh.position.y = 0.1;
-      dp.vy = Math.abs(dp.vy) * 0.3;
-      dp.vx *= 0.6; dp.vz *= 0.6;
-      dp.ax *= 0.4; dp.ay *= 0.4; dp.az *= 0.4;
-    }
-
-    if (dp.life < 1.5) {
-      const mat = dp.mesh.material as THREE.MeshStandardMaterial;
-      if (mat.transparent !== undefined) {
-        mat.transparent = true;
-        mat.opacity = dp.life / 1.5;
-      }
-    }
-  }
-}
-
-/** Weather VFX: rain droplets, wet tire spray (player + AI), wind camera sway. */
-function updateWeatherEffects(
-  renderer: THREE.WebGPURenderer, camera: THREE.PerspectiveCamera,
-  gameDt: number, frameDt: number, s: GameState,
-) {
-  if (!G.playerVehicle) return;
-  updateWeather(gameDt, G.playerVehicle.group.position);
-
-  const weatherType = getCurrentWeather();
-  const rainIntensity = weatherType === 'heavy_rain' ? 0.5 : weatherType === 'light_rain' ? 0.25 : 0;
-  updateRainDroplets(rainIntensity, frameDt);
-
-  // Wet tire spray (NFS-style rooster tail)
-  const wp = getWeatherPhysics();
-  if (wp.sprayDensity > 0 && G.playerVehicle.speed > 30) {
-    const sprayChance = wp.sprayDensity * Math.min(G.playerVehicle.speed / 120, 1) * 0.5;
-    if (Math.random() < sprayChance) {
-      const cosH = Math.cos(G.playerVehicle.heading);
-      const sinH = Math.sin(G.playerVehicle.heading);
-      const pp = G.playerVehicle.group.position;
-      _rPos.set(pp.x - sinH * 2 - cosH * 0.6, pp.y + 0.1, pp.z - cosH * 2 + sinH * 0.6);
-      spawnGPUShoulderDust(_rPos, G.playerVehicle.speed * 0.3, G.playerVehicle.heading);
-      _rPos.set(pp.x - sinH * 2 + cosH * 0.6, pp.y + 0.1, pp.z - cosH * 2 - sinH * 0.6);
-      spawnGPUShoulderDust(_rPos, G.playerVehicle.speed * 0.3, G.playerVehicle.heading);
-    }
-  }
-
-  // Wind camera sway (heavy rain / blizzard)
-  // Applied via quaternion multiply to compose with VehicleCamera's lookAt + drift tilt
-  if ((weatherType === 'heavy_rain' || weatherType === 'blizzard') && s === GameState.RACING) {
-    const swayAmp = weatherType === 'blizzard' ? 0.005 : 0.003;
-    const swayFreq = weatherType === 'blizzard' ? 1.5 : 2.0;
-    const t = performance.now() * 0.001;
-    const swayAngle = Math.sin(t * swayFreq * Math.PI * 2) * swayAmp;
-    _swayQuat.setFromAxisAngle(_swayAxis, swayAngle);
-    camera.quaternion.multiply(_swayQuat);
-  }
-
-  // AI tire spray in rain
-  if (wp.sprayDensity > 0) {
-    for (const ai of G.aiRacers) {
-      if (ai.vehicle.speed > 25 && Math.random() < wp.sprayDensity * 0.3) {
-        const aP = ai.vehicle.group.position;
-        const cosA = Math.cos(ai.vehicle.heading);
-        const sinA = Math.sin(ai.vehicle.heading);
-        _rPos.set(aP.x - sinA * 2, aP.y + 0.1, aP.z - cosA * 2);
-        spawnGPUShoulderDust(_rPos, ai.vehicle.speed * 0.2, ai.vehicle.heading);
-      }
-    }
-  }
-}
-
-/** Near-miss detection against AI vehicles. Triggers VFX, slow-mo, nitro reward. */
-function updateNearMissDetection(
-  camera: THREE.PerspectiveCamera, timestamp: number, frameDt: number, s: GameState,
-) {
-  if (!G.playerVehicle) return;
-  if (s === GameState.RACING && Math.abs(G.playerVehicle.speed) > 15) {
-    const pPos = G.playerVehicle.group.position;
-    const now = timestamp / 1000;
-    for (const ai of G.aiRacers) {
-      const aPos = ai.vehicle.group.position;
-      const dx = pPos.x - aPos.x;
-      const dz = pPos.z - aPos.z;
-      const dist2 = dx * dx + dz * dz;
-      if (dist2 < 3.5 * 3.5 && dist2 > 1.5 * 1.5) {
-        const lastMiss = G._nearMissCooldowns.get(ai.id) ?? 0;
-        if (now - lastMiss > 1.0) {
-          G._nearMissCooldowns.set(ai.id, now);
-          const cosH = Math.cos(G.playerVehicle.heading);
-          const sinH = Math.sin(G.playerVehicle.heading);
-          const cross = dx * cosH - dz * sinH;
-          triggerNearMiss(cross > 0 ? 'right' : 'left');
-          triggerNearMissWhoosh(cross > 0 ? 'right' : 'left', camera.position, G.playerVehicle.heading);
-          G.playerVehicle.addNitro(5);
-          G.raceStats.nearMissCount++;
-        }
-      }
-    }
-  }
-  updateNearMissStreaks(frameDt);
-  updateNearMissWhoosh(frameDt, camera.position, G.playerVehicle.heading);
-}
-
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MAIN GAME LOOP
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-let _drsPendingPR = 0; // >0 means a DRS resize is pending
+let _drsPendingPR = 0;
+const _rPos = new THREE.Vector3();
 
 function gameLoop(timestamp: number) {
   requestAnimationFrame(gameLoop);
 
   const { renderer, scene, camera, uiOverlay } = _deps;
 
-  // Apply pending DRS resize BEFORE any rendering to prevent
-  // framebuffer invalidation mid-render (which causes black frames on WebGPU).
+  // Apply pending DRS resize BEFORE any rendering
   if (_drsPendingPR > 0) {
     renderer.setPixelRatio(_drsPendingPR);
     renderer.setSize(window.innerWidth, window.innerHeight);
@@ -535,10 +280,7 @@ function gameLoop(timestamp: number) {
   }
 
   // ── Title / Lobby ──
-  if (s === GameState.TITLE) {
-    // Title screen has its own render loop (titleLoop in main.ts) — don't overwrite it
-    return;
-  }
+  if (s === GameState.TITLE) return;
   if (s === GameState.LOBBY) {
     renderer.render(scene, camera);
     return;
@@ -551,7 +293,6 @@ function gameLoop(timestamp: number) {
       updateDestructionFragments(frameDt);
       flushToGPU();
       updateGPUParticles(renderer, gameDt);
-      updateVFX(gameDt);
       updatePostFX(0, false, gameDt);
       const replayHud = document.getElementById('replay-hud') as (HTMLElement & { _updateHUD?: () => void }) | null;
       if (replayHud?._updateHUD) replayHud._updateHUD();
@@ -589,7 +330,7 @@ function gameLoop(timestamp: number) {
 
       const currentInput = s === GameState.RACING ? getInput() : { up: false, down: false, left: false, right: false, boost: false, steerAnalog: 0 };
 
-      // Perfect start detection: gas pressed in first physics frame of racing
+      // Perfect start detection
       if (s === GameState.RACING && !_perfectStartChecked) {
         _perfectStartChecked = true;
         if (currentInput.up) G.raceStats.perfectStart = true;
@@ -626,27 +367,7 @@ function gameLoop(timestamp: number) {
     // ── RENDERING-RATE CODE ──
 
     // Slipstream detection
-    if (s === GameState.RACING && G.vehicleCamera?.mode === 'chase') {
-      const pp = G.playerVehicle.group.position;
-      const pH = G.playerVehicle.heading;
-      for (const ai of G.aiRacers) {
-        const aPos = ai.vehicle.group.position;
-        const dx = aPos.x - pp.x;
-        const dz = aPos.z - pp.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist < 15 && dist > 2) {
-          const toAiAngle = Math.atan2(dx, dz);
-          let angleDiff = Math.abs(toAiAngle - pH);
-          if (angleDiff > Math.PI) angleDiff = Math.PI * 2 - angleDiff;
-          if (angleDiff < 0.52) {
-            const draftStrength = (1 - dist / 15) * 20;
-            G.playerVehicle.addNitro(draftStrength * gameDt);
-            spawnGPUSlipstream(aPos, ai.vehicle.heading, G.playerVehicle.speed);
-            showDraftingIndicator();
-          }
-        }
-      }
-    }
+    updateSlipstream(gameDt, uiOverlay);
 
     updateNitroHUD(G.playerVehicle.nitro, G.playerVehicle.isNitroActive);
     updateHeatHUD(G.playerVehicle.engineHeat, G.playerVehicle.engineDead);
@@ -665,116 +386,10 @@ function gameLoop(timestamp: number) {
       }
     }
 
-    // ── Engine overheat explosion VFX ──
-    if (G.playerVehicle.engineJustExploded) {
-      const gen = _explosionRaceGen; // Bug #3 fix: capture generation for staleness checks
-      const sinH = Math.sin(G.playerVehicle.heading);
-      const cosH = Math.cos(G.playerVehicle.heading);
-      _hoodExplosionPos.copy(G.playerVehicle.group.position);
-      _hoodExplosionPos.y += 1.0;
-      _hoodExplosionPos.x += sinH * 2.2;
-      _hoodExplosionPos.z += cosH * 2.2;
-
-      spawnGPUExplosion(_hoodExplosionPos, 40);
-      flashDamage(0.9);
-      setImpactIntensity(1.5);
-
-      const pvx = G.playerVehicle.velX, pvz = G.playerVehicle.velZ;
-      const isRacing = G.raceEngine && s === GameState.RACING;
-      const bodyRef = G.playerVehicle.bodyGroupRef;
-      const vGroup = G.playerVehicle.group;
-      const wheelRefs = G.playerVehicle.wheelRefs;
-      const cachedFrags = G.playerVehicle.cachedFragments;
-      const expPos = _hoodExplosionPos.clone();
-
-      // ── Phase 2 (frame +1): Fireball wave + vehicle destruction ──
-      requestAnimationFrame(() => {
-        if (gen !== _explosionRaceGen) return; // Bug #3: stale — race restarted
-        spawnGPUFireballWave(expPos);
-        if (isRacing) {
-          triggerVehicleDestruction(bodyRef, vGroup, getScene(), pvx, pvz, wheelRefs, cachedFrags);
-          if (G.playerVehicle) G.playerVehicle.destroyed = true;
-        }
-
-        // ── Phase 3 (frame +2): Cinematic + ember rain + glass ──
-        requestAnimationFrame(() => {
-          if (gen !== _explosionRaceGen) return; // Bug #3: stale — race restarted
-          spawnGPUEmberRain(expPos);
-          spawnGPUGlassShards(expPos);
-          if (isRacing) {
-            showExplosionFlash();
-            showLetterbox();
-            setExplosionMode(true);
-            if (G.vehicleCamera) {
-              G.vehicleCamera.startExplosionOrbit(expPos);
-            }
-            _explosionTimers.push(window.setTimeout(() => {
-              if (gen !== _explosionRaceGen) return; // stale — race restarted
-              showEngineDestroyedText();
-            }, 800));
-            _explosionTimers.push(window.setTimeout(() => {
-              if (gen !== _explosionRaceGen) return;
-              hideLetterbox(); setExplosionMode(false);
-            }, 3500));
-            _explosionTimers.push(window.setTimeout(() => {
-              if (gen !== _explosionRaceGen) return;
-              _deps.callShowResults();
-            }, 4000));
-          }
-
-          // ── Phase 4 (frame +3): Ground debris ──
-          requestAnimationFrame(() => {
-            if (gen !== _explosionRaceGen) return; // Bug #3: stale — race restarted
-            spawnDebris(expPos, 35, pvx, pvz);
-          });
-        });
-      });
-
-      // ── Delayed secondary explosions (fuel line / electrical fires) ──
-      _explosionTimers.push(window.setTimeout(() => spawnGPUSecondaryExplosion(expPos), 300));
-      _explosionTimers.push(window.setTimeout(() => spawnGPUSecondaryExplosion(expPos), 800));
-
-      if (isRacing) {
-        G.raceEngine!.markDnf('local');
-      }
-    }
-
-    // NOTE: clearExplosionFlag() is called AFTER the camera shake block below
-    // (line ~601) so that engineJustExploded is still true for the shake boost.
-
-    // ── Landing VFX ──
-    if (G.playerVehicle.justLanded) {
-      const impact = G.playerVehicle.landingImpact;
-      if (impact > 0.2) {
-        spawnGPUShoulderDust(
-          G.playerVehicle.group.position,
-          G.playerVehicle.speed * 0.5 + impact * 20,
-          G.playerVehicle.heading,
-        );
-      }
-      if (impact > 0.3) {
-        setImpactIntensity(impact * 0.6);
-        if (impact > 0.5) showDamageFlash();
-      }
-      G.playerVehicle.clearLandingFlag();
-    }
-
-    // ── Hood smoke/flames at high engine heat ──
-    // Skip if destruction is active (destruction system handles its own fire)
-    const heat = G.playerVehicle.engineHeat;
-    if (heat > 60 && !isDestructionActive()) {
-      const sinH = Math.sin(G.playerVehicle.heading);
-      const cosH = Math.cos(G.playerVehicle.heading);
-      _hoodExplosionPos.copy(G.playerVehicle.group.position);
-      _hoodExplosionPos.y += 1.0;
-      _hoodExplosionPos.x += sinH * 2.2;
-      _hoodExplosionPos.z += cosH * 2.2;
-      const smokeIntensity = (heat - 60) / 40;
-      if (heat > 90) {
-        spawnGPUFlame(_hoodExplosionPos, smokeIntensity, frameDt);
-      }
-      spawnGPUDamageSmoke(_hoodExplosionPos, smokeIntensity * 0.8, frameDt);
-    }
+    // ── VFX SUBSYSTEM ──
+    updateExplosionVFX(s, frameDt, _deps.callShowResults);
+    updateLandingVFX();
+    updateHoodSmoke(frameDt);
 
     // AI race progress
     if (s === GameState.RACING) {
@@ -822,158 +437,37 @@ function gameLoop(timestamp: number) {
       G.vehicleCamera.update(camTarget, camHeading, camSpeed, camMaxSpeed, G.playerVehicle.driftAngle, gameDt);
     }
 
-    // VFX
-    const driftAbs = Math.abs(G.playerVehicle.driftAngle);
-    if (driftAbs > 0.15 && s === GameState.RACING) {
-      spawnTireSmoke(G.playerVehicle.group.position, driftAbs, G.playerVehicle.isNitroActive);
-    }
-    if (s === GameState.RACING) {
-      updateSkidGlowTime();
-      updateSkidMarks(G.playerVehicle.group.position, G.playerVehicle.heading, driftAbs, G.playerVehicle.group.position.y);
-      sampleGhostFrame(G.playerVehicle.group.position, G.playerVehicle.heading);
-      updateGhostPlayback();
-    }
-    updateVFX(gameDt);
+    // VFX — tire smoke, skid marks, ghost
+    updateTireAndSkidVFX(s, frameDt);
 
     // Per-frame damage zone smoke
-    if (s === GameState.RACING && G.playerVehicle) {
-      const pp = G.playerVehicle.group.position;
-      const sinH = Math.sin(G.playerVehicle.heading);
-      const cosH = Math.cos(G.playerVehicle.heading);
-      const zones: Array<{ zone: 'front' | 'rear' | 'left' | 'right'; ox: number; oz: number }> = [
-        { zone: 'front', ox: 0, oz: -2.2 },
-        { zone: 'rear', ox: 0, oz: 2.0 },
-        { zone: 'left', ox: -1.0, oz: 0 },
-        { zone: 'right', ox: 1.0, oz: 0 },
-      ];
-      for (const z of zones) {
-        const dmg = G.playerVehicle.damage[z.zone];
-        const severity = 1 - dmg.hp / 100;
-        if (severity > 0.7) {
-          G._sparkPos.set(
-            pp.x + cosH * z.ox + sinH * z.oz,
-            pp.y + 0.6,
-            pp.z - sinH * z.ox + cosH * z.oz,
-          );
-          spawnDamageZoneSmoke(G._sparkPos, severity, frameDt);
-        }
-      }
+    updateDamageZoneSmoke(s, frameDt);
 
-      // Tire blowout
-      const leftHP = G.playerVehicle.damage.left.hp;
-      const rightHP = G.playerVehicle.damage.right.hp;
+    // GPU particles
+    updateParticles(renderer, gameDt);
 
-      if (leftHP <= 0 && !G._leftTireBlown) {
-        G._leftTireBlown = true;
-        G._sparkPos.set(pp.x + cosH * (-1.0), pp.y + 0.2, pp.z - sinH * (-1.0));
-        spawnGPUExplosion(G._sparkPos, 25);
-      }
-      if (rightHP <= 0 && !G._rightTireBlown) {
-        G._rightTireBlown = true;
-        G._sparkPos.set(pp.x + cosH * 1.0, pp.y + 0.2, pp.z - sinH * 1.0);
-        spawnGPUExplosion(G._sparkPos, 25);
-      }
-    }
-    flushToGPU();
-    updateGPUParticles(renderer, gameDt);
+    // Weather
     updateWeatherEffects(renderer, camera, gameDt, frameDt, s);
 
-    updateImpactFlash(frameDt);
+    // Nitro VFX (underglow, boost flame, shockwave, camera shake, trails, sparks)
+    updateNitroVFX(s, camera, gameDt, frameDt, timestamp);
 
-    // Underglow
-    if (G._playerUnderglow) {
-      updateUnderglow(G._playerUnderglow, G.playerVehicle.speed, timestamp / 1000, G.playerVehicle.isNitroActive);
-    }
-    updateBoostFlame(s === GameState.RACING && G.playerVehicle.isNitroActive, G.playerVehicle.group.position, G.playerVehicle.heading, timestamp / 1000, G.playerVehicle.engineHeat, gameDt);
-
-    // Nitro activation
+    // Nitro audio (activation/deactivation sounds)
     const isNitroNow = s === GameState.RACING && G.playerVehicle.isNitroActive;
     if (isNitroNow && !G._wasNitroActive) {
-      triggerBoostShockwave(G.playerVehicle.group.position, G.playerVehicle.heading);
-      triggerBoostBurst();
       playNitroActivate();
       startNitroBurn();
-      _ensureSpeedLines()?.classList.add('active');
     }
     if (isNitroNow) {
       updateNitroBurnIntensity(G.playerVehicle.nitro);
       updateDepletionWarning(G.playerVehicle.nitro);
     }
     if (!isNitroNow && G._wasNitroActive) {
-      triggerBackfireSequence(G.playerVehicle.group.position, G.playerVehicle.heading);
       stopNitroBurn();
       stopDepletionWarning();
       playNitroRelease();
-      _ensureSpeedLines()?.classList.remove('active');
     }
     G._wasNitroActive = isNitroNow;
-    updateBoostShockwave(frameDt);
-
-    // Nitro FOV punch — additive on top of VehicleCamera's speed-based FOV.
-    // VehicleCamera sets FOV in range [FOV_MIN..FOV_MAX] based on speed.
-    // We just bump it a bit more during nitro for the rush effect.
-    if (isNitroNow) {
-      camera.fov = Math.min(camera.fov + 5, 83);
-      camera.updateProjectionMatrix();
-    }
-
-    // Camera shake
-    if (isNitroNow) {
-      const t = timestamp / 1000;
-      camera.position.x += Math.sin(t * 47) * 0.012 + Math.sin(t * 73) * 0.008;
-      camera.position.y += Math.sin(t * 53) * 0.006;
-    }
-    if (G.playerVehicle.engineDead) {
-      const shakeDecay = G.playerVehicle.engineJustExploded ? 0.15 : 0.03;
-      const t = timestamp / 1000;
-      camera.position.x += Math.sin(t * 90) * shakeDecay;
-      camera.position.y += Math.sin(t * 110) * shakeDecay * 0.7;
-    }
-    // Clear explosion flag AFTER shake read (BUG-3 fix)
-    if (G.playerVehicle.engineJustExploded) {
-      G.playerVehicle.clearExplosionFlag();
-    }
-
-    // Nitro exhaust trail
-    if (s === GameState.RACING && G.playerVehicle.isNitroActive) {
-      spawnGPUNitroTrail(G.playerVehicle.group.position, G.playerVehicle.heading, G.playerVehicle.speed);
-      const cosH2 = Math.cos(G.playerVehicle.heading);
-      _nitroTrailOffset.copy(G.playerVehicle.group.position);
-      _nitroTrailOffset.x += cosH2 * 0.15;
-      spawnGPUNitroTrail(_nitroTrailOffset, G.playerVehicle.heading, G.playerVehicle.speed);
-    }
-
-    // Rim sparks on blown tires
-    if (G._leftTireBlown && Math.abs(G.playerVehicle.speed) > 3) {
-      const cosH = Math.cos(G.playerVehicle.heading);
-      const sinH = Math.sin(G.playerVehicle.heading);
-      const pos = G.playerVehicle.group.position;
-      G._sparkPos.set(pos.x + cosH * (-1.0), pos.y + 0.1, pos.z - sinH * (-1.0));
-      spawnGPURimSparks(G._sparkPos, G.playerVehicle.speed);
-    }
-    if (G._rightTireBlown && Math.abs(G.playerVehicle.speed) > 3) {
-      const cosH = Math.cos(G.playerVehicle.heading);
-      const sinH = Math.sin(G.playerVehicle.heading);
-      const pos = G.playerVehicle.group.position;
-      G._sparkPos.set(pos.x + cosH * 1.0, pos.y + 0.1, pos.z - sinH * 1.0);
-      spawnGPURimSparks(G._sparkPos, G.playerVehicle.speed);
-    }
-
-    // Exhaust backfire
-    const currentSpeedRatio = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
-    if (G._prevSpeedRatio - currentSpeedRatio > 0.15 && Math.abs(G.playerVehicle.speed) > 15) {
-      spawnGPUBackfire(G.playerVehicle.group.position, G.playerVehicle.heading);
-    }
-    G._prevSpeedRatio = currentSpeedRatio;
-
-    // Shoulder dust
-    if (G.playerVehicle.lastBarrierImpact && Math.abs(G.playerVehicle.speed) > 8) {
-      spawnGPUShoulderDust(G.playerVehicle.group.position, G.playerVehicle.speed, G.playerVehicle.heading);
-    }
-
-    // Heat shimmer
-    const speedR = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
-    updateHeatShimmer(speedR, isNitroNow, G.playerVehicle.engineHeat);
 
     // Minimap
     if (G.playerVehicle) {
@@ -987,19 +481,15 @@ function gameLoop(timestamp: number) {
       }
     }
 
-    updateLensFlares(camera.position, timestamp / 1000);
-    updateLightning(frameDt);
-
+    // Near-miss detection
     updateNearMissDetection(camera, timestamp, frameDt, s);
 
-    updateVictoryConfetti(frameDt);
-
-    const speedRatioForLines = Math.abs(G.playerVehicle.speed) / G.selectedCar.maxSpeed;
-    const nitroForLines = G.playerVehicle.isNitroActive;
-    if (speedRatioForLines > 0.3 || nitroForLines) updateSpeedLines(speedRatioForLines, nitroForLines);
+    // Misc VFX (lens flares, lightning, confetti, speed lines)
+    updateMiscVFX(camera, timestamp, frameDt);
 
     // Race stats
     if (s === GameState.RACING) {
+      const driftAbs = Math.abs(G.playerVehicle.driftAngle);
       const speedMph = Math.abs(G.playerVehicle.speed) * 2.5;
       if (speedMph > G.raceStats.topSpeed) G.raceStats.topSpeed = speedMph;
       if (speedMph > 180) G.raceStats.speedDemonTime += gameDt;
@@ -1007,7 +497,6 @@ function gameLoop(timestamp: number) {
     }
 
     // Audio
-    // Audio — pitch-shift during slow-mo for cinematic feel
     const ts = getTimeScale();
     updateEngineAudio(
       G.playerVehicle.speed, G.selectedCar.maxSpeed, ts,
@@ -1016,8 +505,8 @@ function gameLoop(timestamp: number) {
     setMusicTimeScale(ts);
     setSfxTimeScale(ts);
     G.driftSfxCooldown -= frameDt;
-    if (s === GameState.RACING && driftAbs > 0.3 && G.driftSfxCooldown <= 0) {
-      playDriftSFX(driftAbs);
+    if (s === GameState.RACING && Math.abs(G.playerVehicle.driftAngle) > 0.3 && G.driftSfxCooldown <= 0) {
+      playDriftSFX(Math.abs(G.playerVehicle.driftAngle));
       G.driftSfxCooldown = 0.12;
     }
 
@@ -1049,7 +538,7 @@ function gameLoop(timestamp: number) {
         const lastLapTime = progress?.lapTimes[progress.lapTimes.length - 1] ?? 0;
         const bestLap = G.raceEngine.getBestLap('local');
         if ((progress?.lapIndex ?? 0) === G.totalLaps - 1) {
-          // Last lap — no slow-mo, just a marker for HUD
+          // Last lap marker for HUD
         }
         finalizeGhostLap(lastLapTime, G.currentRaceSeed, G.selectedCar?.id ?? '');
         startGhostRecording(G.playerVehicle.group.position, G.playerVehicle.heading);
@@ -1196,17 +685,7 @@ function gameLoop(timestamp: number) {
     updateDebugOverlay();
 
     // Render
-    if (G.postFXPipeline) {
-      const speedRatio = G.playerVehicle ? Math.abs(G.playerVehicle.speed) / G.playerVehicle.def.maxSpeed : 0;
-      const isNitro = G.playerVehicle?.isNitroActive ?? false;
-      updatePostFX(Math.min(speedRatio, 1), isNitro, gameDt);
-      if (isNitro) setBoostActive(true);
-      else setBoostActive(false);
-      G.postFXPipeline.render();
-    } else {
-      renderer.render(scene, camera);
-    }
-    updateAfterimage();
+    updateRenderPass(renderer, scene, camera, gameDt);
 
     updateRearMirror(renderer, scene, frameDt);
 
@@ -1217,3 +696,6 @@ function gameLoop(timestamp: number) {
     for (const ai of G.aiRacers) ai.vehicle.restoreFromRender();
   }
 }
+
+// Re-export for external callers that still reference these
+export { flashDamage };
