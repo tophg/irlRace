@@ -16,7 +16,6 @@ import { initGarage, destroyGarage } from './garage';
 import { loadCarModel, initKTX2, preloadGLB } from './loaders';
 import { ENVIRONMENTS } from './scene';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { showTrackEditor, destroyTrackEditor } from './track-editor';
 import { loadProgress } from './progression';
 import { initInput, showTouchControls } from './input';
 import { loadSettings, getSettings, showSettings } from './settings';
@@ -746,10 +745,11 @@ function renderFullTitleScreen() {
 // TRACK EDITOR
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function enterTrackEditor() {
+async function enterTrackEditor() {
   G.gameState = GameState.TRACK_EDITOR;
   stopAllMusic();
 
+  const { showTrackEditor, destroyTrackEditor } = await import('./track-editor');
   showTrackEditor(uiOverlay, {
     onTestDrive: (track) => {
       destroyTrackEditor();

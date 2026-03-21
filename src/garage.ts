@@ -6,7 +6,6 @@ import { CAR_ROSTER, CarDef } from './types';
 import { loadCarModel, loadCarModelWithProgress } from './loaders';
 import { isCarUnlocked, getUnlockCost, unlockCar, getProgress, saveProgress } from './progression';
 import { getSettings, saveSettings } from './settings';
-import { initCalibrationStudio, onStudioCarLoaded } from './calibration-studio';
 import { applyPaintToModel, restoreOriginalColors, shouldSkipForPaint } from './garage-paint';
 import { playClickSfx, playConfirmSfx, playUnlockSfx, playSpraySfx } from './garage-audio';
 
@@ -380,7 +379,7 @@ function wireCanvasInteractions() {
   window.addEventListener('pointercancel', _pointerUpHandler);
 
   // ── Setup Calibration Studio ──
-  initCalibrationStudio(garageRenderer, uiEl!);
+  import('./calibration-studio').then(m => m.initCalibrationStudio(garageRenderer, uiEl!));
 }
 
 // ── Car Dot Indicators ──
@@ -763,7 +762,7 @@ async function showCar(index: number) {
     if (balEl) balEl.textContent = `Credits: ${getProgress().credits} CR`;
     
     // Notify calibration studio
-    onStudioCarLoaded(model, car);
+    import('./calibration-studio').then(m => m.onStudioCarLoaded(model, car));
   } catch (err) {
     if (requestId === showCarRequestId) {
       hidePlaceholder();
