@@ -80,8 +80,10 @@ export function buildTrackFromControlPoints(
 
   // Build meshes (reuse all existing builders)
   const roadMesh = buildRoadMesh(finalSpline, curvatures, rng);
-  const barrierLeft = buildBarrierMesh(finalSpline, -1, curvatures);
-  const barrierRight = buildBarrierMesh(finalSpline, 1, curvatures);
+  const theme = getCurrentTheme();
+  const barrierStyle = theme.barrierStyle || 'concrete_clean';
+  const barrierLeft = buildBarrierMesh(finalSpline, -1, curvatures, barrierStyle, theme.barrierColor);
+  const barrierRight = buildBarrierMesh(finalSpline, 1, curvatures, barrierStyle, theme.barrierColor);
   const shoulderMesh = buildShoulders(finalSpline, curvatures);
   const kerbGroup = buildKerbs(finalSpline, curvatures);
 
@@ -138,8 +140,10 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
 
   // ── 7. Build meshes ──
   const roadMesh = buildRoadMesh(finalSpline, curvatures, rng);
-  const barrierLeft = buildBarrierMesh(finalSpline, -1, curvatures);
-  const barrierRight = buildBarrierMesh(finalSpline, 1, curvatures);
+  const theme = getCurrentTheme();
+  const barrierStyle = theme.barrierStyle || 'concrete_clean';
+  const barrierLeft = buildBarrierMesh(finalSpline, -1, curvatures, barrierStyle, theme.barrierColor);
+  const barrierRight = buildBarrierMesh(finalSpline, 1, curvatures, barrierStyle, theme.barrierColor);
   const shoulderMesh = buildShoulders(finalSpline, curvatures);
   const kerbGroup = buildKerbs(finalSpline, curvatures);
 
@@ -719,15 +723,54 @@ function createRoadTexture(rng: () => number): THREE.CanvasTexture {
   return tex;
 }
 
-function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number, curvatures: number[]): THREE.Mesh {
+// ── Barrier texture cache ──
+const _barrierMaterialCache = new Map<string, THREE.MeshStandardMaterial>();
+
+function getBarrierMaterial(style: string, barrierColor: number): THREE.MeshStandardMaterial {
+  const key = `${style}_${barrierColor.toString(16)}`;
+  const cached = _barrierMaterialCache.get(key);
+  if (cached) return cached;
+
+  const isMetal = style.startsWith('metal');
+  const mat = new THREE.MeshStandardMaterial({
+    roughness: isMetal ? 0.5 : 0.9,
+    metalness: isMetal ? 0.6 : 0.0,
+    envMapIntensity: isMetal ? 0.5 : 0.2,
+    side: THREE.DoubleSide,
+    color: barrierColor,
+  });
+
+  // Load texture asynchronously; material renders with barrierColor until ready
+  const loader = new THREE.TextureLoader();
+  loader.load(`/barriers/barrier_${style}.png`, (tex) => {
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = 4;
+    mat.map = tex;
+    mat.needsUpdate = true;
+  });
+
+  _barrierMaterialCache.set(key, mat);
+  return mat;
+}
+
+function buildBarrierMesh(
+  spline: THREE.CatmullRomCurve3,
+  side: number,
+  curvatures: number[],
+  barrierStyle: string,
+  barrierColor: number,
+): THREE.Mesh {
   const rawPoints = spline.getSpacedPoints(SPLINE_SAMPLES);
   const points = rawPoints.slice(0, rawPoints.length - 1);
   const vertices: number[] = [];
   const indices: number[] = [];
   const normals: number[] = [];
-  const colors: number[] = [];
+  const uvs: number[] = [];
   const baseHalfW = ROAD_WIDTH / 2 + BARRIER_THICKNESS;
   const topHalfW = ROAD_WIDTH / 2 + BARRIER_THICKNESS * 0.6; // slight inward taper
+  const totalLength = spline.getLength();
+  const tileRepeatLength = 8; // world units per texture repeat
 
   for (let i = 0; i < points.length; i++) {
     const t = i / (points.length - 1);
@@ -759,14 +802,10 @@ function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number, curvatur
     const nz = -_meshRight.z * side;
     normals.push(nx, 0, nz, nx, 0, nz);
 
-    // Alternating red/white bands
-    const bandIndex = Math.floor(t * SPLINE_SAMPLES / 4);
-    const isRed = bandIndex % 2 === 0;
-    if (isRed) {
-      colors.push(0.85, 0.15, 0.1, 0.85, 0.15, 0.1);
-    } else {
-      colors.push(0.95, 0.95, 0.95, 0.95, 0.95, 0.95);
-    }
+    // UV: U = 0 at base, 1 at top; V = arc-length tiling
+    const v = t * totalLength / tileRepeatLength;
+    uvs.push(0, v);  // base vertex
+    uvs.push(1, v);  // top vertex
 
     if (i < points.length - 1) {
       const base = i * 2;
@@ -783,18 +822,10 @@ function buildBarrierMesh(spline: THREE.CatmullRomCurve3, side: number, curvatur
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geo.setIndex(indices);
 
-  const mat = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    roughness: 0.85,
-    metalness: 0.02,
-    envMapIntensity: 0.2,
-    side: THREE.DoubleSide,
-    emissive: new THREE.Color(0x330000),
-    emissiveIntensity: 0.2,
-  });
+  const mat = getBarrierMaterial(barrierStyle, barrierColor);
 
   const mesh = new THREE.Mesh(geo, mat);
   mesh.castShadow = true;

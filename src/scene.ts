@@ -117,6 +117,7 @@ export interface SceneryTheme {
   ambientLights?: string[];        // e.g. ['neon_edge', 'hazard_flasher', 'neon_pool', 'window_spill', 'torch_glow']
   landmarks?: string[];             // GLB filenames under /buildings/ placed at unique trackside positions
   grandstandModel?: string;          // GLB filename under /buildings/ to replace default spectator stand
+  barrierStyle?: 'concrete_clean' | 'concrete_weathered' | 'metal_galvanized' | 'metal_rusted';  // barrier texture (default: 'concrete_clean')
 }
 
 // ── Environment Presets ──
@@ -170,6 +171,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeModels: ['red_maple.glb', 'red_maple_b.glb', 'dogwood.glb', 'walnut.glb', 'walnut_b.glb', 'oak.glb'],
       ambientLights: ['window_spill', 'hazard_flasher'],
       landmarks: ['us_capitol.glb', 'washington_monument.glb', 'lincoln_memorial.glb'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -204,6 +206,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       buildingDensity: 1.0, buildingRowCount: 2, buildingGapChance: 0.2,
       treeModels: ['palm_tree.glb', 'palm_tree_b.glb', 'palm_tree_c.glb', 'palm_trees_cluster.glb'],
       ambientLights: ['torch_glow', 'window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -245,6 +248,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'palm_frond',
       treeModels: ['palm_tree.glb', 'palm_tree_b.glb', 'palm_tree_c.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -279,6 +283,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       buildingDensity: 1.8, buildingRowCount: 3, buildingGapChance: 0.1,
       treeModels: ['red_maple.glb', 'red_maple_b.glb', 'oak.glb', 'walnut.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -317,6 +322,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'palm_frond',
       treeModels: ['palm_tree.glb', 'palm_tree_b.glb', 'cactus_tall.glb', 'cactus.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -355,6 +361,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'palm_frond',
       treeModels: ['palm_tree.glb', 'palm_tree_b.glb', 'cactus.glb', 'cactus_b.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -393,6 +400,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'palm_frond',
       treeModels: ['palm_tree.glb', 'palm_tree_b.glb', 'palm_tree_c.glb', 'oak.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -431,6 +439,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'palm_frond',
       treeModels: ['palm_tree.glb', 'palm_tree_b.glb', 'cactus_tall.glb', 'cactus.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -469,6 +478,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'palm_frond',
       treeModels: ['palm_tree.glb', 'palm_tree_c.glb', 'cactus_tall.glb', 'cactus.glb', 'cactus_b.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -507,6 +517,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['walnut.glb', 'walnut_b.glb', 'pine.glb', 'pine_b.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -545,6 +556,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'palm_frond',
       treeModels: ['palm_tree.glb', 'cactus_tall.glb', 'cactus.glb', 'cactus_c.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -583,6 +595,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'palm_frond',
       treeModels: ['palm_tree.glb', 'palm_tree_b.glb', 'palm_tree_c.glb', 'palm_trees_cluster.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -621,6 +634,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['oak.glb', 'walnut.glb', 'pine.glb', 'pine_b.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -658,6 +672,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['red_maple.glb', 'red_maple_b.glb', 'walnut.glb'],
       ambientLights: ['neon_edge', 'window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -696,6 +711,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['pine.glb', 'pine_b.glb', 'oak.glb', 'black_walnut.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -731,6 +747,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['red_maple.glb', 'red_maple_b.glb', 'pine.glb'],
       ambientLights: ['neon_edge', 'neon_pool'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -765,6 +782,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['red_maple.glb', 'red_maple_b.glb', 'oak.glb', 'dogwood.glb', 'walnut.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -801,6 +819,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['oak.glb', 'walnut.glb', 'walnut_b.glb', 'red_maple.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -837,6 +856,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'snow_capped',
       treeModels: ['pine.glb', 'pine_b.glb'],
       ambientLights: ['hazard_flasher'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -872,6 +892,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'tropical',
       treeModels: ['royal_palm.glb', 'palm.glb', 'palm_b.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -907,6 +928,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'tropical',
       treeModels: ['royal_palm.glb', 'palm.glb', 'palm_b.glb', 'flamboyant.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -943,6 +965,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'snow_capped',
       treeModels: ['pine.glb', 'pine_b.glb', 'spruce.glb'],
       ambientLights: ['hazard_flasher'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -979,6 +1002,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['olive.glb', 'olive_b.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -1015,6 +1039,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'snow_capped',
       treeModels: ['pine.glb'],
       ambientLights: ['hazard_flasher'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -1051,6 +1076,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'snow_capped',
       treeModels: ['pine.glb', 'pine_b.glb', 'spruce.glb'],
       ambientLights: ['window_spill', 'hazard_flasher'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -1087,6 +1113,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'snow_capped',
       treeModels: ['pine.glb', 'pine_b.glb'],
       ambientLights: ['hazard_flasher'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -1123,6 +1150,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['pine.glb'],
       ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
@@ -1159,6 +1187,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeVariant: 'standard',
       treeModels: ['oak.glb', 'walnut.glb', 'walnut_b.glb'],
       ambientLights: ['window_spill', 'hazard_flasher'],
+      barrierStyle: 'concrete_clean',
     },
   },
 ];
