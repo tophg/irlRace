@@ -954,6 +954,7 @@ export class Vehicle {
         this._airborne = true;
         this._airTime = 0;
         this._airPitch = 0;
+        this._prevRoadY = NaN; // Bug #4 fix: reset so landing doesn't trigger false ramp detection
       }
     }
 
@@ -1156,10 +1157,12 @@ export class Vehicle {
 
   serializeState(): {
     px: number; py: number; pz: number;
-    velX: number; velZ: number;
+    velX: number; velZ: number; velY: number;
     heading: number; angularVel: number;
     speed: number; steer: number;
     nitro: number; driftAngle: number;
+    engineHeat: number; engineDead: boolean; engineDeadTimer: number;
+    airborne: boolean; airTime: number;
   } {
     return {
       px: this.group.position.x,
@@ -1167,32 +1170,46 @@ export class Vehicle {
       pz: this.group.position.z,
       velX: this._velX,
       velZ: this._velZ,
+      velY: this._velY,
       heading: this.heading,
       angularVel: this.angularVel,
       speed: this.speed,
       steer: this.steer,
       nitro: this.nitro,
       driftAngle: this.driftAngle,
+      engineHeat: this._engineHeat,
+      engineDead: this._engineDead,
+      engineDeadTimer: this._engineDeadTimer,
+      airborne: this._airborne,
+      airTime: this._airTime,
     };
   }
 
   /** Restore vehicle physics state from a rollback snapshot. */
   deserializeState(snap: {
     px: number; py: number; pz: number;
-    velX: number; velZ: number;
+    velX: number; velZ: number; velY?: number;
     heading: number; angularVel: number;
     speed: number; steer: number;
     nitro: number; driftAngle: number;
+    engineHeat?: number; engineDead?: boolean; engineDeadTimer?: number;
+    airborne?: boolean; airTime?: number;
   }) {
     this.group.position.set(snap.px, snap.py, snap.pz);
     this._velX = snap.velX;
     this._velZ = snap.velZ;
+    if (snap.velY !== undefined) this._velY = snap.velY;
     this.heading = snap.heading;
     this.angularVel = snap.angularVel;
     this.speed = snap.speed;
     this.steer = snap.steer;
     this.nitro = snap.nitro;
     this.driftAngle = snap.driftAngle;
+    if (snap.engineHeat !== undefined) this._engineHeat = snap.engineHeat;
+    if (snap.engineDead !== undefined) this._engineDead = snap.engineDead;
+    if (snap.engineDeadTimer !== undefined) this._engineDeadTimer = snap.engineDeadTimer;
+    if (snap.airborne !== undefined) this._airborne = snap.airborne;
+    if (snap.airTime !== undefined) this._airTime = snap.airTime;
     this.group.rotation.y = snap.heading;
   }
 

@@ -8,6 +8,7 @@
  */
 
 
+import * as THREE from 'three/webgpu';
 import { GameState } from './types';
 import { G } from './game-context';
 import { getInput } from './input';
@@ -100,14 +101,28 @@ export function stepPhysics(dt: number, s: GameState) {
     velocities.push(ai.vehicle);
   }
 
+  // Bug #12: Save remote mesh positions before collision resolution
+  // so we can restore them after (collision push-apart would fight network interpolation).
+  const remotePositionsBefore = new Map<string, { x: number; y: number; z: number }>();
+
   for (const [id, mesh] of G.remoteMeshes) {
+    remotePositionsBefore.set(id, { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z });
     colliders.push({
       id,
       position: mesh.position,
       halfExtents: G.carHalf,
       heading: mesh.rotation.y,
     });
-    velocities.push({ velX: 0, velZ: 0 });
+    // Bug #3 fix: Estimate remote velocity from previous position instead of {0,0}
+    const prev = G.remotePrevPos.get(id);
+    if (prev) {
+      // remotePrevPos is updated each render frame; estimate per-physics-tick velocity
+      const estVelX = (mesh.position.x - prev.x) * 60; // approximate 60Hz
+      const estVelZ = (mesh.position.z - prev.z) * 60;
+      velocities.push({ velX: estVelX, velZ: estVelZ });
+    } else {
+      velocities.push({ velX: 0, velZ: 0 });
+    }
   }
 
   const collisionEvents = resolveCarCollisions(colliders, velocities);
@@ -117,16 +132,18 @@ export function stepPhysics(dt: number, s: GameState) {
   for (const c of colliders) colliderMap.set(c.id, c);
 
   for (const evt of collisionEvents) {
+    // Bug #17 fix: Use local vectors instead of shared G._impactDir
+    const impactDir = new THREE.Vector3();
     if (evt.idA === 'local' && G.playerVehicle) {
-      G._impactDir.set(evt.normalX, 0, evt.normalZ);
-      G.playerVehicle.applyDamage(G._impactDir, evt.impactForce);
+      impactDir.set(evt.normalX, 0, evt.normalZ);
+      G.playerVehicle.applyDamage(impactDir, evt.impactForce);
       G.raceStats.collisionCount++;
       G.vehicleCamera?.shake(Math.min(evt.impactForce / 40, 1));
       _deps.flashDamage(evt.impactForce / 40);
       setImpactIntensity(evt.impactForce / 40);
     } else if (evt.idB === 'local' && G.playerVehicle) {
-      G._impactDir.set(-evt.normalX, 0, -evt.normalZ);
-      G.playerVehicle.applyDamage(G._impactDir, evt.impactForce);
+      impactDir.set(-evt.normalX, 0, -evt.normalZ);
+      G.playerVehicle.applyDamage(impactDir, evt.impactForce);
       G.raceStats.collisionCount++;
       G.vehicleCamera?.shake(Math.min(evt.impactForce / 40, 1));
       _deps.flashDamage(evt.impactForce / 40);
@@ -134,12 +151,12 @@ export function stepPhysics(dt: number, s: GameState) {
     }
     for (const ai of G.aiRacers) {
       if (evt.idA === ai.id) {
-        G._impactDir.set(evt.normalX, 0, evt.normalZ);
-        ai.vehicle.applyDamage(G._impactDir, evt.impactForce);
+        impactDir.set(evt.normalX, 0, evt.normalZ);
+        ai.vehicle.applyDamage(impactDir, evt.impactForce);
       }
       if (evt.idB === ai.id) {
-        G._impactDir.set(-evt.normalX, 0, -evt.normalZ);
-        ai.vehicle.applyDamage(G._impactDir, evt.impactForce);
+        impactDir.set(-evt.normalX, 0, -evt.normalZ);
+        ai.vehicle.applyDamage(impactDir, evt.impactForce);
       }
     }
 
@@ -158,6 +175,16 @@ export function stepPhysics(dt: number, s: GameState) {
     }
   }
 
+  // Bug #12: Restore remote mesh positions after collision resolution.
+  // Collision push-apart on remote cars would fight the next network interpolation frame.
+  // Only local + AI cars should be physically pushed by collision resolution.
+  for (const [id, saved] of remotePositionsBefore) {
+    const mesh = G.remoteMeshes.get(id);
+    if (mesh) {
+      mesh.position.set(saved.x, saved.y, saved.z);
+    }
+  }
+
   // ── Barrier collision effects ──
   if (G.playerVehicle?.lastBarrierImpact) {
     const b = G.playerVehicle.lastBarrierImpact;
@@ -168,8 +195,8 @@ export function stepPhysics(dt: number, s: GameState) {
     _deps.flashDamage(b.force / 25);
     setImpactIntensity(b.force / 25);
     triggerImpactFlash(b.force / 30);
-    G._impactDir.set(b.normalX, 0, b.normalZ);
-    G.playerVehicle.applyDamage(G._impactDir, b.force * 0.7);
+    const barrierImpactDir = new THREE.Vector3(b.normalX, 0, b.normalZ);
+    G.playerVehicle.applyDamage(barrierImpactDir, b.force * 0.7);
     G.raceStats.collisionCount++;
     playCollisionSFX(Math.min(b.force / 25, 1));
     haptic(Math.min(Math.floor(b.force * 4), 200));
@@ -195,8 +222,8 @@ export function stepPhysics(dt: number, s: GameState) {
       const b = ai.vehicle.lastBarrierImpact;
       G._sparkPos.set(b.posX, b.posY, b.posZ);
       spawnGPUSparks(G._sparkPos, b.force);
-      G._impactDir.set(b.normalX, 0, b.normalZ);
-      ai.vehicle.applyDamage(G._impactDir, b.force * 0.7);
+      const aiBarrierDir = new THREE.Vector3(b.normalX, 0, b.normalZ);
+      ai.vehicle.applyDamage(aiBarrierDir, b.force * 0.7);
       ai.vehicle.lastBarrierImpact = null; // clear after consuming
     }
   }

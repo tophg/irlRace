@@ -94,8 +94,12 @@ export class NetPeer {
     if (!this.peer) throw lastError ?? new Error('Failed to create room');
 
     this.peer!.on('connection', (conn) => {
-      // Enforce max player cap
-      if (this.connections.size >= MAX_PLAYERS - 1) {
+      // Enforce max player cap (but allow reconnecting peers through)
+      const isReconnect = this.pendingReconnect.has(conn.peer) ||
+        Array.from(this.pendingReconnect.entries()).some(
+          ([, info]) => info.name === conn.metadata?.name,
+        );
+      if (!isReconnect && this.connections.size >= MAX_PLAYERS - 1) {
         conn.on('open', () => conn.close());
         return;
       }
@@ -104,19 +108,65 @@ export class NetPeer {
         // Force raw binary mode on host side to match guest's serialization: 'raw'
         (conn as any).serialization = 'raw';
 
-        const remote: RemotePlayer = {
-          id: conn.peer,
-          conn,
-          buffer: [],
-          name: conn.metadata?.name || 'Racer',
-          carId: conn.metadata?.carId || '',
-          rtt: 0,
-          ready: false,
-        };
-        this.connections.set(conn.peer, remote);
-        this.lastSeen.set(conn.peer, performance.now());
-        this.onPlayerJoin(conn.peer, remote.name);
+        // Bug #13 fix: Check if this is a reconnecting peer (by peer ID or by name)
+        let existingId: string | null = null;
+        if (this.pendingReconnect.has(conn.peer)) {
+          existingId = conn.peer;
+        } else {
+          // New PeerJS ID but same player name — match by metadata
+          for (const [id, info] of this.pendingReconnect) {
+            if (info.name === conn.metadata?.name) {
+              existingId = id;
+              break;
+            }
+          }
+        }
 
+        if (existingId) {
+          // Reconnecting peer — update existing entry with new connection
+          const existing = this.connections.get(existingId);
+          if (existing) {
+            existing.conn = conn;
+            existing.buffer = []; // reset interpolation buffer
+          } else {
+            // Entry was already cleaned up — re-create it
+            this.connections.set(conn.peer, {
+              id: conn.peer,
+              conn,
+              buffer: [],
+              name: conn.metadata?.name || 'Racer',
+              carId: conn.metadata?.carId || '',
+              rtt: 0,
+              ready: false,
+            });
+          }
+          // If peer ID changed, migrate the entry
+          if (existingId !== conn.peer && this.connections.has(existingId)) {
+            const entry = this.connections.get(existingId)!;
+            entry.id = conn.peer;
+            entry.conn = conn;
+            this.connections.delete(existingId);
+            this.connections.set(conn.peer, entry);
+          }
+          this.lastSeen.set(conn.peer, performance.now());
+          this.handleReconnection(existingId);
+        } else {
+          // Brand new peer
+          const remote: RemotePlayer = {
+            id: conn.peer,
+            conn,
+            buffer: [],
+            name: conn.metadata?.name || 'Racer',
+            carId: conn.metadata?.carId || '',
+            rtt: 0,
+            ready: false,
+          };
+          this.connections.set(conn.peer, remote);
+          this.lastSeen.set(conn.peer, performance.now());
+          this.onPlayerJoin(conn.peer, remote.name);
+        }
+
+        // Always wire data/close handlers on the new connection object
         conn.on('data', (data) => this.handleData(conn.peer, data));
         conn.on('close', () => this.handleGracefulDisconnect(conn.peer));
       });
@@ -213,7 +263,7 @@ export class NetPeer {
     const normHeading = Number.isFinite(state.heading)
       ? ((state.heading % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
       : 0;
-    view.setUint16(9, Math.round(normHeading * 10000), true);
+    view.setUint16(9, Math.min(65535, Math.round(normHeading * 10000)), true);
     view.setFloat32(11, state.speed, true);
     view.setUint8(15, Math.round(state.dmgFront ?? 100));
     view.setUint8(16, Math.round(state.dmgRear ?? 100));
@@ -356,7 +406,7 @@ export class NetPeer {
         const snap: StateSnapshot = {
           x: view.getFloat32(1, true),
           z: view.getFloat32(5, true),
-          heading: view.getUint16(9, true) / 10000,
+          heading: Math.min(view.getUint16(9, true), 62832) / 10000,
           speed: view.getFloat32(11, true),
           time: performance.now(),
           dmgFront: data.byteLength >= 19 ? view.getUint8(15) : undefined,
@@ -411,7 +461,7 @@ export class NetPeer {
         const snap: StateSnapshot = {
           x: view.getFloat32(offset, true),
           z: view.getFloat32(offset + 4, true),
-          heading: view.getUint16(offset + 8, true) / 10000,
+          heading: Math.min(view.getUint16(offset + 8, true), 62832) / 10000,
           speed: view.getFloat32(offset + 10, true),
           time: performance.now(),
           dmgFront: data.byteLength >= offset + 18 ? view.getUint8(offset + 14) : undefined,

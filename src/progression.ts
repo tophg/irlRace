@@ -621,8 +621,3 @@ export function spendSkillPoint(perkId: string): boolean {
   return true;
 }
 
-/** Get total perk levels invested (for display). */
-function getTotalPerkLevel(): number {
-  return Object.values(current.perkLevels).reduce((a, b) => a + b, 0);
-}
-

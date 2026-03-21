@@ -142,9 +142,12 @@ export function updateCheckpointsAndHUD(
     if (_confirmedRank <= 0 && myRank > 0) _confirmedRank = myRank;
   }
 
+  // Bug #9 fix: Use spline tangent at car's current position on the track,
+  // not the next checkpoint's tangent (which may point in a very different direction).
+  const localTangent = G.trackData.spline.getTangentAt(localT).normalize();
   const wrongWay = G.raceEngine.isWrongWay(
     G.playerVehicle.heading,
-    G.trackData.checkpoints[progress?.checkpointIndex ?? 0]?.tangent ?? G._defaultTangent,
+    localTangent,
   );
   uiOverlay.classList.toggle('wrong-way-flash', wrongWay);
 

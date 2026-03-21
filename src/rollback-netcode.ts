@@ -2,15 +2,21 @@
  *
  * Input-based rollback synchronization for multiplayer racing.
  *
- * Instead of broadcasting positions every 50ms, each peer broadcasts
- * its inputs every physics frame. The local simulation predicts remote
- * vehicles using their last-known inputs. When a delayed input arrives
- * that contradicts the prediction, the system:
- *   1. Rolls back to the confirmed state snapshot
- *   2. Replays all frames with corrected inputs
- *   3. Fast-forwards to the present
+ * CURRENT STATUS: Scaffolded but NOT active.
+ * Multiplayer currently uses state-broadcast interpolation (net-peer.ts)
+ * as the primary synchronization method. The input broadcast, recording,
+ * and prediction infrastructure below is functional but the actual
+ * rollback+resimulation step (onRollback callback) is intentionally
+ * not wired — activating it requires the game loop to support
+ * multi-frame resimulation of all vehicles, which is non-trivial
+ * with the current physics architecture (weather, barriers, AI).
  *
- * ─── Key Design Choices ───
+ * When ready to activate:
+ *   1. Wire rollbackManager.onRollback in game-loop.ts
+ *   2. Implement resimulation: restore snapshot → replay N frames → fast-forward
+ *   3. Ensure all physics dependencies (barriers, weather) are deterministic
+ *
+ * ─── Design ───
  * • Ring buffers (128 frames) for inputs and snapshots
  * • Last-input prediction (assume remote repeats their last input)
  * • Max rollback window: 8 frames (~133ms at 60Hz)
