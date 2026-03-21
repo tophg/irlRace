@@ -165,15 +165,24 @@ function buildTrackAttempt(seed: number): TrackAttemptResult {
 // P2-A: CONVEX HULL SEED GENERATION
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/** Generate N random 2D seed points → convex hull → winding-order vertices. */
+/** Generate N random 2D seed points → convex hull → winding-order vertices.
+ * Uses elliptical scatter to break circular symmetry. */
 function generateHullPoints(rng: () => number): THREE.Vector2[] {
   const N = 8 + Math.floor(rng() * 5); // 8–12 seed points
+  // Random elliptical bias (2:1 aspect ratio) at a random angle
+  // prevents all-equidistant points that produce near-circles
+  const angle = rng() * Math.PI;
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const scaleX = 1.0 + rng() * 1.5; // 1.0–2.5× stretch
+  const scaleY = 1.0;
   const pts: THREE.Vector2[] = [];
   for (let i = 0; i < N; i++) {
-    pts.push(new THREE.Vector2(
-      (rng() - 0.5) * 300,
-      (rng() - 0.5) * 300,
-    ));
+    let x = (rng() - 0.5) * 300;
+    let z = (rng() - 0.5) * 300;
+    // Apply rotated elliptical stretch
+    const rx = x * cos - z * sin;
+    const rz = x * sin + z * cos;
+    pts.push(new THREE.Vector2(rx * scaleX, rz * scaleY));
   }
   return convexHull(pts);
 }
@@ -214,20 +223,31 @@ function crossProduct(o: THREE.Vector2, a: THREE.Vector2, b: THREE.Vector2): num
   return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
 }
 
-/** Insert 1-3 "dent" points per hull edge to create chicanes. */
+/** Insert dent points to create chicanes. Guarantees at least 3 chicanes
+ * to prevent circular/oval tracks with no braking zones. */
 function addChicanes(hull: THREE.Vector2[], rng: () => number): THREE.Vector2[] {
   const result: THREE.Vector2[] = [];
-  // Bug #12 fix: hoist centroid outside loop (was recomputed per dent)
   const centroid = hull.reduce((acc, p) => acc.add(p.clone()), new THREE.Vector2()).divideScalar(hull.length);
+
+  // Compute edge lengths and sort to find the longest ones
+  const edges: { idx: number; len: number }[] = [];
+  for (let i = 0; i < hull.length; i++) {
+    const next = hull[(i + 1) % hull.length];
+    edges.push({ idx: i, len: hull[i].distanceTo(next) });
+  }
+  // Mark the 3 longest edges as forced (always get chicanes)
+  const sorted = [...edges].sort((a, b) => b.len - a.len);
+  const forcedEdges = new Set(sorted.slice(0, 3).map(e => e.idx));
 
   for (let i = 0; i < hull.length; i++) {
     result.push(hull[i].clone());
 
     const next = hull[(i + 1) % hull.length];
     const edgeLen = hull[i].distanceTo(next);
+    const isForced = forcedEdges.has(i);
 
-    // Only add chicanes on edges > 60 units
-    if (edgeLen > 60 && rng() > 0.35) {
+    // Lower threshold (35 units) + forced edges always get chicanes
+    if ((edgeLen > 35 && rng() > 0.3) || isForced) {
       const numDents = 1 + Math.floor(rng() * 2); // 1–2 dents
       for (let d = 0; d < numDents; d++) {
         const t = 0.25 + rng() * 0.5; // midrange on the edge
