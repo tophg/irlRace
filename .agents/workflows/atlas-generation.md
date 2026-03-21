@@ -63,6 +63,7 @@ All scripts live in `scripts/` (NOT `/tmp/`). They require the `sharp` npm packa
 | `scripts/nb2-generate.mjs` | NB2 API wrapper (supports `--ref` for reference images) | `GEMINI_API_KEY=... node scripts/nb2-generate.mjs "<prompt>" <output.png> [--ref <ref.png>]` |
 | `scripts/gen-dc-facade-tiles.mjs` | Batch DC facade tile generator with ref feedback | `GEMINI_API_KEY=... node scripts/gen-dc-facade-tiles.mjs [diffuse|emissive|normal]` |
 | `scripts/gen-gaza-facade-tiles.mjs` | Batch Gaza facade tile generator with ref feedback | `GEMINI_API_KEY=... node scripts/gen-gaza-facade-tiles.mjs [diffuse|emissive|normal]` |
+| `scripts/gen-tehran-facade-tiles.mjs` | Batch Tehran facade tile generator with ref feedback | `GEMINI_API_KEY=... node scripts/gen-tehran-facade-tiles.mjs [diffuse|emissive|normal]` |
 | `scripts/stitch-atlas.mjs` | Stitch tiles → 4096×4096 diffuse atlas | `node scripts/stitch-atlas.mjs <tiles_dir> <output.png>` |
 | `scripts/gen-emissive-normal.mjs` | Generate emissive + normal from tiles | `node scripts/gen-emissive-normal.mjs <tiles_dir> <emissive.png> <normal.png>` |
 | `scripts/stitch-ground.mjs` | Stitch 8 ground tiles → 2048×256 | `node scripts/stitch-ground.mjs <tiles_dir> <output.png>` |
