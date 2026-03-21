@@ -413,7 +413,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     // Build a strip of quads at closely-spaced t-values around t=0,
     // Each cross-section conforms to the actual spline surface (slopes & banking).
     const STRIP_SAMPLES = 16;
-    const STRIP_T_RANGE = 0.008; // t range around 0 in each direction
+    const STRIP_T_RANGE = 0.004; // t range around 0 in each direction (thinner strip)
     const stripVerts: number[] = [];
     const stripUVs: number[] = [];
     const stripNormals: number[] = [];
@@ -428,7 +428,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     const stripDepth = pStart.distanceTo(pEnd);
     const roadWidth = ROAD_WIDTH;
     // Number of checker squares across the road
-    const CHECKER_COLS = 8;
+    const CHECKER_COLS = 4;
     // Each square should be physically square, so rows = depth / (width / cols)
     const squareSize = roadWidth / CHECKER_COLS;
     const CHECKER_ROWS = Math.max(1, Math.round(stripDepth / squareSize));
@@ -446,7 +446,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
       // Collect cross-section indices near the start (both ends of the loop wrap to t=0)
       // Road mesh: index 0 = t≈0, index N-1 = t≈1 (wraps back)
-      const STRIP_HALF = 3; // cross-sections on each side of t=0
+      const STRIP_HALF = 2; // cross-sections on each side of t=0
       const csIndices: number[] = [];
       for (let k = totalCrossSections - STRIP_HALF; k < totalCrossSections; k++) {
         csIndices.push(k);
