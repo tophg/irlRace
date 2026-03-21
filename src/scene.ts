@@ -52,9 +52,15 @@ export let _dftTexture: THREE.Texture = (() => {
   return t;
 })();
 export let _groundAtlasTexture: THREE.Texture = (() => {
-  // Pre-size at 4×4 with alpha=0 so the shader falls back to uGroundColor
-  // via mix(groundColor, atlas, atlas.a). Alpha=0 → 100% groundColor.
-  const t = new THREE.DataTexture(new Uint8Array(4 * 4 * 4).fill(0), 4, 4, THREE.RGBAFormat);
+  // Pre-size at 2048×256 (matching actual atlas dimensions) so the GPU
+  // backing texture never needs resizing. Alpha=0 → shader falls back
+  // to uGroundColor via mix(groundColor, atlas, atlas.a).
+  const W = 2048, H = 256;
+  const t = new THREE.DataTexture(new Uint8Array(W * H * 4).fill(0), W, H, THREE.RGBAFormat);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
   t.needsUpdate = true;
   return t;
 })();
@@ -1152,7 +1158,7 @@ export function applyEnvironment(preset: EnvironmentPreset) {
   } else {
     // No atlas for this environment — reset to transparent so groundColor shows
     const dt = _groundAtlasTexture as THREE.DataTexture;
-    dt.image = { data: new Uint8Array(4 * 4 * 4).fill(0), width: 4, height: 4 };
+    dt.image = { data: new Uint8Array(2048 * 256 * 4).fill(0), width: 2048, height: 256 };
     dt.needsUpdate = true;
     if (groundMesh) (groundMesh.material as MeshStandardNodeMaterial).needsUpdate = true;
   }
