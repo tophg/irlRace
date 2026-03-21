@@ -134,8 +134,99 @@ done
 # Expected: diffuse/emissive/normal = 4096×4096, mobile = 1024×1024
 ```
 
-### 9. Generate ground atlas
-Follow the `/generate-ground-atlas` workflow to create 8 ground tiles and stitch into `public/ground/ground_atlas_{env}.png` (2048×256).
+### 9. Generate ground atlas (8-tile strip, 2048×256)
+
+The ground shader samples 4 distance zones × 2 variants per zone. Output: `public/ground/ground_atlas_{env}.png` (2048×256).
+
+#### Ground Atlas Layout
+
+```
+| Shoulder A | Shoulder B | Urban A | Urban B | Open A | Open B | Far A | Far B |
+|    0–8m    |    0–8m    |  8–20m  |  8–20m  | 20–60m | 20–60m |  60m+ |  60m+ |
+```
+
+Each tile is 256×256 in the final atlas. `tw = 0.125 = 1/8` in the TSL shader (`scene.ts:937`).
+
+#### Zone Descriptions
+
+| Zone | Content | Detail Level |
+|------|---------|-------------|
+| **Shoulder** (0–8m) | Paved area near road — concrete, asphalt, curb debris | High detail, urban materials |
+| **Urban** (8–20m) | Transitional — broken pavers, packed dirt, rubble, weeds | Medium detail, mixed materials |
+| **Open** (20–60m) | Environment-specific terrain — sand, grass, gravel, scrub | Medium detail, natural |
+| **Far** (60m+) | Distant ground — sparse, faded, blends toward fog | Low detail, minimal features |
+
+#### Generation Order
+
+Generate tiles **sequentially with cross-referencing** for color continuity. Feed previous tile as reference via `ImagePaths`.
+
+1. **Shoulder A** — base tile, establishes the color palette
+2. **Shoulder B** — reference: Shoulder A → "same palette, different pattern"
+3. **Urban A** — reference: Shoulder A → "same palette, more earth, less concrete"
+4. **Urban B** — reference: Urban A → "same palette, different arrangement"
+5. **Open A** — reference: Urban A → "same palette, more natural, less rubble"
+6. **Open B** — reference: Open A → "same palette, different arrangement"
+7. **Far A** — reference: Open A → "same color, minimal detail" (may fail with ref image — try without)
+8. **Far B** — reference: Far A → "same color, different ripple pattern"
+
+#### Ground Prompt Template
+
+```
+Seamless tileable top-down ground texture, aerial drone view looking straight down.
+{ZONE_DESCRIPTION}.
+{ENVIRONMENT_STYLE} — warm/cool earth tones matching {PALETTE_DESCRIPTION}.
+NO horizon, NO sky, NO perspective.
+Flat even lighting from directly above.
+Photorealistic texture map.
+```
+
+#### Ground Variant Prompt (B tiles)
+
+```
+Create a variant of this ground texture with the SAME color palette and style
+— but a DIFFERENT {pattern/arrangement/detail}.
+Keep the same {specific colors}. Must look like the same environment.
+Seamless tileable, top-down aerial view, flat lighting, no perspective.
+```
+
+#### Ground Tile Quality Rules
+1. **NO distinct features** — avoid tumbleweeds, large slabs, prominent clusters. These expose tiling repetition.
+2. **Uniform, nondescript** — fine cracks, evenly scattered gravel, uniform sand. Never a single dominant feature.
+3. **Generic over specific** — 100 tiny pebbles tile better than 3 large rocks.
+4. **Keywords that work**: "uniform distribution", "completely generic", "no focal points", "no unique features"
+5. **Keywords to AVOID**: "scattered large", "prominent", "distinct", named objects like "tumbleweed"
+
+#### Stitch Ground Atlas
+
+Save generated tiles as `t0.png` through `t7.png`, then stitch. The stitch script (`scripts/stitch-ground.mjs`) composites 8 tiles horizontally. Update the tile paths inside the script before running.
+
+// turbo
+```bash
+cd /Users/devnull/irlRace && node scripts/stitch-ground.mjs
+# Output: public/ground/ground_atlas_{env}.png (2048×256)
+```
+
+Alternatively, use a quick inline stitch (replace paths as needed):
+```bash
+cd /Users/devnull/irlRace && node -e "
+const sharp = require('sharp');
+const TILE = 256;
+const tiles = ['/tmp/ground_tiles/t0.png','/tmp/ground_tiles/t1.png','/tmp/ground_tiles/t2.png','/tmp/ground_tiles/t3.png','/tmp/ground_tiles/t4.png','/tmp/ground_tiles/t5.png','/tmp/ground_tiles/t6.png','/tmp/ground_tiles/t7.png'];
+(async()=>{
+  const composites=[];
+  for(let i=0;i<8;i++){const buf=await sharp(tiles[i]).resize(TILE,TILE).toBuffer();composites.push({input:buf,left:i*TILE,top:0});}
+  await sharp({create:{width:2048,height:256,channels:4,background:{r:0,g:0,b:0,alpha:255}}}).composite(composites).png().toFile('public/ground/ground_atlas_{env}.png');
+  console.log('done');
+})();
+"
+```
+
+#### Ground Atlas Registration
+
+Add to `GROUND_ATLAS` in `scene.ts` (~line 56):
+```typescript
+'{Environment Name}': '/ground/ground_atlas_{env}.png',
+```
 
 ### 10. Wire into codebase (3 files)
 
