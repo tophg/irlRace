@@ -203,7 +203,9 @@ export class RaceEngine {
     // Detect wrap-around: racer passed all checkpoints (cpIndex reset to 0)
     // and rawT has crossed from end of track to start — they're effectively
     // on the next lap but the lapIndex hasn't incremented yet.
-    if (r.checkpointIndex === 0 && r.rawT < 0.15 && r.lapIndex < this.totalLaps) {
+    // Threshold 0.35 covers the window between rawT wrapping and checkpoint 0
+    // actually triggering, even at low framerates or high speeds.
+    if (r.checkpointIndex === 0 && r.rawT < 0.35 && r.lapIndex < this.totalLaps) {
       effectiveLap += 1;
     }
 

@@ -22,11 +22,13 @@ let _wrongWayBeepTimer = 0;
 let _pendingRank = 0;         // candidate rank waiting for confirmation
 let _pendingRankFrames = 0;   // consecutive frames the candidate rank has held
 const RANK_HYSTERESIS = 30;   // require 30 stable frames (~500ms at 60fps)
+let _confirmedRank = 1;       // last hysteresis-confirmed rank (for HUD display)
 
 export function resetRaceEventsState() {
   _wrongWayBeepTimer = 0;
   _pendingRank = 0;
   _pendingRankFrames = 0;
+  _confirmedRank = 1;
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -131,6 +133,7 @@ export function updateCheckpointsAndHUD(
         racerId: 'local', oldRank: G.prevMyRank, newRank: myRank, gained,
       });
       G.prevMyRank = myRank;
+      _confirmedRank = myRank;
       _pendingRankFrames = 0;
     }
   } else {
@@ -160,7 +163,7 @@ export function updateCheckpointsAndHUD(
     G.playerVehicle.speed,
     progress?.lapIndex ?? 0,
     G.totalLaps,
-    myRank,
+    _confirmedRank,
     rankings.length,
     wrongWay,
     G.raceEngine.getElapsedTime() * 1000,
