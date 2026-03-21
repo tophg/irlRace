@@ -72,6 +72,7 @@ const GROUND_ATLAS: Record<string, string> = {
   'Gaza City':       '/ground/ground_atlas_gaza.png',
   'Shanghai':        '/ground/ground_atlas_shanghai.png',
   'Kiev':            '/ground/ground_atlas_kiev.png',
+  'Montclair':        '/ground/ground_atlas_montclair.png',
 };
 
 // ── Scenery Theme (controls visual identity of track-side props) ──
