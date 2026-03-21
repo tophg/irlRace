@@ -1157,18 +1157,17 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
     // (tileGroups no longer needed — bucketing uses height only)
 
-    // Material with emissive window glow + per-instance atlas column shader
+    // Material with emissive window glow + normal map + AO shader
     const windowGlow = T.windowLitChance ?? 0.5;
-    const columnWidth = 1.0 / ATLAS_COLS; // 0.125 for 8-column atlas
 
     // Load companion normal map atlas (same grid layout as diffuse)
     const normalPath = atlasPath.replace('.png', '_normal.png');
     const normalTexture = new THREE.TextureLoader().load(normalPath);
     normalTexture.wrapS = THREE.RepeatWrapping;
     normalTexture.wrapT = THREE.RepeatWrapping;
-    normalTexture.colorSpace = THREE.LinearSRGBColorSpace; // normal maps are NOT sRGB
+    normalTexture.colorSpace = THREE.LinearSRGBColorSpace;
 
-    // Load companion emissive mask atlas (white=window glass, black=wall)
+    // Load companion emissive mask atlas (white=lit window, black=wall)
     const emissiveMaskPath = atlasPath.replace('.png', '_emissive.png');
     const emissiveMaskTexture = new THREE.TextureLoader().load(emissiveMaskPath);
     emissiveMaskTexture.wrapS = THREE.RepeatWrapping;
@@ -1187,12 +1186,11 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       emissiveIntensity: windowGlow * 0.3,
     });
 
-    // Shader injection: per-instance atlas column + AO banding + interior mapping
+    // Shader injection: AO banding + interior mapping
     buildingMat.onBeforeCompile = (shader) => {
-      shader.uniforms.colWidth = { value: columnWidth };
       shader.uniforms.windowMask = { value: emissiveMaskTexture };
 
-      // Vertex shader: pass atlasColumn, height, world position, and normal
+      // Vertex shader: pass height, world position, and normal
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `
           #include <common>
@@ -1207,148 +1205,95 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
           vWNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
         `);
 
-      // Fragment shader: atlas offset + AO + interior mapping
+      // Fragment shader: AO + emissive gating + interior mapping
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', `
           #include <common>
-          uniform float colWidth;
           uniform sampler2D windowMask;
           varying float vHeightFrac;
           varying vec3 vWPos;
           varying vec3 vWNormal;
 
-          // Simple hash for per-window interior color variation
           float hash21(vec2 p) {
             p = fract(p * vec2(123.34, 456.21));
             p += dot(p, p + 45.32);
             return fract(p.x * p.y);
           }
 
-          // Interior mapping: ray-cast into virtual room behind wall
           vec3 interiorColor(vec3 worldPos, vec3 viewDir, vec3 wallNormal) {
-            // Room grid: ~4m wide, ~3.5m tall rooms
-            float roomW = 4.0;
-            float roomH = 3.5;
-            float roomDepth = 3.0;
-
-            // Find position within current room cell
+            float roomW = 4.0; float roomH = 3.5; float roomDepth = 3.0;
             vec3 tangent = abs(wallNormal.y) > 0.9
               ? normalize(cross(wallNormal, vec3(1.0, 0.0, 0.0)))
               : normalize(cross(wallNormal, vec3(0.0, 1.0, 0.0)));
-            vec3 bitangent = cross(wallNormal, tangent);
-
             float u = dot(worldPos, tangent);
             float v = worldPos.y;
-
-            // Room cell coordinates
             vec2 roomCell = vec2(floor(u / roomW), floor(v / roomH));
             float roomU = fract(u / roomW);
             float roomV = fract(v / roomH);
-
-            // Ray direction in room space
             float dU = dot(viewDir, tangent);
             float dV = dot(viewDir, vec3(0.0, 1.0, 0.0));
             float dN = dot(viewDir, wallNormal);
-
-            // Only trace if looking into the wall (dN < 0)
             if (dN >= 0.0) return vec3(0.05);
-
-            // Find intersections with room walls
             float tBack = -roomDepth / dN;
             float tLeft = (dU > 0.0) ? ((1.0 - roomU) * roomW) / dU : (-roomU * roomW) / dU;
-            float tRight = (dU < 0.0) ? ((1.0 - roomU) * roomW) / -dU : (-roomU * roomW) / -dU;
             float tFloor = (-roomV * roomH) / dV;
             float tCeil = ((1.0 - roomV) * roomH) / dV;
-
             float tMin = tBack;
-            int hitFace = 0; // 0=back, 1=side, 2=floor, 3=ceiling
+            int hitFace = 0;
             if (tLeft > 0.0 && tLeft < tMin) { tMin = tLeft; hitFace = 1; }
             if (tFloor > 0.0 && tFloor < tMin) { tMin = tFloor; hitFace = 2; }
             if (tCeil > 0.0 && tCeil < tMin) { tMin = tCeil; hitFace = 3; }
-
-            // Per-room deterministic variation
             float roomHash = hash21(roomCell);
-
-            // Room interior colors based on which surface was hit
             vec3 backWall, sideWall, floorCol, ceilCol;
-
             if (roomHash < 0.3) {
-              // Warm lit office
-              backWall = vec3(0.85, 0.78, 0.65);
-              sideWall = vec3(0.75, 0.68, 0.55);
-              floorCol = vec3(0.45, 0.35, 0.25);
-              ceilCol  = vec3(0.92, 0.90, 0.85);
+              backWall = vec3(0.85, 0.78, 0.65); sideWall = vec3(0.75, 0.68, 0.55);
+              floorCol = vec3(0.45, 0.35, 0.25); ceilCol  = vec3(0.92, 0.90, 0.85);
             } else if (roomHash < 0.6) {
-              // Cool blue office
-              backWall = vec3(0.65, 0.72, 0.82);
-              sideWall = vec3(0.55, 0.62, 0.72);
-              floorCol = vec3(0.35, 0.35, 0.40);
-              ceilCol  = vec3(0.88, 0.90, 0.92);
+              backWall = vec3(0.65, 0.72, 0.82); sideWall = vec3(0.55, 0.62, 0.72);
+              floorCol = vec3(0.35, 0.35, 0.40); ceilCol  = vec3(0.88, 0.90, 0.92);
             } else if (roomHash < 0.8) {
-              // Dark empty room
-              backWall = vec3(0.15, 0.13, 0.12);
-              sideWall = vec3(0.12, 0.10, 0.09);
-              floorCol = vec3(0.08, 0.07, 0.06);
-              ceilCol  = vec3(0.18, 0.16, 0.15);
+              backWall = vec3(0.15, 0.13, 0.12); sideWall = vec3(0.12, 0.10, 0.09);
+              floorCol = vec3(0.08, 0.07, 0.06); ceilCol  = vec3(0.18, 0.16, 0.15);
             } else {
-              // Warm lamp glow
-              backWall = vec3(0.90, 0.75, 0.50);
-              sideWall = vec3(0.80, 0.65, 0.40);
-              floorCol = vec3(0.50, 0.38, 0.22);
-              ceilCol  = vec3(0.95, 0.90, 0.80);
+              backWall = vec3(0.90, 0.75, 0.50); sideWall = vec3(0.80, 0.65, 0.40);
+              floorCol = vec3(0.50, 0.38, 0.22); ceilCol  = vec3(0.95, 0.90, 0.80);
             }
-
             vec3 col;
             if (hitFace == 0) col = backWall;
             else if (hitFace == 1) col = sideWall;
             else if (hitFace == 2) col = floorCol;
             else col = ceilCol;
-
-            // Depth-based darkening (further = darker)
             float depth = tMin / (roomDepth * 2.0);
             col *= mix(1.0, 0.4, clamp(depth, 0.0, 1.0));
-
             return col;
           }
         `)
         .replace('#include <map_fragment>', `
           #ifdef USE_MAP
-            vec2 atlasUV = vMapUv;
-            vec4 sampledDiffuseColor = texture2D(map, atlasUV);
-
+            vec4 sampledDiffuseColor = texture2D(map, vMapUv);
             float camDist = length(vWPos - cameraPosition);
             float interiorFade = 1.0 - smoothstep(40.0, 60.0, camDist);
             bool isWallFace = abs(vWNormal.y) < 0.3;
             bool isMidZone = vHeightFrac > 0.15 && vHeightFrac < 0.85;
-
-            // Use dedicated emissive mask instead of fragile luminance detection
-            float maskVal = texture2D(windowMask, atlasUV).r;
-            if (interiorFade > 0.01 && isWallFace && isMidZone) {
-              if (maskVal > 0.5) {
-                vec3 viewDir = normalize(vWPos - cameraPosition);
-                vec3 roomCol = interiorColor(vWPos, viewDir, vWNormal);
-                sampledDiffuseColor.rgb = mix(sampledDiffuseColor.rgb, roomCol, interiorFade);
-              }
+            float maskVal = texture2D(windowMask, vMapUv).r;
+            if (interiorFade > 0.01 && isWallFace && isMidZone && maskVal > 0.5) {
+              vec3 viewDir = normalize(vWPos - cameraPosition);
+              vec3 roomCol = interiorColor(vWPos, viewDir, vWNormal);
+              sampledDiffuseColor.rgb = mix(sampledDiffuseColor.rgb, roomCol, interiorFade);
             }
-
             diffuseColor *= sampledDiffuseColor;
           #endif
         `)
         .replace('#include <emissivemap_fragment>', `
           #ifdef USE_EMISSIVEMAP
-            vec2 emUV = vEmissiveMapUv;
-            vec4 emissiveColor = texture2D(emissiveMap, emUV);
-
-            // Mask gates: white=window emissive, black=wall no emissive
+            vec4 emissiveColor = texture2D(emissiveMap, vEmissiveMapUv);
             float emCamDist = length(vWPos - cameraPosition);
             float emFade = 1.0 - smoothstep(60.0, 120.0, emCamDist);
             bool isEmWall = abs(vWNormal.y) < 0.3;
             bool isEmMid = vHeightFrac > 0.15 && vHeightFrac < 0.85;
             if (isEmWall && isEmMid && emissiveColor.r > 0.3) {
-              // Subtle warm window glow, distance-faded
               totalEmissiveRadiance *= vec3(1.0) * emFade;
             } else {
-              // Non-window area — kill emissive completely
               totalEmissiveRadiance = vec3(0.0);
             }
           #endif
@@ -1358,7 +1303,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         `);
     };
 
-    // Phase 4: anti-seam — limit mipmap interpolation to prevent tile bleeding
+    // Anti-seam — limit mipmap interpolation to prevent tile bleeding
     atlasTexture.minFilter = THREE.LinearMipmapNearestFilter;
     normalTexture.minFilter = THREE.LinearMipmapNearestFilter;
 
