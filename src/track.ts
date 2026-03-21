@@ -6,7 +6,7 @@ import { SplineBVH } from './bvh';
 import { buildRampGroup, placeRampsOnStraights } from './ramps';
 
 export const ROAD_WIDTH = 14;
-const BARRIER_HEIGHT = 1.8;
+const BARRIER_HEIGHT = 1.0;  // ~81cm real jersey barrier height
 export const BARRIER_THICKNESS = 0.4;
 const SPLINE_SAMPLES = (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) ? 200 : 400;
 const MIN_RADIUS = 18;      // tightest allowed corner
@@ -767,10 +767,10 @@ function buildBarrierMesh(
   const indices: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
-  const baseHalfW = ROAD_WIDTH / 2;  // flush with road edge
-  const topHalfW = ROAD_WIDTH / 2 - BARRIER_THICKNESS * 0.4; // slight inward taper at top
+  const baseHalfW = ROAD_WIDTH / 2 + BARRIER_THICKNESS * 0.5;  // base extends slightly beyond road edge
+  const topHalfW = ROAD_WIDTH / 2 - BARRIER_THICKNESS * 0.3;   // top tapers inward (jersey barrier profile)
   const totalLength = spline.getLength();
-  const tileRepeatLength = 4; // world units per texture repeat
+  const tileRepeatLength = 2; // world units per texture repeat
 
   for (let i = 0; i < points.length; i++) {
     const t = i / (points.length - 1);
@@ -788,15 +788,15 @@ function buildBarrierMesh(
     // Road-edge Y offset from banking
     const edgeYOffset = _meshBankedRight.y * (ROAD_WIDTH / 2) * side;
 
-    // Clamp base Y to ground plane so barriers stay visible above terrain
-    const baseY = Math.max(p.y + edgeYOffset, 0);
+    // Barrier base follows road surface exactly (no ground clamp — prevents hovering)
+    const baseY = p.y + edgeYOffset;
 
-    // Base (at road edge)
+    // Base (slightly outside road edge)
     const bx = p.x + _meshRight.x * baseHalfW * side;
     const bz = p.z + _meshRight.z * baseHalfW * side;
     vertices.push(bx, baseY, bz);
 
-    // Top (narrower — taper inward)
+    // Top (tapered inward — jersey barrier profile)
     const tx = p.x + _meshRight.x * topHalfW * side;
     const tz = p.z + _meshRight.z * topHalfW * side;
     vertices.push(tx, baseY + BARRIER_HEIGHT, tz);
