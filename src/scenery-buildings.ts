@@ -242,25 +242,41 @@ if (placements.length > 0) {
       axisU: [number, number, number],
       axisV: [number, number, number],
       isRoof: boolean,
+      faceW: number, faceD: number,
     ) => {
-      const baseIdx = positions.length / 3;
       const uvRect = isRoof ? roofTileUVs : bottomUVs;
-      for (let r = 0; r <= 1; r++) {
-        for (let c = 0; c <= 1; c++) {
-          positions.push(
-            origin[0] + axisU[0] * c + axisV[0] * r,
-            origin[1] + axisU[1] * c + axisV[1] * r,
-            origin[2] + axisU[2] * c + axisV[2] * r,
-          );
-          // Stretch the tile across the face (proper UV mapping)
-          uvs.push(
-            c === 0 ? uvRect.uMin : uvRect.uMax,
-            r === 0 ? uvRect.vMin : uvRect.vMax,
-          );
+      const tW = uvRect.uMax - uvRect.uMin;
+      const tH = uvRect.vMax - uvRect.vMin;
+
+      // Subdivide into a grid of tiles matching physical tile size
+      const tilesU = Math.max(1, Math.round(faceW / TILE_W));
+      const tilesV = Math.max(1, Math.round(faceD / TILE_W)); // square tiles
+
+      for (let tv = 0; tv < tilesV; tv++) {
+        for (let tu = 0; tu < tilesU; tu++) {
+          const baseIdx = positions.length / 3;
+          const u0 = tu / tilesU, u1 = (tu + 1) / tilesU;
+          const v0 = tv / tilesV, v1 = (tv + 1) / tilesV;
+          // 4 corners of this sub-tile
+          for (let r = 0; r <= 1; r++) {
+            for (let c = 0; c <= 1; c++) {
+              const u = c === 0 ? u0 : u1;
+              const v = r === 0 ? v0 : v1;
+              positions.push(
+                origin[0] + axisU[0] * u + axisV[0] * v,
+                origin[1] + axisU[1] * u + axisV[1] * v,
+                origin[2] + axisU[2] * u + axisV[2] * v,
+              );
+              uvs.push(
+                c === 0 ? uvRect.uMin : uvRect.uMax,
+                r === 0 ? uvRect.vMin : uvRect.vMax,
+              );
+            }
+          }
+          indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
+          indices.push(baseIdx + 1, baseIdx + 3, baseIdx + 2);
         }
       }
-      indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
-      indices.push(baseIdx + 1, baseIdx + 3, baseIdx + 2);
     };
 
     // addComposedFace: builds a wall face with ground/mid/roof zones
@@ -448,9 +464,9 @@ if (placements.length > 0) {
     // Left (-X) — plain walls at ground level
     addComposedFace([-0.5, -0.5, -0.5], [0, 0, 1], [0, 1, 0], boxD, boxH, sideGroundTile);
     // Top (+Y) — flat roof
-    addFlatFace([-0.5, 0.5, 0.5], [1, 0, 0], [0, 0, -1], true);
+    addFlatFace([-0.5, 0.5, 0.5], [1, 0, 0], [0, 0, -1], true, boxW, boxD);
     // Bottom (-Y)
-    addFlatFace([-0.5, -0.5, -0.5], [1, 0, 0], [0, 0, 1], false);
+    addFlatFace([-0.5, -0.5, -0.5], [1, 0, 0], [0, 0, 1], false, boxW, boxD);
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
