@@ -36,6 +36,7 @@ export default defineConfig({
     open: true,
   },
   build: {
+    chunkSizeWarningLimit: 2500,
     target: 'es2022',
     outDir: 'dist',
     rollupOptions: {
