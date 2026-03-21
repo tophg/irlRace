@@ -1037,26 +1037,19 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
         if (hTiles > 1 && hTiles % 2 === 0) hTiles++; // force odd
         const midVTiles = Math.max(1, Math.round(midH / TILE_H));
 
-        // Build per-column zones: symmetric window/wall-pier pattern
-        // Even columns (0,2,4...) = wall pier, odd columns (1,3...) = window
-        // Each column picks a different atlas variant for visual variety
+        // Symmetric column pattern: pier | window | pier | window | pier
+        // All tiles use the SAME atlas column (variant) for style consistency
+        // Window columns: per-tile random state from rows 0-3
+        // Wall pier columns: always row 4
+        const V = windowTile % ATLAS_COLS; // building's atlas column
         for (let col = 0; col < hTiles; col++) {
           const isWindowCol = (col % 2 === 1);
-          // Per-column hash: vary ROW (open/closed) but keep same atlas COLUMN (style)
-          const colHash = ((col * 31 + windowTile * 73 + Math.round(faceW) * 17) & 0xFF);
-          const colWindowRow = (colHash % 3 === 0) ? 1 : 0; // ~33% open, ~67% closed
-          const colWallRow = (colHash % 5 === 0) ? 3 : 2;   // ~20% detail, ~80% plain
-          // Keep the building's atlas column (from windowTile/wallPierTile) for style consistency
-          const baseCol = windowTile % ATLAS_COLS;
-          const colMidTile = isWindowCol
-            ? (colWindowRow * ATLAS_COLS + baseCol)
-            : (colWallRow * ATLAS_COLS + baseCol);
           const uStart = col / hTiles;
           const uEnd = (col + 1) / hTiles;
 
           // Ground zone for this column
           {
-            const zUV = tileUV(isWindowCol ? faceGroundTile : wallPierTile);
+            const zUV = tileUV(isWindowCol ? faceGroundTile : (4 * ATLAS_COLS + V));
             const zTW = zUV.uMax - zUV.uMin;
             const zTH = zUV.vMax - zUV.vMin;
             const baseIdx = positions.length / 3;
@@ -1080,10 +1073,19 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
           // Mid zone for this column (repeating vertically)
           if (midFrac > 0) {
-            const zUV = tileUV(colMidTile);
-            const zTW = zUV.uMax - zUV.uMin;
-            const zTH = zUV.vMax - zUV.vMin;
             for (let tileR = 0; tileR < midVTiles; tileR++) {
+              // Per-tile: pick window state (rows 0-3) or wall pier (row 4)
+              let tileMid: number;
+              if (isWindowCol) {
+                const tileHash = ((col * 31 + tileR * 53 + V * 73 + Math.round(faceW) * 17) & 0xFF);
+                const winRow = tileHash % 4; // randomly pick from 4 window states
+                tileMid = winRow * ATLAS_COLS + V;
+              } else {
+                tileMid = 4 * ATLAS_COLS + V; // wall pier, always row 4
+              }
+              const zUV = tileUV(tileMid);
+              const zTW = zUV.uMax - zUV.uMin;
+              const zTH = zUV.vMax - zUV.vMin;
               const baseIdx = positions.length / 3;
               for (let vr = 0; vr <= 1; vr++) {
                 for (let vc = 0; vc <= 1; vc++) {
@@ -1390,18 +1392,15 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
       // Parse height bucket from key for hashing
       const hBucketNum = Math.floor(avgH / HEIGHT_BUCKET_SIZE);
 
-      // Tile mapping: new 8-row atlas layout
-      // Symmetric column pattern: even cols = wall piers, odd cols = windows
-      // Use building hash for deterministic window state (open vs closed)
-      const buildingHash = ((variant * 73 + hBucketNum * 137) & 0xFF);
-      const windowRow  = (buildingHash % 2 === 0) ? 0 : 1; // Row 0=closed, Row 1=open
-      const wallRow    = (buildingHash % 3 === 0) ? 3 : 2;  // Row 2=plain, Row 3=detail
-      const windowTile     = windowRow * ATLAS_COLS + variant;
-      const wallPierTile   = wallRow * ATLAS_COLS + variant;
-      const groundTile     = 4 * ATLAS_COLS + variant; // Row 4 (storefronts)
-      const sideGroundTile = 5 * ATLAS_COLS + variant; // Row 5 (plain ground walls)
-      const roofCapTile    = 6 * ATLAS_COLS + variant; // Row 6 (cornice/trim)
-      const singleTile     = wallRow * ATLAS_COLS + variant; // Single-story = wall surface
+      // Tile mapping: V3 atlas layout (one column per building)
+      // Rows 0-3: window states (curtains/blinds/lit/dark)
+      // Row 4: wall pier, Row 5: ground, Row 6: cornice, Row 7: roof
+      const windowTile     = 0 * ATLAS_COLS + variant; // Row 0 (base window — actual row picked per-tile)
+      const wallPierTile   = 4 * ATLAS_COLS + variant; // Row 4 (wall pier)
+      const groundTile     = 5 * ATLAS_COLS + variant; // Row 5 (ground/storefront)
+      const sideGroundTile = 4 * ATLAS_COLS + variant; // Side ground = wall pier (row 4)
+      const roofCapTile    = 7 * ATLAS_COLS + variant; // Row 7 (roof cap)
+      const singleTile     = 4 * ATLAS_COLS + variant; // Single-story = wall surface
 
       // Pass physical dimensions — addComposedFace computes tile repeats internally
       const geo0 = buildComposedBox(groundTile, sideGroundTile, windowTile, wallPierTile, roofCapTile, singleTile, false, avgW, avgH, avgD);
