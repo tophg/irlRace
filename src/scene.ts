@@ -1123,6 +1123,42 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       ambientLights: ['window_spill'],
     },
   },
+
+  // ── Dublin — Georgian brick, perpetual overcast, pub-lit cobblestone streets ──
+  {
+    name: 'Dublin',
+    fogColor: 0x5a6a5a, fogDensity: 0.00025,
+    skyTop: 0x1a2a2a, skyBottom: 0x4a5a5a, skyHorizon: 0x6a7a6a,
+    skyMid: 0x3a4a3a, horizonGlow: 0x7a8a7a,
+    hemiSky: 0x88aa88, hemiGround: 0x3a4a2a, hemiIntensity: 0.9,
+    dirColor: 0xddddcc, dirIntensity: 1.2, dirPosition: [-40, 30, 50],
+    groundColor: 0x2a3a1a, exposure: 1.0,
+    scenery: {
+      roadColor: 0x3a3a38, roadRoughness: 0.65,
+      barrierColor: 0x667766,
+      buildingPalette: [0x7a4a3a, 0x8a5a4a, 0x6a3a2a, 0x9a6a5a, 0x5a3a2a, 0x8a6a4a],
+      buildingHeightRange: [4, 12],
+      windowLitChance: 0.7, windowColor: 0xffcc66,
+      treeTrunkColor: 0x332211, treeCanopyColor: 0x2a5a1a,
+      treeCanopyStyle: 'sphere', treeCount: 20,
+      billboardStyle: 'neon',
+      streetLightColor: 0xffdd88, streetLightDensity: 0.8,
+      groundTexture: 'grass',
+      kerbColor: 0x778877, shoulderColor: 0x445544,
+      mountainColor: 0x3a5a3a, mountainHeight: 1.5, cloudOpacity: 0.7, cloudTint: 0x6a7a6a,
+      fenceDensity: 0.6, rockDensity: 0.3, rockColor: 0x5a6a5a, bushDensity: 0.5,
+      spectatorDensity: 0.7,
+      accentProps: ['traffic_cone', 'dumpster', 'debris'],
+      roadDecals: ['puddle', 'manhole', 'lane_paint'],
+      atmosphericEffects: ['fog_wisps'],
+      buildingStyle: 'modern',
+      buildingModels: [],
+      buildingDensity: 1.8, buildingRowCount: 2, buildingGapChance: 0.1,
+      treeVariant: 'standard',
+      treeModels: ['oak.glb', 'walnut.glb', 'walnut_b.glb'],
+      ambientLights: ['window_spill', 'hazard_flasher'],
+    },
+  },
 ];
 
 function createGroundTexture(): THREE.CanvasTexture {
