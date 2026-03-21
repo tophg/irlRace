@@ -354,7 +354,7 @@ export function processRaceRewards(result: RaceResult): RewardBreakdown {
   // Add challenge rewards to breakdown for results-screen display
   breakdown.totalXP += challengeRewards.xp;
   breakdown.totalCredits += challengeRewards.cr;
-  // Note: updateChallengeProgress already stored progress; add rewards to current directly
+  // Apply challenge reward XP/credits to player (separate from race rewards at line 295-296)
   current.xp += challengeRewards.xp;
   current.credits += challengeRewards.cr;
 

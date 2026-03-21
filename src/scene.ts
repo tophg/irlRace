@@ -1007,9 +1007,15 @@ export async function initScene(container: HTMLElement) {
 }
 
 /** Update the baked distance field texture for ground zone blending.
- *  Call after track generation with the DFT from TrackData. */
+ *  Call after track generation with the DFT from TrackData.
+ *  Copies data into the existing texture object because TSL texture() nodes
+ *  capture the object reference at material creation time. */
 export function updateGroundDistanceField(dft: THREE.DataTexture) {
-  _dftTexture = dft;
+  // Copy image data into the existing texture (TSL holds a ref to the original object)
+  _dftTexture.image = dft.image;
+  _dftTexture.format = dft.format;
+  _dftTexture.type = dft.type;
+  _dftTexture.needsUpdate = true;
   // Force material rebuild with new DFT
   if (groundMesh) {
     (groundMesh.material as MeshStandardNodeMaterial).needsUpdate = true;
@@ -1057,13 +1063,20 @@ export function applyEnvironment(preset: EnvironmentPreset) {
   const atlasPath = GROUND_ATLAS[preset.name];
   if (atlasPath) {
     new THREE.TextureLoader().load(atlasPath, (tex) => {
-      tex.wrapS = THREE.RepeatWrapping;
-      tex.wrapT = THREE.RepeatWrapping;
-      tex.magFilter = THREE.LinearFilter;
-      tex.minFilter = THREE.LinearMipmapLinearFilter;
-      tex.anisotropy = 4;
-      _groundAtlasTexture = tex;
-      // Force material rebuild with new texture
+      // Copy loaded image into the existing texture object — TSL texture() nodes
+      // hold a reference to _groundAtlasTexture, so we must mutate it in-place.
+      _groundAtlasTexture.image = tex.image;
+      _groundAtlasTexture.format = tex.format;
+      _groundAtlasTexture.type = tex.type;
+      _groundAtlasTexture.wrapS = THREE.RepeatWrapping;
+      _groundAtlasTexture.wrapT = THREE.RepeatWrapping;
+      _groundAtlasTexture.magFilter = THREE.LinearFilter;
+      _groundAtlasTexture.minFilter = THREE.LinearMipmapLinearFilter;
+      _groundAtlasTexture.anisotropy = 4;
+      _groundAtlasTexture.needsUpdate = true;
+      // Dispose the loader's temp texture (we only needed its image data)
+      tex.dispose();
+      // Force material rebuild
       if (groundMesh) {
         (groundMesh.material as MeshStandardNodeMaterial).needsUpdate = true;
       }
