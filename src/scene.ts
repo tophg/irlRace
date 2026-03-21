@@ -1088,7 +1088,8 @@ export function getTerrainHeight(x: number, z: number): number {
   const h1 = Math.sin(x * 0.008) * Math.cos(z * 0.012) * 2.0;
   const h2 = Math.sin(x * 0.022 + 3.7) * Math.sin(z * 0.018 + 1.2) * 1.0;
   const h3 = Math.cos(x * 0.045 + 7.1) * Math.sin(z * 0.035 + 5.3) * 0.5;
-  return h1 + h2 + h3; // ground mesh at y=0, displacement is relative
+  // Ground mesh sits at y=-0.15 (z-fighting offset), so objects must match
+  return (h1 + h2 + h3) - 0.15;
 }
 
 /** Apply an environment preset to the scene. Call after initScene. */
