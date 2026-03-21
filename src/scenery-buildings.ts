@@ -103,6 +103,7 @@ const STYLE_ATLAS: Record<string, string> = {
   bamboo_lodge: '/buildings/facade_atlas_zermatt.png',  // reuse Zermatt's wood/stone
   shanghai:     '/buildings/facade_atlas_shanghai.png',
   nuuk:         '/buildings/facade_atlas_nuuk.png',
+  london:       '/buildings/facade_atlas_london.png',
 };
 
 // Forward-declare so KTX2 upgrade closures can reference the material

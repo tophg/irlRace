@@ -74,6 +74,7 @@ const GROUND_ATLAS: Record<string, string> = {
   'Kiev':            '/ground/ground_atlas_kiev.png',
   'Montclair':        '/ground/ground_atlas_montclair.png',
   'Nuuk':             '/ground/ground_atlas_nuuk.png',
+  'London':           '/ground/ground_atlas_london.png',
 };
 
 // ── Scenery Theme (controls visual identity of track-side props) ──
@@ -859,6 +860,42 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       treeModels: ['pine.glb', 'pine_b.glb'],
       ambientLights: ['hazard_flasher'],
       barrierStyle: 'metal_galvanized',
+    },
+  },
+
+  // ── London — Historic British capital, overcast skies, brick and stone architecture ──
+  {
+    name: 'London',
+    fogColor: 0x3a3a44, fogDensity: 0.00025,
+    skyTop: 0x1a1a28, skyBottom: 0x3a3a50, skyHorizon: 0x505060,
+    skyMid: 0x2a2a3c,
+    hemiSky: 0x8899aa, hemiGround: 0x445544, hemiIntensity: 0.9,
+    dirColor: 0xeeddcc, dirIntensity: 1.4, dirPosition: [45, 35, 55],
+    groundColor: 0x1a2a1a, exposure: 1.0,
+    scenery: {
+      roadColor: 0x2a2a30, roadRoughness: 0.6,
+      barrierColor: 0x555560,
+      buildingPalette: [0x3a3040, 0x443a48, 0x2a2832, 0x504850, 0x383540, 0x4a4850],
+      buildingHeightRange: [5, 18],
+      windowLitChance: 0.45, windowColor: 0xffdd88,
+      treeTrunkColor: 0x332211, treeCanopyColor: 0x1a3a1a,
+      treeCanopyStyle: 'sphere', treeCount: 35,
+      billboardStyle: 'minimal',
+      streetLightColor: 0xffddaa, streetLightDensity: 0.9,
+      groundTexture: 'grass',
+      kerbColor: 0x777788, shoulderColor: 0x333340,
+      mountainColor: 0x2a2a3a, mountainHeight: 0.5, cloudOpacity: 0.55, cloudTint: 0x3a3a50,
+      fenceDensity: 0.7, rockDensity: 0.2, rockColor: 0x555566, bushDensity: 0.5,
+      spectatorDensity: 0.8, accentProps: ['traffic_cone', 'debris'],
+      roadDecals: ['lane_paint', 'puddle', 'manhole'],
+      atmosphericEffects: ['fog_wisps'],
+      buildingStyle: 'london',
+      buildingModels: [],
+      buildingDensity: 1.8, buildingRowCount: 3, buildingGapChance: 0.1,
+      treeVariant: 'standard',
+      treeModels: ['red_maple.glb', 'red_maple_b.glb', 'oak.glb', 'walnut.glb'],
+      ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
     },
   },
 
