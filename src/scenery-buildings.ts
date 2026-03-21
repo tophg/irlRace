@@ -50,7 +50,14 @@ const STYLE_ATLAS: Record<string, string> = {
   weathered:    '/buildings/facade_atlas_weathered.png',
   chalet:       '/buildings/facade_atlas_zermatt.png',
   warehouse:    '/buildings/facade_atlas_warehouse.png',
-  levantine:    '/buildings/facade_atlas_gaza.png',
+  levantine:      '/buildings/facade_atlas_gaza.png',
+  mesopotamian:   '/buildings/facade_atlas_baghdad.png',
+  damascene:      '/buildings/facade_atlas_damascus.png',
+  levantine_med:  '/buildings/facade_atlas_beirut.png',
+  north_african:  '/buildings/facade_atlas_tripoli.png',
+  somali_coastal: '/buildings/facade_atlas_mogadishu.png',
+  persian:        '/buildings/facade_atlas_tehran.png',
+  nile_brick:     '/buildings/facade_atlas_khartoum.png',
   soviet_bloc:  '/buildings/facade_atlas_kiev.png',
   concrete:     '/buildings/facade_atlas_dc.png',       // reuse DC's concrete/glass
   bamboo_lodge: '/buildings/facade_atlas_zermatt.png',  // reuse Zermatt's wood/stone

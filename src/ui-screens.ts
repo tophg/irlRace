@@ -325,6 +325,14 @@ const ENV_FLAVOR: Record<string, string> = {
   'Shibuya': 'Neon-drenched megacity, wet reflections',
   'Zermatt': 'Frozen mountain pass, icy curves',
   'Gaza City': 'Dense Levantine streets, dusty Mediterranean dusk',
+  'Kiev': 'Soviet facades, golden domes, chestnut-lined boulevards',
+  'Baghdad': 'Ancient Mesopotamian capital, golden dust haze',
+  'Damascus': 'World\'s oldest city, ablaq stone and jasmine',
+  'Beirut': 'Mediterranean jewel, scarred resilience',
+  'Tripoli': 'North African coast, Italian-Ottoman crossroads',
+  'Mogadishu': 'Indian Ocean port, coral stone and sea breeze',
+  'Tehran': 'Persian capital, Alborz mountain backdrop',
+  'Khartoum': 'Nile confluence, red brick and white dust',
 };
 
 const ENV_EMOJI: Record<string, string> = {
@@ -335,6 +343,14 @@ const ENV_EMOJI: Record<string, string> = {
   'Shibuya': '🌆',
   'Zermatt': '🏔️',
   'Gaza City': '🕌',
+  'Kiev': '🇺🇦',
+  'Baghdad': '🏻',
+  'Damascus': '🕌',
+  'Beirut': '🌊',
+  'Tripoli': '🏠',
+  'Mogadishu': '☀️',
+  'Tehran': '⛰️',
+  'Khartoum': '🏜️',
 };
 
 // Preview state (Canvas 2D gradient)
