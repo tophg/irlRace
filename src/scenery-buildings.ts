@@ -231,8 +231,10 @@ if (placements.length > 0) {
     const uvs: number[] = [];
     const indices: number[] = [];
 
-    // Roof UV (flat top face) — uses roof cap tile
-    const roofUVs = tileUV(roofCapTile);
+    // Roof UV — stretch wall pier tile (Row 1) across flat top for concrete/stucco look
+    const roofTileUVs = tileUV(wallPierTile);
+    // Bottom face — single-point sample from roof cap (not visible)
+    const bottomUVs = tileUV(roofCapTile);
 
     const addFlatFace = (
       origin: [number, number, number],
@@ -241,6 +243,7 @@ if (placements.length > 0) {
       isRoof: boolean,
     ) => {
       const baseIdx = positions.length / 3;
+      const uvRect = isRoof ? roofTileUVs : bottomUVs;
       for (let r = 0; r <= 1; r++) {
         for (let c = 0; c <= 1; c++) {
           positions.push(
@@ -248,11 +251,11 @@ if (placements.length > 0) {
             origin[1] + axisU[1] * c + axisV[1] * r,
             origin[2] + axisU[2] * c + axisV[2] * r,
           );
-          if (isRoof) {
-            uvs.push(roofUVs.uMin, roofUVs.vMin);
-          } else {
-            uvs.push(roofUVs.uMin, roofUVs.vMin);
-          }
+          // Stretch the tile across the face (proper UV mapping)
+          uvs.push(
+            c === 0 ? uvRect.uMin : uvRect.uMax,
+            r === 0 ? uvRect.vMin : uvRect.vMax,
+          );
         }
       }
       indices.push(baseIdx, baseIdx + 1, baseIdx + 2);
