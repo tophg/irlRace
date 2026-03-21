@@ -767,8 +767,8 @@ function buildBarrierMesh(
   const indices: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
-  const baseHalfW = ROAD_WIDTH / 2 + BARRIER_THICKNESS;
-  const topHalfW = ROAD_WIDTH / 2 + BARRIER_THICKNESS * 0.6; // slight inward taper
+  const baseHalfW = ROAD_WIDTH / 2;  // flush with road edge
+  const topHalfW = ROAD_WIDTH / 2 - BARRIER_THICKNESS * 0.4; // slight inward taper at top
   const totalLength = spline.getLength();
   const tileRepeatLength = 4; // world units per texture repeat
 
@@ -788,15 +788,18 @@ function buildBarrierMesh(
     // Road-edge Y offset from banking
     const edgeYOffset = _meshBankedRight.y * (ROAD_WIDTH / 2) * side;
 
-    // Base (wider)
+    // Clamp base Y to ground plane so barriers stay visible above terrain
+    const baseY = Math.max(p.y + edgeYOffset, 0);
+
+    // Base (at road edge)
     const bx = p.x + _meshRight.x * baseHalfW * side;
     const bz = p.z + _meshRight.z * baseHalfW * side;
-    vertices.push(bx, p.y + edgeYOffset, bz);
+    vertices.push(bx, baseY, bz);
 
     // Top (narrower — taper inward)
     const tx = p.x + _meshRight.x * topHalfW * side;
     const tz = p.z + _meshRight.z * topHalfW * side;
-    vertices.push(tx, p.y + edgeYOffset + BARRIER_HEIGHT, tz);
+    vertices.push(tx, baseY + BARRIER_HEIGHT, tz);
 
     const nx = -_meshRight.x * side;
     const nz = -_meshRight.z * side;
