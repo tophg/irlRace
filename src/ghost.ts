@@ -165,9 +165,10 @@ export function updateGhostPlayback() {
   const sampleInterval = 1000 / SAMPLE_RATE;
   const totalDuration = ghostData.snapshots.length * sampleInterval;
 
-  const t = Math.min(elapsed, totalDuration);
-  const idx = Math.floor(t / sampleInterval);
-  const frac = (t / sampleInterval) - idx;
+  // Loop: wrap elapsed time around total duration
+  const loopedElapsed = elapsed % totalDuration;
+  const idx = Math.floor(loopedElapsed / sampleInterval);
+  const frac = (loopedElapsed / sampleInterval) - idx;
 
   const snaps = ghostData.snapshots;
   if (idx >= snaps.length) return;
@@ -186,22 +187,16 @@ export function updateGhostPlayback() {
   if (dh < -Math.PI) dh += Math.PI * 2;
   ghostMesh.rotation.y = a.heading + dh * frac;
 
-  // Fade out slightly when finished rather than looping infinitely
-  if (elapsed > totalDuration) {
-    const fadeOutDuration = 2000; // ms
-    const fadeFrac = Math.min((elapsed - totalDuration) / fadeOutDuration, 1);
-    const targetOpacity = 0.3 * (1 - fadeFrac);
-    ghostMesh.traverse((child) => {
-      if ((child as THREE.Mesh).isMesh) {
-        const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
-        mat.opacity = targetOpacity;
-      }
-    });
-    // Stop processing once fully faded — prevents invisible mesh from consuming traversal
-    if (fadeFrac >= 1) {
-      playbackActive = false;
+  // Subtle opacity pulse at loop boundary (brief flash to indicate restart)
+  const nearEnd = totalDuration - loopedElapsed < 200; // last 200ms
+  const nearStart = loopedElapsed < 200; // first 200ms
+  const targetOpacity = (nearEnd || nearStart) ? 0.15 : 0.3;
+  ghostMesh.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) {
+      const mat = (child as THREE.Mesh).material as THREE.MeshStandardMaterial;
+      mat.opacity = targetOpacity;
     }
-  }
+  });
 }
 
 /** Get the ghost's best lap time formatted string. */

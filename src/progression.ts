@@ -51,9 +51,11 @@ function cumulativeXpForLevel(level: number): number {
 function levelFromXp(xp: number): number {
   let level = 1;
   let remaining = xp;
-  while (remaining >= xpForLevel(level)) {
-    remaining -= xpForLevel(level);
+  let needed = xpForLevel(level);
+  while (remaining >= needed) {
+    remaining -= needed;
     level++;
+    needed = xpForLevel(level);
   }
   return level;
 }
