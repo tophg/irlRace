@@ -68,6 +68,7 @@ export let _groundAtlasTexture: THREE.Texture = (() => {
 // Ground atlas paths per environment name
 const GROUND_ATLAS: Record<string, string> = {
   'Washington D.C.': '/ground/ground_atlas_dc.png',
+  'Baghdad':         '/ground/ground_atlas_baghdad.png',
   'Gaza City':       '/ground/ground_atlas_gaza.png',
   'Shanghai':        '/ground/ground_atlas_shanghai.png',
   'Kiev':            '/ground/ground_atlas_kiev.png',
