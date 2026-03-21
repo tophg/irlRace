@@ -64,12 +64,14 @@ const STYLE_ATLAS: Record<string, string> = {
 };
 
 const styleName = T.buildingStyle ?? 'modern';
-const atlasPath = STYLE_ATLAS[styleName] ?? '/buildings/facade_atlas_dc.png';
+const atlasPathFull = STYLE_ATLAS[styleName] ?? '/buildings/facade_atlas_dc.png';
+// Mobile: load pre-downscaled 1024px atlas (saves ~48MB GPU per texture)
+const atlasPath = isMobile ? atlasPathFull.replace('.png', '_mobile.png') : atlasPathFull;
 const atlasTexture = new THREE.TextureLoader().load(atlasPath);
 atlasTexture.wrapS = THREE.RepeatWrapping;
 atlasTexture.wrapT = THREE.RepeatWrapping;
 atlasTexture.colorSpace = THREE.SRGBColorSpace;
-atlasTexture.anisotropy = 16; // max anisotropy for sharper facades at oblique angles
+atlasTexture.anisotropy = isMobile ? 4 : 16;
 // Atlas layout (8×5 grid):
 //   Row 0: Window (single style per column)
 //   Row 1: Wall pier (windowless wall surfaces)
@@ -459,154 +461,170 @@ if (placements.length > 0) {
   // Material with emissive window glow + normal map + AO shader
   const windowGlow = T.windowLitChance ?? 0.5;
 
-  // Load companion normal map atlas (same grid layout as diffuse)
-  const normalPath = atlasPath.replace('.png', '_normal.png');
-  const normalTexture = new THREE.TextureLoader().load(normalPath);
-  normalTexture.wrapS = THREE.RepeatWrapping;
-  normalTexture.wrapT = THREE.RepeatWrapping;
-  normalTexture.colorSpace = THREE.LinearSRGBColorSpace;
+  let buildingMat: THREE.MeshStandardMaterial;
 
-  // Load companion emissive mask atlas (white=lit window, black=wall)
-  const emissiveMaskPath = atlasPath.replace('.png', '_emissive.png');
-  const emissiveMaskTexture = new THREE.TextureLoader().load(emissiveMaskPath);
-  emissiveMaskTexture.wrapS = THREE.RepeatWrapping;
-  emissiveMaskTexture.wrapT = THREE.RepeatWrapping;
-  emissiveMaskTexture.colorSpace = THREE.LinearSRGBColorSpace;
-  emissiveMaskTexture.minFilter = THREE.LinearMipmapNearestFilter;
+  if (isMobile) {
+    // ── Mobile: simple material — no normal map, no emissive, no shaders ──
+    // Saves ~128MB GPU (normal + emissive textures) + avoids shader compilation
+    buildingMat = new THREE.MeshStandardMaterial({
+      map: atlasTexture,
+      roughness: 0.75,
+      metalness: 0.15,
+      emissive: new THREE.Color(T.windowColor ?? 0xffcc66),
+      emissiveIntensity: windowGlow * 0.15, // subtle baked glow without mask
+    });
+  } else {
+    // ── Desktop: full pipeline with normal, emissive, AO, interior mapping ──
+    // Load companion normal map atlas (same grid layout as diffuse)
+    const normalPath = atlasPath.replace('.png', '_normal.png');
+    const normalTexture = new THREE.TextureLoader().load(normalPath);
+    normalTexture.wrapS = THREE.RepeatWrapping;
+    normalTexture.wrapT = THREE.RepeatWrapping;
+    normalTexture.colorSpace = THREE.LinearSRGBColorSpace;
 
-  const buildingMat = new THREE.MeshStandardMaterial({
-    map: atlasTexture,
-    normalMap: normalTexture,
-    normalScale: new THREE.Vector2(0.35, 0.35),
-    roughness: 0.75,
-    metalness: 0.15,
-    emissiveMap: emissiveMaskTexture,
-    emissive: new THREE.Color(T.windowColor ?? 0xffcc66),
-    emissiveIntensity: windowGlow * 0.3,
-  });
+    // Load companion emissive mask atlas (white=lit window, black=wall)
+    const emissiveMaskPath = atlasPath.replace('.png', '_emissive.png');
+    const emissiveMaskTexture = new THREE.TextureLoader().load(emissiveMaskPath);
+    emissiveMaskTexture.wrapS = THREE.RepeatWrapping;
+    emissiveMaskTexture.wrapT = THREE.RepeatWrapping;
+    emissiveMaskTexture.colorSpace = THREE.LinearSRGBColorSpace;
+    emissiveMaskTexture.minFilter = THREE.LinearMipmapNearestFilter;
 
-  // Shader injection: AO banding + interior mapping
-  buildingMat.onBeforeCompile = (shader) => {
-    shader.uniforms.windowMask = { value: emissiveMaskTexture };
+    buildingMat = new THREE.MeshStandardMaterial({
+      map: atlasTexture,
+      normalMap: normalTexture,
+      normalScale: new THREE.Vector2(0.35, 0.35),
+      roughness: 0.75,
+      metalness: 0.15,
+      emissiveMap: emissiveMaskTexture,
+      emissive: new THREE.Color(T.windowColor ?? 0xffcc66),
+      emissiveIntensity: windowGlow * 0.3,
+    });
 
-    // Vertex shader: pass height, world position, and normal
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `
-        #include <common>
-        varying float vHeightFrac;
-        varying vec3 vWPos;
-        varying vec3 vWNormal;
-      `)
-       .replace('#include <uv_vertex>', `
-        #include <uv_vertex>
-        vHeightFrac = (position.y + 0.5);
-        vWPos = (modelMatrix * vec4(position, 1.0)).xyz;
-        vWNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
-      `);
+    // Shader injection: AO banding + interior mapping
+    buildingMat.onBeforeCompile = (shader) => {
+      shader.uniforms.windowMask = { value: emissiveMaskTexture };
 
-    // Fragment shader: AO + emissive gating + interior mapping
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `
-        #include <common>
-        uniform sampler2D windowMask;
-        varying float vHeightFrac;
-        varying vec3 vWPos;
-        varying vec3 vWNormal;
+      // Vertex shader: pass height, world position, and normal
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', `
+          #include <common>
+          varying float vHeightFrac;
+          varying vec3 vWPos;
+          varying vec3 vWNormal;
+        `)
+         .replace('#include <uv_vertex>', `
+          #include <uv_vertex>
+          vHeightFrac = (position.y + 0.5);
+          vWPos = (modelMatrix * vec4(position, 1.0)).xyz;
+          vWNormal = normalize((modelMatrix * vec4(normal, 0.0)).xyz);
+        `);
 
-        float hash21(vec2 p) {
-          p = fract(p * vec2(123.34, 456.21));
-          p += dot(p, p + 45.32);
-          return fract(p.x * p.y);
-        }
+      // Fragment shader: AO + emissive gating + interior mapping
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `
+          #include <common>
+          uniform sampler2D windowMask;
+          varying float vHeightFrac;
+          varying vec3 vWPos;
+          varying vec3 vWNormal;
 
-        vec3 interiorColor(vec3 worldPos, vec3 viewDir, vec3 wallNormal) {
-          float roomW = 4.0; float roomH = 3.5; float roomDepth = 3.0;
-          vec3 tangent = abs(wallNormal.y) > 0.9
-            ? normalize(cross(wallNormal, vec3(1.0, 0.0, 0.0)))
-            : normalize(cross(wallNormal, vec3(0.0, 1.0, 0.0)));
-          float u = dot(worldPos, tangent);
-          float v = worldPos.y;
-          vec2 roomCell = vec2(floor(u / roomW), floor(v / roomH));
-          float roomU = fract(u / roomW);
-          float roomV = fract(v / roomH);
-          float dU = dot(viewDir, tangent);
-          float dV = dot(viewDir, vec3(0.0, 1.0, 0.0));
-          float dN = dot(viewDir, wallNormal);
-          if (dN >= 0.0) return vec3(0.05);
-          float tBack = -roomDepth / dN;
-          float tLeft = (dU > 0.0) ? ((1.0 - roomU) * roomW) / dU : (-roomU * roomW) / dU;
-          float tFloor = (-roomV * roomH) / dV;
-          float tCeil = ((1.0 - roomV) * roomH) / dV;
-          float tMin = tBack;
-          int hitFace = 0;
-          if (tLeft > 0.0 && tLeft < tMin) { tMin = tLeft; hitFace = 1; }
-          if (tFloor > 0.0 && tFloor < tMin) { tMin = tFloor; hitFace = 2; }
-          if (tCeil > 0.0 && tCeil < tMin) { tMin = tCeil; hitFace = 3; }
-          float roomHash = hash21(roomCell);
-          vec3 backWall, sideWall, floorCol, ceilCol;
-          if (roomHash < 0.3) {
-            backWall = vec3(0.85, 0.78, 0.65); sideWall = vec3(0.75, 0.68, 0.55);
-            floorCol = vec3(0.45, 0.35, 0.25); ceilCol  = vec3(0.92, 0.90, 0.85);
-          } else if (roomHash < 0.6) {
-            backWall = vec3(0.65, 0.72, 0.82); sideWall = vec3(0.55, 0.62, 0.72);
-            floorCol = vec3(0.35, 0.35, 0.40); ceilCol  = vec3(0.88, 0.90, 0.92);
-          } else if (roomHash < 0.8) {
-            backWall = vec3(0.15, 0.13, 0.12); sideWall = vec3(0.12, 0.10, 0.09);
-            floorCol = vec3(0.08, 0.07, 0.06); ceilCol  = vec3(0.18, 0.16, 0.15);
-          } else {
-            backWall = vec3(0.90, 0.75, 0.50); sideWall = vec3(0.80, 0.65, 0.40);
-            floorCol = vec3(0.50, 0.38, 0.22); ceilCol  = vec3(0.95, 0.90, 0.80);
+          float hash21(vec2 p) {
+            p = fract(p * vec2(123.34, 456.21));
+            p += dot(p, p + 45.32);
+            return fract(p.x * p.y);
           }
-          vec3 col;
-          if (hitFace == 0) col = backWall;
-          else if (hitFace == 1) col = sideWall;
-          else if (hitFace == 2) col = floorCol;
-          else col = ceilCol;
-          float depth = tMin / (roomDepth * 2.0);
-          col *= mix(1.0, 0.4, clamp(depth, 0.0, 1.0));
-          return col;
-        }
-      `)
-      .replace('#include <map_fragment>', `
-        #ifdef USE_MAP
-          vec4 sampledDiffuseColor = texture2D(map, vMapUv);
-          float camDist = length(vWPos - cameraPosition);
-          float interiorFade = 1.0 - smoothstep(40.0, 60.0, camDist);
-          bool isWallFace = abs(vWNormal.y) < 0.3;
-          bool isMidZone = vHeightFrac > 0.15 && vHeightFrac < 0.85;
-          float maskVal = texture2D(windowMask, vMapUv).r;
-          if (interiorFade > 0.01 && isWallFace && isMidZone && maskVal > 0.5) {
-            vec3 viewDir = normalize(vWPos - cameraPosition);
-            vec3 roomCol = interiorColor(vWPos, viewDir, vWNormal);
-            sampledDiffuseColor.rgb = mix(sampledDiffuseColor.rgb, roomCol, interiorFade);
-          }
-          diffuseColor *= sampledDiffuseColor;
-        #endif
-      `)
-      .replace('#include <emissivemap_fragment>', `
-        #ifdef USE_EMISSIVEMAP
-          vec4 emissiveColor = texture2D(emissiveMap, vEmissiveMapUv);
-          float emCamDist = length(vWPos - cameraPosition);
-          float emFade = 1.0 - smoothstep(60.0, 120.0, emCamDist);
-          bool isEmWall = abs(vWNormal.y) < 0.3;
-          bool isEmMid = vHeightFrac > 0.15 && vHeightFrac < 0.85;
-          if (isEmWall && isEmMid && emissiveColor.r > 0.3) {
-            totalEmissiveRadiance *= vec3(1.0) * emFade;
-          } else {
-            totalEmissiveRadiance = vec3(0.0);
-          }
-        #endif
-        float ao = smoothstep(0.0, 0.12, vHeightFrac) *
-                   mix(1.0, 0.88, smoothstep(0.85, 1.0, vHeightFrac));
-        diffuseColor.rgb *= ao;
-      `);
-  };
 
-  // Use trilinear filtering for smooth quality + anisotropy for sharpness
+          vec3 interiorColor(vec3 worldPos, vec3 viewDir, vec3 wallNormal) {
+            float roomW = 4.0; float roomH = 3.5; float roomDepth = 3.0;
+            vec3 tangent = abs(wallNormal.y) > 0.9
+              ? normalize(cross(wallNormal, vec3(1.0, 0.0, 0.0)))
+              : normalize(cross(wallNormal, vec3(0.0, 1.0, 0.0)));
+            float u = dot(worldPos, tangent);
+            float v = worldPos.y;
+            vec2 roomCell = vec2(floor(u / roomW), floor(v / roomH));
+            float roomU = fract(u / roomW);
+            float roomV = fract(v / roomH);
+            float dU = dot(viewDir, tangent);
+            float dV = dot(viewDir, vec3(0.0, 1.0, 0.0));
+            float dN = dot(viewDir, wallNormal);
+            if (dN >= 0.0) return vec3(0.05);
+            float tBack = -roomDepth / dN;
+            float tLeft = (dU > 0.0) ? ((1.0 - roomU) * roomW) / dU : (-roomU * roomW) / dU;
+            float tFloor = (-roomV * roomH) / dV;
+            float tCeil = ((1.0 - roomV) * roomH) / dV;
+            float tMin = tBack;
+            int hitFace = 0;
+            if (tLeft > 0.0 && tLeft < tMin) { tMin = tLeft; hitFace = 1; }
+            if (tFloor > 0.0 && tFloor < tMin) { tMin = tFloor; hitFace = 2; }
+            if (tCeil > 0.0 && tCeil < tMin) { tMin = tCeil; hitFace = 3; }
+            float roomHash = hash21(roomCell);
+            vec3 backWall, sideWall, floorCol, ceilCol;
+            if (roomHash < 0.3) {
+              backWall = vec3(0.85, 0.78, 0.65); sideWall = vec3(0.75, 0.68, 0.55);
+              floorCol = vec3(0.45, 0.35, 0.25); ceilCol  = vec3(0.92, 0.90, 0.85);
+            } else if (roomHash < 0.6) {
+              backWall = vec3(0.65, 0.72, 0.82); sideWall = vec3(0.55, 0.62, 0.72);
+              floorCol = vec3(0.35, 0.35, 0.40); ceilCol  = vec3(0.88, 0.90, 0.92);
+            } else if (roomHash < 0.8) {
+              backWall = vec3(0.15, 0.13, 0.12); sideWall = vec3(0.12, 0.10, 0.09);
+              floorCol = vec3(0.08, 0.07, 0.06); ceilCol  = vec3(0.18, 0.16, 0.15);
+            } else {
+              backWall = vec3(0.90, 0.75, 0.50); sideWall = vec3(0.80, 0.65, 0.40);
+              floorCol = vec3(0.50, 0.38, 0.22); ceilCol  = vec3(0.95, 0.90, 0.80);
+            }
+            vec3 col;
+            if (hitFace == 0) col = backWall;
+            else if (hitFace == 1) col = sideWall;
+            else if (hitFace == 2) col = floorCol;
+            else col = ceilCol;
+            float depth = tMin / (roomDepth * 2.0);
+            col *= mix(1.0, 0.4, clamp(depth, 0.0, 1.0));
+            return col;
+          }
+        `)
+        .replace('#include <map_fragment>', `
+          #ifdef USE_MAP
+            vec4 sampledDiffuseColor = texture2D(map, vMapUv);
+            float camDist = length(vWPos - cameraPosition);
+            float interiorFade = 1.0 - smoothstep(40.0, 60.0, camDist);
+            bool isWallFace = abs(vWNormal.y) < 0.3;
+            bool isMidZone = vHeightFrac > 0.15 && vHeightFrac < 0.85;
+            float maskVal = texture2D(windowMask, vMapUv).r;
+            if (interiorFade > 0.01 && isWallFace && isMidZone && maskVal > 0.5) {
+              vec3 viewDir = normalize(vWPos - cameraPosition);
+              vec3 roomCol = interiorColor(vWPos, viewDir, vWNormal);
+              sampledDiffuseColor.rgb = mix(sampledDiffuseColor.rgb, roomCol, interiorFade);
+            }
+            diffuseColor *= sampledDiffuseColor;
+          #endif
+        `)
+        .replace('#include <emissivemap_fragment>', `
+          #ifdef USE_EMISSIVEMAP
+            vec4 emissiveColor = texture2D(emissiveMap, vEmissiveMapUv);
+            float emCamDist = length(vWPos - cameraPosition);
+            float emFade = 1.0 - smoothstep(60.0, 120.0, emCamDist);
+            bool isEmWall = abs(vWNormal.y) < 0.3;
+            bool isEmMid = vHeightFrac > 0.15 && vHeightFrac < 0.85;
+            if (isEmWall && isEmMid && emissiveColor.r > 0.3) {
+              totalEmissiveRadiance *= vec3(1.0) * emFade;
+            } else {
+              totalEmissiveRadiance = vec3(0.0);
+            }
+          #endif
+          float ao = smoothstep(0.0, 0.12, vHeightFrac) *
+                     mix(1.0, 0.88, smoothstep(0.85, 1.0, vHeightFrac));
+          diffuseColor.rgb *= ao;
+        `);
+    };
+
+    normalTexture.minFilter = THREE.LinearMipmapLinearFilter;
+    normalTexture.anisotropy = 16;
+  }
+
+  // Use trilinear filtering for smooth quality
   atlasTexture.minFilter = THREE.LinearMipmapLinearFilter;
   atlasTexture.magFilter = THREE.LinearFilter;
-  normalTexture.minFilter = THREE.LinearMipmapLinearFilter;
-  normalTexture.anisotropy = 16;
 
   const dummy = new THREE.Object3D();
   const _instances: THREE.Vector3[] = [];
@@ -702,7 +720,8 @@ if (placements.length > 0) {
 
   // ── Foundation pads: flat boxes beneath each building to bridge terrain gap ──
   // Extends from building base (pl.y) down to ground plane (Y=-0.5)
-  if (placements.length > 0) {
+  // Skip on mobile — visual polish, not gameplay-relevant
+  if (!isMobile && placements.length > 0) {
     const padGeo = new THREE.BoxGeometry(1, 1, 1);
     const padMat = new THREE.MeshStandardMaterial({
       color: 0x3a3a38, roughness: 0.95, metalness: 0,
@@ -738,7 +757,8 @@ if (placements.length > 0) {
   });
 
   // ── Phase 4: Peaked roof caps for chalet-style buildings (Zermatt) ──
-  if (styleName === 'chalet' || styleName === 'bamboo_lodge') {
+  // Skip on mobile — saves 1 InstancedMesh draw call + geometry
+  if (!isMobile && (styleName === 'chalet' || styleName === 'bamboo_lodge')) {
     // Triangular prism geometry for gabled roofs
     const roofPositions = new Float32Array([
       // Front triangle
@@ -780,7 +800,8 @@ if (placements.length > 0) {
   }
 
   // ── Phase 4: Stepped setback towers for cyberpunk megastructures (Shibuya) ──
-  if (styleName === 'cyberpunk') {
+  // Skip on mobile
+  if (!isMobile && styleName === 'cyberpunk') {
     // Filter tall buildings that get a stepped upper section
     const tallPlacements = placements.filter(pl => pl.h > 30);
     if (tallPlacements.length > 0) {
@@ -822,8 +843,8 @@ if (placements.length > 0) {
     bamboo_lodge:[0x5a3a2a, 0x3a5a3a, 0x6a4a30],   // warm wood tones
   };
   const awningColors = AWNING_COLORS[styleName] ?? AWNING_COLORS['modern'];
-  // ~30% of buildings get awnings
-  const awningPlacements = placements.filter(pl => ((pl.x * 53 + pl.z * 79) & 0xFF) < 77);
+  // ~30% of buildings get awnings — skip on mobile
+  const awningPlacements = isMobile ? [] : placements.filter(pl => ((pl.x * 53 + pl.z * 79) & 0xFF) < 77);
   if (awningPlacements.length > 0) {
     const awningGeo = new THREE.PlaneGeometry(1, 1);
     const awningMat = new THREE.MeshStandardMaterial({
@@ -858,8 +879,8 @@ if (placements.length > 0) {
   }
 
   // ── Rooftop props (HVAC units, water tanks, antenna bases) ──
-  // Skip for chalets (peaked roofs) and very short buildings
-  if (styleName !== 'chalet' && styleName !== 'bamboo_lodge') {
+  // Skip for chalets (peaked roofs), very short buildings, and mobile
+  if (!isMobile && styleName !== 'chalet' && styleName !== 'bamboo_lodge') {
     const roofPropPlacements = placements.filter(pl =>
       pl.h > 12 && ((pl.x * 41 + pl.z * 67) & 0xFF) < 128 // ~50% of tall buildings
     );

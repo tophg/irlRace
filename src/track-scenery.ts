@@ -57,11 +57,12 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     spectatorDensity: 1.0, accentProps: [],
   };
   const group = new THREE.Group();
-  const _asyncLoads: Promise<void>[] = []; // collect async loads so caller can await them
+  const _asyncLoads: Promise<void>[] = [];
+  const isMobile = window.matchMedia('(pointer: coarse)').matches;
 
   // ── Ground plane (large flat grass surface) ──
   {
-    const groundGeo = new THREE.PlaneGeometry(800, 800);
+    const groundGeo = new THREE.PlaneGeometry(isMobile ? 400 : 800, isMobile ? 400 : 800);
     // Procedural grass texture
     const groundCanvas = document.createElement('canvas');
     groundCanvas.width = 256;
@@ -104,8 +105,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   // Pre-compute all tree positions
   interface TreeItem { x: number; y: number; z: number; trunkH: number; crownR: number; green: number; rotY: number; model: string; }
   const trees: TreeItem[] = [];
-  const treeCount = T.treeCanopyStyle === 'none' && !T.treeModels?.length ? 0 : T.treeCount;
-  const treeModelList = T.treeModels?.length ? T.treeModels : [];
+  const treeCount = T.treeCanopyStyle === 'none' && !T.treeModels?.length ? 0 : (isMobile ? Math.min(T.treeCount, 10) : T.treeCount);
+  const treeModelList = T.treeModels?.length ? (isMobile ? T.treeModels.slice(0, 3) : T.treeModels) : [];
   for (let i = 0; i < treeCount; i++) {
     const t = rng();
     const p = spline.getPointAt(t);
@@ -292,7 +293,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
 
   // ── Street lights (InstancedMesh — themed) ──
-  const LIGHT_COUNT = Math.round(30 * T.streetLightDensity);
+  const LIGHT_COUNT = isMobile ? Math.min(Math.round(30 * T.streetLightDensity), 10) : Math.round(30 * T.streetLightDensity);
 
   // Poles
   const poleGeo = new THREE.CylinderGeometry(0.08, 0.1, 6, 6);
@@ -327,7 +328,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     fixIM.setMatrixAt(i, _m);
 
     // Add real PointLights to every 10th lamp for visible road illumination pools
-    if (i % 10 === 0) {
+    // Skip on mobile — too many lights crash the GPU
+    if (!isMobile && i % 10 === 0) {
       const light = new THREE.PointLight(T.streetLightColor, 1.5, 14, 2);
       light.position.set(x, 5.8, z);
       group.add(light);
@@ -341,7 +343,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   }
 
   // ── Chain-link fences along track edges (InstancedMesh) ──
-  if (T.fenceDensity > 0) {
+  // Skip on mobile
+  if (!isMobile && T.fenceDensity > 0) {
     const FENCE_COUNT = Math.round(20 * T.fenceDensity);
     const fencePostGeo = new THREE.CylinderGeometry(0.06, 0.08, 3, 4);
     const fencePostMat = new THREE.MeshStandardMaterial({ color: T.barrierColor, metalness: 0.5, roughness: 0.4 });
@@ -409,7 +412,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   }
 
   // ── Rocks & boulders (InstancedMesh) ──
-  if (T.rockDensity > 0) {
+  // Skip on mobile
+  if (!isMobile && T.rockDensity > 0) {
     const ROCK_COUNT = Math.round(40 * T.rockDensity);
     const rockGeo = new THREE.DodecahedronGeometry(1, 0);
     const rockMat = new THREE.MeshStandardMaterial({ color: T.rockColor, roughness: 0.95, metalness: 0 });
@@ -439,7 +443,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   }
 
   // ── Bushes & shrubs (InstancedMesh — clustered near trees) ──
-  if (T.bushDensity > 0 && T.treeCanopyStyle !== 'none') {
+  // Skip on mobile
+  if (!isMobile && T.bushDensity > 0 && T.treeCanopyStyle !== 'none') {
     const BUSH_COUNT = Math.round(60 * T.bushDensity);
     const bushGeo = new THREE.SphereGeometry(1.0, 4, 3);
     const bushMat = new THREE.MeshStandardMaterial({ color: T.treeCanopyColor, roughness: 0.85 });
@@ -692,7 +697,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
 
   // ── Tire walls at tight corners (InstancedMesh) ──
   // Find sharp corners and place tire stacks outside them
-  const TIRE_STACK_COUNT = 20;
+  const TIRE_STACK_COUNT = isMobile ? 8 : 20;
   const tireGeo = new THREE.TorusGeometry(0.35, 0.15, 6, 8);
   const tireMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 });
   const tireIM = new THREE.InstancedMesh(tireGeo, tireMat, TIRE_STACK_COUNT * 3);
@@ -733,7 +738,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   }
 
   // ── Advertising boards at straight sections ──
-  const AD_COUNT = 8;
+  const AD_COUNT = isMobile ? 3 : 8;
   const adGeo = new THREE.PlaneGeometry(6, 2);
 
   for (let i = 0; i < AD_COUNT; i++) {
@@ -1004,7 +1009,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   }
 
   // ── Billboard cloud sprites (InstancedMesh — 1 draw call) ──
-  if (T.cloudOpacity > 0) {
+  if (!isMobile && T.cloudOpacity > 0) {
     const CLOUD_COUNT = Math.round(40 * Math.min(T.cloudOpacity * 2, 2));
     const cloudCanvas = document.createElement('canvas');
     cloudCanvas.width = 64;
@@ -1056,7 +1061,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   }
 
   // ── Spectator crowd (billboard sprites in grandstand) ──
-  if (T.spectatorDensity > 0) {
+  if (!isMobile && T.spectatorDensity > 0) {
     const SPEC_COUNT = Math.round(25 * T.spectatorDensity);
     const specCanvas = document.createElement('canvas');
     specCanvas.width = 32; specCanvas.height = 64;
@@ -1101,7 +1106,8 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   }
 
   // ── Road surface details: oil stains (InstancedMesh decals) ──
-  {
+  // Skip on mobile
+  if (!isMobile) {
     const STAIN_COUNT = 15;
     const stainCanvas = document.createElement('canvas');
     stainCanvas.width = 64; stainCanvas.height = 64;

@@ -875,27 +875,33 @@ export async function initScene(container: HTMLElement) {
   camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
   camera.position.set(0, 10, 20);
 
-  // Subtle IBL for material reflections (low intensity to avoid white wash)
-  const pmremGenerator = new THREE.PMREMGenerator(renderer);
-  const envMap = pmremGenerator.fromScene(new RoomEnvironment()).texture;
-  scene.environment = envMap;
-  scene.environmentIntensity = 0.35;
-  pmremGenerator.dispose();
+  const isMobileScene = window.matchMedia('(pointer: coarse)').matches;
+
+  // Subtle IBL for material reflections — skip on mobile (too heavy for 4GB devices)
+  if (!isMobileScene) {
+    const pmremGenerator = new THREE.PMREMGenerator(renderer);
+    const envMap = pmremGenerator.fromScene(new RoomEnvironment()).texture;
+    scene.environment = envMap;
+    scene.environmentIntensity = 0.35;
+    pmremGenerator.dispose();
+  }
 
   hemiLight = new THREE.HemisphereLight(0x88aacc, 0x444422, 1.0);
   scene.add(hemiLight);
 
   dirLight = new THREE.DirectionalLight(0xffeedd, 2.0);
   dirLight.position.set(50, 80, 30);
-  dirLight.castShadow = true;
-  const shadowRes = window.matchMedia('(pointer: coarse)').matches ? 1024 : 2048;
-  dirLight.shadow.mapSize.set(shadowRes, shadowRes);
-  dirLight.shadow.camera.near = 1;
-  dirLight.shadow.camera.far = 200;
-  dirLight.shadow.camera.left = -100;
-  dirLight.shadow.camera.right = 100;
-  dirLight.shadow.camera.top = 100;
-  dirLight.shadow.camera.bottom = -100;
+  dirLight.castShadow = !isMobileScene; // Disable shadows on mobile entirely
+  if (dirLight.castShadow) {
+    const shadowRes = 2048;
+    dirLight.shadow.mapSize.set(shadowRes, shadowRes);
+    dirLight.shadow.camera.near = 1;
+    dirLight.shadow.camera.far = 200;
+    dirLight.shadow.camera.left = -100;
+    dirLight.shadow.camera.right = 100;
+    dirLight.shadow.camera.top = 100;
+    dirLight.shadow.camera.bottom = -100;
+  }
   scene.add(dirLight);
   scene.add(dirLight.target);
 

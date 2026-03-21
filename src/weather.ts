@@ -153,7 +153,8 @@ export function initWeather(scene: THREE.Scene, weather: WeatherType) {
 
   // Build precipitation line segments in MESH-LOCAL space
   // (mesh will follow player each frame → instant full coverage)
-  const count = precipConfig.dropCount;
+  const isMobileWeather = window.matchMedia('(pointer: coarse)').matches;
+  const count = isMobileWeather ? Math.floor(precipConfig.dropCount / 2) : precipConfig.dropCount;
   const geo = new THREE.BufferGeometry();
   precipPositions = new Float32Array(count * 6);
   precipVelocities = new Float32Array(count);
@@ -187,7 +188,7 @@ export function initWeather(scene: THREE.Scene, weather: WeatherType) {
 
   // Splash pool (rain types only)
   const isRain = weather === 'light_rain' || weather === 'heavy_rain';
-  if (isRain) {
+  if (isRain && !isMobileWeather) {
     for (let i = 0; i < SPLASH_POOL; i++) {
       const radius = 0.1 + Math.random() * 0.15; // size variation
       const splashGeo = new THREE.CircleGeometry(radius, 6);

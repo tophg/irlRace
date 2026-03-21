@@ -8,7 +8,7 @@ import { buildRampGroup, placeRampsOnStraights } from './ramps';
 export const ROAD_WIDTH = 14;
 const BARRIER_HEIGHT = 1.8;
 export const BARRIER_THICKNESS = 0.4;
-const SPLINE_SAMPLES = 400;
+const SPLINE_SAMPLES = (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) ? 200 : 400;
 const MIN_RADIUS = 18;      // tightest allowed corner
 export const MAX_BANK_ANGLE = 0.35; // ~20° banking
 export const BANK_SCALE = 8;
