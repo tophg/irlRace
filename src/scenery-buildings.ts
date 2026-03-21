@@ -11,6 +11,7 @@ import {
   floor, texture, positionWorld, step,
 } from 'three/tsl';
 import { type SceneryTheme, getTerrainHeight, _groundAtlasTexture, _dftTexture } from './scene';
+import { ktx2Loader } from './loaders';
 
 // ── Building culling state (shared with track-scenery.ts) ──
 export let _buildingInstances: THREE.Vector3[] = [];
@@ -23,6 +24,50 @@ export function resetBuildingCullingState() {
 
 // ── Reusable temps ──
 const _c = new THREE.Color();
+
+// ── KTX2 texture loader with PNG/JPEG fallback ──
+// Tries .ktx2 first (GPU-compressed, ~5-10× smaller). If no .ktx2 file exists,
+// falls back to the original PNG/JPEG path.
+function loadAtlasTexture(
+  originalPath: string,
+  colorSpace: THREE.ColorSpace,
+  onLoad?: (tex: THREE.Texture) => void,
+): THREE.Texture {
+  const ktx2Path = originalPath.replace(/\.(png|jpg|jpeg)$/i, '.ktx2');
+
+  // Create a placeholder texture that will be updated when the real one loads
+  const placeholder = new THREE.Texture();
+  placeholder.colorSpace = colorSpace;
+
+  // Try KTX2 first
+  ktx2Loader.load(
+    ktx2Path,
+    (ktx2Tex) => {
+      // KTX2 loaded successfully — copy its data into the placeholder
+      placeholder.image = ktx2Tex.image;
+      placeholder.format = ktx2Tex.format;
+      placeholder.type = ktx2Tex.type;
+      placeholder.mipmaps = ktx2Tex.mipmaps;
+      placeholder.minFilter = ktx2Tex.minFilter;
+      placeholder.magFilter = ktx2Tex.magFilter;
+      placeholder.generateMipmaps = false; // KTX2 includes mipmaps
+      placeholder.colorSpace = colorSpace;
+      placeholder.needsUpdate = true;
+      onLoad?.(placeholder);
+    },
+    undefined,
+    () => {
+      // KTX2 not found — fall back to PNG/JPEG
+      new THREE.TextureLoader().load(originalPath, (fallbackTex) => {
+        placeholder.image = fallbackTex.image;
+        placeholder.needsUpdate = true;
+        onLoad?.(placeholder);
+      });
+    },
+  );
+
+  return placeholder;
+}
 
 /**
  * Generate procedural box cityscape and add to the scene group.
@@ -56,7 +101,7 @@ const STYLE_ATLAS: Record<string, string> = {
   chalet:       '/buildings/facade_atlas_zermatt.png',
   warehouse:    '/buildings/facade_atlas_warehouse.png',
   levantine:      '/buildings/facade_atlas_gaza.jpg',
-  mesopotamian:   '/buildings/facade_atlas_baghdad.png',
+  mesopotamian:   '/buildings/facade_atlas_baghdad.jpg',
   damascene:      '/buildings/facade_atlas_damascus.png',
   levantine_med:  '/buildings/facade_atlas_beirut.png',
   north_african:  '/buildings/facade_atlas_tripoli.png',
@@ -73,10 +118,9 @@ const styleName = T.buildingStyle ?? 'modern';
 const atlasPathFull = STYLE_ATLAS[styleName] ?? '/buildings/facade_atlas_dc.png';
 // Mobile: load pre-downscaled 1024px atlas (saves ~48MB GPU per texture)
 const atlasPath = isMobile ? atlasPathFull.replace(/\.(png|jpg)$/, '_mobile.png') : atlasPathFull;
-const atlasTexture = new THREE.TextureLoader().load(atlasPath);
+const atlasTexture = loadAtlasTexture(atlasPath, THREE.SRGBColorSpace);
 atlasTexture.wrapS = THREE.RepeatWrapping;
 atlasTexture.wrapT = THREE.RepeatWrapping;
-atlasTexture.colorSpace = THREE.SRGBColorSpace;
 atlasTexture.anisotropy = isMobile ? 4 : 16;
 // Atlas layout (8×5 grid):
 //   Row 0: Window (single style per column)
@@ -506,17 +550,15 @@ if (placements.length > 0) {
     // ── Desktop: full pipeline with normal, emissive, AO, interior mapping ──
     // Load companion normal map atlas (same grid layout as diffuse)
     const normalPath = atlasPath.replace(/\.(png|jpg)$/, '_normal.png');
-    const normalTexture = new THREE.TextureLoader().load(normalPath);
+    const normalTexture = loadAtlasTexture(normalPath, THREE.LinearSRGBColorSpace);
     normalTexture.wrapS = THREE.RepeatWrapping;
     normalTexture.wrapT = THREE.RepeatWrapping;
-    normalTexture.colorSpace = THREE.LinearSRGBColorSpace;
 
     // Load companion emissive mask atlas (white=lit window, black=wall)
     const emissiveMaskPath = atlasPath.replace(/\.(png|jpg)$/, '_emissive.png');
-    const emissiveMaskTexture = new THREE.TextureLoader().load(emissiveMaskPath);
+    const emissiveMaskTexture = loadAtlasTexture(emissiveMaskPath, THREE.LinearSRGBColorSpace);
     emissiveMaskTexture.wrapS = THREE.RepeatWrapping;
     emissiveMaskTexture.wrapT = THREE.RepeatWrapping;
-    emissiveMaskTexture.colorSpace = THREE.LinearSRGBColorSpace;
     emissiveMaskTexture.minFilter = THREE.LinearMipmapLinearFilter;
 
     buildingMat = new THREE.MeshStandardMaterial({

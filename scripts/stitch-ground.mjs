@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Stitch 8 ground tiles horizontally into 2048×256 atlas
+// Stitch 8 ground tiles horizontally into 4096×512 atlas
 // Usage: node scripts/stitch-ground.mjs <tiles_dir> <output_file>
 //
 // Input directory should contain 8 tile images named t0.png through t7.png
@@ -19,7 +19,7 @@ if (!inputDir || !outputFile) {
   process.exit(1);
 }
 
-const TILE = 256;
+const TILE = 512;
 const TILE_COUNT = 8;
 
 // Find tile images (sorted alphabetically)

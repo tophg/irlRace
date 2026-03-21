@@ -6,15 +6,21 @@ description: How to generate or update building facade atlas images
 
 ## Required Files
 
-Each environment needs **4 facade images** + **1 ground atlas**:
+Each environment needs **4 facade images** + **KTX2 compressed variants** + **1 ground atlas**:
 
-| File | Location | Dimensions |
-|------|----------|------------|
-| `facade_atlas_{env}.png` | `public/buildings/` | 4096×4096 |
-| `facade_atlas_{env}_emissive.png` | `public/buildings/` | 4096×4096 |
-| `facade_atlas_{env}_normal.png` | `public/buildings/` | 4096×4096 |
-| `facade_atlas_{env}_mobile.png` | `public/buildings/` | 1024×1024 |
-| `ground_atlas_{env}.png` | `public/ground/` | 2048×256 |
+| File | Location | Dimensions | Notes |
+|------|----------|------------|-------|
+| `facade_atlas_{env}.png` (or `.jpg`) | `public/buildings/` | 4096×4096 | Source diffuse |
+| `facade_atlas_{env}_emissive.png` | `public/buildings/` | 4096×4096 | Window glow mask |
+| `facade_atlas_{env}_normal.png` | `public/buildings/` | 4096×4096 | Surface detail |
+| `facade_atlas_{env}_mobile.png` | `public/buildings/` | 1024×1024 | Downscaled for mobile |
+| `facade_atlas_{env}.ktx2` | `public/buildings/` | 4096×4096 | KTX2 compressed diffuse |
+| `facade_atlas_{env}_emissive.ktx2` | `public/buildings/` | 4096×4096 | KTX2 compressed emissive |
+| `facade_atlas_{env}_normal.ktx2` | `public/buildings/` | 4096×4096 | KTX2 compressed normal |
+| `ground_atlas_{env}.png` | `public/ground/` | 2048×256 | Ground texture strip |
+
+> [!TIP]
+> **KTX2 files are optional but strongly recommended.** The game automatically loads `.ktx2` when available, falling back to PNG/JPEG if not. KTX2 (Basis Universal) provides ~5-10× smaller files and GPU-native decompression.
 
 > [!IMPORTANT]
 > **ALL textures must have power-of-2 dimensions** (256, 512, 1024, 2048, 4096). Non-POT textures crash WebGPU mipmap generation (frozen frame, audio continues).
@@ -57,6 +63,7 @@ All scripts live in `scripts/` (NOT `/tmp/`). They require the `sharp` npm packa
 | `scripts/stitch-atlas.mjs` | Stitch tiles → 4096×4096 diffuse atlas | `node scripts/stitch-atlas.mjs <tiles_dir> <output.png>` |
 | `scripts/gen-emissive-normal.mjs` | Generate emissive + normal from tiles | `node scripts/gen-emissive-normal.mjs <tiles_dir> <emissive.png> <normal.png>` |
 | `scripts/stitch-ground.mjs` | Stitch 8 ground tiles → 2048×256 | `node scripts/stitch-ground.mjs <tiles_dir> <output.png>` |
+| `scripts/convert-to-ktx2.mjs` | Convert PNG/JPEG atlas to KTX2 | `node scripts/convert-to-ktx2.mjs <file> --type diffuse\|normal\|emissive` |
 
 > [!NOTE]
 > Re-stitching always rebuilds the **entire** atlas from all 40 tiles. There is no partial/single-column stitch — modify the tile file and re-run the full stitch.
@@ -144,13 +151,44 @@ cp /tmp/facade_atlas_{env}_normal.png public/buildings/
 cp /tmp/facade_atlas_{env}_mobile.png public/buildings/
 ```
 
+// turbo
+### 7b. Convert to KTX2 (GPU-compressed textures)
+
+KTX2 with Basis Universal provides **~5-10× smaller files** and **GPU-native decompression** (no CPU decode). The game tries `.ktx2` first and falls back to PNG/JPEG if not available.
+
+> [!IMPORTANT]
+> Requires `ktx2-encoder` npm package (already in devDependencies). Encoding a 4096×4096 texture takes 2-5 minutes per file.
+
+```bash
+cd /Volumes/Nevermind/Projects/irlRaceDEV
+
+# Diffuse atlas (ETC1S — high compression, good quality for color textures)
+node scripts/convert-to-ktx2.mjs public/buildings/facade_atlas_{env}.png --type diffuse
+
+# Emissive mask (ETC1S — simple mask data, compresses very well)
+node scripts/convert-to-ktx2.mjs public/buildings/facade_atlas_{env}_emissive.png --type emissive
+
+# Normal map (UASTC — near-lossless, important for directional surface data)
+node scripts/convert-to-ktx2.mjs public/buildings/facade_atlas_{env}_normal.png --type normal
+```
+
+Typical compression results:
+| Input | Size | KTX2 Size | Reduction |
+|-------|------|-----------|-----------|
+| Diffuse PNG (44 MB) | 44 MB | ~3 MB | ~92% |
+| Emissive PNG (4 MB) | 4 MB | ~0.5 MB | ~87% |
+| Normal PNG (52 MB) | 52 MB | ~8 MB | ~85% |
+
 ### 8. Post-Copy Validation
 ```bash
-# Verify all 4 files exist and are POT dimensions
+# Verify all files exist and are POT dimensions
 for f in public/buildings/facade_atlas_{env}*.png; do
   sips -g pixelWidth -g pixelHeight "$f"
 done
 # Expected: diffuse/emissive/normal = 4096×4096, mobile = 1024×1024
+
+# Verify KTX2 files were created
+ls -lh public/buildings/facade_atlas_{env}*.ktx2
 ```
 
 ### 9. Generate ground atlas (8-tile strip, 2048×256)

@@ -780,8 +780,10 @@ function buildBarrierMesh(
     const p = points[i];
 
     // Apply banking to match road edge elevation
+    // Fade banking to zero in start/finish zone (must match road mesh's startFade)
     const kappa = curvatures[i % curvatures.length] || 0;
-    const bankAngle = clamp(kappa * BANK_SCALE, -MAX_BANK_ANGLE, MAX_BANK_ANGLE);
+    const startFade = Math.min(i / 12, (points.length - 1 - i) / 12, 1);
+    const bankAngle = clamp(kappa * BANK_SCALE * startFade, -MAX_BANK_ANGLE, MAX_BANK_ANGLE);
     _meshBankQuat.setFromAxisAngle(tangent, -bankAngle);
     _meshBankedRight.copy(_meshRight).applyQuaternion(_meshBankQuat);
 

@@ -11,7 +11,7 @@ const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
 gltfLoader.setDRACOLoader(dracoLoader);
 
-const ktx2Loader = new KTX2Loader();
+export const ktx2Loader = new KTX2Loader();
 ktx2Loader.setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.175.0/examples/jsm/libs/basis/');
 
 /** Call once with the renderer so KTX2Loader can detect GPU texture support. */
