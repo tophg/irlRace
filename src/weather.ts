@@ -92,14 +92,35 @@ export function setThunderAudioContext(ctx: AudioContext, masterGain: GainNode) 
   _sharedMasterGain = masterGain;
 }
 
-export function getWeatherForSeed(seed: number): WeatherType {
+export function getWeatherForSeed(seed: number, environmentName?: string): WeatherType {
   const r = ((seed * 2654435761) >>> 0) % 100;
-  if (r < 40) return 'clear';
-  if (r < 60) return 'light_rain';
-  if (r < 75) return 'heavy_rain';
-  if (r < 88) return 'snow';
-  if (r < 95) return 'blizzard';
-  return 'ice';
+  let weather: WeatherType;
+  if (r < 40) weather = 'clear';
+  else if (r < 60) weather = 'light_rain';
+  else if (r < 75) weather = 'heavy_rain';
+  else if (r < 88) weather = 'snow';
+  else if (r < 95) weather = 'blizzard';
+  else weather = 'ice';
+
+  // Environment compatibility filter — no snow in the tropics, no rain in the desert
+  if (environmentName) {
+    const name = environmentName.toLowerCase();
+    const isTropical = name.includes('havana');
+    const isDesert = name.includes('mojave') || name.includes('baghdad');
+    const isMiddleEast = name.includes('gaza') || name.includes('damascus') || name.includes('beirut') || name.includes('tripoli');
+
+    if (isTropical && (weather === 'snow' || weather === 'blizzard' || weather === 'ice')) {
+      weather = 'heavy_rain'; // downgrade to tropical storm
+    }
+    if (isDesert && weather !== 'clear') {
+      weather = 'clear'; // deserts are dry
+    }
+    if (isMiddleEast && (weather === 'snow' || weather === 'blizzard')) {
+      weather = weather === 'blizzard' ? 'heavy_rain' : 'light_rain';
+    }
+  }
+
+  return weather;
 }
 
 /** Get full weather physics struct for Vehicle.update() */

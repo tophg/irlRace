@@ -380,7 +380,7 @@ export async function startRace() {
     const selectedW = G._selectedWeather;
     const weatherType = (selectedW && selectedW !== 'random')
       ? selectedW as any
-      : getWeatherForSeed(seed);
+      : getWeatherForSeed(seed, envPreset.name);
     initWeather(scene, weatherType);
 
     // Weather darkening (applied to whatever environment the player chose)

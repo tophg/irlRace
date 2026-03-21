@@ -17,10 +17,17 @@ export const BANK_SCALE = 8;
 // PUBLIC API
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-/** Generate a closed circuit deterministically from seed. Single-pass for cross-platform consistency. */
+/** Generate a closed circuit deterministically from seed.
+ * Tries multiple seed offsets and picks the highest quality track. */
 export function generateTrack(seed?: number): TrackData {
   const baseSeed = seed ?? (Date.now() % 100000);
-  return buildTrackAttempt(baseSeed).data;
+  const ATTEMPTS = 4;
+  let best = buildTrackAttempt(baseSeed);
+  for (let i = 1; i < ATTEMPTS; i++) {
+    const alt = buildTrackAttempt(baseSeed + i * 7919); // coprime offset
+    if (alt.qualityScore > best.qualityScore) best = alt;
+  }
+  return best.data;
 }
 
 /** Build a track from user-placed 2D control points (Track Editor → TrackData pipeline). */
@@ -224,7 +231,8 @@ function crossProduct(o: THREE.Vector2, a: THREE.Vector2, b: THREE.Vector2): num
 }
 
 /** Insert dent points to create chicanes. Guarantees at least 3 chicanes
- * to prevent circular/oval tracks with no braking zones. */
+ * to prevent circular/oval tracks with no braking zones.
+ * Includes post-insertion self-intersection filter. */
 function addChicanes(hull: THREE.Vector2[], rng: () => number): THREE.Vector2[] {
   const result: THREE.Vector2[] = [];
   const centroid = hull.reduce((acc, p) => acc.add(p.clone()), new THREE.Vector2()).divideScalar(hull.length);
@@ -263,7 +271,43 @@ function addChicanes(hull: THREE.Vector2[], rng: () => number): THREE.Vector2[] 
     }
   }
 
-  return result;
+  // Post-insertion self-intersection filter:
+  // Check each segment against non-adjacent segments; if crossing, remove the dent.
+  return removeIntersections(result);
+}
+
+/** Remove control points that cause self-intersecting polygon edges. */
+function removeIntersections(pts: THREE.Vector2[]): THREE.Vector2[] {
+  const n = pts.length;
+  if (n < 4) return pts;
+  const bad = new Set<number>();
+
+  for (let i = 0; i < n; i++) {
+    const a1 = pts[i], a2 = pts[(i + 1) % n];
+    // Check against non-adjacent segments (skip i-1, i, i+1)
+    for (let j = i + 2; j < n; j++) {
+      if (j === (i + n - 1) % n) continue; // skip wrap-adjacent
+      const b1 = pts[j], b2 = pts[(j + 1) % n];
+      if (segmentsIntersect(a1, a2, b1, b2)) {
+        // Mark the later-inserted point (higher index, likely a dent)
+        bad.add(j);
+      }
+    }
+  }
+  if (bad.size === 0) return pts;
+  return pts.filter((_, i) => !bad.has(i));
+}
+
+/** 2D segment-segment intersection test. */
+function segmentsIntersect(a1: THREE.Vector2, a2: THREE.Vector2, b1: THREE.Vector2, b2: THREE.Vector2): boolean {
+  const d1x = a2.x - a1.x, d1y = a2.y - a1.y;
+  const d2x = b2.x - b1.x, d2y = b2.y - b1.y;
+  const cross = d1x * d2y - d1y * d2x;
+  if (Math.abs(cross) < 1e-8) return false; // parallel
+  const dx = b1.x - a1.x, dy = b1.y - a1.y;
+  const t = (dx * d2y - dy * d2x) / cross;
+  const u = (dx * d1y - dy * d1x) / cross;
+  return t > 0.01 && t < 0.99 && u > 0.01 && u < 0.99; // strict interior
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -461,25 +505,42 @@ export function getSpeedProfileAt(speedProfile: number[], t: number): number {
 function scoreTrack(curvatures: number[], totalLength: number, speedProfile: number[]): number {
   let score = 1.0;
 
-  // A. Total length: prefer 400–1200 units
-  if (totalLength < 300) score -= 0.3;
-  else if (totalLength > 1500) score -= 0.2;
+  // A. Total length: hard reject very short tracks, prefer 400–1200 units
+  if (totalLength < 250) return 0; // hard reject
+  if (totalLength < 400) score -= 0.3;
+  else if (totalLength > 1500) score -= 0.15;
 
-  // B. Curvature variety (stddev)
+  // B. Curvature variety (stddev) — penalize uniform tracks
   const mean = curvatures.reduce((a, b) => a + b, 0) / curvatures.length;
   const variance = curvatures.reduce((a, k) => a + (k - mean) ** 2, 0) / curvatures.length;
   const stddev = Math.sqrt(variance);
-  if (stddev < 0.005) score -= 0.3; // too uniform
+  if (stddev < 0.005) score -= 0.35; // too uniform (oval/circle)
+  else if (stddev < 0.01) score -= 0.15; // borderline monotonous
 
-  // C. Longest straight (speedProfile >= 0.85 * maxSpeed for consecutive samples)
+  // C. Longest straight — every good circuit needs a DRS/slipstream zone
   let maxStraight = 0, currentStraight = 0;
   for (const sp of speedProfile) {
     if (sp >= 60) { currentStraight++; } else { maxStraight = Math.max(maxStraight, currentStraight); currentStraight = 0; }
   }
   maxStraight = Math.max(maxStraight, currentStraight);
-  if (maxStraight < 20) score -= 0.2; // no good straight
+  if (maxStraight < 15) score -= 0.35; // no usable straight at all
+  else if (maxStraight < 25) score -= 0.15; // short straights only
 
-  // D. Tightest corner must not violate minRadius
+  // D. Boredom score — penalize long arcs of constant curvature
+  let boredomRuns = 0;
+  let runLen = 0;
+  for (let i = 1; i < curvatures.length; i++) {
+    if (Math.abs(curvatures[i] - curvatures[i - 1]) < 0.002) {
+      runLen++;
+    } else {
+      if (runLen > 40) boredomRuns++; // 40+ samples of same curvature = boring arc
+      runLen = 0;
+    }
+  }
+  if (runLen > 40) boredomRuns++;
+  score -= boredomRuns * 0.1;
+
+  // E. Tightest corner must not violate minRadius
   const maxK = Math.max(...curvatures);
   if (maxK > 1 / MIN_RADIUS) score -= 0.2;
 
@@ -877,7 +938,7 @@ export { generateScenery, updateSceneryWind };
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function seededRandom(seed: number): () => number {
-  let s = seed | 0;
+  let s = (seed | 0) || 1; // avoid seed 0 collapse — ensure non-zero initial state
   return () => {
     s = (s + 0x6d2b79f5) | 0;
     let t = Math.imul(s ^ (s >>> 15), 1 | s);
