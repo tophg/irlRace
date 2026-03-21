@@ -61,6 +61,7 @@ const STYLE_ATLAS: Record<string, string> = {
   soviet_bloc:  '/buildings/facade_atlas_kiev.png',
   concrete:     '/buildings/facade_atlas_dc.png',       // reuse DC's concrete/glass
   bamboo_lodge: '/buildings/facade_atlas_zermatt.png',  // reuse Zermatt's wood/stone
+  shanghai:     '/buildings/facade_atlas_shanghai.png',
 };
 
 const styleName = T.buildingStyle ?? 'modern';

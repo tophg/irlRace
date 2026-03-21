@@ -41,11 +41,26 @@ Each **column** (0-7) is one architectural style. All tiles in a column share th
 
 ## Step-by-Step: Generate or Replace an Atlas
 
+### 0. Tile Preservation (CRITICAL)
+Always generate and keep individual tiles in `/tmp/atlas_tiles/{env}/` before stitching:
+- Naming convention: `r{row}_c{col}.png` (e.g. `r0_c0.png`, `r7_c7.png`)
+- **Never delete individual tiles** after stitching — they are the source of truth
+- To modify a single tile, regenerate just that file and re-stitch
+- Stitch command: `NODE_PATH=./node_modules node /tmp/stitch_atlas.js /tmp/atlas_tiles/{env} /tmp/facade_atlas_{env}.png 4096`
+
 ### 1. Generate the diffuse atlas
 Generate an 8×8 grid image with the layout above. Key rules:
 - **NO TEXT, NO LABELS, NO SIGNAGE** anywhere
 - Each column = one consistent style (same frames, materials, colors)
 - Rows 0-3 share the same window frame per column, only interior state differs
+
+#### Critical: Tile Quality Rules (learned from iteration)
+
+1. **Non-descript windows** — Window tiles MUST be generic. No visible furniture, bookshelves, lamps, specific curtain arrangements, or identifiable interior details. These create obvious repetition patterns when tiled across a building.
+2. **Uniform glass treatment** — Use uniform tints, frosted glass, simple blinds, or plain reflections. The goal is that each repeated tile looks indistinguishable from the next.
+3. **Prompt keywords that work**: "uniform", "generic", "non-descript", "no identifiable interior details", "plain frosted glass", "even tint"
+4. **Prompt keywords to AVOID**: "cozy room", "furniture visible", "bookshelf", "lamp", "detailed interior", "curtains pulled back revealing"
+5. **Same principle applies to all rows** — storefronts, cornices, and roof caps should also avoid unique focal points that expose repetition.
 
 ### 2. Generate the emissive mask
 Same 8×8 grid layout. Rules:

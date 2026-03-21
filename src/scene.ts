@@ -643,7 +643,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       accentProps: ['neon_strip', 'traffic_cone'],
       roadDecals: ['lane_paint', 'manhole', 'puddle'],
       atmosphericEffects: ['steam', 'fog_wisps'],
-      buildingStyle: 'modern', // placeholder — reuse DC atlas
+      buildingStyle: 'shanghai',
       buildingModels: [],
       buildingDensity: 2.5, buildingRowCount: 3, buildingGapChance: 0.05,
       treeModels: [],
