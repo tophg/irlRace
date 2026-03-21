@@ -26,47 +26,34 @@ export function resetBuildingCullingState() {
 const _c = new THREE.Color();
 
 // ── KTX2 texture loader with PNG/JPEG fallback ──
-// Tries .ktx2 first (GPU-compressed, ~5-10× smaller). If no .ktx2 file exists,
-// falls back to the original PNG/JPEG path.
+// Loads the PNG/JPEG via TextureLoader (synchronous return, async image load).
+// In parallel, tries to load a .ktx2 version. If KTX2 loads successfully,
+// calls onUpgrade with the CompressedTexture so the material can swap to it.
+// This avoids copying CompressedTexture data into a regular Texture, which
+// doesn't work in WebGPU (different GPU resource types).
 function loadAtlasTexture(
   originalPath: string,
   colorSpace: THREE.ColorSpace,
-  onLoad?: (tex: THREE.Texture) => void,
+  onUpgrade?: (ktx2Tex: THREE.Texture) => void,
 ): THREE.Texture {
+  // Primary path: standard TextureLoader (works for all renderers)
+  const tex = new THREE.TextureLoader().load(originalPath);
+  tex.colorSpace = colorSpace;
+
+  // Secondary path: try KTX2 for smaller/faster loading
   const ktx2Path = originalPath.replace(/\.(png|jpg|jpeg)$/i, '.ktx2');
-
-  // Create a placeholder texture that will be updated when the real one loads
-  const placeholder = new THREE.Texture();
-  placeholder.colorSpace = colorSpace;
-
-  // Try KTX2 first
   ktx2Loader.load(
     ktx2Path,
     (ktx2Tex) => {
-      // KTX2 loaded successfully — copy its data into the placeholder
-      placeholder.image = ktx2Tex.image;
-      placeholder.format = ktx2Tex.format;
-      placeholder.type = ktx2Tex.type;
-      placeholder.mipmaps = ktx2Tex.mipmaps;
-      placeholder.minFilter = ktx2Tex.minFilter;
-      placeholder.magFilter = ktx2Tex.magFilter;
-      placeholder.generateMipmaps = false; // KTX2 includes mipmaps
-      placeholder.colorSpace = colorSpace;
-      placeholder.needsUpdate = true;
-      onLoad?.(placeholder);
+      // KTX2 loaded — apply properties and notify caller
+      ktx2Tex.colorSpace = colorSpace;
+      onUpgrade?.(ktx2Tex);
     },
     undefined,
-    () => {
-      // KTX2 not found — fall back to PNG/JPEG
-      new THREE.TextureLoader().load(originalPath, (fallbackTex) => {
-        placeholder.image = fallbackTex.image;
-        placeholder.needsUpdate = true;
-        onLoad?.(placeholder);
-      });
-    },
+    () => { /* KTX2 not found — PNG/JPEG already loading, nothing to do */ },
   );
 
-  return placeholder;
+  return tex;
 }
 
 /**
