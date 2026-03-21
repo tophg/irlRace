@@ -564,7 +564,7 @@ if (placements.length > 0) {
       metalness: 0.15,
       emissiveMap: emissiveMaskTexture,
       emissive: new THREE.Color(T.windowColor ?? 0xffcc66),
-      emissiveIntensity: windowGlow * 0.3,
+      emissiveIntensity: windowGlow * 0.10,
     });
 
     // Shader injection: AO banding + interior mapping
@@ -673,7 +673,7 @@ if (placements.length > 0) {
             float emFade = 1.0 - smoothstep(60.0, 120.0, emCamDist);
             bool isEmWall = abs(vWNormal.y) < 0.3;
             bool isEmMid = vHeightFrac > 0.15 && vHeightFrac < 0.85;
-            if (isEmWall && isEmMid && emissiveColor.r > 0.3) {
+            if (isEmWall && isEmMid && emissiveColor.r > 0.6) {
               totalEmissiveRadiance *= emFade;
             } else {
               totalEmissiveRadiance = vec3(0.0);
