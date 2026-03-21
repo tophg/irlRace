@@ -1005,10 +1005,9 @@ export async function initScene(container: HTMLElement) {
   const terrain = add(add(hill1, hill2), hill3);
   // Round 3: dead zone pushed far out — hills don't start until ~117 units from road center
   const dispDamp = smoothstep(0.35, 0.60, dist);
-  // Round 3: deep trench (-2.0) around the road. At dist≈0.15 the ground is forced
-  // 2.0 units below the base plane, guaranteeing it stays well under the road surface
-  // even on flat sections. The bell shape fades back to 0 by dist≈0.40.
-  const transitionDip = mul(mul(smoothstep(0.0, 0.15, dist), smoothstep(0.45, 0.15, dist)), -3.0);
+  // Monotonic trench: deepest at dist=0 (road center), fading to 0 by dist≈0.35.
+  // Ground at road center is pushed 2.5 units below base, preventing clipping.
+  const transitionDip = mul(smoothstep(0.35, 0.0, dist), -2.5);
   const dampedTerrain = add(mul(terrain, dispDamp), transitionDip);
   // Displace along Z (which becomes Y after -90° X rotation)
   groundMat.positionNode = add(positionLocal, vec3(0, 0, dampedTerrain));
@@ -1121,8 +1120,8 @@ export function getTerrainHeight(x: number, z: number): number {
   // Displacement damping (matches GPU: smoothstep(0.35, 0.60, dist))
   const dispDamp = smoothstepCPU(0.35, 0.60, dist);
 
-  // Transition trench (matches GPU: smoothstep(0,0.15,d)*smoothstep(0.45,0.15,d)*-3)
-  const transitionDip = smoothstepCPU(0.0, 0.15, dist) * smoothstepCPU(0.45, 0.15, dist) * -3.0;
+  // Monotonic trench (matches GPU: smoothstep(0.35, 0.0, d) * -2.5)
+  const transitionDip = smoothstepCPU(0.35, 0.0, dist) * -2.5;
 
   return terrain * dispDamp + transitionDip;
 }

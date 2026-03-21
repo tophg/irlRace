@@ -687,7 +687,55 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
   generateBuildings(spline, rng, T, group);
 
 
-  // ── Grandstand — REMOVED (procedural stand) ──
+  // ── Grandstand GLB at start/finish (beside the gantry, on flat road-level ground) ──
+  {
+    // Use the same t=0 position and orientation as the gantry arch
+    const startP = spline.getPointAt(0);
+    const startTan = spline.getTangentAt(0).normalize();
+    const right = new THREE.Vector3(startTan.z, 0, -startTan.x);
+
+    // Place stand on the right side of the road, beside the gantry
+    const standOffset = ROAD_WIDTH / 2 + 8; // just past the gantry post + clearance
+
+    const grandstandGLB = T.grandstandModel
+      ? `/buildings/${T.grandstandModel}`
+      : '/buildings/spectator_stand.glb';
+
+    _asyncLoads.push(loadGLB(grandstandGLB).then((standModel) => {
+      // Measure raw model bounds
+      const bbox = new THREE.Box3().setFromObject(standModel);
+      const rawSize = bbox.getSize(new THREE.Vector3());
+
+      // Scale to a target width of ~14 world units (fits beside gantry nicely)
+      const targetWidth = 14;
+      const scaleFactor = targetWidth / Math.max(rawSize.x, rawSize.z, 1);
+      standModel.scale.setScalar(scaleFactor);
+
+      // Recompute bounds after scaling
+      const scaledBox = new THREE.Box3().setFromObject(standModel);
+
+      // Position: road surface Y at t=0 (flat start zone), offset to the right
+      const roadY = startP.y; // start zone is flattened by banking fade
+      standModel.position.set(
+        startP.x + right.x * standOffset,
+        roadY - scaledBox.min.y, // anchor model bottom to road surface
+        startP.z + right.z * standOffset,
+      );
+
+      // Face toward the road center (so spectators look at the start line)
+      standModel.lookAt(startP.x, roadY, startP.z);
+
+      standModel.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          (child as THREE.Mesh).castShadow = true;
+        }
+      });
+
+      group.add(standModel);
+    }).catch((err) => {
+      console.warn('Failed to load spectator stand model:', err);
+    }));
+  }
 
   // ── Environment-specific landmarks (e.g. DC monuments) ──
   // Landmarks are placed prominently near the road with a clearance zone
@@ -917,50 +965,7 @@ export function generateScenery(spline: THREE.CatmullRomCurve3, rng: () => numbe
     group.add(cloudIM);
   }
 
-  // ── Spectator crowd (billboard sprites in grandstand) ──
-  if (!isMobile && T.spectatorDensity > 0) {
-    const SPEC_COUNT = Math.round(25 * T.spectatorDensity);
-    const specCanvas = document.createElement('canvas');
-    specCanvas.width = 32; specCanvas.height = 64;
-    const sctx = specCanvas.getContext('2d')!;
-    sctx.clearRect(0, 0, 32, 64);
-    // Simple silhouette figure
-    sctx.fillStyle = '#333333';
-    sctx.beginPath();
-    sctx.arc(16, 12, 8, 0, Math.PI * 2); // head
-    sctx.fill();
-    sctx.fillRect(10, 20, 12, 30); // body
-    sctx.fillRect(6, 50, 8, 14); // left leg
-    sctx.fillRect(18, 50, 8, 14); // right leg
-    const specTex = new THREE.CanvasTexture(specCanvas);
-    const specGeo = new THREE.PlaneGeometry(0.5, 1.2);
-    const specMat = new THREE.MeshBasicMaterial({
-      map: specTex, transparent: true, alphaTest: 0.3,
-      side: THREE.DoubleSide,
-    });
-    const specIM = new THREE.InstancedMesh(specGeo, specMat, SPEC_COUNT);
-    // Place in grandstand area near start/finish
-    const startP = spline.getPointAt(0);
-    const startTan = spline.getTangentAt(0).normalize();
-    const sRight = new THREE.Vector3(startTan.z, 0, -startTan.x);
-    const grandOff = ROAD_WIDTH / 2 + 8;
-    for (let i = 0; i < SPEC_COUNT; i++) {
-      const row = Math.floor(i / 5);
-      const col = (i % 5) - 2;
-      const sx = startP.x + sRight.x * (grandOff + row * 1.5) + startTan.x * col * 1.2;
-      const sz = startP.z + sRight.z * (grandOff + row * 1.5) + startTan.z * col * 1.2;
-      const sy = row * 0.8 + 0.8;
-      _m.identity();
-      _m.setPosition(sx, sy, sz);
-      specIM.setMatrixAt(i, _m);
-      // Vary colors
-      _c.setHSL(rng(), 0.4 + rng() * 0.3, 0.3 + rng() * 0.3);
-      specIM.setColorAt(i, _c);
-    }
-    specIM.instanceMatrix.needsUpdate = true;
-    specIM.instanceColor!.needsUpdate = true;
-    group.add(specIM);
-  }
+  // ── Spectator crowd — REMOVED (procedural billboard people) ──
 
   // ── Road surface details: oil stains (InstancedMesh decals) ──
   // Skip on mobile
