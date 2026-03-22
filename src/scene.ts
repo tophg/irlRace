@@ -72,6 +72,7 @@ const GROUND_ATLAS: Record<string, string> = {
   'Baghdad':         '/ground/ground_atlas_baghdad.png',
   'Tehran':          '/ground/ground_atlas_tehran.png',
   'Damascus':        '/ground/ground_atlas_damascus.png',
+  'Tokyo':           '/ground/ground_atlas_tokyo.png',
   'Gaza City':       '/ground/ground_atlas_gaza.png',
   'Shanghai':        '/ground/ground_atlas_shanghai.png',
   'Kiev':            '/ground/ground_atlas_kiev.png',
@@ -748,7 +749,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       accentProps: ['neon_strip', 'traffic_cone', 'smokestack'],
       roadDecals: ['lane_paint', 'manhole', 'frost'],
       atmosphericEffects: ['steam', 'embers'],
-      buildingStyle: 'modern', // placeholder — reuse DC atlas
+      buildingStyle: 'tokyo',
       buildingModels: [],
       buildingDensity: 2.5, buildingRowCount: 3, buildingGapChance: 0.05,
       treeVariant: 'standard',
