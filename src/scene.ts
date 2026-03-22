@@ -73,6 +73,7 @@ const GROUND_ATLAS: Record<string, string> = {
   'Tehran':          '/ground/ground_atlas_tehran.png',
   'Damascus':        '/ground/ground_atlas_damascus.png',
   'Tokyo':           '/ground/ground_atlas_tokyo.png',
+  'Mogadishu':       '/ground/ground_atlas_mogadishu.png',
   'Gaza City':       '/ground/ground_atlas_gaza.png',
   'Shanghai':        '/ground/ground_atlas_shanghai.png',
   'Kiev':            '/ground/ground_atlas_kiev.png',
