@@ -13,7 +13,7 @@ import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
 import { dirname } from 'path';
 
 // ── Config ──
-const MODEL = 'gemini-3.1-flash-image-preview'; // Nano Banana 2
+const MODEL = 'gemini-2.5-flash-image';
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
 // ── Generate image via Gemini API ──
