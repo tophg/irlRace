@@ -78,6 +78,7 @@ const GROUND_ATLAS: Record<string, string> = {
   'Siberia':         '/ground/ground_atlas_siberia.png',
   'Cap-Haïtien':     '/ground/ground_atlas_cap_haitien.png',
   'Lille':           '/ground/ground_atlas_lille.png',
+  'Chennai':         '/ground/ground_atlas_chennai.png',
   'Gaza City':       '/ground/ground_atlas_gaza.png',
   'Shanghai':        '/ground/ground_atlas_shanghai.png',
   'Kiev':            '/ground/ground_atlas_kiev.png',
@@ -605,7 +606,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       accentProps: ['traffic_cone', 'debris'],
       roadDecals: ['crack', 'puddle'],
       atmosphericEffects: ['fog_wisps'],
-      buildingStyle: 'levantine', // placeholder — reuse Gaza atlas
+      buildingStyle: 'chennai',
       buildingModels: [],
       buildingDensity: 2.0, buildingRowCount: 3, buildingGapChance: 0.08,
       treeVariant: 'palm_frond',
