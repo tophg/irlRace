@@ -174,6 +174,57 @@ const ENV_TILES = {
       tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 2, 2, [220, 210, 190], [215, 208, 185], rng, 0.1);
     },
   ],
+  tel_megiddo: [
+    // Tile 0: Shoulder — compacted limestone rubble road edge
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 4, 4, [175, 160, 130], [155, 140, 110], rng, 0.35);
+      drawDebris(ctx, TILE_SIZE, TILE_SIZE, 20, 2, 5, ['rgba(160,145,115,0.6)', 'rgba(140,130,100,0.5)'], rng);
+      drawCracks(ctx, TILE_SIZE, TILE_SIZE, 8, 'rgba(100,90,70,0.4)', rng);
+    },
+    // Tile 1: Shoulder — ancient flagstone fragments
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 3, 4, [185, 170, 140], [165, 150, 120], rng, 0.3);
+      for (let i = 0; i < 6; i++) {
+        const x = rng() * TILE_SIZE, y = rng() * TILE_SIZE;
+        const w = 15 + rng() * 20, h = 12 + rng() * 15;
+        ctx.fillStyle = `rgba(${180 + rng()*20}, ${165 + rng()*20}, ${130 + rng()*20}, 0.5)`;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(rng() * Math.PI);
+        ctx.fillRect(-w/2, -h/2, w, h); ctx.restore();
+      }
+    },
+    // Tile 2: Urban — packed earth archaeological path
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 5, 5, [170, 155, 125], [150, 140, 110], rng, 0.3);
+      drawCracks(ctx, TILE_SIZE, TILE_SIZE, 14, 'rgba(90,80,60,0.5)', rng);
+    },
+    // Tile 3: Urban — exposed excavation floor
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 4, 4, [165, 150, 120], [145, 135, 105], rng, 0.35);
+      drawDebris(ctx, TILE_SIZE, TILE_SIZE, 12, 1, 3, ['rgba(130,120,95,0.5)', 'rgba(155,145,115,0.4)'], rng);
+    },
+    // Tile 4: Open — dry scrub grass on rocky ground
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 6, 5, [190, 175, 145], [175, 165, 135], rng, 0.25);
+      for (let i = 0; i < 6; i++) {
+        const x = rng() * TILE_SIZE, y = rng() * TILE_SIZE;
+        ctx.fillStyle = `rgba(${80 + rng()*30}, ${95 + rng()*30}, ${55 + rng()*20}, 0.35)`;
+        for (let s = 0; s < 6; s++) ctx.fillRect(x + (rng()-0.5)*8, y + (rng()-0.5)*8, 2, 4);
+      }
+    },
+    // Tile 5: Open — rocky terrain with scattered stones
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 5, 5, [185, 170, 140], [170, 160, 130], rng, 0.28);
+      drawDebris(ctx, TILE_SIZE, TILE_SIZE, 18, 2, 6, ['rgba(150,140,110,0.5)', 'rgba(130,120,95,0.4)'], rng);
+    },
+    // Tile 6: Far — pale sandy earth fading
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 3, 3, [210, 200, 170], [205, 195, 165], rng, 0.15);
+    },
+    // Tile 7: Far — distant Jezreel Valley terrain
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 2, 2, [215, 205, 180], [210, 200, 175], rng, 0.1);
+    },
+  ],
 };
 
 // ── Main ──
