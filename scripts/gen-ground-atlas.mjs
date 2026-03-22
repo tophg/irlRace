@@ -276,6 +276,57 @@ const ENV_TILES = {
       tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 2, 2, [215, 210, 200], [210, 205, 195], rng, 0.1);
     },
   ],
+  beirut: [
+    // Tile 0: Shoulder — Ottoman sandstone cobblestones
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 5, 5, [200, 185, 160], [180, 165, 140], rng, 0.3);
+      drawDebris(ctx, TILE_SIZE, TILE_SIZE, 12, 3, 6, ['rgba(190,175,150,0.5)', 'rgba(170,155,130,0.4)'], rng);
+      drawCracks(ctx, TILE_SIZE, TILE_SIZE, 10, 'rgba(130,115,90,0.35)', rng);
+    },
+    // Tile 1: Shoulder — weathered limestone pavement
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 4, 4, [210, 200, 180], [190, 180, 160], rng, 0.25);
+      for (let i = 0; i < 5; i++) {
+        const x = rng() * TILE_SIZE, y = rng() * TILE_SIZE;
+        const w = 22 + rng() * 20, h = 18 + rng() * 18;
+        ctx.fillStyle = `rgba(${200 + rng()*15}, ${190 + rng()*15}, ${170 + rng()*10}, 0.35)`;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(rng() * 0.25);
+        ctx.fillRect(-w/2, -h/2, w, h); ctx.restore();
+      }
+    },
+    // Tile 2: Urban — Corniche waterfront flagstone
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 3, 3, [195, 190, 180], [180, 175, 165], rng, 0.2);
+      drawCracks(ctx, TILE_SIZE, TILE_SIZE, 6, 'rgba(140,135,120,0.3)', rng);
+    },
+    // Tile 3: Urban — patched post-war concrete
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 4, 5, [175, 175, 170], [165, 165, 160], rng, 0.28);
+      drawDebris(ctx, TILE_SIZE, TILE_SIZE, 10, 1, 3, ['rgba(155,155,150,0.4)', 'rgba(145,145,140,0.3)'], rng);
+    },
+    // Tile 4: Open — Mediterranean scrub and dry earth
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 5, 4, [200, 190, 165], [190, 180, 155], rng, 0.22);
+      for (let i = 0; i < 7; i++) {
+        const x = rng() * TILE_SIZE, y = rng() * TILE_SIZE;
+        ctx.fillStyle = `rgba(${85 + rng()*30}, ${105 + rng()*25}, ${60 + rng()*20}, 0.3)`;
+        for (let s = 0; s < 4; s++) ctx.fillRect(x + (rng()-0.5)*5, y + (rng()-0.5)*5, 2, 3);
+      }
+    },
+    // Tile 5: Open — cedar hill path
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 4, 4, [195, 185, 160], [180, 170, 145], rng, 0.25);
+      drawDebris(ctx, TILE_SIZE, TILE_SIZE, 12, 2, 5, ['rgba(175,165,140,0.4)', 'rgba(160,150,125,0.3)'], rng);
+    },
+    // Tile 6: Far — hazy Mediterranean waterfront
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 3, 3, [210, 205, 195], [205, 200, 190], rng, 0.12);
+    },
+    // Tile 7: Far — distant Mount Lebanon terrain
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 2, 2, [215, 210, 200], [210, 205, 195], rng, 0.1);
+    },
+  ],
 };
 
 // ── Main ──
