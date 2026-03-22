@@ -108,6 +108,7 @@ const STYLE_ATLAS: Record<string, string> = {
   montclair:    '/buildings/facade_atlas_montclair.png',
   tokyo:        '/buildings/facade_atlas_tokyo.png',
   lima:         '/buildings/facade_atlas_lima.png',
+  dublin:       '/buildings/facade_atlas_dublin.png',
 };
 
 // Forward-declare so KTX2 upgrade closures can reference the material

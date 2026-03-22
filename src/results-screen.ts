@@ -46,45 +46,43 @@ function buildDriverDNAHTML(): string {
   const prog = getProgress();
   const sg = ratingGrade(prog.speedRating);
   const cg = ratingGrade(prog.cleanRating);
-  return `<div class="lap-breakdown" style="margin-top:8px;">
-    <div class="lap-breakdown-title">DRIVER DNA</div>
-    <div class="lap-breakdown-row"><span>⚡ Speed Rating</span><span style="color:${ratingColor(sg)};font-weight:700;">${sg} (${prog.speedRating})</span></div>
-    <div style="background:rgba(255,255,255,0.1);border-radius:4px;height:4px;margin:2px 0;">
-      <div style="background:${ratingColor(sg)};border-radius:4px;height:100%;width:${prog.speedRating}%;transition:width 0.5s;"></div>
-    </div>
-    <div class="lap-breakdown-row"><span>✨ Clean Rating</span><span style="color:${ratingColor(cg)};font-weight:700;">${cg} (${prog.cleanRating})</span></div>
-    <div style="background:rgba(255,255,255,0.1);border-radius:4px;height:4px;margin:2px 0;">
-      <div style="background:${ratingColor(cg)};border-radius:4px;height:100%;width:${prog.cleanRating}%;transition:width 0.5s;"></div>
-    </div>
+  return `<div class="results-section" style="animation-delay:0.8s;">
+    <div class="results-section-title">DRIVER DNA</div>
+    <div class="results-stat-row"><span>⚡ Speed Rating</span><span style="color:${ratingColor(sg)};font-weight:700;">${sg} (${prog.speedRating})</span></div>
+    <div class="results-bar"><div class="results-bar-fill" style="background:${ratingColor(sg)};width:${prog.speedRating}%;"></div></div>
+    <div class="results-stat-row"><span>✨ Clean Rating</span><span style="color:${ratingColor(cg)};font-weight:700;">${cg} (${prog.cleanRating})</span></div>
+    <div class="results-bar"><div class="results-bar-fill" style="background:${ratingColor(cg)};width:${prog.cleanRating}%;"></div></div>
   </div>`;
 }
 
 function buildChallengesHTML(): string {
   const daily = getDailyChallenges();
   const weekly = getWeeklyChallenges();
-  let html = `<div class="lap-breakdown" style="margin-top:8px;">
-    <div class="lap-breakdown-title">DAILY CHALLENGES</div>`;
+  let html = `<div class="results-section" style="animation-delay:1.0s;">
+    <div class="results-section-title">DAILY CHALLENGES</div>`;
   for (const ch of daily) {
     const [cur, tgt, done] = getChallengeProgress(ch);
     const pct = Math.min(100, Math.round((cur / tgt) * 100));
     const almostThere = !done && pct >= 75;
-    html += `<div class="lap-breakdown-row${done ? ' best' : ''}"><span>${ch.icon} ${ch.name}</span><span>${done ? '<span style="color:#4caf50;font-weight:700;">✅ CLAIMED!</span>' : `${cur}/${tgt}`}${almostThere ? ' <span style="color:#ffd700;font-size:10px;font-weight:700;">ALMOST THERE!</span>' : ''}</span></div>`;
+    html += `<div class="results-stat-row${done ? ' highlight' : ''}">`;
+    html += `<span>${ch.icon} ${ch.name}</span>`;
+    html += `<span>${done ? '<span style="color:#4caf50;font-weight:700;">✅ CLAIMED!</span>' : `${cur}/${tgt}`}${almostThere ? ' <span class="gold" style="font-size:10px;">ALMOST!</span>' : ''}</span></div>`;
     if (!done) {
-      const barColor = almostThere ? '#ffd700' : 'var(--col-orange)';
-      const barGlow = almostThere ? 'box-shadow:0 0 6px rgba(255,215,0,0.5);' : '';
-      html += `<div style="background:rgba(255,255,255,0.1);border-radius:3px;height:3px;margin:1px 0;"><div style="background:${barColor};border-radius:3px;height:100%;width:${pct}%;transition:width 0.5s;${barGlow}"></div></div>`;
+      const barColor = almostThere ? 'var(--col-yellow)' : 'var(--col-accent)';
+      html += `<div class="results-bar"><div class="results-bar-fill" style="background:${barColor};width:${pct}%;"></div></div>`;
     }
   }
-  html += `<div class="lap-breakdown-title" style="margin-top:6px;">WEEKLY CHALLENGES</div>`;
+  html += `<div class="results-section-title" style="margin-top:8px;">WEEKLY CHALLENGES</div>`;
   for (const ch of weekly) {
     const [cur, tgt, done] = getChallengeProgress(ch);
     const pct = Math.min(100, Math.round((cur / tgt) * 100));
     const almostThere = !done && pct >= 75;
-    html += `<div class="lap-breakdown-row${done ? ' best' : ''}"><span>${ch.icon} ${ch.name}</span><span>${done ? '<span style="color:#4caf50;font-weight:700;">✅ CLAIMED!</span>' : `${cur}/${tgt}`}${almostThere ? ' <span style="color:#ffd700;font-size:10px;font-weight:700;">ALMOST THERE!</span>' : ''}</span></div>`;
+    html += `<div class="results-stat-row${done ? ' highlight' : ''}">`;
+    html += `<span>${ch.icon} ${ch.name}</span>`;
+    html += `<span>${done ? '<span style="color:#4caf50;font-weight:700;">✅ CLAIMED!</span>' : `${cur}/${tgt}`}${almostThere ? ' <span class="gold" style="font-size:10px;">ALMOST!</span>' : ''}</span></div>`;
     if (!done) {
-      const barColor = almostThere ? '#ffd700' : 'var(--col-cyan)';
-      const barGlow = almostThere ? 'box-shadow:0 0 6px rgba(255,215,0,0.5);' : '';
-      html += `<div style="background:rgba(255,255,255,0.1);border-radius:3px;height:3px;margin:1px 0;"><div style="background:${barColor};border-radius:3px;height:100%;width:${pct}%;transition:width 0.5s;${barGlow}"></div></div>`;
+      const barColor = almostThere ? 'var(--col-yellow)' : 'var(--col-cyan)';
+      html += `<div class="results-bar"><div class="results-bar-fill" style="background:${barColor};width:${pct}%;"></div></div>`;
     }
   }
   html += `</div>`;
@@ -93,17 +91,17 @@ function buildChallengesHTML(): string {
 
 function buildPerksHTML(): string {
   const sp = getAvailableSkillPoints();
-  let html = `<div class="lap-breakdown" style="margin-top:8px;" id="perks-section">
-    <div class="lap-breakdown-title">DRIVER PERKS <span style="color:${COLORS.GOLD};float:right;">${sp} SP available</span></div>`;
+  let html = `<div class="results-section" id="perks-section" style="animation-delay:1.2s;">
+    <div class="results-section-title">DRIVER PERKS <span style="color:${COLORS.GOLD};float:right;">${sp} SP available</span></div>`;
   for (const perk of DRIVER_PERKS) {
     const tier = getPerkTier(perk.id);
     const bonus = getPerkBonus(perk.id);
     const maxed = tier >= perk.maxTier;
     const dots = Array.from({ length: perk.maxTier }, (_, i) => i < tier ? '●' : '○').join('');
-    html += `<div class="lap-breakdown-row" style="align-items:center;">`;
+    html += `<div class="results-stat-row" style="align-items:center;">`;
     html += `<span>${perk.icon} ${perk.name} <span style="color:rgba(255,255,255,0.4);font-size:11px;">${dots}</span></span>`;
     html += `<span style="display:flex;align-items:center;gap:6px;">`;
-    if (bonus > 0) html += `<span style="color:#4fc3f7;">+${bonus}${perk.unit}</span>`;
+    if (bonus > 0) html += `<span style="color:var(--col-cyan);">+${bonus}${perk.unit}</span>`;
     if (!maxed && sp > 0) {
       html += `<button class="perk-upgrade-btn" data-perk="${perk.id}" style="padding:2px 8px;font-size:11px;background:linear-gradient(135deg,${COLORS.GOLD},#ff8c00);color:#000;border:none;border-radius:4px;cursor:pointer;font-weight:700;">▲ UP</button>`;
     } else if (maxed) {
@@ -119,32 +117,32 @@ function buildRewardHTML(rewards: import('./progression').RewardBreakdown): stri
   const prog = getProgress();
   const lvlPct = Math.round(levelProgress() * 100);
 
-  let html = `<div class="lap-breakdown" style="margin-top:8px;">
-    <div class="lap-breakdown-title">REWARDS</div>
-    <div class="lap-breakdown-row"><span>Race Complete</span><span>+${rewards.baseXP} XP / +${rewards.baseCredits} CR</span></div>`;
-  if (rewards.winBonus > 0) html += `<div class="lap-breakdown-row best"><span>🏆 Victory!</span><span>+${rewards.winBonus} XP / +${rewards.winCreditsBonus} CR</span></div>`;
-  if (rewards.podiumBonus > 0) html += `<div class="lap-breakdown-row"><span>🥇 Podium</span><span>+${rewards.podiumBonus} XP / +${rewards.podiumCreditsBonus} CR</span></div>`;
-  if (rewards.cleanBonus > 0) html += `<div class="lap-breakdown-row"><span>✨ Clean Race</span><span>+${rewards.cleanBonus} XP</span></div>`;
-  if (rewards.driftBonus > 0) html += `<div class="lap-breakdown-row"><span>🔥 Drift</span><span>+${rewards.driftBonus} XP</span></div>`;
-  if (rewards.overtakeBonus > 0) html += `<div class="lap-breakdown-row"><span>🏎️ Overtakes</span><span>+${rewards.overtakeBonus} XP</span></div>`;
-  if (rewards.nearMissBonus > 0) html += `<div class="lap-breakdown-row"><span>😤 Near Misses</span><span>+${rewards.nearMissBonus} XP</span></div>`;
-  if (rewards.speedDemonBonus > 0) html += `<div class="lap-breakdown-row"><span>⚡ Speed Demon</span><span>+${rewards.speedDemonBonus} XP</span></div>`;
-  if (rewards.perfectStartBonus > 0) html += `<div class="lap-breakdown-row"><span>🚀 Perfect Start</span><span>+${rewards.perfectStartBonus} XP</span></div>`;
+  let html = `<div class="results-section" style="animation-delay:0.6s;">
+    <div class="results-section-title">REWARDS</div>
+    <div class="results-stat-row"><span>Race Complete</span><span>+${rewards.baseXP} XP / +${rewards.baseCredits} CR</span></div>`;
+  if (rewards.winBonus > 0) html += `<div class="results-stat-row highlight"><span>🏆 Victory!</span><span>+${rewards.winBonus} XP / +${rewards.winCreditsBonus} CR</span></div>`;
+  if (rewards.podiumBonus > 0) html += `<div class="results-stat-row"><span>🥇 Podium</span><span>+${rewards.podiumBonus} XP / +${rewards.podiumCreditsBonus} CR</span></div>`;
+  if (rewards.cleanBonus > 0) html += `<div class="results-stat-row"><span>✨ Clean Race</span><span>+${rewards.cleanBonus} XP</span></div>`;
+  if (rewards.driftBonus > 0) html += `<div class="results-stat-row"><span>🔥 Drift</span><span>+${rewards.driftBonus} XP</span></div>`;
+  if (rewards.overtakeBonus > 0) html += `<div class="results-stat-row"><span>🏎️ Overtakes</span><span>+${rewards.overtakeBonus} XP</span></div>`;
+  if (rewards.nearMissBonus > 0) html += `<div class="results-stat-row"><span>😤 Near Misses</span><span>+${rewards.nearMissBonus} XP</span></div>`;
+  if (rewards.speedDemonBonus > 0) html += `<div class="results-stat-row"><span>⚡ Speed Demon</span><span>+${rewards.speedDemonBonus} XP</span></div>`;
+  if (rewards.perfectStartBonus > 0) html += `<div class="results-stat-row"><span>🚀 Perfect Start</span><span>+${rewards.perfectStartBonus} XP</span></div>`;
   // Multipliers
   const mults: string[] = [];
   if (rewards.streakMultiplier > 1) mults.push(`Streak ×${rewards.streakMultiplier.toFixed(1)}`);
   if (rewards.lappingMultiplier > 1) mults.push(`Lapping ×${rewards.lappingMultiplier.toFixed(2)}`);
   if (rewards.prestigeMultiplier > 1) mults.push(`Prestige ×${rewards.prestigeMultiplier.toFixed(2)}`);
-  if (mults.length > 0) html += `<div class="lap-breakdown-row best" style="color:${COLORS.GOLD};"><span>🔄 ${mults.join(' · ')}</span><span>APPLIED</span></div>`;
-  html += `<div class="lap-breakdown-row" style="border-top:1px solid rgba(255,255,255,0.15);padding-top:4px;font-weight:700;"><span>Total</span><span>+${rewards.totalXP} XP / +${rewards.totalCredits} CR</span></div>`;
-  if (rewards.leveledUp) html += `<div class="lap-breakdown-row best" style="color:#ffcc00;font-weight:700;"><span>⬆ LEVEL UP!</span><span>Level ${rewards.newLevel}</span></div>`;
+  if (mults.length > 0) html += `<div class="results-stat-row gold"><span>🔄 ${mults.join(' · ')}</span><span>APPLIED</span></div>`;
+  html += `<div class="results-stat-row results-divider"><span>Total</span><span>+${rewards.totalXP} XP / +${rewards.totalCredits} CR</span></div>`;
+  if (rewards.leveledUp) html += `<div class="results-stat-row gold"><span>⬆ LEVEL UP!</span><span>Level ${rewards.newLevel}</span></div>`;
   // Achievements
   for (const ach of rewards.newAchievements) {
-    html += `<div class="lap-breakdown-row best" style="color:${COLORS.GOLD};font-weight:700;"><span>${ach.icon} ${ach.name}</span><span>+${ach.creditReward} CR</span></div>`;
+    html += `<div class="results-stat-row gold"><span>${ach.icon} ${ach.name}</span><span>+${ach.creditReward} CR</span></div>`;
   }
-  html += `<div class="lap-breakdown-row" style="margin-top:6px;"><span>Level ${prog.level}${prog.prestige > 0 ? ` ⭐${prog.prestige}` : ''}</span><span>${xpToNextLevel()} XP to next</span></div>`;
-  html += `<div style="background:rgba(255,255,255,0.1);border-radius:4px;height:6px;margin:4px 0;"><div style="background:var(--col-orange);border-radius:4px;height:100%;width:${lvlPct}%;transition:width 0.5s;"></div></div>`;
-  html += `<div class="lap-breakdown-row"><span>Credits</span><span style="color:#ffcc00;font-weight:700;">${prog.credits} CR</span></div>`;
+  html += `<div class="results-stat-row" style="margin-top:6px;"><span>Level ${prog.level}${prog.prestige > 0 ? ` ⭐${prog.prestige}` : ''}</span><span>${xpToNextLevel()} XP to next</span></div>`;
+  html += `<div class="results-bar"><div class="results-bar-fill" style="background:var(--col-accent);width:${lvlPct}%;"></div></div>`;
+  html += `<div class="results-stat-row"><span>Credits</span><span style="color:var(--col-yellow);font-weight:700;">${prog.credits} CR</span></div>`;
   html += `</div>`;
   return html;
 }
@@ -300,17 +298,17 @@ export async function showResults(
         </tbody>
       </table>
       ${lapBreakdownHtml}
-      <div class="lap-breakdown" style="margin-top:8px;">
-        <div class="lap-breakdown-title">RACE STATS</div>
-        <div class="lap-breakdown-row"><span>Top Speed</span><span>${Math.floor(G.raceStats.topSpeed)} MPH</span></div>
-        <div class="lap-breakdown-row"><span>Drift Time</span><span>${G.raceStats.totalDriftTime.toFixed(1)}s</span></div>
-        <div class="lap-breakdown-row"><span>Overtakes</span><span>${G.raceStats.overtakeCount}</span></div>
-        <div class="lap-breakdown-row"><span>Near Misses</span><span>${G.raceStats.nearMissCount}</span></div>
-        <div class="lap-breakdown-row"><span>Avg Position</span><span>${G.raceStats.positionSampleCount > 0 ? (G.raceStats.avgPosition / G.raceStats.positionSampleCount).toFixed(1) : '—'}</span></div>
-        <div class="lap-breakdown-row"><span>Collisions</span><span>${G.raceStats.collisionCount}</span></div>
-        ${G.raceStats.speedDemonTime >= 5 ? `<div class="lap-breakdown-row best"><span>⚡ Speed Demon</span><span>${G.raceStats.speedDemonTime.toFixed(1)}s</span></div>` : ''}
-        ${G.raceStats.perfectStart ? '<div class="lap-breakdown-row best"><span>🚀 Perfect Start</span><span>YES</span></div>' : ''}
-        ${getMidRaceCredits() > 0 || getMidRaceXP() > 0 ? `<div class="lap-breakdown-row best" style="border-top:1px solid rgba(255,255,255,0.15);padding-top:4px;"><span>🎯 Mid-Race Bonuses</span><span>+${getMidRaceCredits()} CR / +${getMidRaceXP()} XP</span></div>` : ''}
+      <div class="results-section" style="animation-delay:0.3s;">
+        <div class="results-section-title">RACE STATS</div>
+        <div class="results-stat-row"><span>Top Speed</span><span>${Math.floor(G.raceStats.topSpeed)} MPH</span></div>
+        <div class="results-stat-row"><span>Drift Time</span><span>${G.raceStats.totalDriftTime.toFixed(1)}s</span></div>
+        <div class="results-stat-row"><span>Overtakes</span><span>${G.raceStats.overtakeCount}</span></div>
+        <div class="results-stat-row"><span>Near Misses</span><span>${G.raceStats.nearMissCount}</span></div>
+        <div class="results-stat-row"><span>Avg Position</span><span>${G.raceStats.positionSampleCount > 0 ? (G.raceStats.avgPosition / G.raceStats.positionSampleCount).toFixed(1) : '—'}</span></div>
+        <div class="results-stat-row"><span>Collisions</span><span>${G.raceStats.collisionCount}</span></div>
+        ${G.raceStats.speedDemonTime >= 5 ? `<div class="results-stat-row highlight"><span>⚡ Speed Demon</span><span>${G.raceStats.speedDemonTime.toFixed(1)}s</span></div>` : ''}
+        ${G.raceStats.perfectStart ? '<div class="results-stat-row highlight"><span>🚀 Perfect Start</span><span>YES</span></div>' : ''}
+        ${getMidRaceCredits() > 0 || getMidRaceXP() > 0 ? `<div class="results-stat-row gold results-divider"><span>🎯 Mid-Race Bonuses</span><span>+${getMidRaceCredits()} CR / +${getMidRaceXP()} XP</span></div>` : ''}
       </div>
       ${buildRewardHTML(earlyRewards)}
       ${earlyRewards.streakMultiplier > 1 ? `<div style="text-align:center;margin:6px 0;color:${COLORS.GOLD};font-weight:700;">🔥 Win Streak: ${getProgress().winStreak} — ×${earlyRewards.streakMultiplier.toFixed(1)} bonus</div>` : ''}

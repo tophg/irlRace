@@ -276,7 +276,7 @@ export function showLoading(envName?: string) {
       <div class="loading-bar-fill" id="loading-bar-fill"></div>
     </div>
     <div class="loading-status" id="loading-status">GENERATING TRACK<span class="loading-dots"></span></div>
-    <div class="loading-tip" style="margin-top:20px;font-size:13px;color:rgba(255,255,255,0.5);font-style:italic;transition:opacity 0.4s;max-width:360px;text-align:center;">${tips[tipIdx]}</div>
+    <div class="loading-tip">${tips[tipIdx]}</div>
   `;
   uiOverlay.appendChild(el);
   G.loadingEl = el;

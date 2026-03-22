@@ -1263,7 +1263,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       accentProps: ['traffic_cone', 'dumpster', 'debris'],
       roadDecals: ['puddle', 'manhole', 'lane_paint'],
       atmosphericEffects: ['fog_wisps'],
-      buildingStyle: 'modern',
+      buildingStyle: 'dublin',
       buildingModels: [],
       buildingDensity: 1.8, buildingRowCount: 2, buildingGapChance: 0.1,
       treeVariant: 'standard',

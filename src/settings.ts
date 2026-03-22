@@ -79,7 +79,7 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
     <div class="settings-panel">
       <div class="settings-title">SETTINGS</div>
 
-      <div class="settings-section">AUDIO</div>
+      <div class="settings-section">🔊 AUDIO</div>
       <label class="settings-row">
         <span>Master Volume</span>
         <input type="range" min="0" max="100" value="${Math.round(s.masterVolume * 100)}" id="set-master">
@@ -96,7 +96,7 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
         <span class="set-val" id="set-sfx-val">${Math.round(s.sfxVolume * 100)}%</span>
       </label>
 
-      <div class="settings-section">GRAPHICS</div>
+      <div class="settings-section">🎨 GRAPHICS</div>
       <label class="settings-row">
         <span>Shadows</span>
         <select id="set-shadows">
@@ -111,7 +111,7 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
         <span class="set-val" id="set-particles-val">${Math.round(s.particles * 100)}%</span>
       </label>
 
-      <div class="settings-section">CONTROLS</div>
+      <div class="settings-section">🎮 CONTROLS</div>
       <label class="settings-row">
         <span>Steer Sensitivity</span>
         <input type="range" min="50" max="200" value="${Math.round(s.steerSensitivity * 100)}" id="set-steer">
@@ -149,14 +149,14 @@ export function showSettings(overlay: HTMLElement, onClose: () => void) {
         </select>
       </label>
 
-      <div class="settings-section">PLAYER</div>
+      <div class="settings-section">👤 PLAYER</div>
       <label class="settings-row">
         <span>Name</span>
         <input type="text" maxlength="12" value="${s.playerName.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}" id="set-name" class="lobby-input" style="width:140px;letter-spacing:3px;font-size:16px;padding:6px 12px;">
       </label>
 
       <div style="display:flex;gap:12px;justify-content:center;margin-top:20px;">
-        <button class="select-btn" id="set-save">SAVE</button>
+        <button class="select-btn" id="set-save" style="min-width:100px;">SAVE</button>
         <button class="menu-btn" id="set-cancel" style="padding:10px 24px;">CANCEL</button>
       </div>
     </div>
