@@ -780,7 +780,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       spectatorDensity: 0.8,
       accentProps: ['traffic_cone', 'dumpster'],
       roadDecals: ['lane_paint', 'manhole', 'puddle'],
-      buildingStyle: 'modern', // placeholder — reuse DC atlas
+      buildingStyle: 'montclair',
       buildingModels: [],
       buildingDensity: 1.5, buildingRowCount: 2, buildingGapChance: 0.15,
       treeVariant: 'standard',
