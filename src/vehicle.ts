@@ -6,6 +6,7 @@ import { CAR_LIGHT_MAP, CarLightDef } from './car-lights';
 import { getSettings } from './settings';
 import { getClosestSplinePoint } from './track';
 import { getTimeScale } from './time-scale';
+import { getIsNight } from './scene';
 import { fractureMesh, MeshFragment } from './mesh-fracture';
 import type { SplineBVH } from './bvh';
 import type { WeatherPhysics } from './weather';
@@ -536,76 +537,99 @@ export class Vehicle {
     spotD = ld?.spotDistance || 20;
 
     // ── Headlight decals (flat planes flush on front face, facing +Z) ──
-    // DoubleSide so emissive glow is visible from 3rd-person camera behind car
+    // Only render headlights + beams + spotlights at night
     const hlYOff = -0.15; // lower headlights to sit on bumper line
-    const hlGeo = new THREE.PlaneGeometry(hlSize[0], hlSize[1]);
-    const hlMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      emissive: 0xffeedd,
-      emissiveIntensity: 3.0,
-      roughness: 0.05,
-      metalness: 0.0,
-      side: THREE.DoubleSide,
-    });
+    if (getIsNight()) {
+      const hlGeo = new THREE.PlaneGeometry(hlSize[0], hlSize[1]);
+      const hlMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        emissive: 0xffeedd,
+        emissiveIntensity: 3.0,
+        roughness: 0.05,
+        metalness: 0.0,
+        side: THREE.DoubleSide,
+      });
 
-    const hlL = new THREE.Mesh(hlGeo, hlMat);
-    hlL.position.set(hlLPos[0], hlLPos[1] + hlYOff, hlLPos[2] + 0.01);
-    hlL.userData.excludeFromFracture = true; // prevent fracture from splitting this
-    this._bodyGroup.add(hlL);
+      const hlL = new THREE.Mesh(hlGeo, hlMat);
+      hlL.position.set(hlLPos[0], hlLPos[1] + hlYOff, hlLPos[2] + 0.01);
+      hlL.userData.excludeFromFracture = true; // prevent fracture from splitting this
+      this._bodyGroup.add(hlL);
 
-    const hlR = new THREE.Mesh(hlGeo, hlMat.clone());
-    hlR.position.set(hlRPos[0], hlRPos[1] + hlYOff, hlRPos[2] + 0.01);
-    hlR.userData.excludeFromFracture = true;
-    this._bodyGroup.add(hlR);
+      const hlR = new THREE.Mesh(hlGeo, hlMat.clone());
+      hlR.position.set(hlRPos[0], hlRPos[1] + hlYOff, hlRPos[2] + 0.01);
+      hlR.userData.excludeFromFracture = true;
+      this._bodyGroup.add(hlR);
 
-    // SpotLights for road illumination (boosted intensity for WebGPU)
-    const hlSpotL = new THREE.SpotLight(0xffeedd, spotI * 2.5, spotD, Math.PI / 5, 0.8, 2);
-    hlSpotL.position.set(hlLPos[0], hlLPos[1] + hlYOff, hlLPos[2]);
-    const targetL = new THREE.Object3D();
-    targetL.position.set(hlLPos[0] * 0.5, hlLPos[1] + hlYOff - 1, hlLPos[2] + 12);
-    this._bodyGroup.add(targetL);
-    hlSpotL.target = targetL;
-    this._bodyGroup.add(hlSpotL);
+      // SpotLights for road illumination (boosted intensity for WebGPU)
+      const hlSpotL = new THREE.SpotLight(0xffeedd, spotI * 2.5, spotD, Math.PI / 5, 0.8, 2);
+      hlSpotL.position.set(hlLPos[0], hlLPos[1] + hlYOff, hlLPos[2]);
+      const targetL = new THREE.Object3D();
+      targetL.position.set(hlLPos[0] * 0.5, hlLPos[1] + hlYOff - 1, hlLPos[2] + 12);
+      this._bodyGroup.add(targetL);
+      hlSpotL.target = targetL;
+      this._bodyGroup.add(hlSpotL);
 
-    const hlSpotR = new THREE.SpotLight(0xffeedd, spotI * 2.5, spotD, Math.PI / 5, 0.8, 2);
-    hlSpotR.position.set(hlRPos[0], hlRPos[1] + hlYOff, hlRPos[2]);
-    const targetR = new THREE.Object3D();
-    targetR.position.set(hlRPos[0] * 0.5, hlRPos[1] + hlYOff - 1, hlRPos[2] + 12);
-    this._bodyGroup.add(targetR);
-    hlSpotR.target = targetR;
-    this._bodyGroup.add(hlSpotR);
+      const hlSpotR = new THREE.SpotLight(0xffeedd, spotI * 2.5, spotD, Math.PI / 5, 0.8, 2);
+      hlSpotR.position.set(hlRPos[0], hlRPos[1] + hlYOff, hlRPos[2]);
+      const targetR = new THREE.Object3D();
+      targetR.position.set(hlRPos[0] * 0.5, hlRPos[1] + hlYOff - 1, hlRPos[2] + 12);
+      this._bodyGroup.add(targetR);
+      hlSpotR.target = targetR;
+      this._bodyGroup.add(hlSpotR);
 
-    // ── Volumetric beam cones (tagged to exclude from fracture system) ──
-    const beamLen = ld?.beamLength || 15;
-    const beamRad = ld?.beamRadius || 3.5;
-    const beamGeo = new THREE.ConeGeometry(beamRad, beamLen, 12, 1, true);
-    beamGeo.translate(0, -beamLen / 2, 0); // pivot at apex (headlight)
-    beamGeo.rotateX(-Math.PI / 2);         // point along +Z (forward)
+      // ── Volumetric beam cones (tagged to exclude from fracture system) ──
+      const beamLen = ld?.beamLength || 15;
+      const beamRad = ld?.beamRadius || 3.5;
+      const beamGeo = new THREE.ConeGeometry(beamRad, beamLen, 12, 1, true);
+      beamGeo.translate(0, -beamLen / 2, 0); // pivot at apex (headlight)
+      beamGeo.rotateX(-Math.PI / 2);         // point along +Z (forward)
 
-    const beamMat = new THREE.MeshBasicMaterial({
-      color: 0xffeedd,
-      transparent: true,
-      opacity: 0.035,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
+      const beamMat = new THREE.MeshBasicMaterial({
+        color: 0xffeedd,
+        transparent: true,
+        opacity: 0.035,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
 
-    const beamL = new THREE.Mesh(beamGeo, beamMat);
-    beamL.position.set(hlLPos[0], hlLPos[1] + hlYOff, hlLPos[2]);
-    beamL.userData.excludeFromFracture = true;
-    beamL.renderOrder = 999; // render after opaque geometry
-    this._bodyGroup.add(beamL);
+      const beamL = new THREE.Mesh(beamGeo, beamMat);
+      beamL.position.set(hlLPos[0], hlLPos[1] + hlYOff, hlLPos[2]);
+      beamL.userData.excludeFromFracture = true;
+      beamL.renderOrder = 999; // render after opaque geometry
+      this._bodyGroup.add(beamL);
 
-    const beamR = new THREE.Mesh(beamGeo, beamMat.clone());
-    beamR.position.set(hlRPos[0], hlRPos[1] + hlYOff, hlRPos[2]);
-    beamR.userData.excludeFromFracture = true;
-    beamR.renderOrder = 999;
-    this._bodyGroup.add(beamR);
+      const beamR = new THREE.Mesh(beamGeo, beamMat.clone());
+      beamR.position.set(hlRPos[0], hlRPos[1] + hlYOff, hlRPos[2]);
+      beamR.userData.excludeFromFracture = true;
+      beamR.renderOrder = 999;
+      this._bodyGroup.add(beamR);
 
-    // ── Taillight decals — DISABLED ──
-    // const tlGeo = new THREE.PlaneGeometry(tlSize[0], tlSize[1]);
-    // this.taillightMatL = new THREE.MeshStandardMaterial({ ... });
-    // (brake lights temporarily removed)
+      // ── Taillight decals (red glow on rear face, facing -Z) ──
+      const tlGeo = new THREE.PlaneGeometry(tlSize![0], tlSize![1]);
+      const tlMatL = new THREE.MeshStandardMaterial({
+        color: 0xff0000,
+        emissive: 0xff2200,
+        emissiveIntensity: 2.0,
+        roughness: 0.1,
+        metalness: 0.0,
+        side: THREE.DoubleSide,
+      });
+      this.taillightMatL = tlMatL;
+
+      const tlL = new THREE.Mesh(tlGeo, tlMatL);
+      tlL.position.set(tlLPos[0], tlLPos[1] + hlYOff, tlLPos[2] - 0.01);
+      tlL.rotation.y = Math.PI; // face backward
+      tlL.userData.excludeFromFracture = true;
+      this._bodyGroup.add(tlL);
+
+      const tlMatR = tlMatL.clone();
+      this.taillightMatR = tlMatR;
+      const tlR = new THREE.Mesh(tlGeo, tlMatR);
+      tlR.position.set(tlRPos[0], tlRPos[1] + hlYOff, tlRPos[2] - 0.01);
+      tlR.rotation.y = Math.PI;
+      tlR.userData.excludeFromFracture = true;
+      this._bodyGroup.add(tlR);
+    }
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

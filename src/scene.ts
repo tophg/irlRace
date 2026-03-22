@@ -146,6 +146,7 @@ export interface EnvironmentPreset {
   dirPosition: [number, number, number];
   groundColor: number;
   exposure: number;
+  isNight?: boolean;      // true (default) = headlights on, false = daytime (headlights off)
   scenery: SceneryTheme;
 }
 
@@ -1715,6 +1716,8 @@ let _currentPreset: EnvironmentPreset = ENVIRONMENTS[0];
 export function getCurrentTheme(): SceneryTheme { return _currentPreset.scenery; }
 /** Get the currently active environment preset. */
 function getCurrentPreset(): EnvironmentPreset { return _currentPreset; }
+/** Whether the current environment is nighttime (headlights on). Defaults true. */
+export function getIsNight(): boolean { return _currentPreset.isNight !== false; }
 
 /**
  * Darken sky and lighting for rain/storm weather.
