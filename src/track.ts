@@ -746,6 +746,8 @@ function getBarrierMaterial(style: string, barrierColor: number): THREE.MeshStan
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.anisotropy = 4;
+    tex.center.set(0.5, 0.5);
+    tex.rotation = Math.PI / 2; // rotate left 90°
     mat.map = tex;
     mat.needsUpdate = true;
   });

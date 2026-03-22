@@ -61,18 +61,7 @@ export const CAR_LIGHT_MAP: Record<string, CarLightDef> = {
     beamRadius: 3.5,
   },
 
-  'Nissan_Maxima.glb': {
-    headlightL: [-0.67, 0.42, 1.96],
-    headlightR: [ 0.67, 0.42, 1.96],
-    headlightSize: [0.26, 0.14],
-    taillightL: [-0.67, 0.42, -1.96],
-    taillightR: [ 0.67, 0.42, -1.96],
-    taillightSize: [0.32, 0.10],
-    spotIntensity: 2.2,
-    spotDistance: 22,
-    beamLength: 16,
-    beamRadius: 3.8,
-  },
+
 
   'Ford_Mustang.glb': {
     headlightL: [-0.65, 0.40, 1.96],

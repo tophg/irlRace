@@ -6,7 +6,7 @@
  */
 
 import { G } from './game-context';
-import { GameState } from './types';
+import { GameState, CAR_ROSTER, CarDef } from './types';
 import { showTouchControls } from './input';
 import { showSettings } from './settings';
 import * as THREE from 'three/webgpu';
@@ -639,20 +639,17 @@ function drawWeatherParticles(ctx: CanvasRenderingContext2D, w: number, h: numbe
       ctx.fill();
     }
     if (isBlizzard) {
-      // Reduced visibility overlay
       ctx.fillStyle = 'rgba(200,210,230,0.15)';
       ctx.fillRect(0, 0, w, h);
     }
   }
 
   if (isIce) {
-    // Blue-tinted vignette
     const vigGrad = ctx.createRadialGradient(w * 0.5, h * 0.5, w * 0.2, w * 0.5, h * 0.5, w * 0.7);
     vigGrad.addColorStop(0, 'transparent');
     vigGrad.addColorStop(1, 'rgba(100,140,255,0.2)');
     ctx.fillStyle = vigGrad;
     ctx.fillRect(0, 0, w, h);
-    // Frost sparkle dots
     ctx.fillStyle = 'rgba(200,220,255,0.4)';
     for (let i = 0; i < 15; i++) {
       const fx = (Math.sin(i * 83.7) * 0.5 + 0.5) * w;
@@ -685,21 +682,73 @@ function buildSetupChallengesHTML(): string {
   const daily = getDailyChallenges();
   const weekly = getWeeklyChallenges();
   const all = [...daily, ...weekly];
+  let completed = 0;
   let html = '';
   for (const ch of all) {
     const [cur, tgt, done] = getChallengeProgress(ch);
+    if (done) completed++;
     const pct = Math.min(100, Math.round((cur / tgt) * 100));
-    const typeLabel = ch.type === 'daily' ? '' : '<span style="color:var(--col-cyan);font-size:10px;margin-left:4px;">WEEKLY</span>';
-    html += `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12px;color:${done ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.8)'};">`;
-    html += `<span style="flex:1;">${ch.icon} ${ch.name}${typeLabel}</span>`;
-    html += `<span style="min-width:40px;text-align:right;">${done ? '✅' : `${cur}/${tgt}`}</span>`;
+    const typeLabel = ch.type === 'daily' ? '' : '<span class="rc-ch-weekly">WEEKLY</span>';
+    html += `<div class="rc-ch-row${done ? ' rc-ch-done' : ''}">`;
+    html += `<span class="rc-ch-name">${ch.icon} ${ch.name}${typeLabel}</span>`;
+    html += `<span class="rc-ch-prog">${done ? '✅' : `${cur}/${tgt}`}</span>`;
     html += `</div>`;
     if (!done) {
-      html += `<div style="background:rgba(255,255,255,0.08);border-radius:2px;height:2px;margin-bottom:2px;">`;
-      html += `<div style="background:${ch.type === 'daily' ? 'var(--col-orange)' : 'var(--col-cyan)'};border-radius:2px;height:100%;width:${pct}%;"></div></div>`;
+      html += `<div class="rc-ch-bar-bg"><div class="rc-ch-bar-fill${ch.type === 'weekly' ? ' rc-ch-bar-fill--weekly' : ''}" style="width:${pct}%"></div></div>`;
     }
   }
-  return html;
+  return `<!--count:${completed}/${all.length}-->` + html;
+}
+
+/** Build car stats HTML from a CarDef. */
+function buildCarStatsHTML(car: CarDef): string {
+  // Normalize stats to 0-100 range based on roster min/max
+  const stats = [
+    { label: 'SPEED', value: car.maxSpeed, icon: '⚡' },
+    { label: 'ACCEL', value: car.acceleration, icon: '🚀' },
+    { label: 'GRIP',  value: car.gripCoeff * 100, icon: '🏎️' },
+    { label: 'DRIFT', value: car.driftFactor * 200, icon: '🔥' },
+  ];
+  // Compute min/max per stat across roster for normalization
+  const ranges = stats.map((s, i) => {
+    const vals = CAR_ROSTER.map(c => {
+      if (i === 0) return c.maxSpeed;
+      if (i === 1) return c.acceleration;
+      if (i === 2) return c.gripCoeff * 100;
+      return c.driftFactor * 200;
+    });
+    return { min: Math.min(...vals), max: Math.max(...vals) };
+  });
+
+  return stats.map((s, i) => {
+    const pct = Math.round(((s.value - ranges[i].min) / (ranges[i].max - ranges[i].min)) * 100);
+    const hue = s.label === 'SPEED' ? 190 : s.label === 'ACCEL' ? 30 : s.label === 'GRIP' ? 150 : 15;
+    return `<div class="rc-stat-row">
+      <span class="rc-stat-label">${s.icon} ${s.label}</span>
+      <div class="rc-stat-bar"><div class="rc-stat-fill" style="--stat-pct:${pct}%;--stat-hue:${hue}"></div></div>
+    </div>`;
+  }).join('');
+}
+
+/** Build environment cards with gradient backgrounds. */
+function buildEnvCardsHTML(): string {
+  const randomCard = `<button class="env-card env-card--active" data-env="random" style="--env-top:15,15,25;--env-bot:20,30,50">
+    <span class="env-card-emoji">🎲</span>
+    <span class="env-card-name">Random</span>
+    <span class="env-card-desc">${ENV_FLAVOR['Random']}</span>
+  </button>`;
+
+  const envCards = ENVIRONMENTS.map(e => {
+    const top = `${(e.skyTop >> 16) & 0xff},${(e.skyTop >> 8) & 0xff},${e.skyTop & 0xff}`;
+    const bot = `${(e.skyBottom >> 16) & 0xff},${(e.skyBottom >> 8) & 0xff},${e.skyBottom & 0xff}`;
+    return `<button class="env-card" data-env="${e.name}" style="--env-top:${top};--env-bot:${bot}">
+      <span class="env-card-emoji">${ENV_EMOJI[e.name] || '🏁'}</span>
+      <span class="env-card-name">${e.name}</span>
+      <span class="env-card-desc">${ENV_FLAVOR[e.name] || ''}</span>
+    </button>`;
+  });
+
+  return [randomCard, ...envCards].join('');
 }
 
 export function showRaceConfig(
@@ -710,9 +759,12 @@ export function showRaceConfig(
   const el = document.createElement('div');
   el.className = 'race-config-overlay';
 
-
-  // Build environment card grid
-  const envGridHtml = buildEnvGridHTML();
+  const car = G.selectedCar;
+  const challengesHtml = buildSetupChallengesHTML();
+  // Extract completed count from hidden comment
+  const chMatch = challengesHtml.match(/<!--count:(\d+)\/(\d+)-->/);
+  const chDone = chMatch ? chMatch[1] : '0';
+  const chTotal = chMatch ? chMatch[2] : '6';
 
   el.innerHTML = `
     <div class="race-config-panel">
@@ -731,9 +783,29 @@ export function showRaceConfig(
       <div class="race-config-left">
         <div class="race-config-title">RACE SETUP</div>
 
-        <div class="race-config-section-label">⚡ RACE</div>
+        <!-- Race Mode Tabs -->
+        <div class="rc-mode-tabs rc-section-reveal" style="--reveal-i:0">
+          <button class="rc-mode-tab rc-mode-tab--active" data-mode="quick">QUICK RACE</button>
+          <button class="rc-mode-tab" data-mode="timetrial">TIME TRIAL</button>
+          <button class="rc-mode-tab" data-mode="chase">CHASE</button>
+        </div>
 
-        <div class="rc-row-pair">
+        <!-- Car Stats Dashboard -->
+        <div class="rc-car-card rc-section-reveal" style="--reveal-i:1">
+          <div class="rc-car-info">
+            <div class="rc-car-name">${car.name.toUpperCase()}</div>
+            <div class="rc-car-class">${car.mass}kg · ${car.id}</div>
+          </div>
+          <div class="rc-car-stats">
+            ${buildCarStatsHTML(car)}
+          </div>
+          <button class="rc-change-car" id="cfg-change-car">CHANGE CAR</button>
+        </div>
+
+        <!-- Configuration -->
+        <div class="race-config-section-label rc-section-reveal" style="--reveal-i:2">⚙ CONFIGURATION</div>
+
+        <div class="rc-row-pair rc-section-reveal" style="--reveal-i:2">
           <div class="rc-row">
             <span class="rc-label">Laps</span>
             <div class="rc-toggle-group" data-cfg="laps">
@@ -744,7 +816,7 @@ export function showRaceConfig(
             </div>
           </div>
           <div class="rc-row">
-            <span class="rc-label">AI</span>
+            <span class="rc-label">AI Opponents</span>
             <div class="rc-toggle-group" data-cfg="ai">
               <button class="rc-toggle" data-val="0">None</button>
               <button class="rc-toggle" data-val="2">2</button>
@@ -753,7 +825,7 @@ export function showRaceConfig(
           </div>
         </div>
 
-        <div class="rc-row">
+        <div class="rc-row rc-section-reveal" style="--reveal-i:3">
           <span class="rc-label">Difficulty</span>
           <div class="rc-toggle-group" data-cfg="difficulty">
             <button class="rc-toggle" data-val="easy">Easy</button>
@@ -762,7 +834,10 @@ export function showRaceConfig(
           </div>
         </div>
 
-        <div class="rc-row">
+        <!-- Race Rules -->
+        <div class="race-config-section-label rc-section-reveal" style="--reveal-i:4">🏁 RACE RULES</div>
+
+        <div class="rc-row rc-section-reveal" style="--reveal-i:4">
           <span class="rc-label">Weather</span>
           <div class="rc-toggle-group rc-toggle-group--wrap" data-cfg="weather">
             <button class="rc-toggle rc-toggle--active" data-val="random" title="Random">🎲</button>
@@ -775,25 +850,31 @@ export function showRaceConfig(
           </div>
         </div>
 
-        <div class="rc-row">
+        <div class="rc-row rc-section-reveal" style="--reveal-i:4">
           <span class="rc-label">Track Seed</span>
           <input type="text" id="cfg-seed" placeholder="Random" maxlength="5" class="rc-input">
         </div>
 
-        <div class="race-config-section-label" style="margin-top:12px;">🌍 ENVIRONMENT</div>
-        <div class="env-card-grid" id="env-card-grid">
-          ${envGridHtml}
+        <!-- Environment -->
+        <div class="race-config-section-label rc-section-reveal" style="--reveal-i:5">🌍 ENVIRONMENT</div>
+        <div class="env-card-grid rc-section-reveal" id="env-card-grid" style="--reveal-i:5">
+          ${buildEnvCardsHTML()}
         </div>
 
-        <!-- Challenges summary -->
-        <div class="race-config-section-label" style="margin-top:8px;">🎯 TODAY'S CHALLENGES</div>
-        <div class="rc-challenges-summary" id="rc-challenges">
-          ${buildSetupChallengesHTML()}
-        </div>
+        <!-- Challenges (collapsible) -->
+        <details class="rc-details-toggle rc-section-reveal" style="--reveal-i:6">
+          <summary class="race-config-section-label rc-details-summary">
+            🎯 CHALLENGES
+            <span class="rc-ch-count">${chDone}/${chTotal}</span>
+          </summary>
+          <div class="rc-challenges-summary" id="rc-challenges">
+            ${challengesHtml}
+          </div>
+        </details>
 
         <!-- Actions at bottom of controls -->
-        <div class="race-config-actions">
-          <button class="rc-start-btn" id="cfg-go">START RACE<span class="rc-start-sub" id="rc-start-sub"></span></button>
+        <div class="race-config-actions rc-section-reveal" style="--reveal-i:7">
+          <button class="rc-start-btn" id="cfg-go">START RACE<span class="rc-start-chevron">▸</span><span class="rc-start-sub" id="rc-start-sub"></span></button>
           <button class="rc-back-btn" id="cfg-back">BACK</button>
         </div>
       </div>
@@ -804,16 +885,12 @@ export function showRaceConfig(
   // Initialize preview
   const canvas = document.getElementById('env-preview-canvas') as HTMLCanvasElement;
   if (canvas) {
-    // Size the canvas to match its CSS container
     const rect = canvas.parentElement!.getBoundingClientRect();
     canvas.width = Math.floor(rect.width * Math.min(window.devicePixelRatio, 2));
     canvas.height = Math.floor(rect.height * Math.min(window.devicePixelRatio, 2));
     createPreviewScene(canvas);
-    // Set initial environment (random → first env as default look)
     const initialEnv = ENVIRONMENTS[Math.floor(Math.random() * ENVIRONMENTS.length)];
-    // Initialize colors immediately (no transition)
-    const initRgb = hexToRgb(initialEnv.skyTop);
-    Object.assign(_curSkyTopC, initRgb);
+    Object.assign(_curSkyTopC, hexToRgb(initialEnv.skyTop));
     Object.assign(_curSkyMidC, hexToRgb(initialEnv.skyHorizon ?? initialEnv.skyBottom));
     Object.assign(_curSkyBotC, hexToRgb(initialEnv.skyBottom));
     Object.assign(_curGroundC, hexToRgb(initialEnv.groundColor));
@@ -822,15 +899,39 @@ export function showRaceConfig(
     setPreviewEnvironment(initialEnv);
   }
 
-  // Wire toggle groups (generic: works for laps, ai, difficulty, weather)
+  // ── Mode tabs (Coming Soon for non-quick modes) ──
+  el.querySelectorAll('.rc-mode-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const mode = (tab as HTMLElement).dataset.mode;
+      if (mode !== 'quick') {
+        // Show "Coming Soon" tooltip
+        const tip = document.createElement('div');
+        tip.className = 'rc-tooltip';
+        tip.textContent = 'Coming Soon';
+        (tab as HTMLElement).appendChild(tip);
+        setTimeout(() => tip.remove(), 1200);
+        return;
+      }
+      el.querySelectorAll('.rc-mode-tab').forEach(t => t.classList.remove('rc-mode-tab--active'));
+      tab.classList.add('rc-mode-tab--active');
+    });
+  });
+
+  // ── Change car button ──
+  document.getElementById('cfg-change-car')?.addEventListener('click', () => {
+    destroyPreview();
+    el.classList.add('fade-out');
+    setTimeout(() => el.remove(), 200);
+    onBack();
+  });
+
+  // ── Toggle groups ──
   el.querySelectorAll('.rc-toggle-group').forEach(group => {
     group.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest('.rc-toggle') as HTMLElement;
       if (!btn) return;
       group.querySelectorAll('.rc-toggle').forEach(t => t.classList.remove('rc-toggle--active'));
       btn.classList.add('rc-toggle--active');
-
-      // Weather: update preview weather
       if ((group as HTMLElement).dataset.cfg === 'weather') {
         _previewWeather = btn.dataset.val || 'random';
       }
@@ -838,13 +939,11 @@ export function showRaceConfig(
     });
   });
 
-  // Wire environment card grid
+  // ── Environment card grid ──
   const envGrid = document.getElementById('env-card-grid')!;
   envGrid.addEventListener('click', (e) => {
     const card = (e.target as HTMLElement).closest('.env-card') as HTMLElement;
     if (!card) return;
-
-    // Update selected visual
     envGrid.querySelectorAll('.env-card').forEach(c => c.classList.remove('env-card--active'));
     card.classList.add('env-card--active');
 
@@ -863,14 +962,11 @@ export function showRaceConfig(
     updateStartSub(el);
   });
 
-  // Initial subtitle
   updateStartSub(el);
 
-  // Keyboard navigation
+  // ── Keyboard navigation ──
   el.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      document.getElementById('cfg-go')?.click();
-    }
+    if (e.key === 'Enter') document.getElementById('cfg-go')?.click();
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       const cards = Array.from(envGrid.querySelectorAll('.env-card')) as HTMLElement[];
       const activeIdx = cards.findIndex(c => c.classList.contains('env-card--active'));
@@ -881,7 +977,7 @@ export function showRaceConfig(
     }
   });
 
-  // Wire buttons
+  // ── Back button ──
   document.getElementById('cfg-back')!.addEventListener('click', () => {
     destroyPreview();
     el.classList.add('fade-out');
@@ -889,13 +985,15 @@ export function showRaceConfig(
     onBack();
   });
 
-  // Helper: get active toggle value
+  // ── Start button ──
   const getToggleVal = (cfgName: string): string => {
     const active = el.querySelector(`.rc-toggle-group[data-cfg="${cfgName}"] .rc-toggle--active`) as HTMLElement;
     return active?.dataset.val || '';
   };
 
   document.getElementById('cfg-go')!.addEventListener('click', () => {
+    const startBtn = document.getElementById('cfg-go')!;
+    startBtn.classList.add('rc-start-btn--pressed');
     const laps = parseInt(getToggleVal('laps') || '3');
     const ai = parseInt(getToggleVal('ai') || '4');
     const difficulty = (getToggleVal('difficulty') || 'medium') as 'easy' | 'medium' | 'hard';
@@ -903,10 +1001,13 @@ export function showRaceConfig(
     const weather = getToggleVal('weather') || 'random';
     const activeEnv = envGrid.querySelector('.env-card--active') as HTMLElement;
     const environment = activeEnv?.dataset.env || 'random';
-    destroyPreview();
-    el.classList.add('fade-out');
-    setTimeout(() => el.remove(), 200);
-    onStart(laps, ai, difficulty, seed, weather, environment);
+    // Small delay for button animation
+    setTimeout(() => {
+      destroyPreview();
+      el.classList.add('fade-out');
+      setTimeout(() => el.remove(), 200);
+      onStart(laps, ai, difficulty, seed, weather, environment);
+    }, 150);
   });
 }
 
