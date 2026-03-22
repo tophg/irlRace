@@ -87,7 +87,6 @@ const GROUND_ATLAS: Record<string, string> = {
   "Modi'in Illit":     '/ground/ground_atlas_modiin_illit.png',
   'Khartoum':          '/ground/ground_atlas_khartoum.png',
   'Dublin':            '/ground/ground_atlas_dublin.png',
-  'Cap-Haïtien':       '/ground/ground_atlas_cap_haitien.png',
 };
 
 // ── Scenery Theme (controls visual identity of track-side props) ──
@@ -1009,7 +1008,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       accentProps: ['debris'],
       roadDecals: ['pothole', 'puddle'],
       atmosphericEffects: ['fog_wisps'],
-      buildingStyle: 'weathered',
+      buildingStyle: 'machuelo_abajo',
       buildingModels: [],
       buildingDensity: 0.8, buildingRowCount: 1, buildingGapChance: 0.3,
       treeVariant: 'tropical',
@@ -1194,7 +1193,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       accentProps: ['snow_bollard', 'debris', 'dumpster'],
       roadDecals: ['frost'],
       atmosphericEffects: ['snow_extra', 'fog_wisps'],
-      buildingStyle: 'weathered',
+      buildingStyle: 'vorkuta',
       buildingModels: [],
       buildingDensity: 1.2, buildingRowCount: 2, buildingGapChance: 0.3,
       treeVariant: 'snow_capped',
