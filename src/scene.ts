@@ -355,7 +355,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       kerbColor: 0x998866, shoulderColor: 0x665544,
       mountainColor: 0x7a6a50, mountainHeight: 0.8,
       cloudOpacity: 0.12, cloudTint: 0xddbb55,
-      fenceDensity: 0.4, rockDensity: 0.7,
+      fenceDensity: 0.4, rockDensity: 0,
       rockColor: 0x8a7a55, bushDensity: 0.3,
       spectatorDensity: 0.5,
       accentProps: ['traffic_cone', 'debris', 'cactus'],
