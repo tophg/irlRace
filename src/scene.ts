@@ -82,6 +82,7 @@ const GROUND_ATLAS: Record<string, string> = {
   'Nuuk':             '/ground/ground_atlas_nuuk.png',
   'London':           '/ground/ground_atlas_london.png',
   "Modi'in Illit":     '/ground/ground_atlas_modiin_illit.png',
+  'Khartoum':          '/ground/ground_atlas_khartoum.png',
 };
 
 // ── Scenery Theme (controls visual identity of track-side props) ──
