@@ -77,6 +77,7 @@ const GROUND_ATLAS: Record<string, string> = {
   'Lima':            '/ground/ground_atlas_lima.png',
   'Siberia':         '/ground/ground_atlas_siberia.png',
   'Cap-Haïtien':     '/ground/ground_atlas_cap_haitien.png',
+  'Lille':           '/ground/ground_atlas_lille.png',
   'Gaza City':       '/ground/ground_atlas_gaza.png',
   'Shanghai':        '/ground/ground_atlas_shanghai.png',
   'Kiev':            '/ground/ground_atlas_kiev.png',
@@ -828,7 +829,7 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       accentProps: ['traffic_cone', 'dumpster'],
       roadDecals: ['lane_paint', 'manhole', 'puddle'],
       atmosphericEffects: ['fog_wisps'],
-      buildingStyle: 'modern', // placeholder — reuse DC atlas
+      buildingStyle: 'lille',
       buildingModels: [],
       buildingDensity: 2.0, buildingRowCount: 3, buildingGapChance: 0.08,
       treeVariant: 'standard',
