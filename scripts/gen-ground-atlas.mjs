@@ -225,6 +225,57 @@ const ENV_TILES = {
       tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 2, 2, [215, 205, 180], [210, 200, 175], rng, 0.1);
     },
   ],
+  piran: [
+    // Tile 0: Shoulder — Istrian limestone cobblestones
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 5, 5, [195, 185, 170], [175, 165, 150], rng, 0.3);
+      drawDebris(ctx, TILE_SIZE, TILE_SIZE, 15, 3, 6, ['rgba(180,170,155,0.5)', 'rgba(160,150,135,0.4)'], rng);
+      drawCracks(ctx, TILE_SIZE, TILE_SIZE, 12, 'rgba(120,110,95,0.35)', rng);
+    },
+    // Tile 1: Shoulder — weathered flagstone pavement
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 4, 4, [200, 190, 175], [180, 170, 155], rng, 0.25);
+      for (let i = 0; i < 5; i++) {
+        const x = rng() * TILE_SIZE, y = rng() * TILE_SIZE;
+        const w = 20 + rng() * 25, h = 18 + rng() * 20;
+        ctx.fillStyle = `rgba(${190 + rng()*15}, ${180 + rng()*15}, ${165 + rng()*15}, 0.4)`;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(rng() * 0.3);
+        ctx.fillRect(-w/2, -h/2, w, h); ctx.restore();
+      }
+    },
+    // Tile 2: Urban — smooth rendered square paving
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 3, 3, [205, 195, 180], [190, 180, 165], rng, 0.2);
+      drawCracks(ctx, TILE_SIZE, TILE_SIZE, 8, 'rgba(130,120,105,0.3)', rng);
+    },
+    // Tile 3: Urban — worn waterfront stone
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 4, 5, [185, 180, 170], [170, 165, 155], rng, 0.28);
+      drawDebris(ctx, TILE_SIZE, TILE_SIZE, 8, 1, 3, ['rgba(155,150,140,0.4)', 'rgba(140,135,125,0.3)'], rng);
+    },
+    // Tile 4: Open — Mediterranean dry grass
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 5, 4, [195, 190, 165], [185, 180, 155], rng, 0.22);
+      for (let i = 0; i < 8; i++) {
+        const x = rng() * TILE_SIZE, y = rng() * TILE_SIZE;
+        ctx.fillStyle = `rgba(${90 + rng()*25}, ${110 + rng()*25}, ${65 + rng()*15}, 0.3)`;
+        for (let s = 0; s < 5; s++) ctx.fillRect(x + (rng()-0.5)*6, y + (rng()-0.5)*6, 2, 3);
+      }
+    },
+    // Tile 5: Open — coastal rocky path
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 4, 4, [190, 185, 170], [175, 170, 155], rng, 0.25);
+      drawDebris(ctx, TILE_SIZE, TILE_SIZE, 14, 2, 5, ['rgba(170,165,150,0.4)', 'rgba(155,150,135,0.3)'], rng);
+    },
+    // Tile 6: Far — hazy Adriatic waterfront
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 3, 3, [210, 205, 195], [205, 200, 190], rng, 0.12);
+    },
+    // Tile 7: Far — distant Mediterranean terrain
+    (ctx, rng) => {
+      tileableNoise(ctx, TILE_SIZE, TILE_SIZE, 2, 2, [215, 210, 200], [210, 205, 195], rng, 0.1);
+    },
+  ],
 };
 
 // ── Main ──
