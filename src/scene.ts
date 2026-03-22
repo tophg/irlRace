@@ -77,6 +77,7 @@ const GROUND_ATLAS: Record<string, string> = {
   'Lima':            '/ground/ground_atlas_lima.png',
   'Siberia':         '/ground/ground_atlas_siberia.png',
   'Cap-Haïtien':     '/ground/ground_atlas_cap_haitien.png',
+  'Machuelo Abajo':  '/ground/ground_atlas_machuelo_abajo.png',
   'Lille':           '/ground/ground_atlas_lille.png',
   'Gaza City':       '/ground/ground_atlas_gaza.png',
   'Shanghai':        '/ground/ground_atlas_shanghai.png',
