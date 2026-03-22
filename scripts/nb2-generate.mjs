@@ -13,7 +13,7 @@ import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
 import { dirname } from 'path';
 
 // ── Config ──
-const MODEL = 'gemini-2.5-flash-image';
+const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash-image'; // NB1 default, override with GEMINI_MODEL env
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
 // ── Generate image via Gemini API ──
