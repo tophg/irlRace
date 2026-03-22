@@ -75,6 +75,7 @@ const GROUND_ATLAS: Record<string, string> = {
   'Montclair':        '/ground/ground_atlas_montclair.png',
   'Nuuk':             '/ground/ground_atlas_nuuk.png',
   'London':           '/ground/ground_atlas_london.png',
+  "Modi'in Illit":     '/ground/ground_atlas_modiin_illit.png',
 };
 
 // ── Scenery Theme (controls visual identity of track-side props) ──
@@ -894,6 +895,40 @@ export const ENVIRONMENTS: EnvironmentPreset[] = [
       buildingDensity: 1.8, buildingRowCount: 3, buildingGapChance: 0.1,
       treeVariant: 'standard',
       treeModels: ['red_maple.glb', 'red_maple_b.glb', 'oak.glb', 'walnut.glb'],
+      ambientLights: ['window_spill'],
+      barrierStyle: 'concrete_clean',
+    },
+  },
+
+  // ── Modi'in Illit — Israeli settlement, Judean Hills, Jerusalem stone facades ──
+  {
+    name: "Modi'in Illit",
+    fogColor: 0x4a4a3a, fogDensity: 0.00015,
+    skyTop: 0x1a2040, skyBottom: 0x4466aa, skyHorizon: 0xccaa88,
+    hemiSky: 0xbbccdd, hemiGround: 0x665544, hemiIntensity: 1.1,
+    dirColor: 0xffeedd, dirIntensity: 2.2, dirPosition: [55, 65, 40],
+    groundColor: 0x3a3020, exposure: 1.2,
+    scenery: {
+      roadColor: 0x353535, roadRoughness: 0.7,
+      barrierColor: 0x887766,
+      buildingPalette: [0x5a5040, 0x655848, 0x4a4438, 0x706050, 0x585040, 0x6a6050],
+      buildingHeightRange: [4, 12],
+      windowLitChance: 0.4, windowColor: 0xffdd88,
+      treeTrunkColor: 0x443322, treeCanopyColor: 0x3a5530,
+      treeCanopyStyle: 'sphere', treeCount: 15,
+      billboardStyle: 'minimal',
+      streetLightColor: 0xffddaa, streetLightDensity: 0.7,
+      groundTexture: 'sand',
+      kerbColor: 0x999988, shoulderColor: 0x444433,
+      mountainColor: 0x4a4a3a, mountainHeight: 2.5, cloudOpacity: 0.15, cloudTint: 0x6a6a55,
+      fenceDensity: 0.5, rockDensity: 0, rockColor: 0x887766, bushDensity: 0.2,
+      spectatorDensity: 0.5, accentProps: ['traffic_cone', 'debris'],
+      roadDecals: ['lane_paint'],
+      buildingStyle: 'modiin_illit',
+      buildingModels: [],
+      buildingDensity: 1.5, buildingRowCount: 2, buildingGapChance: 0.12,
+      treeVariant: 'standard',
+      treeModels: [],
       ambientLights: ['window_spill'],
       barrierStyle: 'concrete_clean',
     },

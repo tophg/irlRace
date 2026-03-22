@@ -104,6 +104,7 @@ const STYLE_ATLAS: Record<string, string> = {
   shanghai:     '/buildings/facade_atlas_shanghai.png',
   nuuk:         '/buildings/facade_atlas_nuuk.png',
   london:       '/buildings/facade_atlas_london.png',
+  modiin_illit: '/buildings/facade_atlas_modiin_illit.png',
 };
 
 // Forward-declare so KTX2 upgrade closures can reference the material
